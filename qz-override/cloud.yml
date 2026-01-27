@@ -1,0 +1,2215 @@
+openapi: '3.0.3'
+info:
+  title: Cloud VPS API
+  description: |-
+    提供 VPS 产品、线路、实例与安全相关能力的 OpenAPI 文档。
+  version: '1.0.0'
+servers:
+  - url: http://lab.netmc.icu:30080
+    description: Lab 环境
+tags:
+  - name: Test
+    description: 测试与连通性
+  - name: Catalog
+    description: 产品与线路
+  - name: Host
+    description: VPS 实例与基础信息
+  - name: HostAction
+    description: VPS 操作与状态管理
+  - name: Backup
+    description: 备份管理
+  - name: Snapshot
+    description: 快照管理
+  - name: Security
+    description: 安全与 ACL 管理
+  - name: Port
+    description: 端口映射管理
+  - name: Console
+    description: 控制台与监控
+  - name: Order
+    description: 开通、续费与升级
+components:
+  schemas:
+    ApiResponseBase:
+      type: object
+      required:
+        - code
+        - msg
+      properties:
+        code:
+          type: integer
+          description: 响应状态码（1 表示成功）
+        msg:
+          type: string
+          description: 响应消息
+    ApiResponseString:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: string
+              description: 返回数据，通常为空字符串
+    ApiResponseObject:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: object
+              description: 返回数据，结构视实现而定
+              additionalProperties: true
+    ApiResponseArray:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          required:
+            - data
+          properties:
+            data:
+              type: array
+              description: 返回数据列表
+              items:
+                type: object
+                additionalProperties: true
+    ProductListData:
+      type: object
+      description: 按产品ID索引的产品对象集合
+      additionalProperties:
+        type: object
+        required:
+          - id
+          - product_name
+          - host_cpu
+          - host_ram
+          - host_data
+          - bandwidth
+        properties:
+          id:
+            type: integer
+            description: 产品ID
+            example: 1
+          product_name:
+            type: string
+            description: 产品名称
+            example: "8c16g 100m"
+          host_cpu:
+            type: integer
+            description: CPU 核心数
+            example: 8
+          host_ram:
+            type: integer
+            description: 内存大小（GB）
+            example: 16
+          host_data:
+            type: integer
+            description: 硬盘大小（GB）
+            example: 40
+          bandwidth:
+            type: integer
+            description: 带宽（Mbps）
+            example: 25
+          snapshot_num:
+            type: integer
+            description: 快照数量
+            example: 1
+          backup_num:
+            type: integer
+            description: 备份数量
+            example: 0
+          nat_port_num:
+            type: integer
+            description: NAT 端口数量
+            example: 30
+          price:
+            type: string
+            description: 价格
+            example: "0.00"
+          sort:
+            type: integer
+            description: 排序值
+            example: 0
+          nat_domain_num:
+            type: integer
+            description: 域名数量
+            example: 0
+          gpu_resolution:
+            type: integer
+            description: GPU 分辨率
+            example: 0
+          gpu_capacity:
+            type: integer
+            description: GPU 容量
+            example: 0
+          category:
+            type: integer
+            description: 分类标识
+            example: 0
+          isshow:
+            type: integer
+            description: 是否展示
+            example: 1
+          metal:
+            type: integer
+            description: 金属标识
+            example: 0
+          is_nat:
+            type: integer
+            description: 是否支持 NAT
+            example: 1
+          traffic:
+            type: integer
+            description: 流量
+            example: 0
+          ipnum:
+            type: integer
+            description: IP 数量
+            example: 0
+          remark:
+            type: string
+            description: 备注
+            example: ""
+          create_time:
+            type: string
+            format: date-time
+            description: 创建时间
+            example: "2024-05-26 16:41:56"
+          update_time:
+            type: string
+            format: date-time
+            description: 更新时间
+            example: "2025-06-19 02:54:52"
+          is_delete:
+            type: integer
+            description: 删除标识
+            example: 0
+    LineListData:
+      type: array
+      description: 线路列表
+      items:
+        type: object
+        required:
+          - id
+          - line_name
+          - third_line_id
+          - line_type
+          - area_id
+          - state
+          - snapshot_num
+          - backup_num
+          - reinstall_num
+          - is_nat
+          - port_num
+          - domain_num
+          - create_time
+          - update_time
+        properties:
+          id:
+            type: integer
+            description: 线路ID
+            example: 1
+          line_name:
+            type: string
+            description: 线路名称
+            example: "R620-2667v2"
+          third_line_id:
+            type: integer
+            description: 第三方线路ID
+            example: 0
+          line_type:
+            type: integer
+            description: 线路类型
+            example: 1
+          line_api:
+            type: string
+            description: 线路 API 地址(无用)
+            example: ""
+          line_apikey:
+            type: string
+            description: API Key
+            example: ""
+          area_id:
+            type: integer
+            description: 区域 ID
+            example: 1
+          remark:
+            type: string
+            description: 备注
+            example: ""
+          state:
+            type: integer
+            description: 状态（1 表示可用）
+            example: 1
+          snapshot_num:
+            type: integer
+            description: 快照数量
+            example: 1
+          backup_num:
+            type: integer
+            description: 备份数量
+            example: 3
+          reinstall_num:
+            type: integer
+            description: 重装次数限制
+            example: 5
+          is_nat:
+            type: integer
+            description: 是否支持 NAT
+            example: 1
+          port_num:
+            type: integer
+            description: 端口数量
+            example: 20
+          domain_num:
+            type: integer
+            description: 域名数量
+            example: 0
+          create_time:
+            type: string
+            format: date-time
+            description: 创建时间
+            example: "2024-05-24 23:34:07"
+          update_time:
+            type: string
+            format: date-time
+            description: 更新时间
+            example: "2025-01-29 00:20:23"
+    HostListData:
+      type: array
+      description: VPS 列表
+      items:
+        type: object
+        properties:
+          id:
+            type: integer
+          host_name:
+            type: string
+          ip:
+            type: string
+          remark:
+            type: string
+    HostInfoData:
+      type: object
+      description: VPS 主机详细信息
+      properties:
+        id:
+          type: integer
+          description: VPS 唯一标识
+        user_id:
+          type: integer
+          description: 用户 ID
+        orderid:
+          type: integer
+          description: 订单 ID
+        product_name:
+          type: string
+          nullable: true
+          description: 产品名称
+        product_id:
+          type: integer
+          description: 产品 ID
+        area_id:
+          type: integer
+          description: 区域 ID
+        area_name:
+          type: string
+          description: 区域名称
+        line_name:
+          type: string
+          description: 线路名称
+        line_id:
+          type: integer
+          description: 线路 ID
+        node_name:
+          type: string
+          description: 节点名称
+        node_id:
+          type: integer
+          description: 节点 ID
+        host_name:
+          type: string
+          description: VPS 主机名
+        cpu:
+          type: integer
+          description: CPU 核数
+        cpu_model:
+          type: string
+          nullable: true
+          description: CPU 型号
+        ip:
+          type: string
+          description: 公网 IP
+        local_ip:
+          type: string
+          description: 内网 IP
+        vnc_port:
+          type: string
+          nullable: true
+          description: VNC 端口
+        vnc_password:
+          type: string
+          description: VNC 密码
+        virtual_type:
+          type: string
+          description: 虚拟化类型
+        from_type:
+          type: string
+          description: 来源类型
+        plug_name:
+          type: string
+          description: 插件名称
+        buy_time:
+          type: string
+          format: date
+          description: 购买时间
+        end_time:
+          type: string
+          format: date
+          description: 到期时间
+        memory:
+          type: integer
+          description: 内存大小 (GB)
+        hard_disks:
+          type: integer
+          description: 硬盘大小 (GB)
+        bandwidth:
+          type: integer
+          description: 带宽 (Mbps)
+        os_name:
+          type: string
+          description: 操作系统名称
+        os_password:
+          type: string
+          description: 操作系统密码
+        panel_password:
+          type: string
+          description: 面板密码
+        cpu_limit:
+          type: integer
+          description: CPU 限制 (%)
+        ram_start:
+          type: integer
+          description: 内存起始值 (MB)
+        memory_dynamic:
+          type: integer
+          description: 内存动态调整
+        state:
+          type: integer
+          description: VPS 状态
+        add_ip:
+          type: string
+          nullable: true
+          description: 额外 IP
+        is_agent:
+          type: integer
+          description: 是否代理
+        os_disk_path:
+          type: string
+          description: 系统盘路径
+        os_disk_maxiops:
+          type: string
+          description: 系统盘最大 IOPS
+        data_disk_path:
+          type: string
+          description: 数据盘路径
+        data_disk_maxiops:
+          type: integer
+          description: 数据盘最大 IOPS
+        now_iso:
+          type: string
+          nullable: true
+          description: 当前加载 ISO
+        sync_time:
+          type: integer
+          description: 同步时间间隔 (秒)
+        is_nat:
+          type: integer
+          description: 是否 NAT 模式
+        port_num:
+          type: integer
+          description: 端口数量
+        os_read:
+          type: string
+          description: 系统盘读取限速
+        os_write:
+          type: string
+          description: 系统盘写入限速
+        data_read:
+          type: string
+          description: 数据盘读取限速
+        data_write:
+          type: string
+          description: 数据盘写入限速
+        domain_num:
+          type: integer
+          description: 域名数量
+        snapshot_num:
+          type: integer
+          description: 快照数量
+        backup_num:
+          type: integer
+          description: 备份数量
+        reinstall_time:
+          type: string
+          nullable: true
+          description: 上次重装时间
+        reinstall_num:
+          type: integer
+          description: 重装次数
+        max_reinstall_num:
+          type: integer
+          description: 最大重装次数
+        firewall_enable:
+          type: integer
+          description: 防火墙是否启用
+        resolution:
+          type: integer
+          description: 分辨率
+        gpu_capacity:
+          type: integer
+          description: GPU 容量
+        open_gpu:
+          type: integer
+          description: 是否启用 GPU
+        metal:
+          type: integer
+          description: 物理机标识
+        traffic:
+          type: integer
+          description: 流量计数
+        close_network:
+          type: string
+          description: 网络关闭标识
+        bios:
+          type: string
+          description: BIOS 类型
+        parent_id:
+          type: integer
+          nullable: true
+          description: 父级 VPS ID
+        vlanid1:
+          type: integer
+          description: VLAN ID1
+        vlanid2:
+          type: integer
+          description: VLAN ID2
+        remark:
+          type: string
+          description: 备注
+        other_info:
+          type: string
+          description: 其他信息
+        create_time:
+          type: string
+          format: date-time
+          description: 创建时间
+        update_time:
+          type: string
+          format: date-time
+          description: 更新时间
+        is_delete:
+          type: integer
+          description: 删除标志
+        bandwidth_in:
+          type: integer
+          description: 入站带宽 (Mbps)
+        is_vnc:
+          type: integer
+          description: 是否启用 VNC
+        os_size:
+          type: string
+          nullable: true
+          description: 系统盘大小
+        network:
+          type: object
+          description: 网络接口信息，键为接口名
+          additionalProperties:
+            type: array
+            description: 接口列表
+            items:
+              type: object
+              properties:
+                id:
+                  type: integer
+                  description: 网络记录唯一标识
+                ip:
+                  type: string
+                  description: IP 地址
+                netmask:
+                  type: string
+                  description: 子网掩码
+                gateway:
+                  type: string
+                  description: 网关
+                mac:
+                  type: string
+                  description: MAC 地址
+                v_name:
+                  type: string
+                  description: 虚拟机名
+                remark:
+                  type: string
+                  description: 备注
+                state:
+                  type: integer
+                  description: 状态
+                v_name_type:
+                  type: string
+                  description: 虚拟机名称类型
+                create_time:
+                  type: string
+                  format: date-time
+                  description: 创建时间
+                update_time:
+                  type: string
+                  format: date-time
+                  description: 更新时间
+                public_ip:
+                  type: string
+                  description: 公网 IP 地址
+                ip_pool_name:
+                  type: string
+                  description: IP 池名称
+                ip_pool_id:
+                  type: integer
+                  description: IP 池 ID
+              additionalProperties: true
+        remote_ip:
+          type: string
+          description: 远程访问地址，包括端口
+    ImageListData:
+      type: array
+      description: 镜像列表
+      items:
+        type: object
+        properties:
+          id:
+            type: integer
+            description: 镜像 ID
+          name:
+            type: string
+            description: 镜像名称
+          type:
+            type: string
+            description: 镜像类型
+          desc:
+            type: string
+            description: 镜像描述
+    NatAclListData:
+      type: array
+      description: NAT 转发规则列表
+      items:
+        type: object
+        properties:
+          id:
+            type: integer
+            description: 转发规则 ID
+          host_id:
+            type: integer
+            description: 所属 VPS ID
+          host_name:
+            type: string
+            description: VPS 主机名
+          name:
+            type: string
+            description: 转发规则名称
+          port_type:
+            type: string
+            description: 端口类型
+          sport:
+            type: string
+            description: 源端口
+          dport:
+            type: string
+            description: 目标端口
+          api_url:
+            type: string
+            description: 公网访问地址
+          sys:
+            type: integer
+            description: 系统标识（1=系统转发，2=用户自定义）
+          dip:
+            type: string
+            description: 内网目标 IP
+    MonitorData:
+      type: object
+      description: 监控数据
+      properties:
+        StorageStats:
+          type: integer
+          description: 存储统计
+        NetworkStats:
+          type: object
+          description: 网络统计
+          properties:
+            BytesSentPersec:
+              type: integer
+              description: 每秒发送字节数
+            BytesReceivedPersec:
+              type: integer
+              description: 每秒接收字节数
+          required:
+            - BytesSentPersec
+            - BytesReceivedPersec
+        CpuStats:
+          type: integer
+          description: CPU 使用率 (%)
+        MemoryStats:
+          type: integer
+          description: 内存使用率 (%)
+        Traffic:
+          type: object
+          description: 流量统计
+          properties:
+            TrafficOut:
+              type: integer
+              description: 流出流量
+            TrafficIn:
+              type: integer
+              description: 流入流量
+          required:
+            - TrafficOut
+            - TrafficIn
+      required:
+        - StorageStats
+        - NetworkStats
+        - CpuStats
+        - MemoryStats
+        - Traffic
+    OperationResultData:
+      type: object
+      description: 操作结果
+      properties:
+        code:
+          type: integer
+          description: 内部状态码，200 表示成功
+        msg:
+          type: string
+          description: 内部响应消息
+    BackupCreateResultData:
+      type: object
+      description: 备份任务执行结果
+      properties:
+        code:
+          type: integer
+          description: 内部状态码，200 表示成功
+        msg:
+          type: string
+          description: 内部响应消息
+        data:
+          type: object
+          description: 备份详情
+          properties:
+            name:
+              type: string
+              description: 备份名称
+            id:
+              type: string
+              description: 备份 ID
+    SnapshotCreateResultData:
+      type: object
+      description: 快照创建结果
+      properties:
+        code:
+          type: integer
+          description: 内部状态码，200 表示成功
+        msg:
+          type: string
+          description: 内部响应消息
+        data:
+          type: object
+          description: 快照详情
+          properties:
+            name:
+              type: string
+              description: 快照名称
+            id:
+              type: string
+              description: 快照 ID
+    BackupListData:
+      type: array
+      description: 备份列表
+      items:
+        type: object
+        properties:
+          id:
+            type: integer
+            description: 备份 ID
+          virtuals_id:
+            type: integer
+            description: VPS ID
+          name:
+            type: string
+            description: 备份名称
+          created_at:
+            type: string
+            format: date-time
+            description: 创建时间
+    SnapshotListData:
+      type: array
+      description: 快照列表
+      items:
+        type: object
+        properties:
+          id:
+            type: integer
+            description: 快照 ID
+          virtuals_id:
+            type: integer
+            description: VPS ID
+          name:
+            type: string
+            description: 快照名称
+          created_at:
+            type: string
+            format: date-time
+            description: 创建时间
+    CreateHostQuery:
+      type: object
+      required:
+        - line_id
+        - os
+        - cpu
+        - memory
+        - hard_disks
+        - bandwidth
+        - expire_time
+      properties:
+        line_id:
+          type: integer
+          description: 线路 ID
+        nodes_id:
+          type: integer
+          description: 物理节点 ID（可选）
+        users_id:
+          type: integer
+          description: 用户 ID（可选）
+        os:
+          type: string
+          description: 操作系统模板名称
+        cpu:
+          type: integer
+          description: CPU 核数
+        memory:
+          type: integer
+          description: 内存大小 (GB)
+        hard_disks:
+          type: integer
+          description: 硬盘大小 (GB)
+        bandwidth:
+          type: integer
+          description: 带宽 (Mbps)
+        snapshot:
+          type: integer
+          description: 快照数量（可选）
+        backups:
+          type: integer
+          description: 备份数量（可选）
+        sys_pwd:
+          type: string
+          description: 系统盘密码（可选）
+        vnc_pwd:
+          type: string
+          description: VNC 密码（可选）
+        max_reinstall_num:
+          type: integer
+          description: 最大重装次数（可选）
+        expire_time:
+          type: string
+          format: date-time
+          description: 到期时间 (YYYY-MM-DD HH:mm:ss)
+        ipnum:
+          type: integer
+          description: 分配的额外 IP 数量（可选）
+        traffic:
+          type: integer
+          description: 流量额度（可选）
+        port_num:
+          type: integer
+          description: 端口数量（可选）
+        host_name:
+          type: string
+          description: 主机名（可选）
+    ElasticUpdateQuery:
+      type: object
+      required:
+        - host_id
+      properties:
+        host_id:
+          type: integer
+          description: VPS 的 ID
+        cpu:
+          type: integer
+          description: CPU 核数（可选）
+        memory:
+          type: integer
+          description: 内存大小 (GB，可选)
+        hard_disks:
+          type: integer
+          description: 硬盘大小 (GB，可选)
+        bandwidth:
+          type: integer
+          description: 带宽 (Mbps，可选)
+        backups:
+          type: integer
+          description: 备份数量（可选）
+        port_num:
+          type: integer
+          description: 端口数量（可选）
+        snapshot:
+          type: integer
+          description: 快照数量（可选）
+    SecurityAclAddQuery:
+      type: object
+      properties:
+        hostid:
+          type: integer
+          description: 所属 VPS 的 ID
+        direction:
+          type: string
+          description: 流量方向（In 或 Out）
+        protocol:
+          type: string
+          description: 协议类型（tcp、udp 等）
+        method:
+          type: string
+          description: 处理方式（allowed、denied 等）
+        port:
+          type: string
+          description: 端口号
+        ip:
+          type: string
+          description: 源/目标 IP 地址
+    OpenHostQuery:
+      type: object
+      properties:
+        productid:
+          type: integer
+          description: 产品 ID
+        templates_id:
+          type: integer
+          description: 模板 ID
+        sys_pwd:
+          type: string
+          description: 系统密码
+        vnc_pwd:
+          type: string
+          description: VNC 密码
+        expire_time:
+          type: string
+          description: 到期时间
+        line_id:
+          type: integer
+          description: 线路 ID
+    AddPortHostQuery:
+      type: object
+      properties:
+        host_id:
+          type: integer
+          description: VPS 的 ID
+        name:
+          type: string
+          description: 端口映射名称
+        sport:
+          type: string
+          nullable: true
+          description: 源端口，可为空（自动分配）
+        dport:
+          type: integer
+          description: 目标端口（内网端口）
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      name: apikey
+      in: header
+      description: 请求头中携带的 API Key
+security:
+  - ApiKeyAuth: []
+paths:
+  /test:
+    get:
+      tags:
+        - Test
+      summary: 测试接口
+      description: '测试接口'
+      operationId: testGet
+      responses:
+        '200':
+          description: 'api正常 返回hello，或在 apikey 错误时返回 JSON'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'hello'
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseBase'
+              example:
+                code: 0
+                msg: "apikey 错误"
+  /product:
+    get:
+      tags:
+        - Catalog
+      summary: 获取产品模板列表
+      description: '获取产品模板列表'
+      operationId: productList
+      parameters: []
+      responses:
+        '200':
+          description: 成功返回产品列表
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ProductListData'
+  /line:
+    get:
+      tags:
+        - Catalog
+      summary: 获取所有线路
+      description: '获取所有线路'
+      operationId: lineList
+      parameters: []
+      responses:
+        '200':
+          description: 成功返回所有线路
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/LineListData'
+  /hostlist:
+    get:
+      tags:
+        - Host
+      summary: 获取 VPS 列表
+      description: 获取所有 VPS 的简单信息列表（含 remark）
+      operationId: hostList
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            default: 16
+          description: 每页条数，默认为 16
+        - in: query
+          name: pages
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: 页码，从 1 开始，默认为 1
+        - in: query
+          name: search_tag
+          required: false
+          schema:
+            type: string
+          description: 按 remark 字段做模糊搜索
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HostListData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  - id: 68
+                    host_name: "79ak47"
+                    ip: "192.168.9.7"
+                    remark: "后台创建"
+                  - id: 111
+                    host_name: "luochen570"
+                    ip: "192.168.9.2"
+                    remark: "后台创建"
+                  - id: 119
+                    host_name: "flydie"
+                    ip: "192.168.9.6"
+                    remark: "后台创建"
+
+
+  /hostinfo:
+    post:
+      tags:
+        - Host
+      summary: 获取 VPS 详情
+      description: '获取vps详细'
+      operationId: hostInfo
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/HostInfoData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  id: 389
+                  user_id: 0
+                  orderid: 0
+                  product_name: ""
+                  product_id: 0
+                  area_id: 1
+                  area_name: "晋中"
+                  line_name: "RH2288-V3"
+                  line_id: 3
+                  node_name: "RH2288-V3"
+                  node_id: 4
+                  host_name: "dify"
+                  cpu: 8
+                  cpu_model: ""
+                  ip: "192.168.9.9"
+                  local_ip: "172.26.0.3"
+                  vnc_port: ""
+                  vnc_password: "j3WPmS5p"
+                  virtual_type: "kvm"
+                  from_type: "1"
+                  plug_name: ""
+                  buy_time: "2025-08-02"
+                  end_time: "2025-09-02"
+                  memory: 16
+                  hard_disks: 30
+                  bandwidth: 2
+                  os_name: "ubuntu22.04"
+                  os_password: "o67Ybc916P"
+                  panel_password: "zY68Owpw"
+                  cpu_limit: 100
+                  ram_start: 0
+                  memory_dynamic: 0
+                  state: 2
+                  add_ip: ""
+                  is_agent: 0
+                  os_disk_path: "os"
+                  os_disk_maxiops: "20000000"
+                  data_disk_path: "data"
+                  data_disk_maxiops: 20000000
+                  now_iso: ""
+                  sync_time: 1
+                  is_nat: 1
+                  port_num: 30
+                  os_read: "2000"
+                  os_write: "2000"
+                  data_read: "2000"
+                  data_write: "2000"
+                  domain_num: 40
+                  snapshot_num: 1
+                  backup_num: 1
+                  reinstall_time: null
+                  reinstall_num: 0
+                  max_reinstall_num: 5
+                  firewall_enable: 0
+                  resolution: 0
+                  gpu_capacity: 0
+                  open_gpu: 0
+                  metal: 1
+                  traffic: 0
+                  close_network: "1"
+                  bios: "IDE"
+                  parent_id: null
+                  vlanid1: 0
+                  vlanid2: 0
+                  remark: "后台创建"
+                  other_info: ""
+                  create_time: "2025-08-02 12:57:47"
+                  update_time: "2025-08-02 12:58:13"
+                  is_delete: 0
+                  bandwidth_in: 100
+                  is_vnc: 1
+                  os_size: null
+                  network:
+                    eth1:
+                      - id: 9
+                        ip: "192.168.9.9"
+                        netmask: "255.255.255.0"
+                        gateway: "192.168.9.1"
+                        mac: "00:50:56:8E:5D:9A"
+                        v_name: "dify"
+                        remark: ""
+                        state: 2
+                        v_name_type: ""
+                        create_time: "2024-05-24 23:35:52"
+                        update_time: "2024-05-24 23:35:52"
+                        public_ip: "lab.netmc.icu"
+                    eth2:
+                      - id: 778
+                        ip: "172.26.0.3"
+                        netmask: "255.255.0.0"
+                        gateway: ""
+                        mac: "00:0C:29:BE:BD:C6"
+                        ip_pool_name: "UnifiedIPPool"
+                        ip_pool_id: 5
+                        v_name: "dify"
+                        state: 2
+                        v_name_type: ""
+                        remark: ""
+                        create_time: "2025-07-29 21:13:03"
+                        update_time: "2025-07-29 21:13:03"
+                  remote_ip: "lab.netmc.icu:10008"
+  /start:
+    post:
+      tags:
+        - HostAction
+      summary: VPS 开机
+      description: '为vps开机'
+      operationId: hostStart
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "启动命令执行成功"
+                data: ""
+  /reboot:
+    post:
+      tags:
+        - HostAction
+      summary: VPS 重启
+      description: '为vps重启'
+      operationId: hostReboot
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "重启命令执行成功"
+                data: ""
+  /shutdown:
+    post:
+      tags:
+        - HostAction
+      summary: VPS 关机
+      description: '为vps关机'
+      operationId: hostShutdown
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "关机命令执行成功"
+                data: ""
+  /lock:
+    post:
+      tags:
+        - HostAction
+      summary: VPS 锁定
+      description: '锁定vps'
+      operationId: hostLock
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "succ"
+                data: ""
+  /unlock:
+    post:
+      tags:
+        - HostAction
+      summary: VPS 解锁
+      description: '解锁vps'
+      operationId: hostUnlock
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "succ"
+                data: ""
+  /delete:
+    post:
+      tags:
+        - HostAction
+      summary: VPS 删除
+      description: '删除vps'
+      operationId: hostDelete
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "删除命令执行成功"
+                data: ""
+  /update:
+    post:
+      tags:
+        - Order
+      summary: 升级 VPS（按产品类型）
+      description: '升级vps（根据产品类型）'
+      operationId: hostUpgrade
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                product_id:
+                  type: integer
+                  description: 产品 ID 不同nat型不能转换
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "ret=ok"
+                data: ""
+  /mirror_image:
+    get:
+      tags:
+        - Host
+      summary: 获取可用镜像列表
+      description: '获取可用镜像列表'
+      operationId: imageList
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/ImageListData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  - id: 1
+                    name: "windows2022"
+                    type: "windows"
+                    desc: ""
+                  - id: 2
+                    name: "debian11.2"
+                    type: "debian"
+                    desc: ""
+                  - id: 3
+                    name: "debian10.2"
+                    type: "debian"
+                    desc: ""
+  /nat_acl_list:
+    get:
+      tags:
+        - Security
+      summary: 获取 NAT ACL 转发规则列表
+      description: '获取 NAT ACL 转发规则列表'
+      operationId: natAclList
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/NatAclListData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  - id: 598
+                    host_id: 145
+                    host_name: "Daimaxue"
+                    name: "frp"
+                    port_type: "all"
+                    sport: "20002"
+                    dport: "20002"
+                    api_url: "netmc.icu"
+                    sys: 1
+                    dip: "192.168.9.14"
+                  - id: 596
+                    host_id: 145
+                    host_name: "Daimaxue"
+                    name: "mc-be"
+                    port_type: "all"
+                    sport: "20032"
+                    dport: "20032"
+                    api_url: "netmc.icu"
+                    sys: 1
+                    dip: "192.168.9.14"
+
+  /security_acl_list:
+    get:
+      tags:
+        - Security
+      summary: 获取安全 ACL 列表
+      description: '获取安全 ACL 列表'
+      operationId: securityAclList
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseArray'
+              example:
+                code: 1
+                msg: "succ"
+                data: []
+
+  /cdrom:
+    get:
+      tags:
+        - Console
+      summary: 获取 CDROM 信息
+      description: '获取 CDROM 信息'
+      operationId: cdromInfo
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseArray'
+              example:
+                code: 1
+                msg: "succ"
+                data: []
+  /monitor:
+    post:
+      tags:
+        - Console
+      summary: 获取 VPS 监控数据
+      description: '获取 VPS 监控数据'
+      operationId: hostMonitor
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MonitorData'
+              example:
+                code: 1
+                msg: "success"
+                data:
+                  StorageStats: 0
+                  NetworkStats:
+                    BytesSentPersec: 0
+                    BytesReceivedPersec: 0
+                  CpuStats: 4
+                  MemoryStats: 59
+                  Traffic:
+                    TrafficOut: 382
+                    TrafficIn: 744
+
+  /backups_del:
+    post:
+      tags:
+        - Backup
+      summary: 删除 VPS 备份
+      description: '删除 VPS 备份'
+      operationId: backupDelete
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                id:
+                  type: string
+                  description: 备份 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OperationResultData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  code: 200
+                  msg: ""
+  /backups_restore:
+    post:
+      tags:
+        - Backup
+      summary: 从 VPS 恢复指定备份
+      description: '从 VPS 恢复指定备份'
+      operationId: backupRestore
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                id:
+                  type: string
+                  description: 备份 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OperationResultData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  code: 200
+                  msg: ""
+
+  /panel:
+    post:
+      tags:
+        - Console
+      summary: 跳转到 VPS 面板
+      description: '通过面板密码登录并跳转到 VPS 面板'
+      operationId: panelRedirect
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_name:
+                  type: string
+                  description: VPS 主机名
+                panel_password:
+                  type: string
+                  description: 面板密码
+      responses:
+        '302':
+          description: 重定向到 VPS 管理面板
+          headers:
+            Location:
+              description: 跳转目标 URL
+              schema:
+                type: string
+  /backups_add:
+    post:
+      tags:
+        - Backup
+      summary: 添加 VPS 备份
+      description: '为 VPS 添加备份'
+      operationId: backupAdd
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BackupCreateResultData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  code: 200
+                  msg: ""
+                  data:
+                    name: "bak0802175605"
+                    id: "27"
+  /backups_list:
+    post:
+      tags:
+        - Backup
+      summary: 获取备份列表
+      description: '获取备份列表'
+      operationId: backupList
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/BackupListData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  - id: 26
+                    virtuals_id: 145
+                    name: "bak0802175036"
+                    created_at: "2025-08-02 17:50:36"
+                  - id: 27
+                    virtuals_id: 145
+                    name: "bak0802175605"
+                    created_at: "2025-08-02 17:56:05"
+  /snapshot_add:
+    post:
+      tags:
+        - Snapshot
+      summary: 添加 VPS 快照
+      description: '为 VPS 添加快照'
+      operationId: snapshotAdd
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SnapshotCreateResultData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  code: 200
+                  msg: ""
+                  data:
+                    name: "hot0802175954"
+                    id: "29"
+  /snapshot_list:
+    post:
+      tags:
+        - Snapshot
+      summary: 获取快照列表
+      description: '获取快照列表'
+      operationId: snapshotList
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SnapshotListData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  - id: 29
+                    virtuals_id: 145
+                    name: "hot0802175954"
+                    created_at: "2025-08-02 17:59:54"
+  /snapshot_del:
+    post:
+      tags:
+        - Snapshot
+      summary: 删除 VPS 快照
+      description: '删除 VPS 快照'
+      operationId: snapshotDelete
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                id:
+                  type: string
+                  description: 快照 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OperationResultData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  code: 200
+                  msg: ""
+  /snapshot_restore:
+    post:
+      tags:
+        - Snapshot
+      summary: 从 VPS 恢复指定快照
+      description: '从 VPS 恢复指定快照'
+      operationId: snapshotRestore
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                id:
+                  type: string
+                  description: 快照 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/OperationResultData'
+              example:
+                code: 1
+                msg: "succ"
+                data:
+                  code: 200
+                  msg: ""
+  /security_acl_add:
+    post:
+      tags:
+        - Security
+      summary: 添加安全 ACL 规则
+      description: '添加安全 ACL 规则'
+      operationId: securityAclAdd
+      parameters:
+        - in: query
+          name: securityAclAdd
+          required: true
+          style: form
+          explode: true
+          schema:
+            $ref: '#/components/schemas/SecurityAclAddQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseObject'
+              example:
+                code: 1
+                msg: "succ"
+                data: {}
+  /security_acl_del:
+    post:
+      tags:
+        - Security
+      summary: 删除安全 ACL 规则
+      description: '删除安全 ACL 规则'
+      operationId: securityAclDelete
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                id:
+                  type: integer
+                  description: 安全 ACL 规则 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseArray'
+              example:
+                code: 1
+                msg: "succ"
+                data: []
+  /add_port_host:
+    post:
+      tags:
+        - Port
+      summary: 添加 VPS 端口映射
+      description: '为 VPS 添加端口映射'
+      operationId: portAdd
+      parameters:
+        - in: query
+          name: addPortHost
+          required: true
+          style: form
+          explode: true
+          schema:
+            $ref: '#/components/schemas/AddPortHostQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "添加端口成功"
+                data: ""
+  /remove_port_host:
+    post:
+      tags:
+        - Port
+      summary: 删除 VPS 端口映射
+      description: '删除 VPS 端口映射'
+      operationId: portRemove
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                id:
+                  type: integer
+                  description: 端口映射 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "删除端口成功"
+                data: ""
+  /reset_password:
+    post:
+      tags:
+        - HostAction
+      summary: 重置 VPS 密码
+      description: '重置 VPS 密码'
+      operationId: passwordReset
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                password:
+                  type: string
+                  description: 新密码
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "操作成功"
+                data: ""
+  /vnc_view:
+    post:
+      tags:
+        - Console
+      summary: 获取 VNC 访问地址
+      description: '跳转到 VNC 访问地址'
+      operationId: vncView
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '302':
+          description: 重定向到 VNC 访问地址
+          headers:
+            Location:
+              description: VNC 客户端跳转 URL
+              schema:
+                type: string
+  /openhost:
+    post:
+      tags:
+        - Order
+      summary: 开通 VPS 实例
+      description: '开通 VPS 实例'
+      operationId: openHost
+      parameters:
+        - in: query
+          name: openHost
+          required: true
+          style: form
+          explode: true
+          schema:
+            $ref: '#/components/schemas/OpenHostQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseObject'
+              example:
+                code: 1
+                msg: "succ"
+                data: {}
+  /elastic_update:
+    post:
+      tags:
+        - Order
+      summary: 自由选配升级
+      description: '自由选配升级'
+      operationId: elasticUpdate
+      parameters:
+        - in: query
+          name: elasticUpdate
+          required: true
+          style: form
+          explode: true
+          schema:
+            $ref: '#/components/schemas/ElasticUpdateQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "升级成功"
+                data: ""
+  /renew:
+    post:
+      tags:
+        - Order
+      summary: 续订 VPS 服务
+      description: '续订 VPS 服务'
+      operationId: renewHost
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                nextduedate:
+                  type: string
+                  format: date-time
+                  description: 下次到期时间
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "succ"
+                data: ""
+  /create_host:
+    post:
+      tags:
+        - Order
+      summary: 创建 VPS 实例
+      description: '创建 VPS 实例'
+      operationId: createHost
+      parameters:
+        - in: query
+          name: createHost
+          required: true
+          style: form
+          explode: true
+          schema:
+            $ref: '#/components/schemas/CreateHostQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseObject'
+              example:
+                code: 1
+                msg: "succ"
+                data: {}

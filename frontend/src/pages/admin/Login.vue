@@ -1,0 +1,122 @@
+﻿<template>
+  <div class="auth-page">
+    <div class="auth-shell">
+      <div class="auth-banner">
+        <div class="auth-logo" aria-hidden="true">
+          <SiteLogoMedia :size="22" />
+        </div>
+        <h1>运营管理后台</h1>
+        <p>面向运营与审核的管理中心，实时掌控订单与资源。</p>
+        <ul>
+          <li>订单审核与开通进度追踪</li>
+          <li>售卖配置与系统镜像管理</li>
+          <li>自动化平台同步与审计日志</li>
+        </ul>
+      </div>
+      <a-card class="card auth-card">
+        <div class="section-title">管理员登录</div>
+        <a-form :model="form" layout="vertical" @finish="onSubmit">
+          <a-form-item label="用户名" name="username" :rules="[{ required: true, message: '请输入用户名' }]">
+            <a-input v-model:value="form.username" />
+          </a-form-item>
+          <a-form-item label="密码" name="password" :rules="[{ required: true, message: '请输入密码' }]">
+            <a-input-password v-model:value="form.password" />
+          </a-form-item>
+          <div style="text-align: right; margin-bottom: 16px;">
+            <router-link to="/admin/forgot-password">忘记密码？</router-link>
+          </div>
+          <a-button type="primary" html-type="submit" block :loading="admin.loading">登录</a-button>
+        </a-form>
+      </a-card>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { reactive } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useAdminAuthStore } from "@/stores/adminAuth";
+import { message } from "ant-design-vue";
+import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
+
+const form = reactive({
+  username: "",
+  password: ""
+});
+
+const admin = useAdminAuthStore();
+const router = useRouter();
+const route = useRoute();
+
+const onSubmit = async () => {
+  const token = await admin.login(form);
+  if (!token) {
+    message.error("登录失败");
+    return;
+  }
+  router.replace(String(route.query.redirect || "/admin/console"));
+};
+</script>
+
+<style scoped>
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.auth-shell {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(320px, 380px);
+  gap: 24px;
+  width: min(960px, 100%);
+}
+
+.auth-banner {
+  background: linear-gradient(135deg, #f8f0ff 0%, #ffffff 70%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-logo {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #722ed1, #c08cff);
+  color: #fff;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.auth-banner h1 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.auth-banner ul {
+  padding-left: 18px;
+  color: var(--text2);
+}
+
+.auth-card {
+  width: 100%;
+  border-radius: var(--radius-lg);
+}
+
+@media (max-width: 768px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-banner {
+    order: 2;
+  }
+}
+</style>

@@ -1,0 +1,162 @@
+package usecase_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"xiaoheiplay/internal/testutil"
+	"xiaoheiplay/internal/usecase"
+)
+
+type fakeAutomationSync struct {
+	areas    []usecase.AutomationArea
+	lines    []usecase.AutomationLine
+	products map[int64][]usecase.AutomationProduct
+	images   map[int64][]usecase.AutomationImage
+}
+
+func (f fakeAutomationSync) CreateHost(ctx context.Context, req usecase.AutomationCreateHostRequest) (usecase.AutomationCreateHostResult, error) {
+	return usecase.AutomationCreateHostResult{}, nil
+}
+func (f fakeAutomationSync) GetHostInfo(ctx context.Context, hostID int64) (usecase.AutomationHostInfo, error) {
+	return usecase.AutomationHostInfo{}, nil
+}
+func (f fakeAutomationSync) ListHostSimple(ctx context.Context, searchTag string) ([]usecase.AutomationHostSimple, error) {
+	return nil, nil
+}
+func (f fakeAutomationSync) ElasticUpdate(ctx context.Context, req usecase.AutomationElasticUpdateRequest) error {
+	return nil
+}
+func (f fakeAutomationSync) RenewHost(ctx context.Context, hostID int64, nextDueDate time.Time) error {
+	return nil
+}
+func (f fakeAutomationSync) LockHost(ctx context.Context, hostID int64) error     { return nil }
+func (f fakeAutomationSync) UnlockHost(ctx context.Context, hostID int64) error   { return nil }
+func (f fakeAutomationSync) DeleteHost(ctx context.Context, hostID int64) error   { return nil }
+func (f fakeAutomationSync) StartHost(ctx context.Context, hostID int64) error    { return nil }
+func (f fakeAutomationSync) ShutdownHost(ctx context.Context, hostID int64) error { return nil }
+func (f fakeAutomationSync) RebootHost(ctx context.Context, hostID int64) error   { return nil }
+func (f fakeAutomationSync) ResetOS(ctx context.Context, hostID int64, templateID int64, password string) error {
+	return nil
+}
+func (f fakeAutomationSync) ResetOSPassword(ctx context.Context, hostID int64, password string) error {
+	return nil
+}
+func (f fakeAutomationSync) ListSnapshots(ctx context.Context, hostID int64) ([]usecase.AutomationSnapshot, error) {
+	return nil, nil
+}
+func (f fakeAutomationSync) CreateSnapshot(ctx context.Context, hostID int64) error { return nil }
+func (f fakeAutomationSync) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
+	return nil
+}
+func (f fakeAutomationSync) RestoreSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
+	return nil
+}
+func (f fakeAutomationSync) ListBackups(ctx context.Context, hostID int64) ([]usecase.AutomationBackup, error) {
+	return nil, nil
+}
+func (f fakeAutomationSync) CreateBackup(ctx context.Context, hostID int64) error { return nil }
+func (f fakeAutomationSync) DeleteBackup(ctx context.Context, hostID int64, backupID int64) error {
+	return nil
+}
+func (f fakeAutomationSync) RestoreBackup(ctx context.Context, hostID int64, backupID int64) error {
+	return nil
+}
+func (f fakeAutomationSync) ListFirewallRules(ctx context.Context, hostID int64) ([]usecase.AutomationFirewallRule, error) {
+	return nil, nil
+}
+func (f fakeAutomationSync) AddFirewallRule(ctx context.Context, req usecase.AutomationFirewallRuleCreate) error {
+	return nil
+}
+func (f fakeAutomationSync) DeleteFirewallRule(ctx context.Context, hostID int64, ruleID int64) error {
+	return nil
+}
+func (f fakeAutomationSync) ListPortMappings(ctx context.Context, hostID int64) ([]usecase.AutomationPortMapping, error) {
+	return nil, nil
+}
+func (f fakeAutomationSync) AddPortMapping(ctx context.Context, req usecase.AutomationPortMappingCreate) error {
+	return nil
+}
+func (f fakeAutomationSync) FindPortCandidates(ctx context.Context, hostID int64, keywords string) ([]int64, error) {
+	return []int64{}, nil
+}
+func (f fakeAutomationSync) DeletePortMapping(ctx context.Context, hostID int64, mappingID int64) error {
+	return nil
+}
+func (f fakeAutomationSync) GetPanelURL(ctx context.Context, hostName string, panelPassword string) (string, error) {
+	return "", nil
+}
+func (f fakeAutomationSync) ListAreas(ctx context.Context) ([]usecase.AutomationArea, error) {
+	return f.areas, nil
+}
+func (f fakeAutomationSync) ListImages(ctx context.Context, lineID int64) ([]usecase.AutomationImage, error) {
+	return f.images[lineID], nil
+}
+func (f fakeAutomationSync) ListLines(ctx context.Context) ([]usecase.AutomationLine, error) {
+	return f.lines, nil
+}
+func (f fakeAutomationSync) ListProducts(ctx context.Context, lineID int64) ([]usecase.AutomationProduct, error) {
+	return f.products[lineID], nil
+}
+func (f fakeAutomationSync) GetMonitor(ctx context.Context, hostID int64) (usecase.AutomationMonitor, error) {
+	return usecase.AutomationMonitor{}, nil
+}
+func (f fakeAutomationSync) GetVNCURL(ctx context.Context, hostID int64) (string, error) {
+	return "", nil
+}
+
+func TestIntegrationService_Config(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	svc := usecase.NewIntegrationService(repo, repo, repo, nil, repo)
+
+	if err := svc.UpdateAutomationConfig(context.Background(), 0, usecase.AutomationConfig{
+		BaseURL: "http://a",
+		APIKey:  "k",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+	cfg, err := svc.GetAutomationConfig(context.Background())
+	if err != nil {
+		t.Fatalf("get config: %v", err)
+	}
+	if cfg.BaseURL != "http://a" || cfg.APIKey != "k" || !cfg.Enabled {
+		t.Fatalf("unexpected config: %#v", cfg)
+	}
+}
+
+func TestIntegrationService_SyncAutomation(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	auto := fakeAutomationSync{
+		areas: []usecase.AutomationArea{{ID: 1, Name: "Area1", State: 1}},
+		lines: []usecase.AutomationLine{{ID: 10, Name: "Line1", AreaID: 1, State: 1}},
+		products: map[int64][]usecase.AutomationProduct{
+			10: {{ID: 100, Name: "P1", CPU: 1, MemoryGB: 1, DiskGB: 10, Bandwidth: 10, Price: 100}},
+		},
+		images: map[int64][]usecase.AutomationImage{
+			10: {{ImageID: 200, Name: "Ubuntu", Type: "linux"}},
+		},
+	}
+	svc := usecase.NewIntegrationService(repo, repo, repo, auto, repo)
+	if _, err := svc.SyncAutomation(context.Background(), "merge"); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	if _, err := repo.GetRegion(context.Background(), 1); err != nil {
+		t.Fatalf("expected region created: %v", err)
+	}
+	items, _ := repo.ListPlanGroups(context.Background())
+	if len(items) == 0 {
+		t.Fatalf("expected plan groups")
+	}
+	pkgs, _ := repo.ListPackages(context.Background())
+	if len(pkgs) == 0 {
+		t.Fatalf("expected packages")
+	}
+	images, _ := repo.ListAllSystemImages(context.Background())
+	if len(images) == 0 {
+		t.Fatalf("expected images")
+	}
+}
+
+var _ usecase.AutomationClient = (*fakeAutomationSync)(nil)

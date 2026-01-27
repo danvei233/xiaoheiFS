@@ -1,0 +1,3566 @@
+package docs
+
+const OpenAPIYAML = `openapi: 3.0.3
+info:
+  title: Cloud VPS Console API
+  version: 3.0.0
+servers:
+  - url: http://localhost:8080
+components:
+  securitySchemes:
+    UserJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    AdminJWT:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Bearer <api_key> or X-API-Key
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+    SuccessResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+    CaptchaResponse:
+      type: object
+      properties:
+        captcha_id:
+          type: string
+        image_base64:
+          type: string
+    RegisterRequest:
+      type: object
+      required: [username, email, password, captcha_id, captcha_code]
+      properties:
+        username:
+          type: string
+        email:
+          type: string
+        qq:
+          type: string
+        phone:
+          type: string
+        password:
+          type: string
+        captcha_id:
+          type: string
+        captcha_code:
+          type: string
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        expires_in:
+          type: integer
+        user:
+          $ref: '#/components/schemas/User'
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+        qq:
+          type: string
+        phone:
+          type: string
+        bio:
+          type: string
+        intro:
+          type: string
+        avatar_url:
+          type: string
+        permission_group_id:
+          type: integer
+        role:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Region:
+      type: object
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        name:
+          type: string
+        active:
+          type: boolean
+    Line:
+      type: object
+      properties:
+        id:
+          type: integer
+        region_id:
+          type: integer
+        name:
+          type: string
+        line_id:
+          type: integer
+        unit_core:
+          type: number
+        unit_mem:
+          type: number
+        unit_disk:
+          type: number
+        unit_bw:
+          type: number
+        add_core_min:
+          type: integer
+        add_core_max:
+          type: integer
+        add_core_step:
+          type: integer
+        add_mem_min:
+          type: integer
+        add_mem_max:
+          type: integer
+        add_mem_step:
+          type: integer
+        add_disk_min:
+          type: integer
+        add_disk_max:
+          type: integer
+        add_disk_step:
+          type: integer
+        add_bw_min:
+          type: integer
+        add_bw_max:
+          type: integer
+        add_bw_step:
+          type: integer
+        active:
+          type: boolean
+        sort_order:
+          type: integer
+    SystemImage:
+      type: object
+      properties:
+        id:
+          type: integer
+        image_id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+        enabled:
+          type: boolean
+    BillingCycle:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        months:
+          type: integer
+        multiplier:
+          type: number
+        min_qty:
+          type: integer
+        max_qty:
+          type: integer
+        active:
+          type: boolean
+        sort_order:
+          type: integer
+    CartSpec:
+      type: object
+      properties:
+        add_cores:
+          type: integer
+        add_mem_gb:
+          type: integer
+        add_disk_gb:
+          type: integer
+        add_bw_mbps:
+          type: integer
+        billing_cycle_id:
+          type: integer
+        cycle_qty:
+          type: integer
+        duration_months:
+          type: integer
+    CartItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        package_id:
+          type: integer
+        system_id:
+          type: integer
+        spec_json:
+          type: string
+        qty:
+          type: integer
+        amount:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+    CartItemRequest:
+      type: object
+      properties:
+        package_id:
+          type: integer
+        system_id:
+          type: integer
+        spec:
+          $ref: '#/components/schemas/CartSpec'
+        qty:
+          type: integer
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        order_no:
+          type: string
+        status:
+          type: string
+        total_amount:
+          type: number
+        currency:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        order_id:
+          type: integer
+        package_id:
+          type: integer
+        system_id:
+          type: integer
+        spec_json:
+          type: string
+        qty:
+          type: integer
+        amount:
+          type: number
+        status:
+          type: string
+        action:
+          type: string
+        duration_months:
+          type: integer
+    OrderPayment:
+      type: object
+      properties:
+        id:
+          type: integer
+        order_id:
+          type: integer
+        method:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        trade_no:
+          type: string
+        note:
+          type: string
+        screenshot_url:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    OrderCreateRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              package_id:
+                type: integer
+              system_id:
+                type: integer
+              spec:
+                $ref: '#/components/schemas/CartSpec'
+              qty:
+                type: integer
+    OrderDetailResponse:
+      type: object
+      properties:
+        order:
+          $ref: '#/components/schemas/Order'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderPayment'
+    PaymentRequest:
+      type: object
+      required: [method, amount]
+      properties:
+        method:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        trade_no:
+          type: string
+        note:
+          type: string
+        screenshot_url:
+          type: string
+    PaymentSelectRequest:
+      type: object
+      required: [method]
+      properties:
+        method:
+          type: string
+        return_url:
+          type: string
+        notify_url:
+          type: string
+    PaymentSelectResponse:
+      type: object
+      properties:
+        method:
+          type: string
+        status:
+          type: string
+        trade_no:
+          type: string
+        pay_url:
+          type: string
+        paid:
+          type: boolean
+        message:
+          type: string
+        balance:
+          type: number
+        extra:
+          type: object
+          additionalProperties:
+            type: string
+    PaymentMethod:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        schema_json:
+          type: string
+        config_json:
+          type: string
+        balance:
+          type: number
+    PaymentProvider:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        enabled:
+          type: boolean
+        schema_json:
+          type: string
+        config_json:
+          type: string
+    Wallet:
+      type: object
+      properties:
+        user_id:
+          type: integer
+        balance:
+          type: number
+        updated_at:
+          type: string
+          format: date-time
+    WalletTransaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        amount:
+          type: number
+        type:
+          type: string
+        ref_type:
+          type: string
+        ref_id:
+          type: integer
+        note:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    WalletOrder:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        type:
+          type: string
+        amount:
+          type: number
+        currency:
+          type: string
+        status:
+          type: string
+        note:
+          type: string
+        meta:
+          type: object
+        reviewed_by:
+          type: integer
+          nullable: true
+        review_reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    WalletOrderCreateRequest:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+        currency:
+          type: string
+        note:
+          type: string
+        meta:
+          type: object
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        type:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        read_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    RealNameVerification:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        real_name:
+          type: string
+        id_number:
+          type: string
+        status:
+          type: string
+        provider:
+          type: string
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        verified_at:
+          type: string
+          format: date-time
+    RealNameConfig:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        provider:
+          type: string
+        block_actions:
+          type: array
+          items:
+            type: string
+    RealNameProvider:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+    ServerStatus:
+      type: object
+      properties:
+        hostname:
+          type: string
+        os:
+          type: string
+        platform:
+          type: string
+        kernel_version:
+          type: string
+        uptime_seconds:
+          type: integer
+        cpu_model:
+          type: string
+        cpu_cores:
+          type: integer
+        cpu_usage_percent:
+          type: number
+        mem_total:
+          type: integer
+        mem_used:
+          type: integer
+        mem_used_percent:
+          type: number
+        mem_usage_percent:
+          type: number
+        disk_total:
+          type: integer
+        disk_used:
+          type: integer
+        disk_used_percent:
+          type: number
+        disk_usage_percent:
+          type: number
+    VPSInstance:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        automation_instance_id:
+          type: string
+        name:
+          type: string
+        spec_json:
+          type: string
+        system_id:
+          type: integer
+        status:
+          type: string
+        admin_status:
+          type: string
+        expire_at:
+          type: string
+          format: date-time
+        panel_url_cache:
+          type: string
+        access_info_json:
+          type: string
+    AdminVPSCreateRequest:
+      type: object
+      required: [user_id, name]
+      properties:
+        user_id:
+          type: integer
+        order_item_id:
+          type: integer
+        automation_instance_id:
+          type: string
+        name:
+          type: string
+        region:
+          type: string
+        system_id:
+          type: integer
+        status:
+          type: string
+        automation_state:
+          type: integer
+        admin_status:
+          type: string
+        expire_at:
+          type: string
+          format: date-time
+        panel_url_cache:
+          type: string
+        spec:
+          type: object
+        access_info:
+          type: object
+        provision:
+          type: boolean
+        line_id:
+          type: integer
+        os:
+          type: string
+        cpu:
+          type: integer
+        memory_gb:
+          type: integer
+        disk_gb:
+          type: integer
+        bandwidth_mbps:
+          type: integer
+        port_num:
+          type: integer
+    MonitorResponse:
+      type: object
+      properties:
+        cpu:
+          type: integer
+        memory:
+          type: integer
+        bytes_in:
+          type: integer
+        bytes_out:
+          type: integer
+        storage:
+          type: integer
+    RevenuePoint:
+      type: object
+      properties:
+        date:
+          type: string
+        amount:
+          type: number
+    StatusPoint:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+    EmailTestRequest:
+      type: object
+      required: [to]
+      properties:
+        to:
+          type: string
+        template_name:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        variables:
+          type: object
+        html:
+          type: boolean
+    Permission:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        friendly_name:
+          type: string
+        category:
+          type: string
+        parent_code:
+          type: string
+        sort_order:
+          type: integer
+    PermissionTree:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        friendly_name:
+          type: string
+        category:
+          type: string
+        parent_code:
+          type: string
+        sort_order:
+          type: integer
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/PermissionTree'
+    PermissionUpdateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        friendly_name:
+          type: string
+        category:
+          type: string
+        parent_code:
+          type: string
+        sort_order:
+          type: integer
+    PermissionListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+    PermissionSyncResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        total:
+          type: integer
+
+    SettingItem:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    DebugStatusResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+    DebugStatusUpdateRequest:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+    AdminAuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        admin_id:
+          type: integer
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        detail:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+    AutomationLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        order_id:
+          type: integer
+        order_item_id:
+          type: integer
+        action:
+          type: string
+        request_json:
+          type: string
+        response_json:
+          type: string
+        success:
+          type: boolean
+        message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    IntegrationSyncLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        target:
+          type: string
+        mode:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    DebugAuditLogList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminAuditLog'
+        total:
+          type: integer
+    DebugAutomationLogList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutomationLog'
+        total:
+          type: integer
+    DebugSyncLogList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationSyncLog'
+        total:
+          type: integer
+    DebugLogsResponse:
+      type: object
+      properties:
+        audit_logs:
+          $ref: '#/components/schemas/DebugAuditLogList'
+        automation_logs:
+          $ref: '#/components/schemas/DebugAutomationLogList'
+        sync_logs:
+          $ref: '#/components/schemas/DebugSyncLogList'
+    SiteSettingsResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SettingItem'
+    CMSCategory:
+      type: object
+      properties:
+        id:
+          type: integer
+        key:
+          type: string
+        name:
+          type: string
+        lang:
+          type: string
+        sort_order:
+          type: integer
+        visible:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CMSPost:
+      type: object
+      properties:
+        id:
+          type: integer
+        category_id:
+          type: integer
+        title:
+          type: string
+        slug:
+          type: string
+        summary:
+          type: string
+        content_html:
+          type: string
+        cover_url:
+          type: string
+        lang:
+          type: string
+        status:
+          type: string
+        pinned:
+          type: boolean
+        sort_order:
+          type: integer
+        published_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CMSBlock:
+      type: object
+      properties:
+        id:
+          type: integer
+        page:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        content_json:
+          type: string
+        custom_html:
+          type: string
+        lang:
+          type: string
+        visible:
+          type: boolean
+        sort_order:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    Upload:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        path:
+          type: string
+        url:
+          type: string
+        mime:
+          type: string
+        size:
+          type: integer
+        uploader_id:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    CMSCategoryListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CMSCategory'
+    CMSPostListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CMSPost'
+        total:
+          type: integer
+    CMSBlockListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CMSBlock'
+    UploadListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Upload'
+        total:
+          type: integer
+    CMSCategoryRequest:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        lang:
+          type: string
+        sort_order:
+          type: integer
+        visible:
+          type: boolean
+    CMSPostRequest:
+      type: object
+      properties:
+        category_id:
+          type: integer
+        title:
+          type: string
+        slug:
+          type: string
+        summary:
+          type: string
+        content_html:
+          type: string
+        cover_url:
+          type: string
+        lang:
+          type: string
+        status:
+          type: string
+        pinned:
+          type: boolean
+        sort_order:
+          type: integer
+        published_at:
+          type: string
+          format: date-time
+    CMSBlockRequest:
+      type: object
+      properties:
+        page:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        subtitle:
+          type: string
+        content_json:
+          type: string
+        custom_html:
+          type: string
+        lang:
+          type: string
+        visible:
+          type: boolean
+        sort_order:
+          type: integer
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: integer
+        user_id:
+          type: integer
+        subject:
+          type: string
+        status:
+          type: string
+        last_reply_at:
+          type: string
+          format: date-time
+        last_reply_by:
+          type: integer
+        last_reply_role:
+          type: string
+        closed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TicketMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        ticket_id:
+          type: integer
+        sender_id:
+          type: integer
+        sender_role:
+          type: string
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    TicketResource:
+      type: object
+      properties:
+        id:
+          type: integer
+        ticket_id:
+          type: integer
+        resource_type:
+          type: string
+        resource_id:
+          type: integer
+        resource_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    TicketCreateRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+        content:
+          type: string
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketResource'
+    TicketMessageRequest:
+      type: object
+      properties:
+        content:
+          type: string
+    TicketUpdateRequest:
+      type: object
+      properties:
+        subject:
+          type: string
+        status:
+          type: string
+    TicketListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+        total:
+          type: integer
+    TicketDetailResponse:
+      type: object
+      properties:
+        ticket:
+          $ref: '#/components/schemas/Ticket'
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketMessage'
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketResource'
+
+paths:
+  /api/v1/captcha:
+    get:
+      summary: Get captcha
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaptchaResponse'
+  /api/v1/auth/register:
+    post:
+      summary: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: OK
+  /api/v1/auth/login:
+    post:
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+  /api/v1/auth/logout:
+    post:
+      summary: Logout
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh token
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/payments/providers:
+    get:
+      summary: List payment methods
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentMethod'
+  /api/v1/payments/notify/{provider}:
+    post:
+      summary: Payment notify callback
+      parameters:
+        - in: path
+          name: provider
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/v1/me:
+    get:
+      summary: Current user
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/dashboard:
+    get:
+      summary: User dashboard
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/catalog:
+    get:
+      summary: Catalog
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/system-images:
+    get:
+      summary: List system images
+      security:
+        - UserJWT: []
+      parameters:
+        - in: query
+          name: line_id
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /api/v1/cart:
+    get:
+      summary: List cart
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Add cart item
+      security:
+        - UserJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemRequest'
+      responses:
+        '200':
+          description: OK
+  /api/v1/cart/{id}:
+    patch:
+      summary: Update cart item
+      security:
+        - UserJWT: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemRequest'
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete cart item
+      security:
+        - UserJWT: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /api/v1/orders:
+    get:
+      summary: List orders
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create order
+      security:
+        - UserJWT: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderCreateRequest'
+      responses:
+        '200':
+          description: OK
+  /api/v1/orders/{id}:
+    get:
+      summary: Order detail
+      security:
+        - UserJWT: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderDetailResponse'
+  /api/v1/orders/{id}/pay:
+    post:
+      summary: Select payment method
+      security:
+        - UserJWT: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentSelectRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentSelectResponse'
+  /api/v1/orders/{id}/payments:
+    post:
+      summary: Submit payment info
+      security:
+        - UserJWT: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentRequest'
+      responses:
+        '200':
+          description: OK
+  /api/v1/orders/{id}/cancel:
+    post:
+      summary: Cancel order
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/orders/{id}/refresh:
+    post:
+      summary: Refresh order status
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/orders/{id}/events:
+    get:
+      summary: Order events stream (SSE)
+      security:
+        - UserJWT: []
+      parameters:
+        - in: header
+          name: Last-Event-ID
+          schema:
+            type: string
+      responses:
+        '200':
+          description: text/event-stream
+  /api/v1/wallet:
+    get:
+      summary: Wallet info
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wallet:
+                    $ref: '#/components/schemas/Wallet'
+    /api/v1/wallet/transactions:
+      get:
+        summary: Wallet transactions
+        security:
+          - UserJWT: []
+        parameters:
+          - in: query
+            name: limit
+            schema:
+              type: integer
+          - in: query
+            name: offset
+            schema:
+              type: integer
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/WalletTransaction'
+                    total:
+                      type: integer
+    /api/v1/wallet/recharge:
+      post:
+        summary: Create wallet recharge order
+        security:
+          - UserJWT: []
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletOrderCreateRequest'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    order:
+                      $ref: '#/components/schemas/WalletOrder'
+    /api/v1/wallet/withdraw:
+      post:
+        summary: Create wallet withdraw order
+        security:
+          - UserJWT: []
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletOrderCreateRequest'
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    order:
+                      $ref: '#/components/schemas/WalletOrder'
+    /api/v1/wallet/orders:
+      get:
+        summary: List wallet orders
+        security:
+          - UserJWT: []
+        parameters:
+          - in: query
+            name: limit
+            schema:
+              type: integer
+          - in: query
+            name: offset
+            schema:
+              type: integer
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/WalletOrder'
+                    total:
+                      type: integer
+  /api/v1/notifications:
+    get:
+      summary: List notifications
+      security:
+        - UserJWT: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: offset
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  total:
+                    type: integer
+  /api/v1/notifications/unread-count:
+    get:
+      summary: Unread notification count
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/notifications/{id}/read:
+    post:
+      summary: Mark notification read
+      security:
+        - UserJWT: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /api/v1/notifications/read-all:
+    post:
+      summary: Mark all notifications read
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/realname/status:
+    get:
+      summary: Real name verification status
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  provider:
+                    type: string
+                  block_actions:
+                    type: array
+                    items:
+                      type: string
+                  verified:
+                    type: boolean
+                  verification:
+                    $ref: '#/components/schemas/RealNameVerification'
+  /api/v1/realname/verify:
+    post:
+      summary: Submit real name verification
+      security:
+        - UserJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [real_name, id_number]
+              properties:
+                real_name:
+                  type: string
+                id_number:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealNameVerification'
+  /api/v1/vps:
+    get:
+      summary: List VPS
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/vps/{id}:
+    get:
+      summary: VPS detail
+      security:
+        - UserJWT: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /api/v1/vps/{id}/refresh:
+    post:
+      summary: Refresh VPS status
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/vps/{id}/panel:
+    get:
+      summary: Panel redirect
+      security:
+        - UserJWT: []
+      responses:
+        '302':
+          description: Redirect
+  /api/v1/vps/{id}/monitor:
+    get:
+      summary: VPS monitor
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorResponse'
+  /api/v1/vps/{id}/vnc:
+    get:
+      summary: VPS VNC redirect
+      security:
+        - UserJWT: []
+      responses:
+        '302':
+          description: Redirect
+  /api/v1/vps/{id}/start:
+    post:
+      summary: Start VPS
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/vps/{id}/shutdown:
+    post:
+      summary: Shutdown VPS
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/vps/{id}/reboot:
+    post:
+      summary: Reboot VPS
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/vps/{id}/renew:
+    post:
+      summary: Create renew order
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+  /api/v1/vps/{id}/resize:
+    post:
+      summary: Create resize order
+      security:
+        - UserJWT: []
+      responses:
+        '200':
+          description: OK
+    /api/v1/vps/{id}/emergency-renew:
+      post:
+        summary: Emergency renew VPS
+        security:
+          - UserJWT: []
+        responses:
+          '200':
+            description: OK
+    /api/v1/vps/{id}/refund:
+      post:
+        summary: Request VPS refund
+        security:
+          - UserJWT: []
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: integer
+        requestBody:
+          required: false
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reason:
+                    type: string
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    order:
+                      $ref: '#/components/schemas/WalletOrder'
+  /api/v1/integrations/robot/webhook:
+    post:
+      summary: Robot webhook
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/auth/login:
+    post:
+      summary: Admin login
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/users:
+    get:
+      summary: List users
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create user
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/users/{id}:
+    get:
+      summary: User detail
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Update user
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/users/{id}/status:
+    patch:
+      summary: Update user status
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/users/{id}/reset-password:
+    post:
+      summary: Reset user password
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/orders:
+    get:
+      summary: List orders
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/payments/providers:
+    get:
+      summary: List payment providers
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PaymentProvider'
+  /admin/api/v1/payments/providers/{key}:
+    patch:
+      summary: Update payment provider config
+      security:
+        - AdminJWT: []
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                config_json:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/plugins/payment/upload:
+    post:
+      summary: Upload payment plugin
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                password:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/server/status:
+    get:
+      summary: Server status
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServerStatus'
+  /admin/api/v1/orders/{id}:
+    get:
+      summary: Order detail
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/orders/{id}/approve:
+    post:
+      summary: Approve order
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/orders/{id}/reject:
+    post:
+      summary: Reject order
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/orders/{id}/mark-paid:
+    post:
+      summary: Mark order paid
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/orders/{id}/retry:
+    post:
+      summary: Retry provisioning
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/wallets/{user_id}/adjust:
+    post:
+      summary: Adjust wallet balance
+      security:
+        - AdminJWT: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount:
+                  type: number
+                note:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  wallet:
+                    $ref: '#/components/schemas/Wallet'
+    /admin/api/v1/wallets/{user_id}/transactions:
+      get:
+        summary: Wallet transactions
+        security:
+          - AdminJWT: []
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: limit
+          schema:
+            type: integer
+        - in: query
+          name: offset
+          schema:
+            type: integer
+        responses:
+          '200':
+            description: OK
+    /admin/api/v1/wallet/orders:
+      get:
+        summary: Admin list wallet orders
+        security:
+          - AdminJWT: []
+        parameters:
+          - in: query
+            name: status
+            schema:
+              type: string
+          - in: query
+            name: user_id
+            schema:
+              type: integer
+          - in: query
+            name: limit
+            schema:
+              type: integer
+          - in: query
+            name: offset
+            schema:
+              type: integer
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    items:
+                      type: array
+                      items:
+                        $ref: '#/components/schemas/WalletOrder'
+                    total:
+                      type: integer
+    /admin/api/v1/wallet/orders/{id}/approve:
+      post:
+        summary: Approve wallet order
+        security:
+          - AdminJWT: []
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: integer
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    order:
+                      $ref: '#/components/schemas/WalletOrder'
+                    wallet:
+                      $ref: '#/components/schemas/Wallet'
+    /admin/api/v1/wallet/orders/{id}/reject:
+      post:
+        summary: Reject wallet order
+        security:
+          - AdminJWT: []
+        parameters:
+          - name: id
+            in: path
+            required: true
+            schema:
+              type: integer
+        requestBody:
+          required: false
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reason:
+                    type: string
+        responses:
+          '200':
+            description: OK
+  /admin/api/v1/vps:
+    get:
+      summary: List VPS
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create VPS (record or provision)
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}:
+    get:
+      summary: VPS detail
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/lock:
+    post:
+      summary: Lock VPS
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/unlock:
+    post:
+      summary: Unlock VPS
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/delete:
+    post:
+      summary: Delete VPS
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/status:
+    post:
+      summary: Set VPS admin status
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/emergency-renew:
+    post:
+      summary: Emergency renew VPS
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/refresh:
+    post:
+      summary: Refresh VPS status
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/resize:
+    post:
+      summary: Resize VPS
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/vps/{id}/expire-at:
+    patch:
+      summary: Update VPS expire time
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/regions:
+    get:
+      summary: List regions
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create region
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/regions/{id}:
+    patch:
+      summary: Update region
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete region
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/plan-groups:
+    get:
+      summary: List plan groups
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create plan group
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/plan-groups/{id}:
+    patch:
+      summary: Update plan group
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete plan group
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/lines:
+    get:
+      summary: List lines
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create line
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/lines/{id}:
+    patch:
+      summary: Update line
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete line
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/lines/{id}/system-images:
+    post:
+      summary: Update line system images
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/packages:
+    get:
+      summary: List packages
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create package
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/packages/{id}:
+    patch:
+      summary: Update package
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete package
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/billing-cycles:
+    get:
+      summary: List billing cycles
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create billing cycle
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/billing-cycles/{id}:
+    patch:
+      summary: Update billing cycle
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete billing cycle
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/system-images:
+    get:
+      summary: List system images
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create system image
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/system-images/{id}:
+    patch:
+      summary: Update system image
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete system image
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/system-images/sync:
+    post:
+      summary: Sync system images
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/integrations/automation:
+    get:
+      summary: Automation config
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Update automation config
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/integrations/automation/sync:
+    post:
+      summary: Sync automation catalog
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/integrations/automation/sync-logs:
+    get:
+      summary: Sync logs
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/integrations/robot:
+    get:
+      summary: Robot webhook config
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Update robot webhook config
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/realname/config:
+    get:
+      summary: Real name config
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealNameConfig'
+    patch:
+      summary: Update real name config
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RealNameConfig'
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/realname/providers:
+    get:
+      summary: List real name providers
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RealNameProvider'
+  /admin/api/v1/realname/records:
+    get:
+      summary: List real name verification records
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RealNameVerification'
+                  total:
+                    type: integer
+  /admin/api/v1/integrations/smtp:
+    get:
+      summary: SMTP config
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Update SMTP config
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/integrations/smtp/test:
+    post:
+      summary: Send SMTP test
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/api-keys:
+    get:
+      summary: List API keys
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Create API key
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/api-keys/{id}:
+    patch:
+      summary: Update API key status
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/audit-logs:
+    get:
+      summary: List audit logs
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/settings:
+    get:
+      summary: List settings
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    patch:
+      summary: Update setting
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/debug/status:
+    get:
+      summary: Get debug status
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugStatusResponse'
+    patch:
+      summary: Update debug status
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DebugStatusUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+  /admin/api/v1/debug/logs:
+    get:
+      summary: List debug logs
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: types
+          in: query
+          schema:
+            type: string
+          description: Comma separated list of audit,automation,sync
+        - name: order_id
+          in: query
+          schema:
+            type: integer
+        - name: target
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DebugLogsResponse'
+  /admin/api/v1/email-templates:
+    get:
+      summary: List email templates
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    post:
+      summary: Upsert email template
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/email-templates/{id}:
+    patch:
+      summary: Update email template
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+    delete:
+      summary: Delete email template
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/admins:
+    get:
+      summary: List admins
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: active|disabled|all
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/profile:
+    get:
+      summary: Admin profile
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+    patch:
+      summary: Update admin profile
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                qq:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/profile/change-password:
+    post:
+      summary: Change admin password
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password]
+              properties:
+                old_password:
+                  type: string
+                new_password:
+                  type: string
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/dashboard/overview:
+    get:
+      summary: Dashboard overview
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/dashboard/revenue:
+    get:
+      summary: Revenue series
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/dashboard/vps-status:
+    get:
+      summary: VPS status distribution
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/permissions:
+    get:
+      summary: List permissions tree
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PermissionTree'
+  /admin/api/v1/permissions/list:
+    get:
+      summary: List permissions (flat)
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionListResponse'
+  /admin/api/v1/permissions/{code}:
+    get:
+      summary: Permission detail
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Permission'
+    patch:
+      summary: Update permission
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Permission'
+  /admin/api/v1/permissions/sync:
+    post:
+      summary: Sync permissions
+      security:
+        - AdminJWT: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionSyncResponse'
+  /api/v1/site/settings:
+    get:
+      summary: Site settings
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteSettingsResponse'
+  /api/v1/cms/blocks:
+    get:
+      summary: CMS blocks
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: string
+        - name: lang
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSBlockListResponse'
+  /api/v1/cms/posts:
+    get:
+      summary: CMS posts
+      parameters:
+        - name: category_key
+          in: query
+          schema:
+            type: string
+        - name: lang
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSPostListResponse'
+  /api/v1/cms/posts/{slug}:
+    get:
+      summary: CMS post detail
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSPost'
+  /admin/api/v1/cms/categories:
+    get:
+      summary: List CMS categories
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: lang
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSCategoryListResponse'
+    post:
+      summary: Create CMS category
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CMSCategoryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSCategory'
+  /admin/api/v1/cms/categories/{id}:
+    patch:
+      summary: Update CMS category
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CMSCategoryRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSCategory'
+    delete:
+      summary: Delete CMS category
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/cms/posts:
+    get:
+      summary: List CMS posts
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: category_id
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: lang
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSPostListResponse'
+    post:
+      summary: Create CMS post
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CMSPostRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSPost'
+  /admin/api/v1/cms/posts/{id}:
+    patch:
+      summary: Update CMS post
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CMSPostRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSPost'
+    delete:
+      summary: Delete CMS post
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/cms/blocks:
+    get:
+      summary: List CMS blocks
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: string
+        - name: lang
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSBlockListResponse'
+    post:
+      summary: Create CMS block
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CMSBlockRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSBlock'
+  /admin/api/v1/cms/blocks/{id}:
+    patch:
+      summary: Update CMS block
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CMSBlockRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CMSBlock'
+    delete:
+      summary: Delete CMS block
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/uploads:
+    get:
+      summary: List uploads
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadListResponse'
+    post:
+      summary: Upload file
+      security:
+        - AdminJWT: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Upload'
+  /api/v1/tickets:
+    get:
+      summary: List tickets
+      security:
+        - UserJWT: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketListResponse'
+    post:
+      summary: Create ticket
+      security:
+        - UserJWT: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketCreateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketDetailResponse'
+  /api/v1/tickets/{id}:
+    get:
+      summary: Ticket detail
+      security:
+        - UserJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketDetailResponse'
+  /api/v1/tickets/{id}/messages:
+    post:
+      summary: Add ticket message
+      security:
+        - UserJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketMessageRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketMessage'
+  /api/v1/tickets/{id}/close:
+    post:
+      summary: Close ticket
+      security:
+        - UserJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/tickets:
+    get:
+      summary: List tickets (admin)
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: user_id
+          in: query
+          schema:
+            type: integer
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketListResponse'
+  /admin/api/v1/tickets/{id}:
+    get:
+      summary: Ticket detail (admin)
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketDetailResponse'
+    patch:
+      summary: Update ticket
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketUpdateRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+    delete:
+      summary: Delete ticket
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+  /admin/api/v1/tickets/{id}/messages:
+    post:
+      summary: Add ticket message (admin)
+      security:
+        - AdminJWT: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketMessageRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketMessage'
+`
+
+const APIMarkdown = `# Cloud VPS Console API
+
+## Authentication
+- User JWT: Authorization: Bearer <jwt>
+- Admin JWT: Authorization: Bearer <jwt>
+- Robot API Key: Authorization: Bearer <api_key> or X-API-Key
+
+## Admin profile
+- Get: GET /admin/api/v1/profile
+- Update: PATCH /admin/api/v1/profile
+- Change password: POST /admin/api/v1/profile/change-password
+
+## Settings keys
+- robot_webhook_url, robot_webhook_secret, robot_webhook_enabled, robot_webhooks
+- smtp_host, smtp_port, smtp_user, smtp_pass, smtp_from, smtp_enabled
+- email_enabled, email_expire_enabled, expire_reminder_days
+- emergency_renew_days, emergency_renew_interval_hours
+- refund_full_days, refund_prorate_days, refund_no_refund_days
+- refund_full_hours, refund_prorate_hours, refund_no_refund_hours
+- refund_curve_json
+- refund_requires_approval, refund_on_admin_delete
+- resize_price_mode, resize_refund_ratio, resize_rounding, resize_min_charge, resize_min_refund, resize_refund_to_wallet
+- debug_enabled
+- automation_base_url, automation_api_key, automation_enabled, automation_timeout_sec, automation_retry, automation_dry_run
+- payment_providers_enabled, payment_providers_config, payment_plugins
+- payment_plugin_dir, payment_plugin_upload_password
+- realname_enabled, realname_provider, realname_block_actions
+
+## Debug
+- Status: GET /admin/api/v1/debug/status
+- Update: PATCH /admin/api/v1/debug/status
+- Logs: GET /admin/api/v1/debug/logs?types=audit,automation,sync
+
+## Order status flow
+- draft -> pending_payment -> pending_review -> approved -> provisioning -> active
+- rejected / canceled / failed track the final state
+
+## SSE
+Endpoint: GET /api/v1/orders/{id}/events
+- Content-Type: text/event-stream
+- Heartbeat: every 15s
+- Reconnect: pass Last-Event-ID to receive events with higher seq
+
+## Message center
+- List: GET /api/v1/notifications?status=unread
+- Unread count: GET /api/v1/notifications/unread-count
+- Mark read: POST /api/v1/notifications/{id}/read
+- Mark all read: POST /api/v1/notifications/read-all
+
+## Wallet orders
+- Recharge: POST /api/v1/wallet/recharge
+- Withdraw: POST /api/v1/wallet/withdraw
+- List: GET /api/v1/wallet/orders
+- Admin list: GET /admin/api/v1/wallet/orders
+- Admin approve/reject: POST /admin/api/v1/wallet/orders/{id}/approve | /reject
+
+## Refunds
+- Request refund: POST /api/v1/vps/{id}/refund
+
+## Real name verification
+- Status: GET /api/v1/realname/status
+- Verify: POST /api/v1/realname/verify
+
+## End-to-end curl flow
+1) Captcha + register + login
+
+    curl http://localhost:8080/api/v1/captcha
+    curl -X POST http://localhost:8080/api/v1/auth/register \
+      -H "Content-Type: application/json" \
+      -d '{"username":"u1","email":"u1@example.com","qq":"123","password":"pass","captcha_id":"...","captcha_code":"..."}'
+    curl -X POST http://localhost:8080/api/v1/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{"username":"u1","password":"pass"}'
+
+2) Catalog
+
+    curl -H "Authorization: Bearer <jwt>" http://localhost:8080/api/v1/catalog
+
+3) Add to cart or create order with items
+
+    curl -X POST http://localhost:8080/api/v1/cart \
+      -H "Authorization: Bearer <jwt>" \
+      -H "Content-Type: application/json" \
+      -d '{"package_id":1,"system_id":1,"spec":{"add_cores":0,"add_mem_gb":0,"add_disk_gb":0,"add_bw_mbps":0,"billing_cycle_id":1,"cycle_qty":1},"qty":1}'
+
+    curl -X POST http://localhost:8080/api/v1/orders \
+      -H "Authorization: Bearer <jwt>" \
+      -H "Idempotency-Key: order-001"
+
+4) Select payment method and submit payment info (manual review)
+
+    curl -H "Authorization: Bearer <jwt>" http://localhost:8080/api/v1/payments/providers
+
+    curl -X POST http://localhost:8080/api/v1/orders/1/pay \
+      -H "Authorization: Bearer <jwt>" \
+      -H "Content-Type: application/json" \
+      -d '{"method":"approval"}'
+
+    curl -X POST http://localhost:8080/api/v1/orders/1/payments \
+      -H "Authorization: Bearer <jwt>" \
+      -H "Content-Type: application/json" \
+      -H "Idempotency-Key: pay-001" \
+      -d '{"method":"bank","amount":99,"trade_no":"T20250101001","note":"manual transfer"}'
+
+5) Robot webhook approve (API key)
+
+    curl -X POST http://localhost:8080/api/v1/integrations/robot/webhook \
+      -H "Authorization: Bearer <api_key>" \
+      -H "Content-Type: application/json" \
+      -d '{"text":"通过订单 1","sender":"bot","timestamp":1735680000}'
+
+6) Admin approve and provisioning
+
+    curl -X POST http://localhost:8080/admin/api/v1/orders/1/approve \
+      -H "Authorization: Bearer <admin_jwt>"
+
+7) Query VPS list and panel redirect
+
+    curl -H "Authorization: Bearer <jwt>" http://localhost:8080/api/v1/vps
+    curl -I -H "Authorization: Bearer <jwt>" http://localhost:8080/api/v1/vps/1/panel
+`
+
+const APIMarkdownFile = `# Cloud VPS API Documentation
+
+See openapi.yaml for machine-readable spec.
+
+` + APIMarkdown

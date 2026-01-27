@@ -1,0 +1,78 @@
+/* Admin-specific styles */
+
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.admin-sidebar {
+  width: 240px;
+  background: #001529;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.admin-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.admin-header {
+  background: #fff;
+  padding: 0 24px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+
+.admin-main {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.admin-menu .ant-menu-dark {
+  background: #001529;
+}
+
+.stats-card {
+  padding: 20px;
+}
+
+.stats-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  flex: 1;
+  min-width: 200px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.stat-label {
+  font-size: 14px;
+  color: var(--text2);
+}
+
+.admin-table-wrapper {
+  background: #fff;
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.admin-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
