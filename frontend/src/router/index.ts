@@ -52,17 +52,11 @@ const router = createRouter({
       path: "/install",
       component: InstallLayout,
       children: [
-        {
-          path: "",
-          component: () => import("@/pages/public/Install.vue"),
-          children: [
-            { path: "", redirect: { name: "install-db" } },
-            { path: "db", name: "install-db", component: () => import("@/pages/public/install/DbStep.vue") },
-            { path: "site", name: "install-site", component: () => import("@/pages/public/install/SiteStep.vue") },
-            { path: "admin", name: "install-admin", component: () => import("@/pages/public/install/AdminStep.vue") },
-            { path: "done", name: "install-done", component: () => import("@/pages/public/install/DoneStep.vue") }
-          ]
-        }
+        { path: "", redirect: { name: "install-db" } },
+        { path: "db", name: "install-db", component: () => import("@/pages/public/install/DbStep.vue") },
+        { path: "site", name: "install-site", component: () => import("@/pages/public/install/SiteStep.vue") },
+        { path: "admin", name: "install-admin", component: () => import("@/pages/public/install/AdminStep.vue") },
+        { path: "done", name: "install-done", component: () => import("@/pages/public/install/DoneStep.vue") }
       ]
     },
     { path: "/login", name: "login", component: () => import("@/pages/auth/Login.vue") },

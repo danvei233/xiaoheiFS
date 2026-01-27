@@ -1,0 +1,93 @@
+name: Build & Upload Release Assets
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to upload assets to (e.g. v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: build-win.bat
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash build-linux.sh
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $tag = '${{ steps.tag.outputs.value }}'
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $zip = "dist/xiaohei-$tag-windows-amd64.zip"
+          if (Test-Path $zip) { Remove-Item -Force $zip }
+          Push-Location build/windows
+          Compress-Archive -Path server.exe, static -DestinationPath (Resolve-Path "../../$zip")
+          Pop-Location
+          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) | Set-Content "$zip.sha256" -NoNewline
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          tag='${{ steps.tag.outputs.value }}'
+          mkdir -p dist
+          out="dist/xiaohei-$tag-linux-amd64.tar.gz"
+          tar -C build/linux -czf "$out" server static
+          hash="$(sha256sum "$out" | cut -d' ' -f1)"
+          echo "$hash  $(basename "$out")" > "$out.sha256"
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.value }}
+        shell: bash
+        run: |
+          gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+
