@@ -154,4 +154,20 @@ router.beforeEach(async (to) => {
   return true;
 });
 
+router.onError((err, to) => {
+  const msg = String((err as any)?.message || err || "");
+  // Common in production when a chunk is missing/stale (e.g. after deployment) or a route-level import fails.
+  if (
+    msg.includes("Failed to fetch dynamically imported module") ||
+    msg.includes("Importing a module script failed") ||
+    msg.includes("Loading chunk") ||
+    msg.includes("ChunkLoadError")
+  ) {
+    window.location.assign(to.fullPath);
+    return;
+  }
+  // eslint-disable-next-line no-console
+  console.error("Router error:", err);
+});
+
 export default router;

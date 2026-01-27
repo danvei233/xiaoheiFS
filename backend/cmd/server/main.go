@@ -86,6 +86,12 @@ func main() {
 		_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "automation_api_key", ValueJSON: v})
 		_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "automation_enabled", ValueJSON: "true"})
 	}
+	if strings.TrimSpace(cfg.SiteName) != "" {
+		_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "site_name", ValueJSON: strings.TrimSpace(cfg.SiteName)})
+	}
+	if strings.TrimSpace(cfg.SiteURL) != "" {
+		_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "site_url", ValueJSON: strings.TrimSpace(cfg.SiteURL)})
+	}
 
 	catalogSvc := usecase.NewCatalogService(repoSQLite, repoSQLite, repoSQLite)
 	cartSvc := usecase.NewCartService(repoSQLite, repoSQLite, repoSQLite)

@@ -1,152 +1,48 @@
-> **AI Assistant Generated** - This README was created with the assistance of Claude Code
+# 小黑云控制台（Cloud VPS Console）
 
-# 小黑云财务
+一个完整的 VPS 管理平台：官网/产品页 + 用户控制台 + 管理后台。后端负责鉴权、订单/财务、VPS 管理与自动化对接；前端提供可视化控制台与 CMS 内容渲染。
 
-> ⚠️ **开发版本提醒**：当前项目处于开发阶段，部分功能（如支付插件系统）可能不够健全，建议仅用于测试和学习目的，请谨慎用于生产环境。
+## 功能概览
+- 用户端：注册登录、产品目录、购物车/下单、订单与账单、VPS 操作（开机/关机/重装/快照/备份/端口映射）、工单、消息中心、实名认证
+- 管理端：用户/订单/VPS 管理、产品目录、支付插件、系统设置、权限组、CMS（区块/文章/导航/上传）、审计日志
 
-## 项目简介
+## 技术栈
+- 后端：Go + Gin + SQLite（Clean Architecture / Ports & Adapters）
+- 前端：Vue 3 + Vite + Pinia + Ant Design Vue
+- 实时：SSE（订单事件等）
 
-小黑云财务是一个全栈 VPS 管理平台，提供用户控制台和管理后台，支持 VPS 产品管理、订单处理、自动开通、财务账单、工单系统等功能。
-
-### 技术栈
-
-**后端**
-- Go 1.21+ / Gin 框架
-- SQLite 数据库
-- 清洁架构（Clean Architecture - Ports & Adapters）
-- JWT 认证 + 权限系统
-- Server-Sent Events (SSE) 实时通知
-
-**前端**
-- Vue 3.4 + Vite 5
-- Pinia 状态管理
-- Ant Design Vue 4
-- TypeScript 5
-
-## 功能特性
-
-### 用户端
-- 产品浏览与购买
-- 购物车与订单管理
-- VPS 实例管理（重启、重装、配置变更）
-- 财务账单与充值
-- 工单系统
-- 实名认证
-
-### 管理端
-- 仪表盘与数据统计
-- 用户与订单管理
-- VPS 管理（锁定、删除、强制续费）
-- 产品目录管理
-- 支付插件系统（开发中）
-- CMS 内容管理
-- 系统设置
-- 操作审计日志
-
-## 快速开始
-
-### 环境要求
-
-- Go 1.21+
-- Node.js 18+
-- SQLite 3
-
-### 后端启动
-
+## 快速开始（开发）
+### 后端
 ```bash
 cd backend
-
-# 安装依赖
-go mod download
-
-# 运行（需要 air 工具支持热重载）
-air
-
-# 或直接运行
 go run ./cmd/server
-
-# 环境变量（可选）
-APP_ADDR=:8080
-APP_DB_PATH=./data/app.db
-ADMIN_USER=admin
-ADMIN_PASS=admin123
 ```
+后端配置与安装相关说明见：`backend/README.md:1`
 
-### 前端启动
-
+### 前端
 ```bash
 cd frontend
-
-# 安装依赖
 npm install
-
-# 开发模式
 npm run dev
-
-# 生产构建
-npm run build
 ```
 
-访问 http://localhost:5173 进入安装向导。
+## 自动化平台（轻舟 / qz）与 `qz-override`
+本项目的 VPS 自动化对接走 `backend/internal/adapter/automation`，请求头使用 `apikey`（与轻舟面板一致）。
 
-## 项目结构
+为了获得更完整/更一致的 API 行为，建议使用本仓库的 `qz-override/` 覆盖（或合并）到轻舟系统中，提供一套与本项目适配的接口。
 
-```
-.
-├── backend/                 # Go 后端
-│   ├── cmd/                # 命令行入口
-│   ├── internal/           # 内部代码
-│   │   ├── adapter/        # 外部适配器
-│   │   │   ├── http/       # HTTP 处理器
-│   │   │   ├── repo/       # 数据库实现
-│   │   │   └── automation/ # VPS 自动化集成
-│   │   ├── domain/         # 领域模型
-│   │   ├── usecase/        # 业务逻辑
-│   │   └── pkg/            # 共享工具
-│   └── docs/               # API 文档
-├── frontend/               # Vue 前端
-│   ├── src/
-│   │   ├── pages/         # 页面组件
-│   │   ├── layouts/       # 布局组件
-│   │   ├── components/    # 可复用组件
-│   │   ├── stores/        # Pinia 状态
-│   │   ├── services/      # API 客户端
-│   │   └── router/        # 路由配置
-│   └── ...
-└── plugin-demo/           # 支付插件示例
-```
+使用说明见：`backend/docs/qz-override.md:1`
 
-## 开发指南
+## AI Assistant（多智能体协作）
+本仓库允许使用 AI assistant 进行项目开发（规划/实现/验证分工协作）。建议将规则与上下文写入并遵循：
+- `CLAUDE.md:1`（开发命令、架构与约定）
+- `backend/docs/frontend-readme.md:1`（前端对接与状态映射）
+- `backend/docs/openapi.yaml:1`（API 合约源）
 
-### 添加新功能
+## 发布与打包
+Release 发布后可自动构建并上传 Windows / Linux 压缩包（GitHub Actions）：
+- `/.github/workflows/release-build.yml:1`
 
-请参考项目根目录的 `CLAUDE.md` 文件，其中包含：
-- 完整的架构说明
-- 开发命令参考
-- 添加新功能的步骤指南
-- API 设计规范
-- 数据库迁移说明
+## License
+GPL-3.0，见 `LICENSE:1`
 
-### API 文档
-
-后端 API 文档通过 OpenAPI 规范生成：
-```bash
-cd backend
-go run ./cmd/tools/gendocs
-```
-
-生成的文档位于 `backend/docs/openapi.yaml`。
-
-## 已知问题
-
-- [ ] 支付插件系统仍在开发中
-- [ ] SQLite 不适合高并发生产环境
-- [ ] 缺少自动化测试
-
-## 许可证
-
-GPL-3.0 License - 详见 [LICENSE](LICENSE) 文件
-
----
-
-**使用本项目即表示您同意，当前版本为开发版本，不提供任何生产环境保证。**

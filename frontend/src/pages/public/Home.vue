@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="home-page" ref="homePage">
     <canvas ref="particleCanvas" class="particle-canvas"></canvas>
     <div class="mouse-glow" ref="mouseGlow"></div>

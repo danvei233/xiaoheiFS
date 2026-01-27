@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <a-config-provider
     :theme="{
       algorithm: theme.darkAlgorithm,

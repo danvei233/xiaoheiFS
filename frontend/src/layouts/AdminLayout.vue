@@ -1,5 +1,6 @@
-﻿<template>
-  <a-layout class="layout admin-layout">
+<template>
+  <a-config-provider :theme="{ algorithm: theme.defaultAlgorithm }">
+    <a-layout class="layout admin-layout">
     <a-layout-header class="header">
       <div class="header-left">
         <a-button class="menu-trigger" type="text" @click="toggleMenu">
@@ -108,6 +109,7 @@
       </a-layout>
     </a-layout>
   </a-layout>
+  </a-config-provider>
 </template>
 
 <script setup>
@@ -117,7 +119,7 @@ import { useAdminAuthStore } from "@/stores/adminAuth";
 import { useSiteStore } from "@/stores/site";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
 import AdminMenuNode from "@/components/admin/AdminMenuNode.vue";
-import { Grid } from "ant-design-vue";
+import { Grid, theme } from "ant-design-vue";
 import {
   BellOutlined,
   QuestionCircleOutlined,

@@ -17,10 +17,12 @@ import (
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
+
+	"gopkg.in/yaml.v3"
 )
 
 const installLockEnvKey = "APP_INSTALL_LOCK_PATH"
-const installConfigPath = "app.config.json"
+const installConfigPath = "app.config.yaml"
 
 func installLockPath() string {
 	if v := strings.TrimSpace(os.Getenv(installLockEnvKey)); v != "" {
@@ -240,12 +242,25 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	}
 
 	// Persist DB config so next boot uses the installed DB even without env vars.
-	if b, err := json.MarshalIndent(map[string]any{
+	type installCfg struct {
+		DB struct {
+			Type string `yaml:"type"`
+			Path string `yaml:"path"`
+			DSN  string `yaml:"dsn"`
+		} `yaml:"db"`
+	}
+	var ic installCfg
+	ic.DB.Type = cfg.DBType
+	ic.DB.Path = cfg.DBPath
+	ic.DB.DSN = cfg.DBDSN
+	if b, err := yaml.Marshal(&ic); err == nil {
+		_ = os.WriteFile(installConfigPath, b, 0o600)
+	} else if b, err := json.MarshalIndent(map[string]any{
 		"db_type": cfg.DBType,
 		"db_path": cfg.DBPath,
 		"db_dsn":  cfg.DBDSN,
 	}, "", "  "); err == nil {
-		_ = os.WriteFile(installConfigPath, b, 0o600)
+		_ = os.WriteFile("app.config.json", b, 0o600)
 	}
 
 	lockPath := installLockPath()

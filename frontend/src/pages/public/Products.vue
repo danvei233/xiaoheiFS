@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <div class="products-page" ref="productsPage">
     <div class="page-background">
       <div class="grid-overlay"></div>

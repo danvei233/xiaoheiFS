@@ -1,8 +1,10 @@
 <template>
   <Maintenance v-if="site.maintenanceMode" :message="site.maintenanceMessage" />
-  <router-view v-else v-slot="{ Component }">
+  <router-view v-else v-slot="{ Component, route }">
     <transition name="fade-slide" mode="out-in">
-      <component :is="Component" />
+      <div :key="route.fullPath">
+        <component :is="Component" />
+      </div>
     </transition>
   </router-view>
 </template>
