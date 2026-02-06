@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter --version:*)",
+      "Bash(dart:*)",
+      "Bash(test:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(git checkout:*)"
+    ]
+  }
+}

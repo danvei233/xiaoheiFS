@@ -37,9 +37,46 @@ components:
           type: string
         image_base64:
           type: string
+    AuthSettings:
+      type: object
+      properties:
+        register_enabled:
+          type: boolean
+        register_required_fields:
+          type: array
+          items:
+            type: string
+        password_min_len:
+          type: integer
+        password_require_upper:
+          type: boolean
+        password_require_lower:
+          type: boolean
+        password_require_number:
+          type: boolean
+        password_require_symbol:
+          type: boolean
+        register_verify_type:
+          type: string
+          enum: [none, email, sms]
+        register_captcha_enabled:
+          type: boolean
+        login_captcha_enabled:
+          type: boolean
+    RegisterCodeRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        phone:
+          type: string
+        captcha_id:
+          type: string
+        captcha_code:
+          type: string
     RegisterRequest:
       type: object
-      required: [username, email, password, captcha_id, captcha_code]
+      required: [username, email, password]
       properties:
         username:
           type: string
@@ -55,6 +92,8 @@ components:
           type: string
         captcha_code:
           type: string
+        verify_code:
+          type: string
     LoginRequest:
       type: object
       required: [username, password]
@@ -62,6 +101,10 @@ components:
         username:
           type: string
         password:
+          type: string
+        captcha_id:
+          type: string
+        captcha_code:
           type: string
     AuthResponse:
       type: object
@@ -1288,6 +1331,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CaptchaResponse'
+  /api/v1/auth/settings:
+    get:
+      summary: Auth settings
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSettings'
+  /api/v1/auth/register/code:
+    post:
+      summary: Send register verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterCodeRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
   /api/v1/auth/register:
     post:
       summary: Register

@@ -340,3 +340,59 @@ func (s *OrderService) refreshOrderStatus(ctx context.Context, orderID int64) {
 		_ = s.messages.NotifyUser(ctx, order.UserID, "provision_failed", "Provision Failed", "Order "+order.OrderNo+" failed to provision.")
 	}
 }
+
+// ReconcileProvisioningOrders fixes orders stuck in provisioning when VPS is already active.
+func (s *OrderService) ReconcileProvisioningOrders(ctx context.Context, limit int) (int, error) {
+	if s.orders == nil || s.items == nil || s.vps == nil {
+		return 0, ErrInvalidInput
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	offset := 0
+	processed := 0
+	for {
+		orders, total, err := s.orders.ListOrders(ctx, OrderFilter{Status: string(domain.OrderStatusProvisioning)}, limit, offset)
+		if err != nil {
+			return processed, err
+		}
+		for _, order := range orders {
+			items, err := s.items.ListOrderItems(ctx, order.ID)
+			if err != nil {
+				continue
+			}
+			for _, item := range items {
+				switch item.Status {
+				case domain.OrderItemStatusActive, domain.OrderItemStatusFailed, domain.OrderItemStatusCanceled, domain.OrderItemStatusRejected:
+					continue
+				}
+				inst, err := s.vps.GetInstanceByOrderItem(ctx, item.ID)
+				if err != nil {
+					continue
+				}
+				if isVPSReadyStatus(inst.Status) {
+					_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusActive)
+					if item.AutomationInstanceID == "" && inst.AutomationInstanceID != "" {
+						_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, inst.AutomationInstanceID)
+					}
+				}
+			}
+			s.refreshOrderStatus(ctx, order.ID)
+			processed++
+		}
+		offset += len(orders)
+		if offset >= total || len(orders) == 0 {
+			break
+		}
+	}
+	return processed, nil
+}
+
+func isVPSReadyStatus(status domain.VPSStatus) bool {
+	switch status {
+	case domain.VPSStatusRunning, domain.VPSStatusStopped, domain.VPSStatusRescue, domain.VPSStatusLocked, domain.VPSStatusExpiredLocked:
+		return true
+	default:
+		return false
+	}
+}

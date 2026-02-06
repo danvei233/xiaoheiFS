@@ -1,195 +1,275 @@
 <template>
   <a-config-provider :theme="{ algorithm: theme.defaultAlgorithm }">
-    <a-layout class="layout">
-    <a-layout-header class="header">
-      <div class="header-left">
-        <a-button class="menu-trigger" type="text" @click="toggleMenu">
-          <component :is="menuIcon" />
-        </a-button>
-        <div v-if="!isMobile" class="brand">
-          <div class="brand-logo" aria-hidden="true">
-            <SiteLogoMedia :size="22" />
-          </div>
-          <div>
-            <div class="brand-name">{{ brandName }}</div>
-            <!-- <div class="brand-subtle">Cloud VPS Console</div> -->
-          </div>
-        </div>
-      </div>
-      <div class="header-actions">
-        <div v-if="!isMobile" class="header-search-wrapper">
-          <a-auto-complete
-            v-model:value="searchValue"
-            class="header-search"
-            placeholder="搜索功能..."
-            :options="searchOptions"
-            @select="handleSelect"
-            @search="handleSearch"
-          >
-            <template #default>
-              <a-input @pressEnter="handleEnterSearch">
-                <template #prefix>
-                  <SearchOutlined />
-                </template>
-              </a-input>
-            </template>
-          </a-auto-complete>
-        </div>
-        <a-space :size="12">
-          <a-tag v-if="!isMobile" color="blue">Production</a-tag>
-          <a-popover
-            v-model:open="notifOpen"
-            trigger="click"
-            placement="bottomRight"
-            overlay-class-name="notif-popover"
-            @openChange="handleNotifOpen"
-          >
-            <template #content>
-              <div class="notif-panel">
-                <div class="notif-header">
-                  <span class="notif-title">消息中心</span>
-                  <a-button type="link" size="small" @click.stop="markAllRead">全部已读</a-button>
-                </div>
-                <a-tabs v-model:activeKey="notifTab" size="small" @change="fetchNotifications">
-                  <a-tab-pane key="unread" tab="未读" />
-                  <a-tab-pane key="read" tab="已读" />
-                  <a-tab-pane key="all" tab="全部" />
-                </a-tabs>
-                <a-list
-                  :data-source="notifications"
-                  :loading="notifLoading"
-                  :locale="{ emptyText: '暂无消息' }"
-                  item-layout="horizontal"
-                  size="small"
-                >
-                  <template #renderItem="{ item }">
-                    <a-list-item @click="markRead(item)">
-                      <a-list-item-meta :title="item.title || item.type" :description="item.content" />
-                      <div class="notif-time">{{ formatTime(item.created_at) }}</div>
-                    </a-list-item>
-                  </template>
-                </a-list>
-              </div>
-            </template>
-            <a-badge :count="unreadCount" size="small">
-              <a-button type="text" shape="circle">
-                <BellOutlined />
-              </a-button>
-            </a-badge>
-          </a-popover>
-          <a-tooltip v-if="!isMobile" title="帮助中心">
-            <a-button type="text" shape="circle" @click="goHelp">
-              <QuestionCircleOutlined />
-            </a-button>
-          </a-tooltip>
-          <a-dropdown>
-            <div class="user-info">
-              <a-avatar size="small" :src="userAvatar" style="background-color: #1677ff">
-                <UserOutlined />
-              </a-avatar>
-              <span class="user-name">{{ displayName }}</span>
+    <div class="console-layout">
+      <!-- Sidebar -->
+      <aside class="sidebar" :class="{ 'sidebar-collapsed': collapsed }">
+        <div class="sidebar-header">
+          <div class="brand-wrapper">
+            <div class="brand-logo">
+              <SiteLogoMedia :size="collapsed ? 24 : 28" />
             </div>
-            <template #overlay>
-              <a-menu>
-                <a-menu-item @click="goProfile">个人信息</a-menu-item>
-                <a-menu-item @click="logout">退出登录</a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
-        </a-space>
-      </div>
-    </a-layout-header>
+            <transition name="fade-slide">
+              <div v-if="!collapsed" class="brand-info">
+                <h1 class="brand-title">{{ brandName }}</h1>
+                <p class="brand-subtitle">Cloud Console</p>
+              </div>
+            </transition>
+          </div>
+        </div>
 
-    <a-layout>
-      <a-layout-sider
-        v-if="!isMobile"
-        class="sider"
-        :collapsed="collapsed"
-        collapsible
-        :trigger="null"
-        width="220"
-        @collapse="collapsed = $event"
-      >
-        <a-menu mode="inline" :selectedKeys="[selectedKey]" @click="onMenu">
-          <a-menu-item key="/console">总览</a-menu-item>
-          <a-menu-item key="/console/vps">VPS</a-menu-item>
-          <a-menu-item key="/console/cart">购物车</a-menu-item>
-          <a-menu-item key="/console/orders">订单/财务</a-menu-item>
-          <a-menu-item key="/console/billing">钱包/充值</a-menu-item>
-          <a-menu-item key="/console/tickets">工单中心</a-menu-item>
-          <a-menu-item key="/console/realname">实名认证</a-menu-item>
-          <a-menu-item key="/console/profile">个人信息</a-menu-item>
-        </a-menu>
-      </a-layout-sider>
+        <nav class="sidebar-nav">
+          <div v-for="group in menuGroups" :key="group.title" class="menu-group">
+            <div v-if="!collapsed && group.title" class="menu-group-title">
+              <span>{{ group.title }}</span>
+            </div>
+            <div class="menu-items">
+              <router-link
+                v-for="item in group.items"
+                :key="item.key"
+                :to="item.key"
+                class="menu-item"
+                :class="{ 'menu-item-active': isActive(item.key) }"
+              >
+                <component :is="item.icon" class="menu-icon" />
+                <transition name="fade-slide">
+                  <span v-if="!collapsed" class="menu-label">{{ item.label }}</span>
+                </transition>
+                <transition name="fade-slide">
+                  <span v-if="!collapsed && item.badge" class="menu-badge">{{ item.badge }}</span>
+                </transition>
+              </router-link>
+            </div>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user" @click="goProfile">
+            <a-avatar :size="collapsed ? 32 : 40" :src="userAvatar">
+              <UserOutlined />
+            </a-avatar>
+            <transition name="fade-slide">
+              <div v-if="!collapsed" class="user-details">
+                <div class="user-name">{{ displayName }}</div>
+                <div class="user-role">用户</div>
+              </div>
+            </transition>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Main Content -->
+      <div class="main-wrapper">
+        <!-- Header -->
+        <header class="top-header">
+          <div class="header-left">
+            <button class="collapse-btn" @click="collapsed = !collapsed">
+              <MenuUnfoldOutlined v-if="collapsed" />
+              <MenuFoldOutlined v-else />
+            </button>
+            <div class="header-search">
+              <SearchOutlined class="search-icon" />
+              <input
+                v-model="searchValue"
+                type="text"
+                placeholder="搜索功能、页面..."
+                @focus="showSearchResults = true"
+                @blur="handleSearchBlur"
+              >
+              <kbd v-if="!searchValue" class="search-hint">⌘K</kbd>
+              <transition name="dropdown">
+                <div v-if="showSearchResults && (searchValue || searchOptions.length)" class="search-results">
+                  <div v-if="!searchOptions.length" class="search-empty">未找到相关内容</div>
+                  <a v-for="opt in searchOptions" :key="opt.value" href="#" class="search-item" @click.prevent="navigateTo(opt.value)">
+                    <component :is="getIconForRoute(opt.value)" class="search-item-icon" />
+                    <div class="search-item-content">
+                      <div class="search-item-label">{{ opt.label }}</div>
+                      <div class="search-item-path">{{ opt.value }}</div>
+                    </div>
+                  </a>
+                </div>
+              </transition>
+            </div>
+          </div>
+
+          <div class="header-right">
+            <div class="header-actions">
+              <!-- Environment Badge -->
+              <div class="env-badge">
+                <span class="env-dot"></span>
+                <span>Production</span>
+              </div>
+
+              <!-- Notifications -->
+              <a-dropdown :trigger="['click']" placement="bottomRight">
+                <button class="icon-btn" @click="fetchNotifications">
+                  <a-badge :count="unreadCount" :offset="[-4, 4]">
+                    <BellOutlined />
+                  </a-badge>
+                </button>
+                <template #overlay>
+                  <div class="notif-dropdown">
+                    <div class="notif-header">
+                      <h3>消息中心</h3>
+                      <a-button type="link" size="small" @click.stop="markAllRead">全部已读</a-button>
+                    </div>
+                    <a-tabs v-model:activeKey="notifTab" size="small" @change="fetchNotifications">
+                      <a-tab-pane key="unread" tab="未读" />
+                      <a-tab-pane key="read" tab="已读" />
+                      <a-tab-pane key="all" tab="全部" />
+                    </a-tabs>
+                    <div class="notif-list">
+                      <a-spin :spinning="notifLoading">
+                        <div v-if="!notifications.length" class="notif-empty">暂无消息</div>
+                        <div v-for="item in notifications" :key="item.id" class="notif-item" @click="markRead(item)">
+                          <div class="notif-icon">
+                            <NotificationOutlined />
+                          </div>
+                          <div class="notif-content">
+                            <div class="notif-title-row">
+                              <span class="notif-item-title">{{ item.title || item.type }}</span>
+                              <span class="notif-time">{{ formatTime(item.created_at) }}</span>
+                            </div>
+                            <div class="notif-text">{{ item.content }}</div>
+                          </div>
+                        </div>
+                      </a-spin>
+                    </div>
+                  </div>
+                </template>
+              </a-dropdown>
+
+              <!-- Help -->
+              <a-tooltip title="帮助中心">
+                <button class="icon-btn" @click="goHelp">
+                  <QuestionCircleOutlined />
+                </button>
+              </a-tooltip>
+
+              <!-- Divider -->
+              <div class="header-divider"></div>
+
+              <!-- User Menu -->
+              <a-dropdown>
+                <button class="user-btn">
+                  <a-avatar :size="32" :src="userAvatar">
+                    <UserOutlined />
+                  </a-avatar>
+                  <span class="user-btn-name">{{ displayName }}</span>
+                  <DownOutlined class="dropdown-arrow" />
+                </button>
+                <template #overlay>
+                  <a-menu>
+                    <a-menu-item @click="goProfile">
+                      <UserOutlined />
+                      <span>个人信息</span>
+                    </a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item @click="logout">
+                      <LogoutOutlined />
+                      <span>退出登录</span>
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
+            </div>
+          </div>
+        </header>
+
+        <!-- Page Content -->
+        <main class="main-content">
+          <div class="content-container">
+            <div class="page-breadcrumb">
+              <a-breadcrumb>
+                <a-breadcrumb-item>
+                  <HomeOutlined />
+                  <span>控制台</span>
+                </a-breadcrumb-item>
+                <a-breadcrumb-item>{{ breadcrumb }}</a-breadcrumb-item>
+              </a-breadcrumb>
+            </div>
+            <router-view v-slot="{ Component }">
+              <transition name="page" mode="out-in">
+                <component :is="Component" />
+              </transition>
+            </router-view>
+          </div>
+        </main>
+      </div>
+
+      <!-- Mobile Drawer -->
       <a-drawer
-        v-model:open="drawerOpen"
+        v-model:open="mobileDrawerOpen"
         placement="left"
-        width="220"
+        :width="280"
         :body-style="{ padding: 0 }"
-        :mask-style="{ backgroundColor: 'rgba(0, 0, 0, 0.45)' }"
-        :wrap-style="{ position: 'absolute' }"
-        :z-index="1001"
+        :mask-style="{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }"
         class="mobile-drawer"
       >
-        <div class="drawer-content">
-          <a-menu mode="inline" :selectedKeys="[selectedKey]" @click="onMenu" class="drawer-menu">
-            <a-menu-item key="/console" class="drawer-menu-item">
-              <DashboardOutlined />
-              <span>总览</span>
-            </a-menu-item>
-            <a-menu-item key="/console/vps" class="drawer-menu-item">
-              <CloudServerOutlined />
-              <span>VPS</span>
-            </a-menu-item>
-            <a-menu-item key="/console/cart" class="drawer-menu-item">
-              <ShoppingCartOutlined />
-              <span>购物车</span>
-            </a-menu-item>
-            <a-menu-item key="/console/orders" class="drawer-menu-item">
-              <FileTextOutlined />
-              <span>订单/财务</span>
-            </a-menu-item>
-            <a-menu-item key="/console/billing" class="drawer-menu-item">
-              <CreditCardOutlined />
-              <span>钱包/充值</span>
-            </a-menu-item>
-            <a-menu-item key="/console/tickets" class="drawer-menu-item">
-              <CustomerServiceOutlined />
-              <span>工单中心</span>
-            </a-menu-item>
-            <a-menu-item key="/console/realname" class="drawer-menu-item">
-              <SafetyCertificateOutlined />
-              <span>实名认证</span>
-            </a-menu-item>
-            <a-menu-item key="/console/profile" class="drawer-menu-item">
-              <UserOutlined />
-              <span>个人信息</span>
-            </a-menu-item>
-          </a-menu>
+        <div class="mobile-drawer-content">
+          <div class="mobile-drawer-header">
+            <div class="brand-logo">
+              <SiteLogoMedia :size="32" />
+            </div>
+            <h2>{{ brandName }}</h2>
+          </div>
+          <nav class="mobile-nav">
+            <router-link
+              v-for="group in menuGroups"
+              :key="group.title"
+              class="mobile-menu-group"
+            >
+              <div v-if="group.title" class="mobile-group-title">{{ group.title }}</div>
+              <router-link
+                v-for="item in group.items"
+                :key="item.key"
+                :to="item.key"
+                class="mobile-menu-item"
+                :class="{ 'mobile-menu-item-active': isActive(item.key) }"
+                @click="mobileDrawerOpen = false"
+              >
+                <component :is="item.icon" class="mobile-menu-icon" />
+                <span>{{ item.label }}</span>
+                <span v-if="item.badge" class="mobile-menu-badge">{{ item.badge }}</span>
+              </router-link>
+            </router-link>
+          </nav>
         </div>
       </a-drawer>
 
-      <a-layout>
-        <a-layout-content class="content">
-          <div class="breadcrumb-wrap">
-            <a-breadcrumb>
-              <a-breadcrumb-item>用户中心</a-breadcrumb-item>
-              <a-breadcrumb-item>{{ breadcrumb }}</a-breadcrumb-item>
-            </a-breadcrumb>
-          </div>
-          <router-view />
-        </a-layout-content>
-      </a-layout>
-    </a-layout>
-  </a-layout>
+      <!-- Mobile Header -->
+      <div class="mobile-header">
+        <button class="mobile-menu-btn" @click="mobileDrawerOpen = true">
+          <MenuOutlined />
+        </button>
+        <div class="mobile-brand">{{ brandName }}</div>
+        <a-dropdown>
+          <a-avatar :size="32" :src="userAvatar">
+            <UserOutlined />
+          </a-avatar>
+          <template #overlay>
+            <a-menu>
+              <a-menu-item @click="goProfile">
+                <UserOutlined />
+                <span>个人信息</span>
+              </a-menu-item>
+              <a-menu-item @click="logout">
+                <LogoutOutlined />
+                <span>退出登录</span>
+              </a-menu-item>
+            </a-menu>
+          </template>
+        </a-dropdown>
+      </div>
+    </div>
   </a-config-provider>
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
+import { useCartStore } from "@/stores/cart";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
 import { listNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead } from "@/services/user";
 import { Grid, theme } from "ant-design-vue";
@@ -198,6 +278,7 @@ import {
   QuestionCircleOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MenuOutlined,
   UserOutlined,
   SearchOutlined,
   DashboardOutlined,
@@ -206,29 +287,94 @@ import {
   FileTextOutlined,
   CustomerServiceOutlined,
   SafetyCertificateOutlined,
-  CreditCardOutlined
+  CreditCardOutlined,
+  WalletOutlined,
+  DollarOutlined,
+  HomeOutlined,
+  LogoutOutlined,
+  DownOutlined,
+  NotificationOutlined,
+  SettingOutlined,
+  ThunderboltOutlined,
+  AppstoreOutlined,
+  TeamOutlined
 } from "@ant-design/icons-vue";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const site = useSiteStore();
+const cart = useCartStore();
 const screens = Grid.useBreakpoint();
 
 const collapsed = ref(false);
-const drawerOpen = ref(false);
+const mobileDrawerOpen = ref(false);
 const searchValue = ref('');
-const notifOpen = ref(false);
+const showSearchResults = ref(false);
 const notifTab = ref("unread");
 const notifications = ref([]);
 const notifLoading = ref(false);
 const unreadCount = ref(0);
 
 const isMobile = computed(() => !screens.value?.lg);
-const menuIcon = computed(() => {
-  if (isMobile.value) return MenuUnfoldOutlined;
-  return collapsed.value ? MenuUnfoldOutlined : MenuFoldOutlined;
-});
+
+const menuGroups = computed(() => [
+  {
+    title: '',
+    items: [
+      { key: '/console', label: '总览', icon: DashboardOutlined },
+    ]
+  },
+  {
+    title: '云服务',
+    items: [
+      { key: '/console/vps', label: '云服务器', icon: CloudServerOutlined },
+    ]
+  },
+  {
+    title: '订单与财务',
+    items: [
+      { key: '/console/cart', label: '购物车', icon: ShoppingCartOutlined, badge: cartCount.value > 0 ? cartCount.value : null },
+      { key: '/console/orders', label: '订单管理', icon: FileTextOutlined },
+      { key: '/console/billing', label: '钱包充值', icon: WalletOutlined },
+    ]
+  },
+  {
+    title: '支持与设置',
+    items: [
+      { key: '/console/tickets', label: '工单中心', icon: CustomerServiceOutlined },
+      { key: '/console/realname', label: '实名认证', icon: SafetyCertificateOutlined },
+      { key: '/console/profile', label: '个人设置', icon: SettingOutlined },
+    ]
+  }
+]);
+
+const cartCount = computed(() => cart.items?.length || 0);
+
+const isActive = (path) => {
+  if (route.path.startsWith('/console/buy')) return path === '/console/vps';
+  if (route.path.startsWith('/console/vps')) return path === '/console/vps';
+  if (route.path.startsWith('/console/orders')) return path === '/console/orders';
+  if (route.path.startsWith('/console/billing')) return path === '/console/billing';
+  if (route.path.startsWith('/console/tickets')) return path === '/console/tickets';
+  if (route.path.startsWith('/console/realname')) return path === '/console/realname';
+  if (route.path.startsWith('/console/cart')) return path === '/console/cart';
+  if (route.path.startsWith('/console/profile')) return path === '/console/profile';
+  return path === '/console';
+};
+
+const labelMap = {
+  "/console": "总览",
+  "/console/vps": "云服务器",
+  "/console/orders": "订单管理",
+  "/console/billing": "钱包充值",
+  "/console/tickets": "工单中心",
+  "/console/realname": "实名认证",
+  "/console/cart": "购物车",
+  "/console/profile": "个人设置"
+};
+
+const breadcrumb = computed(() => labelMap[selectedKey.value] || "总览");
 
 const selectedKey = computed(() => {
   if (route.path.startsWith("/console/buy")) return "/console/vps";
@@ -242,37 +388,38 @@ const selectedKey = computed(() => {
   return "/console";
 });
 
-const labelMap = {
-  "/console": "总览",
-  "/console/vps": "VPS",
-  "/console/orders": "订单/财务",
-  "/console/billing": "钱包/充值",
-  "/console/tickets": "工单中心",
-  "/console/realname": "实名认证",
-  "/console/cart": "购物车",
-  "/console/profile": "个人信息"
-};
-
-const breadcrumb = computed(() => labelMap[selectedKey.value] || "总览");
 const displayName = computed(() => auth.profile?.username || "用户");
-const brandName = computed(() => site.siteName || "用户控制台");
+const brandName = computed(() => site.siteName || "控制台");
 const userAvatar = computed(() => {
   const qq = auth.profile?.qq;
   if (!qq) return "";
   return `https://q1.qlogo.cn/g?b=qq&nk=${qq}&s=100`;
 });
 
-const onMenu = ({ key }) => {
-  router.push(String(key));
-  drawerOpen.value = false;
+const searchOptions = computed(() => {
+  const keyword = searchValue.value.trim().toLowerCase();
+  const allItems = menuGroups.value.flatMap(g => g.items);
+  const filtered = keyword
+    ? allItems.filter(item => item.label.toLowerCase().includes(keyword))
+    : allItems;
+  return filtered.map(item => ({ label: item.label, value: item.key }));
+});
+
+const getIconForRoute = (route) => {
+  const item = menuGroups.value.flatMap(g => g.items).find(i => i.key === route);
+  return item?.icon || DashboardOutlined;
 };
 
-const toggleMenu = () => {
-  if (isMobile.value) {
-    drawerOpen.value = true;
-  } else {
-    collapsed.value = !collapsed.value;
-  }
+const navigateTo = (path) => {
+  router.push(path);
+  searchValue.value = '';
+  showSearchResults.value = false;
+};
+
+const handleSearchBlur = () => {
+  setTimeout(() => {
+    showSearchResults.value = false;
+  }, 200);
 };
 
 const logout = () => {
@@ -281,53 +428,7 @@ const logout = () => {
 };
 
 const goProfile = () => router.push("/console/profile");
-
-const handleSearch = () => {
-  // AutoComplete only updates options via v-model
-};
-
-const handleEnterSearch = () => {
-  const keyword = searchValue.value.trim();
-  if (!keyword) {
-    return;
-  }
-  const options = searchOptions.value;
-  const target = options.find((item) => item.label.toLowerCase() === keyword.toLowerCase()) || options[0];
-  if (target?.value) {
-    router.push(String(target.value));
-    searchValue.value = "";
-  }
-};
-
-const searchOptions = computed(() => {
-  const keyword = searchValue.value.trim().toLowerCase();
-  const items = [
-    { label: "总览", value: "/console" },
-    { label: "VPS", value: "/console/vps" },
-    { label: "购物车", value: "/console/cart" },
-    { label: "订单/财务", value: "/console/orders" },
-    { label: "钱包/充值", value: "/console/billing" },
-    { label: "工单中心", value: "/console/tickets" },
-    { label: "实名认证", value: "/console/realname" },
-    { label: "个人信息", value: "/console/profile" }
-  ];
-  const filtered = keyword ? items.filter((item) => item.label.toLowerCase().includes(keyword)) : items;
-  return filtered.map((item) => ({
-    value: item.value,
-    label: item.label
-  }));
-});
-
-const handleSelect = (value) => {
-  if (value) {
-    router.push(String(value));
-    searchValue.value = "";
-  }
-};
-
-const goHelp = () => {
-  router.push("/help");
-};
+const goHelp = () => router.push("/help");
 
 const fetchUnreadCount = async () => {
   const res = await getUnreadCount();
@@ -342,14 +443,6 @@ const fetchNotifications = async () => {
     notifications.value = res.data?.items || [];
   } finally {
     notifLoading.value = false;
-  }
-};
-
-const handleNotifOpen = (open) => {
-  notifOpen.value = open;
-  if (open) {
-    fetchUnreadCount();
-    fetchNotifications();
   }
 };
 
@@ -373,6 +466,17 @@ const formatTime = (value) => {
   return dt.toLocaleString("zh-CN", { hour12: false });
 };
 
+// Keyboard shortcut for search
+const handleKeydown = (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+    e.preventDefault();
+    document.querySelector('.header-search input')?.focus();
+  }
+  if (e.key === 'Escape') {
+    showSearchResults.value = false;
+  }
+};
+
 onMounted(() => {
   if (!auth.profile && auth.token) {
     auth.fetchMe();
@@ -381,313 +485,146 @@ onMounted(() => {
     fetchUnreadCount();
   }
   site.fetchSettings();
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
 <style scoped>
-.layout {
+/* ==================== Layout Base ==================== */
+.console-layout {
+  display: flex;
   min-height: 100vh;
-  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 50%, var(--bg-tertiary) 100%);
+  background: var(--bg-primary);
   position: relative;
 }
 
-.layout :deep(.ant-layout),
-.layout :deep(.ant-layout-content) {
-  min-width: 0;
-}
-
-.layout::before {
-  content: '';
+/* ==================== Sidebar ==================== */
+.sidebar {
   position: fixed;
-  top: 0;
   left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(ellipse at 0% 0%, rgba(0, 102, 255, 0.03) 0%, transparent 50%),
-    radial-gradient(ellipse at 100% 100%, rgba(0, 51, 153, 0.02) 0%, transparent 50%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.header {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(30px) saturate(180%);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  border-bottom: 1px solid var(--border);
-  box-shadow: var(--shadow-sm), var(--shadow-inner);
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 0 28px;
-  height: 72px;
-  position: sticky;
   top: 0;
-  z-index: 1000;
-  transition: all var(--transition-smooth);
-}
-
-.header::after {
-  content: '';
-  position: absolute;
   bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--primary-gradient);
-  transform: scaleX(0);
-  transform-origin: center;
-  transition: transform var(--transition-smooth);
-  opacity: 0.5;
-}
-
-.header:hover::after {
-  transform: scaleX(1);
-}
-
-.header-left {
+  width: 260px;
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
   display: flex;
-  align-items: center;
-  gap: 18px;
-  position: relative;
-  z-index: 1;
+  flex-direction: column;
+  z-index: 100;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
 }
 
-.menu-trigger {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-smooth);
-  color: var(--text-secondary);
-  position: relative;
-  overflow: hidden;
+.sidebar-collapsed {
+  width: 80px;
 }
 
-.menu-trigger::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--primary-gradient);
-  opacity: 0;
-  transition: opacity var(--transition-smooth);
+.sidebar-header {
+  padding: 20px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.menu-trigger:hover::before {
-  opacity: 0.1;
-}
-
-.menu-trigger:hover {
-  color: var(--primary);
-  transform: scale(1.08);
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 4px 0;
-}
-
-.brand-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  background: var(--primary-gradient);
-  color: #fff;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 17px;
-  box-shadow: var(--shadow-md), var(--shadow-glow-sm);
-  transition: all var(--transition-smooth);
-  position: relative;
-  overflow: hidden;
-}
-
-.brand-logo::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, transparent 50%);
-  opacity: 0;
-  transition: opacity var(--transition-smooth);
-}
-
-.brand-logo::after {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
-  opacity: 0;
-  transition: all var(--transition-spring);
-}
-
-.brand-logo:hover {
-  transform: translateY(-4px) scale(1.05);
-  box-shadow: var(--shadow-xl), var(--shadow-glow);
-}
-
-.brand-logo:hover::before {
-  opacity: 1;
-}
-
-.brand-logo:hover::after {
-  opacity: 1;
-  animation: shimmer 1.5s infinite;
-}
-
-.brand-logo-img {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-md);
-  object-fit: cover;
-  box-shadow: var(--shadow-md), var(--shadow-glow-sm);
-  transition: all var(--transition-smooth);
-}
-
-.brand-logo-img:hover {
-  transform: translateY(-4px) scale(1.05);
-  box-shadow: var(--shadow-xl), var(--shadow-glow);
-}
-
-.brand-name {
-  font-weight: 800;
-  font-size: 19px;
-  letter-spacing: -0.02em;
-  background: var(--primary-gradient);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  transition: all var(--transition-smooth);
-}
-
-.brand:hover .brand-name {
-  filter: brightness(1.1);
-}
-
-.brand-subtle {
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.header-search-wrapper {
-  position: relative;
-  width: 300px;
-  transition: all var(--transition-smooth);
-}
-
-.header-search-wrapper:hover {
-  width: 340px;
-}
-
-.header-search {
-  width: 100%;
-  border-radius: var(--radius-md);
-}
-
-.header-search :deep(.ant-input-affix-wrapper) {
-  height: 44px;
-  padding: 0 14px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  transition: all var(--transition-smooth);
-  box-shadow: var(--shadow-sm), var(--shadow-inner);
-}
-
-.header-search :deep(.ant-input-affix-wrapper:hover) {
-  background: var(--glass-bg-dark);
-  border-color: var(--primary-light);
-  box-shadow: var(--shadow-md);
-}
-
-.header-search :deep(.ant-input-affix-wrapper-focused) {
-  background: var(--glass-bg-dark);
-  border-color: var(--primary);
-  box-shadow: 0 0 0 4px rgba(0, 102, 255, 0.08), var(--shadow-md);
-}
-
-.header-search :deep(.ant-input) {
-  height: 40px;
-  line-height: 40px;
-  background: transparent;
-  color: var(--text-primary);
-  padding: 0 10px;
-  font-weight: 500;
-}
-
-.header-search :deep(.ant-input::placeholder) {
-  color: var(--text-tertiary);
-  font-weight: 400;
-}
-
-.header-search :deep(.ant-input-prefix) {
-  color: var(--text-tertiary);
-  margin-right: 10px;
-}
-
-.header-search :deep(.ant-input-prefix .anticon) {
-  transition: all var(--transition-smooth);
-}
-
-.header-search:hover :deep(.ant-input-prefix .anticon) {
-  color: var(--primary);
-  transform: scale(1.1);
-}
-
-.header-actions {
+.brand-wrapper {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.sider {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-right: 1px solid var(--border);
-  transition: all var(--transition-smooth);
-  position: relative;
+.brand-logo {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 102, 255, 0.3);
 }
 
-.sider::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 1px;
-  height: 100%;
-  background: linear-gradient(180deg, transparent 0%, var(--primary) 50%, transparent 100%);
-  opacity: 0.1;
+.brand-info {
+  flex: 1;
+  min-width: 0;
 }
 
-.sider :deep(.ant-menu) {
-  background: transparent;
-  border: none;
+.brand-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.brand-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 2px 0 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ==================== Sidebar Navigation ==================== */
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px 12px;
 }
 
-.sider :deep(.ant-menu-item) {
-  margin: 6px 0;
-  padding: 12px 16px;
-  height: auto;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-smooth);
-  color: var(--text-secondary);
-  font-weight: 500;
+.sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.menu-group {
+  margin-bottom: 20px;
+}
+
+.menu-group:last-child {
+  margin-bottom: 0;
+}
+
+.menu-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 12px 8px;
+}
+
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  transition: all 0.2s ease;
   position: relative;
   overflow: hidden;
 }
 
-.sider :deep(.ant-menu-item)::before {
+.menu-item::before {
   content: '';
   position: absolute;
   left: 0;
@@ -695,386 +632,436 @@ onMounted(() => {
   transform: translateY(-50%);
   width: 3px;
   height: 0;
-  background: var(--primary-gradient);
-  border-radius: 0 4px 4px 0;
-  transition: height var(--transition-smooth);
+  background: var(--primary);
+  border-radius: 0 3px 3px 0;
+  transition: height 0.2s ease;
 }
 
-.sider :deep(.ant-menu-item:hover)::before {
+.menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.menu-item:hover::before {
+  height: 20px;
+}
+
+.menu-item-active {
+  background: linear-gradient(90deg, rgba(0, 102, 255, 0.2) 0%, rgba(0, 102, 255, 0.05) 100%);
+  color: #fff;
+}
+
+.menu-item-active::before {
   height: 24px;
 }
 
-.sider :deep(.ant-menu-item:hover) {
-  background: var(--primary-gradient-subtle);
-  color: var(--primary);
-  transform: translateX(4px);
+.menu-icon {
+  font-size: 18px;
+  flex-shrink: 0;
 }
 
-.sider :deep(.ant-menu-item-selected) {
-  background: var(--primary-gradient);
-  color: #fff !important;
-  font-weight: 600;
-  box-shadow: var(--shadow-md), var(--shadow-glow-sm);
-  transform: translateX(4px);
+.menu-label {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-.sider :deep(.ant-menu-item-selected)::before {
-  height: 28px;
+.menu-badge {
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
 }
 
-.content {
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  background: transparent;
-  position: relative;
-  z-index: 1;
+/* ==================== Sidebar Footer ==================== */
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.breadcrumb-wrap {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 18px 28px 0;
-}
-
-.breadcrumb-wrap :deep(.ant-breadcrumb) {
-  margin-bottom: 12px;
-}
-
-.content :deep(.ant-table-container),
-.content :deep(.ant-table-content) {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.user-info {
+.sidebar-user {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
   cursor: pointer;
-  padding: 10px 16px;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-smooth);
-  border: 1px solid transparent;
-  position: relative;
-  overflow: hidden;
+  transition: all 0.2s ease;
 }
 
-.user-info::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--primary-gradient);
-  opacity: 0;
-  transition: opacity var(--transition-smooth);
+.sidebar-user:hover {
+  background: rgba(255, 255, 255, 0.08);
 }
 
-.user-info:hover {
-  border-color: rgba(0, 102, 255, 0.15);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.user-info:hover::before {
-  opacity: 0.05;
+.user-details {
+  flex: 1;
+  min-width: 0;
 }
 
 .user-name {
-  font-weight: 700;
   font-size: 14px;
-  color: var(--text-primary);
-  position: relative;
-}
-
-.header :deep(.ant-btn),
-.header :deep(.ant-btn-text) {
-  color: var(--text-secondary);
-  transition: all var(--transition-smooth);
-  position: relative;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.header :deep(.ant-btn)::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--primary-gradient);
-  opacity: 0;
-  transition: opacity var(--transition-smooth);
-}
-
-.header :deep(.ant-btn:hover)::before {
-  opacity: 0.08;
-}
-
-.header :deep(.ant-btn:hover),
-.header :deep(.ant-btn:focus) {
-  color: var(--primary);
-  transform: translateY(-2px) scale(1.05);
-}
-
-.header :deep(.anticon) {
-  transition: all var(--transition-smooth);
-}
-
-.header :deep(.ant-btn:hover .anticon) {
-  transform: scale(1.1);
-}
-
-.header :deep(.ant-input-search) {
-  border-radius: var(--radius-md);
-  overflow: hidden;
-}
-
-.header :deep(.ant-input) {
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 14px;
-  padding: 6px 40px 6px 36px;
-}
-
-.header :deep(.ant-input::placeholder) {
-  color: var(--text-tertiary);
-  font-size: 14px;
-  font-weight: 400;
-}
-
-.header :deep(.ant-input-prefix) {
-  color: var(--text-tertiary);
-  margin-right: 8px;
-}
-
-.header :deep(.ant-input-prefix .anticon) {
-  font-size: 16px;
-  transition: all var(--transition-smooth);
-}
-
-.header :deep(.ant-input:focus) .ant-input-prefix .anticon {
-  color: var(--primary);
-  transform: scale(1.1);
-}
-
-.header :deep(.ant-badge-count) {
-  background: var(--primary-gradient);
-  box-shadow: var(--shadow-md), var(--shadow-glow-sm);
-  font-weight: 700;
-  font-size: 11px;
-}
-
-.header :deep(.ant-tag) {
-  background: var(--primary-gradient-subtle);
-  border: 1px solid rgba(0, 102, 255, 0.15);
-  color: var(--primary);
-  font-weight: 700;
-  padding: 5px 14px;
-  border-radius: var(--radius-full);
+.user-role {
   font-size: 12px;
-  box-shadow: var(--shadow-xs);
+  color: rgba(255, 255, 255, 0.5);
 }
 
-.header :deep(.ant-tag:hover) {
-  box-shadow: var(--shadow-sm);
-  transform: translateY(-1px);
+/* ==================== Main Wrapper ==================== */
+.main-wrapper {
+  flex: 1;
+  margin-left: 260px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.header :deep(.ant-avatar) {
-  border: 2px solid var(--border-light);
-  transition: all var(--transition-smooth);
-  box-shadow: var(--shadow-sm);
-  position: relative;
+.sidebar-collapsed + .main-wrapper {
+  margin-left: 80px;
 }
 
-.header :deep(.ant-avatar)::after {
-  content: '';
-  position: absolute;
-  inset: -2px;
-  border-radius: inherit;
-  background: var(--primary-gradient);
-  opacity: 0;
-  transition: opacity var(--transition-smooth);
-  z-index: -1;
+/* ==================== Top Header ==================== */
+.top-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 64px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
 }
 
-.header :deep(.ant-avatar:hover)::after {
-  opacity: 0.2;
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-.header :deep(.ant-avatar:hover) {
-  border-color: var(--primary);
-  transform: scale(1.08);
-  box-shadow: var(--shadow-glow-sm);
-}
-
-/* 响应式优化 */
-@media (max-width: 768px) {
-  .header {
-    padding: 0 16px;
-    height: 60px;
-    gap: 10px;
-  }
-
-  .header-search-wrapper {
-    display: none;
-  }
-
-  .brand-name {
-    font-size: 15px;
-  }
-
-  .brand-logo {
-    width: 36px;
-    height: 36px;
-    font-size: 14px;
-  }
-
-  .header-left {
-    gap: 10px;
-  }
-
-  .header-actions {
-    gap: 8px;
-  }
-
-  .menu-trigger {
-    width: 38px;
-    height: 38px;
-  }
-
-  .user-info {
-    padding: 8px 10px;
-    gap: 10px;
-  }
-
-  .user-name {
-    max-width: 110px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .breadcrumb-wrap {
-    padding: 14px 16px 0;
-  }
-}
-
-/* Drawer 样式优化 */
-.mobile-drawer :deep(.ant-drawer-body) {
-  padding: 0;
-  background: var(--card);
-}
-
-.mobile-drawer :deep(.ant-drawer-content) {
-  background: var(--card);
-  border-right: 1px solid var(--border);
-}
-
-.mobile-drawer :deep(.ant-drawer-header) {
-  display: none;
-}
-
-.drawer-content {
-  height: 100%;
-  overflow-y: auto;
-  background: var(--card);
-}
-
-.drawer-menu {
+.collapse-btn {
+  width: 40px;
+  height: 40px;
   border: none;
-  background: transparent;
-  padding: 12px 8px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s ease;
 }
 
-.drawer-menu :deep(.ant-menu-item) {
-  margin: 4px 0;
-  padding: 12px 16px;
-  height: auto;
-  line-height: 1.5;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-base);
+.collapse-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--primary);
+}
+
+/* ==================== Search ==================== */
+.header-search {
+  position: relative;
+  width: 320px;
+}
+
+.header-search input {
+  width: 100%;
+  height: 42px;
+  padding: 0 44px 0 40px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 14px;
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.header-search input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
+  background: #fff;
+}
+
+.header-search input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  font-size: 16px;
+  pointer-events: none;
+}
+
+.search-hint {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  background: var(--bg-tertiary);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-family: inherit;
+  pointer-events: none;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  z-index: 100;
+}
+
+.search-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.search-item {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
+  padding: 12px 16px;
+  text-decoration: none;
+  transition: all 0.15s ease;
 }
 
-.drawer-menu :deep(.ant-menu-item:hover) {
-  background: var(--primary-gradient-subtle);
+.search-item:hover {
+  background: var(--bg-secondary);
+}
+
+.search-item-icon {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.search-item-content {
+  flex: 1;
+}
+
+.search-item-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.search-item-path {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* ==================== Header Right ==================== */
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.env-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(5, 150, 105, 0.1);
+  border: 1px solid rgba(5, 150, 105, 0.2);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.env-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--success);
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.icon-btn:hover {
+  background: var(--bg-secondary);
   color: var(--primary);
 }
 
-.drawer-menu :deep(.ant-menu-item-selected) {
-  background: var(--primary-gradient);
-  color: #fff;
-  font-weight: 600;
-  box-shadow: var(--shadow-glow-sm);
+.header-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 0 8px;
 }
 
-.drawer-menu :deep(.ant-menu-item .anticon) {
-  font-size: 18px;
-  min-width: 18px;
-  transition: all var(--transition-base);
-}
-
-.drawer-menu :deep(.ant-menu-item:hover .anticon) {
-  transform: scale(1.1);
-}
-
-.drawer-menu :deep(.ant-menu-item-selected .anticon) {
-  color: #fff;
-}
-
-.drawer-menu :deep(.ant-menu-item span) {
-  font-size: 14px;
-  font-weight: 500;
-}
-
-/* Drawer 滚动条样式优化 */
-.drawer-content::-webkit-scrollbar {
-  width: 4px;
-}
-
-.drawer-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.drawer-content::-webkit-scrollbar-thumb {
-  background: var(--border-dark);
-  border-radius: 2px;
-}
-
-.drawer-content::-webkit-scrollbar-thumb:hover {
-  background: var(--primary);
-}
-
-:deep(.notif-popover .ant-popover-inner) {
-  padding: 0;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-lg);
-}
-
-.notif-panel {
-  width: 360px;
-  padding: 16px 16px 12px;
-  max-height: min(70vh, 520px) !important;
+.user-btn {
   display: flex;
-  flex-direction: column;
-  overflow: hidden !important;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.user-btn:hover {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+}
+
+.user-btn-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.dropdown-arrow {
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+/* ==================== Notification Dropdown ==================== */
+.notif-dropdown {
+  width: 380px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
 
 .notif-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  padding: 16px 16px 12px;
   border-bottom: 1px solid var(--border);
 }
 
-.notif-title {
-  font-weight: 700;
+.notif-header h3 {
   font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.notif-dropdown :deep(.ant-tabs) {
+  padding: 0 16px;
+  margin-bottom: 0;
+}
+
+.notif-dropdown :deep(.ant-tabs-nav) {
+  margin-bottom: 12px;
+}
+
+.notif-list {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+}
+
+.notif-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.notif-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.notif-item:hover {
+  background: var(--bg-secondary);
+}
+
+.notif-icon {
+  width: 36px;
+  height: 36px;
+  background: var(--primary-gradient-subtle);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.notif-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notif-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.notif-item-title {
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
@@ -1084,91 +1071,265 @@ onMounted(() => {
   white-space: nowrap;
 }
 
-.notif-panel :deep(.ant-tabs) {
-  margin-bottom: 12px;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.notif-panel :deep(.ant-tabs-content-holder) {
-  min-height: 0;
-  flex: 1;
-  overflow: hidden !important;
-}
-
-.notif-panel :deep(.ant-tabs-content) {
-  height: 100%;
-}
-
-.notif-panel :deep(.ant-tabs-tabpane) {
-  height: 100%;
-  overflow: hidden !important;
-}
-
-.notif-panel :deep(.ant-list) {
-  flex: 1;
-  height: 100%;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.notif-panel :deep(.ant-spin-nested-loading) {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  overflow-y: auto !important;
-  -webkit-overflow-scrolling: touch;
-}
-
-.notif-panel :deep(.ant-spin-container) {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  overflow: visible !important;
-}
-
-.notif-panel :deep(.ant-list-items) {
-  overflow-y: auto !important;
-  max-height: 100% !important;
-  padding-right: 2px;
-}
-
-.notif-panel :deep(.ant-list-items::-webkit-scrollbar) {
-  width: 4px;
-}
-
-.notif-panel :deep(.ant-list-items::-webkit-scrollbar-thumb) {
-  background: var(--border-dark);
-  border-radius: 2px;
-}
-
-.notif-panel :deep(.ant-list-items::-webkit-scrollbar-thumb:hover) {
-  background: var(--primary);
-}
-
-.notif-panel :deep(.ant-tabs-tab) {
-  font-weight: 500;
+.notif-text {
+  font-size: 13px;
   color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.notif-panel :deep(.ant-tabs-tab-active) {
-  color: var(--primary);
-  font-weight: 600;
+/* ==================== Main Content ==================== */
+.main-content {
+  flex: 1;
+  padding: 0;
+  background: var(--bg-primary);
 }
 
-.notif-panel :deep(.ant-list-item) {
+.content-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 24px 40px;
+}
+
+.page-breadcrumb {
+  margin-bottom: 16px;
+}
+
+.page-breadcrumb :deep(.ant-breadcrumb) {
+  font-size: 13px;
+}
+
+.page-breadcrumb :deep(.ant-breadcrumb-link) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+}
+
+.page-breadcrumb :deep(.ant-breadcrumb-separator) {
+  color: var(--text-tertiary);
+}
+
+/* ==================== Mobile ==================== */
+.mobile-header {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  z-index: 100;
+  padding: 0 16px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-menu-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  color: var(--text-primary);
   cursor: pointer;
-  transition: all var(--transition-base);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-  margin: 4px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.notif-panel :deep(.ant-list-item:hover) {
-  background: var(--bg-secondary);
-  transform: translateX(4px);
+.mobile-brand {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.mobile-drawer :deep(.ant-drawer-content) {
+  background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+}
+
+.mobile-drawer :deep(.ant-drawer-header) {
+  display: none;
+}
+
+.mobile-drawer-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px;
+}
+
+.mobile-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mobile-drawer-header .brand-logo {
+  width: 40px;
+  height: 40px;
+}
+
+.mobile-drawer-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.mobile-nav {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.mobile-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 16px 12px 8px;
+}
+
+.mobile-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.mobile-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.mobile-menu-item-active {
+  background: rgba(0, 102, 255, 0.2);
+  color: #fff;
+}
+
+.mobile-menu-icon {
+  font-size: 18px;
+}
+
+.mobile-menu-item span:not(.mobile-menu-icon, .mobile-menu-badge) {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.mobile-menu-badge {
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* ==================== Transitions ==================== */
+.fade-slide-enter-active, .fade-slide-leave-active {
+  transition: all 0.2s ease;
+}
+
+.fade-slide-enter-from, .fade-slide-leave-to {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+.page-enter-active, .page-leave-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-12px);
+}
+
+.dropdown-enter-active, .dropdown-leave-active {
+  transition: all 0.2s ease;
+  transform-origin: top;
+}
+
+.dropdown-enter-from, .dropdown-leave-to {
+  opacity: 0;
+  transform: scaleY(0.95);
+}
+
+/* ==================== Responsive ==================== */
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+
+  .main-wrapper {
+    margin-left: 0;
+  }
+
+  .sidebar-collapsed + .main-wrapper {
+    margin-left: 0;
+  }
+
+  .mobile-header {
+    display: flex;
+  }
+
+  .top-header {
+    display: none;
+  }
+
+  .main-content {
+    padding-top: 56px;
+  }
+
+  .content-container {
+    padding: 16px 16px 24px;
+  }
+
+  .page-breadcrumb {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-search {
+    width: 240px;
+  }
+
+  .notif-dropdown {
+    width: calc(100vw - 32px);
+    max-width: 380px;
+  }
+
+  .header-actions .env-badge {
+    display: none;
+  }
+
+  .header-divider {
+    display: none;
+  }
+
+  .user-btn-name,
+  .dropdown-arrow {
+    display: none;
+  }
 }
 </style>

@@ -233,6 +233,9 @@ func (s *ScheduledTaskService) executeTask(ctx context.Context, cfg ScheduledTas
 		case "vps_refresh":
 			if s.vps != nil {
 				_, runErr = s.vps.RefreshAll(ctx, 200)
+				if runErr == nil && s.orders != nil {
+					_, _ = s.orders.ReconcileProvisioningOrders(ctx, 50)
+				}
 			}
 		case "order_provision_watchdog":
 			if s.orders != nil {

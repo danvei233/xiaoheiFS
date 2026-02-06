@@ -34,6 +34,17 @@ See openapi.yaml for machine-readable spec.
 - payment_providers_enabled, payment_providers_config, payment_plugins
 - payment_plugin_dir, payment_plugin_upload_password
 - realname_enabled, realname_provider, realname_block_actions
+- auth_register_enabled
+- auth_register_required_fields (JSON array)
+- auth_password_min_len
+- auth_password_require_upper / lower / number / symbol
+- auth_register_verify_type (none|email|sms)
+- auth_register_verify_ttl_sec
+- auth_register_captcha_enabled
+- auth_register_email_subject / auth_register_email_body
+- auth_register_sms_plugin_id / auth_register_sms_instance_id / auth_register_sms_template_id
+- auth_login_captcha_enabled
+- auth_login_rate_limit_enabled / auth_login_rate_limit_window_sec / auth_login_rate_limit_max_attempts
 
 ## Debug
 - Status: GET /admin/api/v1/debug/status
@@ -86,15 +97,20 @@ Endpoint: GET /api/v1/orders/{id}/events
 - Verify: POST /api/v1/realname/verify
 
 ## End-to-end curl flow
-1) Captcha + register + login
+1) Auth settings + captcha + register + login
 
+    curl http://localhost:8080/api/v1/auth/settings
     curl http://localhost:8080/api/v1/captcha
+    # optional: send register code (email/sms when enabled)
+    curl -X POST http://localhost:8080/api/v1/auth/register/code \
+      -H "Content-Type: application/json" \
+      -d '{"email":"u1@example.com","captcha_id":"...","captcha_code":"..."}'
     curl -X POST http://localhost:8080/api/v1/auth/register \
       -H "Content-Type: application/json" \
-      -d '{"username":"u1","email":"u1@example.com","qq":"123","password":"pass","captcha_id":"...","captcha_code":"..."}'
+      -d '{"username":"u1","email":"u1@example.com","qq":"123","phone":"13800000000","password":"pass","captcha_id":"...","captcha_code":"...","verify_code":"123456"}'
     curl -X POST http://localhost:8080/api/v1/auth/login \
       -H "Content-Type: application/json" \
-      -d '{"username":"u1","password":"pass"}'
+      -d '{"username":"u1","password":"pass","captcha_id":"...","captcha_code":"..."}'
 
 2) Catalog
 

@@ -18,6 +18,7 @@ type Server struct {
 
 func NewServer(handler *Handler, middleware *Middleware) *Server {
 	r := gin.Default()
+	r.Use(corsMiddleware())
 	r.Static("/uploads", "./uploads")
 
 	// Installer gate: before installation completes, redirect site traffic to /install and
@@ -139,6 +140,7 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 	admin := r.Group("/admin/api/v1")
 	{
 		admin.POST("/auth/login", handler.AdminLogin)
+		admin.GET("/avatar/qq/:qq", handler.AdminQQAvatar)
 		admin.Use(middleware.RequireAdminPermissionAuto())
 		admin.GET("/users", handler.AdminUsers)
 		admin.POST("/users", handler.AdminUserCreate)
@@ -310,6 +312,46 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 	public.POST("/auth/reset-password", handler.AdminResetPassword)
 
 	return &Server{Engine: r}
+}
+
+func corsMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if gin.Mode() != gin.DebugMode {
+			c.Next()
+			return
+		}
+		origin := strings.TrimSpace(c.GetHeader("Origin"))
+		if origin == "" || !isAllowedLocalOrigin(origin) {
+			c.Next()
+			return
+		}
+
+		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept,X-API-Key")
+		c.Header("Access-Control-Allow-Credentials", "true")
+
+		if c.Request.Method == http.MethodOptions {
+			c.Status(http.StatusNoContent)
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
+func isAllowedLocalOrigin(origin string) bool {
+	lower := strings.ToLower(origin)
+	if strings.HasPrefix(lower, "http://localhost:") || strings.HasPrefix(lower, "https://localhost:") {
+		return true
+	}
+	if strings.HasPrefix(lower, "http://127.0.0.1:") || strings.HasPrefix(lower, "https://127.0.0.1:") {
+		return true
+	}
+	if strings.HasPrefix(lower, "http://[::1]:") || strings.HasPrefix(lower, "https://[::1]:") {
+		return true
+	}
+	return false
 }
 
 func installGateMiddleware(handler *Handler) gin.HandlerFunc {

@@ -2352,14 +2352,6 @@ func (h *Handler) AdminUserDetail(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
-	if user.Role == domain.UserRoleAdmin {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "admin user not editable"})
-		return
-	}
-	if user.Role == domain.UserRoleAdmin {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
-		return
-	}
 	c.JSON(http.StatusOK, toUserDTO(user))
 }
 
@@ -2588,6 +2580,43 @@ func (h *Handler) AdminUserImpersonate(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"access_token": signed, "expires_in": 86400, "user": gin.H{"id": user.ID, "username": user.Username, "role": user.Role}})
+}
+
+func (h *Handler) AdminQQAvatar(c *gin.Context) {
+	qq := strings.TrimSpace(c.Param("qq"))
+	if qq == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid qq"})
+		return
+	}
+	for _, r := range qq {
+		if r < '0' || r > '9' {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid qq"})
+			return
+		}
+	}
+	url := "https://q1.qlogo.cn/g?b=qq&nk=" + qq + "&s=100"
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "request failed"})
+		return
+	}
+	client := &http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "fetch failed"})
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "avatar not found"})
+		return
+	}
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+	c.Header("Cache-Control", "public, max-age=86400")
+	c.DataFromReader(http.StatusOK, resp.ContentLength, contentType, resp.Body, nil)
 }
 
 func (h *Handler) AdminOrders(c *gin.Context) {

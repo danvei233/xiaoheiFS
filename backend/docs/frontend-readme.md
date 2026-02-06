@@ -36,9 +36,11 @@ Homepage/Product page rendering notes:
 - Robot inbound API key: `Authorization: Bearer <api_key>` or `X-API-Key`
 
 User login flow:
-1) GET `/api/v1/captcha`
-2) POST `/api/v1/auth/register`
-3) POST `/api/v1/auth/login` -> `access_token`
+1) GET `/api/v1/auth/settings`
+2) GET `/api/v1/captcha` (if enabled)
+3) POST `/api/v1/auth/register/code` (if email/sms verification enabled)
+4) POST `/api/v1/auth/register`
+5) POST `/api/v1/auth/login` -> `access_token`
 
 Admin login:
 - POST `/admin/api/v1/auth/login` -> `access_token`
@@ -206,6 +208,17 @@ SSE notes:
 - automation_timeout_sec
 - automation_retry
 - automation_dry_run (true/false)
+- auth_register_enabled
+- auth_register_required_fields (JSON array)
+- auth_password_min_len
+- auth_password_require_upper / lower / number / symbol
+- auth_register_verify_type (none|email|sms)
+- auth_register_verify_ttl_sec
+- auth_register_captcha_enabled
+- auth_register_email_subject / auth_register_email_body
+- auth_register_sms_plugin_id / auth_register_sms_instance_id / auth_register_sms_template_id
+- auth_login_captcha_enabled
+- auth_login_rate_limit_enabled / auth_login_rate_limit_window_sec / auth_login_rate_limit_max_attempts
 
 ## Notes
 - `plan_groups.line_id` is required for provisioning (automation create_host).
