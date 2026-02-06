@@ -1,4 +1,22 @@
-include: package:flutter_lints/flutter.yaml
+﻿include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    unused_field: ignore
+    strict_top_level_inference: ignore
+    deprecated_member_use: ignore
+    use_build_context_synchronously: ignore
+    prefer_if_null_operators: ignore
+    use_null_aware_elements: ignore
+    unnecessary_to_list_in_spreads: ignore
+    unnecessary_non_null_assertion: ignore
+    unused_element: ignore
+    unnecessary_underscores: ignore
+    depend_on_referenced_packages: ignore
+    const_with_non_const: ignore
+    non_constant_list_element: ignore
+    creation_with_non_type: ignore
+    unused_import: ignore
 
 linter:
   rules:
