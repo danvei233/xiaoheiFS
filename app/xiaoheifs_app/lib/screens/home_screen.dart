@@ -165,12 +165,16 @@ class _HeaderSliverState extends State<_HeaderSliver> {
   Widget build(BuildContext context) {
     final session = context.read<AppState>().session;
     final username = session?.username ?? '管理员';
+    final topPadding = MediaQuery.of(context).padding.top;
 
     return SliverAppBar(
-      expandedHeight: 220,
+      expandedHeight: 260,
       pinned: true,
       floating: false,
-      backgroundColor: const Color(0xFF00BFA6),
+      toolbarHeight: 56,
+      backgroundColor: Colors.transparent,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
       actions: [
         IconButton(
           icon: const Icon(Icons.settings, color: Colors.white),
@@ -181,176 +185,115 @@ class _HeaderSliverState extends State<_HeaderSliver> {
         ),
       ],
       flexibleSpace: FlexibleSpaceBar(
-        collapseMode: CollapseMode.pin,
-        background: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              colors: [Color(0xFF00BFA6), Color(0xFF008B7A)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Text(
-                        '小黑云',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const Spacer(),
-                      FutureBuilder<Map<String, dynamic>>(
-                        future: _future,
-                        builder: (context, snapshot) {
-                          final profile = snapshot.data ?? {};
-                          final baseUrl = _client?.baseUrl ?? '';
-                          final avatarUrl = resolveAvatarUrl(
-                            baseUrl: baseUrl,
-                            qq: profile['qq']?.toString(),
-                            avatarUrl: profile['avatar_url'] as String?,
-                          );
-                          final headers = avatarHeaders(
-                            token: session?.token,
-                            apiKey: session?.apiKey,
-                          );
-                          return CircleAvatar(
-                            radius: 18,
-                            backgroundColor: Colors.white24,
-                            child: avatarUrl.isNotEmpty
-                                ? ClipOval(
-                                    child: Image.network(
-                                      avatarUrl,
-                                      width: 36,
-                                      height: 36,
-                                      fit: BoxFit.cover,
-                                      headers: headers.isEmpty ? null : headers,
-                                      errorBuilder: (context, error, stack) {
-                                        return const Icon(
-                                          Icons.person,
-                                          color: Colors.white,
-                                        );
-                                      },
-                                    ),
-                                  )
-                                : Text(
-                                    username.isNotEmpty
-                                        ? username.characters.first
-                                        : '?',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.all(14),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    '今日概览',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '${widget.data.totalOrders}',
-                                        style: const TextStyle(
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF00BFA6),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        '笔订单',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                      if (widget.data.pendingReview > 0) ...[
-                                        const SizedBox(width: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFFF6B6B),
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            '${widget.data.pendingReview} 待审核',
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          Container(
-                            width: 68,
-                            height: double.infinity,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFFF0F7F6),
-                              borderRadius: BorderRadius.only(
-                                topRight: Radius.circular(16),
-                                bottomRight: Radius.circular(16),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.receipt_long_rounded,
-                              size: 34,
-                              color: Color(0xFF00BFA6),
-                            ),
-                          ),
-                        ],
-                      ),
+        collapseMode: CollapseMode.parallax,
+        background: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.network(
+              'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1400&q=80',
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stack) {
+                return Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF00BFA6), Color(0xFF008B7A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
                     ),
                   ),
-                ],
+                );
+              },
+            ),
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Color(0xCC0B3D33),
+                    Color(0x801B6B5C),
+                    Color(0x3300BFA6),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
             ),
-          ),
+            SafeArea(
+              top: false,
+              bottom: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(height: kToolbarHeight - 8),
+                    Row(
+                      children: [
+                        const Text(
+                          '小黑云',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const Spacer(),
+                        FutureBuilder<Map<String, dynamic>>(
+                          future: _future,
+                          builder: (context, snapshot) {
+                            final profile = snapshot.data ?? {};
+                            final baseUrl = _client?.baseUrl ?? '';
+                            final avatarUrl = resolveAvatarUrl(
+                              baseUrl: baseUrl,
+                              qq: profile['qq']?.toString(),
+                              avatarUrl: profile['avatar_url'] as String?,
+                            );
+                            final headers = avatarHeaders(
+                              token: session?.token,
+                              apiKey: session?.apiKey,
+                            );
+                            return CircleAvatar(
+                              radius: 18,
+                              backgroundColor: Colors.white24,
+                              child: avatarUrl.isNotEmpty
+                                  ? ClipOval(
+                                      child: Image.network(
+                                        avatarUrl,
+                                        width: 36,
+                                        height: 36,
+                                        fit: BoxFit.cover,
+                                        headers:
+                                            headers.isEmpty ? null : headers,
+                                        errorBuilder:
+                                            (context, error, stack) {
+                                          return const Icon(
+                                            Icons.person,
+                                            color: Colors.white,
+                                          );
+                                        },
+                                      ),
+                                    )
+                                  : Text(
+                                      username.isNotEmpty
+                                          ? username.characters.first
+                                          : '?',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Spacer(),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

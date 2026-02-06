@@ -84,7 +84,6 @@ class _OrdersViewState extends State<_OrdersView> {
           ),
           body: Column(
             children: [
-              _HeaderCard(theme: theme),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: _FilterCard(
@@ -175,69 +174,6 @@ class _OrdersViewState extends State<_OrdersView> {
           onDelete: () => state.delete(item),
         );
       },
-    );
-  }
-}
-
-class _HeaderCard extends StatelessWidget {
-  final ThemeData theme;
-
-  const _HeaderCard({required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = theme.colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              colorScheme.primaryContainer.withOpacity(0.35),
-              colorScheme.secondaryContainer.withOpacity(0.35),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.shopping_bag_outlined,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '订单审核',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '待审核订单与开通进度跟踪',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -425,96 +361,161 @@ class _OrderTile extends StatelessWidget {
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onOpenDetail,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: statusMeta.color.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        statusMeta.label,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: statusMeta.color,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const Spacer(),
-                    if (busy)
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else
-                      const Icon(Icons.chevron_right_rounded, size: 18),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  item.orderNo.isEmpty ? '订单 #${item.id}' : item.orderNo,
-                  style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 6,
-                  children: [
-                    _InfoChip(icon: Icons.person_outline, text: username),
-                    _InfoChip(icon: Icons.badge_outlined, text: 'ID ${item.userId}'),
-                    _InfoChip(icon: Icons.schedule, text: _formatLocal(item.createdAt)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      '¥${item.totalAmount.toStringAsFixed(2)} ${item.currency}',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.primary,
-                      ),
-                    ),
-                    const Spacer(),
-                    Wrap(
-                      spacing: 8,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Row(
+          children: [
+            // 左侧状态颜色条
+            Container(
+              width: 4,
+              height: 140,
+              color: statusMeta.color,
+            ),
+            Expanded(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onOpenDetail,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextButton(onPressed: onOpenDetail, child: const Text('详情')),
-                        TextButton(
-                          onPressed: item.canReview && !busy ? onApprove : null,
-                          child: const Text('通过'),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: statusMeta.color.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: statusMeta.color.withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _statusIcon(item.status),
+                                    size: 14,
+                                    color: statusMeta.color,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    statusMeta.label,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: statusMeta.color,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Spacer(),
+                            if (busy)
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            else
+                              Icon(
+                                Icons.chevron_right_rounded,
+                                size: 20,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                          ],
                         ),
-                        TextButton(
-                          onPressed: item.canReview && !busy ? onReject : null,
-                          child: const Text('驳回'),
+                        const SizedBox(height: 10),
+                        Text(
+                          item.orderNo.isEmpty ? '订单 #${item.id}' : item.orderNo,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.3,
+                          ),
                         ),
-                        TextButton(
-                          onPressed: !busy ? onRetry : null,
-                          child: const Text('重试'),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 6,
+                          children: [
+                            _InfoChip(icon: Icons.person_outline, text: username),
+                            _InfoChip(icon: Icons.badge_outlined, text: 'ID ${item.userId}'),
+                            _InfoChip(icon: Icons.schedule, text: _formatLocal(item.createdAt)),
+                          ],
                         ),
-                        TextButton(
-                          onPressed: !busy ? onDelete : null,
-                          child: const Text('删除'),
+                        const SizedBox(height: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    colorScheme.primary.withOpacity(0.1),
+                                    colorScheme.primary.withOpacity(0.05),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '¥${item.totalAmount.toStringAsFixed(2)} ${item.currency}',
+                                style: theme.textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: colorScheme.primary,
+                                  fontSize: 20,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                _ActionButton(
+                                  label: '详情',
+                                  icon: Icons.visibility_outlined,
+                                  onPressed: onOpenDetail,
+                                  isOutlined: true,
+                                ),
+                                _ActionButton(
+                                  label: '通过',
+                                  icon: Icons.check_circle_outline,
+                                  onPressed: item.canReview && !busy ? onApprove : null,
+                                  color: const Color(0xFF00A68C),
+                                ),
+                                _ActionButton(
+                                  label: '驳回',
+                                  icon: Icons.cancel_outlined,
+                                  onPressed: item.canReview && !busy ? onReject : null,
+                                  color: const Color(0xFFEF6C00),
+                                ),
+                                _ActionButton(
+                                  label: '重试',
+                                  icon: Icons.refresh_outlined,
+                                  onPressed: !busy ? onRetry : null,
+                                  isOutlined: true,
+                                ),
+                                _ActionButton(
+                                  label: '删除',
+                                  icon: Icons.delete_outline,
+                                  onPressed: !busy ? onDelete : null,
+                                  color: const Color(0xFFD32F2F),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ],
-                    )
-                  ],
+                    ),
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -541,6 +542,67 @@ class _InfoChip extends StatelessWidget {
           style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
         ),
       ],
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Color? color;
+  final bool isOutlined;
+
+  const _ActionButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.color,
+    this.isOutlined = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final foreground = color ?? theme.colorScheme.primary;
+    final style = ButtonStyle(
+      padding: WidgetStateProperty.all(
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      ),
+      minimumSize: WidgetStateProperty.all(const Size(0, 32)),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      textStyle: WidgetStateProperty.all(
+        theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+      ),
+    );
+
+    final content = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 16, color: isOutlined ? foreground : Colors.white),
+        const SizedBox(width: 6),
+        Text(label),
+      ],
+    );
+
+    if (isOutlined) {
+      return OutlinedButton(
+        onPressed: onPressed,
+        style: style.copyWith(
+          foregroundColor: WidgetStateProperty.all(foreground),
+          side: WidgetStateProperty.all(BorderSide(color: foreground)),
+        ),
+        child: content,
+      );
+    }
+
+    return FilledButton(
+      onPressed: onPressed,
+      style: style.copyWith(
+        backgroundColor: WidgetStateProperty.all(foreground),
+        foregroundColor: WidgetStateProperty.all(Colors.white),
+      ),
+      child: content,
     );
   }
 }
@@ -929,6 +991,29 @@ class _StatusMeta {
   const _StatusMeta(this.label, this.color);
 }
 
+IconData _statusIcon(String status) {
+  switch (status) {
+    case 'pending_payment':
+      return Icons.payments_outlined;
+    case 'pending_review':
+      return Icons.hourglass_bottom_rounded;
+    case 'approved':
+      return Icons.check_circle_outline;
+    case 'provisioning':
+      return Icons.autorenew_rounded;
+    case 'active':
+      return Icons.verified_rounded;
+    case 'failed':
+      return Icons.error_outline;
+    case 'rejected':
+      return Icons.block_outlined;
+    case 'canceled':
+      return Icons.cancel_outlined;
+    default:
+      return Icons.help_outline;
+  }
+}
+
 _StatusMeta _statusMeta(String status, ColorScheme scheme) {
   switch (status) {
     case 'pending_payment':
@@ -976,4 +1061,3 @@ double _asDouble(dynamic value) {
   if (value is String) return double.tryParse(value) ?? 0;
   return 0;
 }
-

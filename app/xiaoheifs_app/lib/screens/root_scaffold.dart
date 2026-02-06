@@ -26,10 +26,8 @@ class _RootScaffoldState extends State<RootScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    final active = _tabs[_index];
     return Scaffold(
-      // 主页不显示外层 AppBar，因为 HomeScreen 有自己的 SliverAppBar
-      appBar: _index == 0 ? null : AppBar(title: Text(active.title)),
+      // 由各页面自行提供顶栏，底栏切换时不使用外层 AppBar
       body: IndexedStack(
         index: _index,
         children: _tabs.map((tab) => tab.widget).toList(),
