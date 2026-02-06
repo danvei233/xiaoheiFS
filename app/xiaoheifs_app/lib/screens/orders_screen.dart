@@ -230,20 +230,35 @@ class _FilterCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _StatusChip(value: '', label: '全部', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'pending_review', label: '待审核', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'provisioning', label: '开通中', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'failed', label: '失败', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'pending_payment', label: '待支付', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'approved', label: '已通过', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'active', label: '已完成', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'rejected', label: '已驳回', current: status, onChanged: onStatusChanged),
-                _StatusChip(value: 'canceled', label: '已取消', current: status, onChanged: onStatusChanged),
-              ],
+            SizedBox(
+              height: 44,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: 9,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  switch (index) {
+                    case 0:
+                      return _StatusChip(value: '', label: '全部', current: status, onChanged: onStatusChanged);
+                    case 1:
+                      return _StatusChip(value: 'pending_review', label: '待审核', current: status, onChanged: onStatusChanged);
+                    case 2:
+                      return _StatusChip(value: 'provisioning', label: '开通中', current: status, onChanged: onStatusChanged);
+                    case 3:
+                      return _StatusChip(value: 'failed', label: '失败', current: status, onChanged: onStatusChanged);
+                    case 4:
+                      return _StatusChip(value: 'pending_payment', label: '待支付', current: status, onChanged: onStatusChanged);
+                    case 5:
+                      return _StatusChip(value: 'approved', label: '已通过', current: status, onChanged: onStatusChanged);
+                    case 6:
+                      return _StatusChip(value: 'active', label: '已完成', current: status, onChanged: onStatusChanged);
+                    case 7:
+                      return _StatusChip(value: 'rejected', label: '已驳回', current: status, onChanged: onStatusChanged);
+                    default:
+                      return _StatusChip(value: 'canceled', label: '已取消', current: status, onChanged: onStatusChanged);
+                  }
+                },
+              ),
             ),
             if (expanded) ...[
               const SizedBox(height: 12),
@@ -313,10 +328,45 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = current == value || (current.isEmpty && value.isEmpty);
-    return ChoiceChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onChanged(value),
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = selected
+        ? colorScheme.primaryContainer.withOpacity(0.6)
+        : colorScheme.surface;
+    final borderColor = selected
+        ? colorScheme.primary
+        : colorScheme.outlineVariant.withOpacity(0.7);
+    final textColor = selected ? colorScheme.primary : colorScheme.onSurface;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => onChanged(value),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                Icon(Icons.check_rounded, size: 16, color: textColor),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -564,7 +614,8 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final foreground = color ?? theme.colorScheme.primary;
+    final colorScheme = theme.colorScheme;
+    final foreground = color ?? colorScheme.primary;
     final style = ButtonStyle(
       padding: WidgetStateProperty.all(
         const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -579,7 +630,7 @@ class _ActionButton extends StatelessWidget {
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: isOutlined ? foreground : Colors.white),
+        Icon(icon, size: 16),
         const SizedBox(width: 6),
         Text(label),
       ],
@@ -589,8 +640,18 @@ class _ActionButton extends StatelessWidget {
       return OutlinedButton(
         onPressed: onPressed,
         style: style.copyWith(
-          foregroundColor: WidgetStateProperty.all(foreground),
-          side: WidgetStateProperty.all(BorderSide(color: foreground)),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? colorScheme.onSurfaceVariant
+                : foreground,
+          ),
+          side: WidgetStateProperty.resolveWith(
+            (states) => BorderSide(
+              color: states.contains(WidgetState.disabled)
+                  ? colorScheme.outlineVariant
+                  : foreground,
+            ),
+          ),
         ),
         child: content,
       );
@@ -599,8 +660,16 @@ class _ActionButton extends StatelessWidget {
     return FilledButton(
       onPressed: onPressed,
       style: style.copyWith(
-        backgroundColor: WidgetStateProperty.all(foreground),
-        foregroundColor: WidgetStateProperty.all(Colors.white),
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? colorScheme.surfaceVariant
+              : foreground,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? colorScheme.onSurfaceVariant
+              : Colors.white,
+        ),
       ),
       child: content,
     );

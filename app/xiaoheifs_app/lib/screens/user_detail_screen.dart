@@ -121,35 +121,44 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _InfoCard(
-              title: '用户信息',
-              leading: _Avatar(
-                url: _avatarUrl(
-                  _user,
-                  context.read<AppState>().apiClient?.baseUrl ?? '',
-                ),
-                radius: 22,
+            _UserHeader(
+              user: _user,
+              avatarUrl: _avatarUrl(
+                _user,
+                context.read<AppState>().apiClient?.baseUrl ?? '',
               ),
-              lines: [
-                '用户ID：${_user['id'] ?? '-'}',
-                '用户名：${_user['username'] ?? '-'}',
-                '邮箱：${_user['email'] ?? '-'}',
-                '手机号：${_user['phone'] ?? '-'}',
-                'QQ：${_user['qq'] ?? '-'}',
-                '状态：${_user['status'] ?? '-'}',
-                '角色：${_user['role'] ?? '-'}',
-                '创建时间：${_formatLocal(_user['created_at']?.toString() ?? '')}',
-              ],
             ),
             const SizedBox(height: 12),
-            _ActionBar(
-              busy: _busy,
-              onToggle: _toggleStatus,
-              onReset: _resetPassword,
-              onImpersonate: _impersonate,
+            _QuickStatsRow(
+              balance: _wallet['balance'],
+              frozen: _wallet['frozen'],
+              ordersCount: _orders.length,
+              txCount: _walletTx.length,
+            ),
+            const SizedBox(height: 12),
+            _UserInfoPanel(user: _user),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .outlineVariant
+                      .withOpacity(0.5),
+                ),
+              ),
+              child: _ActionBar(
+                busy: _busy,
+                onToggle: _toggleStatus,
+                onReset: _resetPassword,
+                onImpersonate: _impersonate,
+              ),
             ),
             const SizedBox(height: 16),
-            _SectionTitle(title: '实名认证'),
+            const _SectionHeader(title: '实名认证', icon: Icons.verified_user),
             _RealnameCard(
               status: _realnameStatus,
               reasonController: _realnameReason,
@@ -160,22 +169,30 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
               onSubmit: _updateRealname,
             ),
             const SizedBox(height: 16),
-            _SectionTitle(title: '钱包余额'),
-            _InfoCard(
-              title: '余额',
-              lines: [
-                '可用余额：￥${_money(_wallet['balance'])}',
-                '冻结余额：￥${_money(_wallet['frozen'])}',
-              ],
+            const _SectionHeader(
+              title: '钱包余额',
+              icon: Icons.account_balance_wallet,
+            ),
+            _WalletSummaryCard(
+              balance: _wallet['balance'],
+              frozen: _wallet['frozen'],
             ),
             const SizedBox(height: 16),
-            _SectionTitle(title: '订单记录'),
+            _SectionHeader(
+              title: '订单记录',
+              icon: Icons.receipt_long,
+              count: _orders.length,
+            ),
             if (_orders.isEmpty)
               const _EmptyLine(text: '暂无订单')
             else
               ..._orders.map((order) => _OrderTile(order: order)),
             const SizedBox(height: 16),
-            _SectionTitle(title: '钱包记录'),
+            _SectionHeader(
+              title: '钱包记录',
+              icon: Icons.history,
+              count: _walletTx.length,
+            ),
             if (_walletTx.isEmpty)
               const _EmptyLine(text: '暂无钱包记录')
             else
@@ -318,19 +335,490 @@ class _ActionBar extends StatelessWidget {
       spacing: 8,
       runSpacing: 8,
       children: [
-        FilledButton(
+        FilledButton.icon(
           onPressed: busy ? null : onToggle,
-          child: const Text('禁用/启用'),
+          icon: const Icon(Icons.power_settings_new_rounded),
+          label: const Text('禁用/启用'),
         ),
-        OutlinedButton(
+        OutlinedButton.icon(
           onPressed: busy ? null : onReset,
-          child: const Text('重置密码'),
+          icon: const Icon(Icons.lock_reset_rounded),
+          label: const Text('重置密码'),
         ),
-        OutlinedButton(
+        OutlinedButton.icon(
           onPressed: busy ? null : onImpersonate,
-          child: const Text('以此用户登录'),
+          icon: const Icon(Icons.login_rounded),
+          label: const Text('以此用户登录'),
         ),
       ],
+    );
+  }
+}
+
+class _UserHeader extends StatelessWidget {
+  final Map<String, dynamic> user;
+  final String avatarUrl;
+
+  const _UserHeader({required this.user, required this.avatarUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final status = (user['status'] ?? '').toString();
+    final role = (user['role'] ?? '').toString();
+    final username = (user['username'] ?? '-').toString();
+    final email = (user['email'] ?? '').toString();
+    final phone = (user['phone'] ?? '').toString();
+    final qq = (user['qq'] ?? '').toString();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            colorScheme.primary.withOpacity(0.08),
+            colorScheme.primary.withOpacity(0.02),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Avatar(url: avatarUrl, radius: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        username,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    _StatusPill(status: status),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'ID ${user['id'] ?? '-'} · ${role.isEmpty ? '-' : role}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (email.isNotEmpty)
+                      _ContactChip(icon: Icons.email_outlined, text: email),
+                    if (phone.isNotEmpty)
+                      _ContactChip(icon: Icons.phone_outlined, text: phone),
+                    if (qq.isNotEmpty)
+                      _ContactChip(icon: Icons.chat_outlined, text: qq),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String status;
+
+  const _StatusPill({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final color = _statusColor(status, colorScheme);
+    final label = _statusLabel(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _ContactChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _ContactChip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuickStatsRow extends StatelessWidget {
+  final dynamic balance;
+  final dynamic frozen;
+  final int ordersCount;
+  final int txCount;
+
+  const _QuickStatsRow({
+    required this.balance,
+    required this.frozen,
+    required this.ordersCount,
+    required this.txCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _StatTile(
+            label: '可用余额',
+            value: '￥${_money(balance)}',
+            icon: Icons.account_balance_wallet_outlined,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _StatTile(
+            label: '冻结余额',
+            value: '￥${_money(frozen)}',
+            icon: Icons.lock_outline,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _StatTile(
+            label: '订单数',
+            value: ordersCount.toString(),
+            icon: Icons.receipt_long_outlined,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _StatTile(
+            label: '流水',
+            value: txCount.toString(),
+            icon: Icons.history,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: colorScheme.primary),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UserInfoPanel extends StatelessWidget {
+  final Map<String, dynamic> user;
+
+  const _UserInfoPanel({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final items = <_InfoRow>[
+      _InfoRow(label: '邮箱', value: user['email']?.toString() ?? '-'),
+      _InfoRow(label: '手机号', value: user['phone']?.toString() ?? '-'),
+      _InfoRow(label: 'QQ', value: user['qq']?.toString() ?? '-'),
+      _InfoRow(label: '状态', value: _statusLabel(user['status']?.toString() ?? '')),
+      _InfoRow(label: '角色', value: user['role']?.toString() ?? '-'),
+      _InfoRow(
+        label: '创建时间',
+        value: _formatLocal(user['created_at']?.toString() ?? ''),
+        fullWidth: true,
+      ),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 10,
+        children: items.map((item) {
+          return SizedBox(
+            width: item.fullWidth
+                ? double.infinity
+                : (MediaQuery.of(context).size.width - 16 * 2 - 12) / 2,
+            child: item,
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool fullWidth;
+
+  const _InfoRow({
+    required this.label,
+    required this.value,
+    this.fullWidth = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 64,
+          child: Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            value,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _WalletSummaryCard extends StatelessWidget {
+  final dynamic balance;
+  final dynamic frozen;
+
+  const _WalletSummaryCard({required this.balance, required this.frozen});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _MoneyTile(
+              label: '可用余额',
+              value: _money(balance),
+              color: const Color(0xFF00A68C),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _MoneyTile(
+              label: '冻结余额',
+              value: _money(frozen),
+              color: const Color(0xFFEF6C00),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoneyTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MoneyTile({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '￥$value',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: color.withOpacity(0.8),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final int? count;
+
+  const _SectionHeader({
+    required this.title,
+    required this.icon,
+    this.count,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: colorScheme.primary),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (count != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                count.toString(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -354,52 +842,56 @@ class _RealnameCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: status.isEmpty ? null : status,
-                    items: const [
-                      DropdownMenuItem(value: 'pending', child: Text('待审核')),
-                      DropdownMenuItem(value: 'verified', child: Text('已通过')),
-                      DropdownMenuItem(value: 'failed', child: Text('未通过')),
-                    ],
-                    onChanged: hasRecord
-                        ? (value) => onStatusChanged(value ?? '')
-                        : null,
-                    decoration: const InputDecoration(labelText: '实名状态'),
-                  ),
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: status.isEmpty ? null : status,
+                  items: const [
+                    DropdownMenuItem(value: 'pending', child: Text('待审核')),
+                    DropdownMenuItem(value: 'verified', child: Text('已通过')),
+                    DropdownMenuItem(value: 'failed', child: Text('未通过')),
+                  ],
+                  onChanged: hasRecord
+                      ? (value) => onStatusChanged(value ?? '')
+                      : null,
+                  decoration: const InputDecoration(labelText: '实名状态'),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: reasonController,
-                    decoration: const InputDecoration(labelText: '审核备注（可选）'),
-                    enabled: hasRecord,
-                  ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: reasonController,
+                  decoration: const InputDecoration(labelText: '审核备注（可选）'),
+                  enabled: hasRecord,
                 ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton(
-                onPressed: hasRecord && !busy ? onSubmit : null,
-                child: const Text('更新实名状态'),
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton(
+              onPressed: hasRecord && !busy ? onSubmit : null,
+              child: const Text('更新实名状态'),
             ),
-            if (!hasRecord)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text('暂无实名认证记录，无法修改状态'),
-              ),
-          ],
-        ),
+          ),
+          if (!hasRecord)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text('暂无实名认证记录，无法修改状态'),
+            ),
+        ],
       ),
     );
   }
@@ -480,20 +972,6 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
-
-  const _SectionTitle({required this.title});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-    );
-  }
-}
-
 class _EmptyLine extends StatelessWidget {
   final String text;
 
@@ -515,15 +993,63 @@ class _OrderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final amount = order['total_amount'];
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.receipt_long),
-        title: Text('订单号 ${order['order_no'] ?? order['id'] ?? '-'}'),
-        subtitle: Text(
-          '状态 ${order['status'] ?? '-'}\n${_formatLocal(order['created_at']?.toString() ?? '')}',
-        ),
-        trailing: Text('¥${_money(amount)}'),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(Icons.receipt_long, color: colorScheme.primary),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '订单号 ${order['order_no'] ?? order['id'] ?? '-'}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '状态：${order['status'] ?? '-'}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatLocal(order['created_at']?.toString() ?? ''),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '￥${_money(amount)}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -536,16 +1062,93 @@ class _WalletTxTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: const Icon(Icons.account_balance_wallet),
-        title: Text(tx['type']?.toString() ?? '-'),
-        subtitle: Text(
-          '${tx['note'] ?? '-'}\n${_formatLocal(tx['created_at']?.toString() ?? '')}',
-        ),
-        trailing: Text('¥${_money(tx['amount'])}'),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: colorScheme.secondary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.account_balance_wallet,
+              color: colorScheme.secondary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  tx['type']?.toString() ?? '-',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  tx['note']?.toString() ?? '-',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatLocal(tx['created_at']?.toString() ?? ''),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '￥${_money(tx['amount'])}',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
+  }
+}
+
+Color _statusColor(String status, ColorScheme scheme) {
+  switch (status) {
+    case 'active':
+      return const Color(0xFF00A68C);
+    case 'pending':
+      return const Color(0xFFEF6C00);
+    case 'blocked':
+      return const Color(0xFFD32F2F);
+    default:
+      return scheme.outline;
+  }
+}
+
+String _statusLabel(String status) {
+  switch (status) {
+    case 'active':
+      return '正常';
+    case 'pending':
+      return '待审核';
+    case 'blocked':
+      return '已禁用';
+    default:
+      return status.isEmpty ? '未知' : status;
   }
 }
 

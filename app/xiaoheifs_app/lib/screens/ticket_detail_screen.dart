@@ -91,10 +91,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             createdAt: _ticket['created_at']?.toString() ?? '',
             updatedAt: _ticket['updated_at']?.toString() ?? '',
           ),
-          const Divider(height: 1),
+          const SizedBox(height: 8),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
@@ -464,15 +464,25 @@ class _TicketHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: statusMeta.color.withOpacity(0.06),
-        border: Border(
-          bottom: BorderSide(color: Colors.black.withOpacity(0.06)),
-        ),
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _Avatar(url: avatarUrl, radius: 22),
           const SizedBox(width: 12),
@@ -480,49 +490,59 @@ class _TicketHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '状态：${statusMeta.label}',
-                  style: Theme.of(context).textTheme.titleSmall,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '用户 $userName · ID $userId',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    _StatusPill(label: statusMeta.label, color: statusMeta.color),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '用户：$userName · ID $userId',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    if (userEmail.isNotEmpty)
+                      _InfoChip(icon: Icons.email_outlined, text: userEmail),
+                    if (userPhone.isNotEmpty)
+                      _InfoChip(icon: Icons.phone_outlined, text: userPhone),
+                    _InfoChip(
+                      icon: Icons.chat_outlined,
+                      text: userQq.isEmpty ? '-' : userQq,
+                    ),
+                  ],
                 ),
-                Text(
-                  '邮箱：$userEmail · 电话：$userPhone',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                ),
-                Text(
-                  'QQ：${userQq.isEmpty ? '-' : userQq}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
-                ),
-                if (errorText != null)
-                  Text(
-                    '用户信息加载失败：$errorText',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.bodySmall?.copyWith(color: Colors.redAccent),
-                  ),
+                const SizedBox(height: 6),
                 Text(
                   '创建 ${_formatLocal(createdAt)} · 更新 ${_formatLocal(updatedAt)}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
+                if (errorText != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '用户信息加载失败：$errorText',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.error,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
-          TextButton.icon(
+          IconButton(
             onPressed: onMenuTap,
             icon: const Icon(Icons.more_horiz),
-            label: const Text('更多'),
           ),
         ],
       ),
@@ -544,8 +564,10 @@ class _MessageBubble extends StatelessWidget {
       context.read<AppState>().apiClient?.baseUrl ?? '',
       qq,
     );
-    final bg = isMe ? const Color(0xFF00BFA6) : Colors.white;
-    final fg = isMe ? Colors.white : Colors.black87;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final bg = isMe ? const Color(0xFF00BFA6) : colorScheme.surface;
+    final fg = isMe ? Colors.white : colorScheme.onSurface;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -562,29 +584,34 @@ class _MessageBubble extends StatelessWidget {
                   ? CrossAxisAlignment.end
                   : CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: bg,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(16),
-                      topRight: const Radius.circular(16),
-                      bottomLeft: Radius.circular(isMe ? 16 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 320),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isMe ? 16 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 16),
+                      ),
+                      border: Border.all(
+                        color: colorScheme.outlineVariant.withOpacity(0.5),
+                      ),
                     ),
-                    border: Border.all(color: Colors.black.withOpacity(0.06)),
-                  ),
-                  child: Text(
-                    message['content']?.toString() ?? '',
-                    style: TextStyle(color: fg, height: 1.4),
+                    child: Text(
+                      message['content']?.toString() ?? '',
+                      style: TextStyle(color: fg, height: 1.4),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '${role.isEmpty ? '-' : role} · ${_formatLocal(message['created_at']?.toString() ?? '')}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -614,14 +641,16 @@ class _ComposerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: colorScheme.surface,
           border: Border(
-            top: BorderSide(color: Colors.black.withOpacity(0.08)),
+            top: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.6)),
           ),
         ),
         child: Column(
@@ -633,13 +662,17 @@ class _ComposerBar extends StatelessWidget {
                   child: TextField(
                     controller: controller,
                     maxLines: 3,
-                    decoration: const InputDecoration(hintText: '输入回复内容…'),
+                    decoration: const InputDecoration(
+                      hintText: '输入回复内容…',
+                      prefixIcon: Icon(Icons.edit_outlined),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton(
+                FilledButton.icon(
                   onPressed: busy ? null : onSend,
-                  child: const Text('发送'),
+                  icon: const Icon(Icons.send_rounded),
+                  label: const Text('发送'),
                 ),
               ],
             ),
@@ -648,9 +681,9 @@ class _ComposerBar extends StatelessWidget {
               children: [
                 Text(
                   '回复后状态',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(width: 8),
                 SizedBox(
@@ -686,6 +719,67 @@ class _ComposerBar extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _StatusPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InfoChip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: colorScheme.onSurfaceVariant,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

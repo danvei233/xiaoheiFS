@@ -112,37 +112,19 @@ class _UsersScreenState extends State<UsersScreen> {
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '用户管理',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '管理用户账号与状态',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.black54,
-                      ),
-                    ),
-                  ],
-                ),
-                FilledButton.icon(
-                  onPressed: _loading ? null : _openCreate,
-                  icon: const Icon(Icons.person_add),
-                  label: const Text('创建用户'),
+                Text(
+                  '用户管理',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             _FilterBar(
               keywordController: _keywordController,
               status: _statusFilter,
@@ -195,6 +177,15 @@ class _UsersScreenState extends State<UsersScreen> {
             top: 0,
             child: LinearProgressIndicator(minHeight: 2),
           ),
+        Positioned(
+          right: 16,
+          bottom: 24,
+          child: FloatingActionButton.extended(
+            onPressed: _loading ? null : _openCreate,
+            icon: const Icon(Icons.person_add),
+            label: const Text('创建用户'),
+          ),
+        ),
       ],
     );
   }
@@ -477,7 +468,22 @@ class _FilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
@@ -488,48 +494,123 @@ class _FilterBar extends StatelessWidget {
                   child: TextField(
                     controller: keywordController,
                     decoration: const InputDecoration(
-                      labelText: '关键词（ID/用户名/邮箱/手机号）',
+                      hintText: '关键词（ID/用户名/邮箱/手机号）',
+                      prefixIcon: Icon(Icons.search),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: status.isEmpty ? null : status,
-                    items: const [
-                      DropdownMenuItem(value: '', child: Text('全部')),
-                      DropdownMenuItem(value: 'active', child: Text('active')),
-                      DropdownMenuItem(
-                        value: 'blocked',
-                        child: Text('blocked'),
-                      ),
-                    ],
-                    onChanged: (value) => onStatusChanged(value ?? ''),
-                    decoration: const InputDecoration(labelText: '状态筛选'),
-                  ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  onPressed: onSearch,
+                  icon: const Icon(Icons.search_rounded),
+                  label: const Text('搜索'),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 38,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _FilterChip(
+                    label: '全部',
+                    selected: status.isEmpty,
+                    onTap: () => onStatusChanged(''),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: '正常',
+                    selected: status == 'active',
+                    onTap: () => onStatusChanged('active'),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterChip(
+                    label: '已禁用',
+                    selected: status == 'blocked',
+                    onTap: () => onStatusChanged('blocked'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
-                  child: FilledButton(
-                    onPressed: onSearch,
-                    child: const Text('筛选'),
+                  child: OutlinedButton.icon(
+                    onPressed: onReset,
+                    icon: const Icon(Icons.restart_alt_rounded),
+                    label: const Text('重置'),
                   ),
                 ),
-                const SizedBox(width: 12),
-                OutlinedButton(onPressed: onReset, child: const Text('重置')),
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  onPressed: onRefresh,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('刷新'),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onRefresh,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('刷新'),
+                  ),
                 ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = selected
+        ? colorScheme.primaryContainer.withOpacity(0.7)
+        : colorScheme.surface;
+    final borderColor = selected
+        ? colorScheme.primary
+        : colorScheme.outlineVariant.withOpacity(0.7);
+    final textColor =
+        selected ? colorScheme.primary : colorScheme.onSurface;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                Icon(Icons.check_rounded, size: 16, color: textColor),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -555,6 +636,8 @@ class _UserItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final statusColor = item.statusColor;
     final baseUrl = context.read<AppState>().apiClient?.baseUrl ?? '';
     final avatarUrl = resolveAvatarUrl(
@@ -562,52 +645,208 @@ class _UserItem extends StatelessWidget {
       qq: item.qq,
       avatarUrl: item.avatarUrl.isNotEmpty ? item.avatarUrl : null,
     );
-    return Card(
-      child: ListTile(
-        leading: _Avatar(url: avatarUrl, radius: 20),
-        title: Text(item.username),
-        subtitle: Text('${item.contact} · ${item.roleLabel}'),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              item.statusLabel,
-              style: TextStyle(color: statusColor, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                switch (value) {
-                  case 'detail':
-                    onDetail();
-                    break;
-                  case 'edit':
-                    onEdit();
-                    break;
-                  case 'reset':
-                    onResetPassword();
-                    break;
-                  case 'toggle':
-                    onToggle();
-                    break;
-                  case 'impersonate':
-                    onImpersonate();
-                    break;
-                }
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'detail', child: Text('详情')),
-                PopupMenuItem(value: 'edit', child: Text('编辑')),
-                PopupMenuItem(value: 'impersonate', child: Text('以此用户登录')),
-                PopupMenuItem(value: 'toggle', child: Text('禁用/启用')),
-                PopupMenuItem(value: 'reset', child: Text('重置密码')),
-              ],
-            ),
-          ],
-        ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: InkWell(
         onTap: onDetail,
-        isThreeLine: true,
-        dense: false,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _Avatar(url: avatarUrl, radius: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                item.username,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            _StatusPill(
+                              label: item.statusLabel,
+                              color: statusColor,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          item.contact,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'ID ${item.id} · ${item.roleLabel}',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'detail':
+                          onDetail();
+                          break;
+                        case 'edit':
+                          onEdit();
+                          break;
+                        case 'reset':
+                          onResetPassword();
+                          break;
+                        case 'toggle':
+                          onToggle();
+                          break;
+                        case 'impersonate':
+                          onImpersonate();
+                          break;
+                      }
+                    },
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(value: 'detail', child: Text('详情')),
+                      PopupMenuItem(value: 'edit', child: Text('编辑')),
+                      PopupMenuItem(value: 'impersonate', child: Text('以此用户登录')),
+                      PopupMenuItem(value: 'toggle', child: Text('禁用/启用')),
+                      PopupMenuItem(value: 'reset', child: Text('重置密码')),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _MiniActionButton(
+                    icon: Icons.visibility_outlined,
+                    label: '详情',
+                    onTap: onDetail,
+                  ),
+                  _MiniActionButton(
+                    icon: Icons.edit_outlined,
+                    label: '编辑',
+                    onTap: onEdit,
+                  ),
+                  _MiniActionButton(
+                    icon: Icons.lock_reset_outlined,
+                    label: '重置密码',
+                    onTap: onResetPassword,
+                  ),
+                  _MiniActionButton(
+                    icon: item.status == 'active'
+                        ? Icons.block_outlined
+                        : Icons.check_circle_outline,
+                    label: item.status == 'active' ? '禁用' : '启用',
+                    onTap: onToggle,
+                  ),
+                  _MiniActionButton(
+                    icon: Icons.login_outlined,
+                    label: '以此登录',
+                    onTap: onImpersonate,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _StatusPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _MiniActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withOpacity(0.35),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: colorScheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

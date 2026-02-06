@@ -94,18 +94,16 @@ class _ServersScreenState extends State<ServersScreen> {
         }
         final items = snapshot.data ?? [];
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('VPS 管理', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                    SizedBox(height: 4),
-                    Text('管理实例状态与生命周期', style: TextStyle(color: Colors.black54)),
-                  ],
+                Text(
+                  '服务器管理',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
                 OutlinedButton.icon(
                   onPressed: _loading ? null : _refresh,
@@ -114,7 +112,7 @@ class _ServersScreenState extends State<ServersScreen> {
                 )
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             _StatusTabs(
               value: _statusFilter,
               onChanged: (value) {
@@ -355,44 +353,119 @@ class _VpsTile extends StatelessWidget {
       label: _adminStatusLabel(item.adminStatus),
       color: _adminStatusColor(item.adminStatus),
     );
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    '实例 #${item.id} · 用户 ${item.username ?? item.userId}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () => _openActionSheet(context, item, onAction),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: colorScheme.primary.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.dns, color: colorScheme.primary),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.more_horiz),
-                  onPressed: () => _openActionSheet(context, item, onAction),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [statusChip, adminChip],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '地区 ${item.region.isEmpty ? '-' : item.region} · 套餐 ${item.packageName.isEmpty ? '-' : item.packageName}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '月费 ￥${item.monthlyPrice.toStringAsFixed(2)} · 到期 ${_formatLocal(item.expireAt)}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '实例 #${item.id}',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '用户 ${item.username ?? item.userId}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.more_horiz),
+                    onPressed: () => _openActionSheet(context, item, onAction),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [statusChip, adminChip],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.place_outlined,
+                      size: 16, color: colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${item.region.isEmpty ? '-' : item.region} · ${item.packageName.isEmpty ? '-' : item.packageName}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.tune_rounded,
+                      size: 16, color: colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${item.cpu}C / ${item.memoryGb}G / ${item.diskGb}G / ${item.bandwidthMbps}Mbps',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(Icons.payments_outlined,
+                      size: 16, color: colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '月费 ￥${item.monthlyPrice.toStringAsFixed(2)} · 到期 ${_formatLocal(item.expireAt)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -829,22 +902,85 @@ class _StatusTabs extends StatelessWidget {
       {'label': 'fraud', 'value': 'fraud'},
       {'label': 'locked', 'value': 'locked'},
     ];
-    return Wrap(
-      spacing: 8,
-      children: [
-        ...tabs.map(
-          (t) => ChoiceChip(
-            label: Text(t['label']!),
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: tabs.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _StatusFilterChip(
+              label: '全部',
+              selected: value.isEmpty,
+              onTap: () => onChanged(''),
+            );
+          }
+          final t = tabs[index - 1];
+          return _StatusFilterChip(
+            label: t['label']!,
             selected: value == t['value'],
-            onSelected: (_) => onChanged(t['value']!),
+            onTap: () => onChanged(t['value']!),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _StatusFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _StatusFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = selected
+        ? colorScheme.primaryContainer.withOpacity(0.7)
+        : colorScheme.surface;
+    final borderColor = selected
+        ? colorScheme.primary
+        : colorScheme.outlineVariant.withOpacity(0.7);
+    final textColor =
+        selected ? colorScheme.primary : colorScheme.onSurface;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                Icon(Icons.check_rounded, size: 16, color: textColor),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
-        ChoiceChip(
-          label: const Text('全部'),
-          selected: value.isEmpty,
-          onSelected: (_) => onChanged(''),
-        ),
-      ],
+      ),
     );
   }
 }

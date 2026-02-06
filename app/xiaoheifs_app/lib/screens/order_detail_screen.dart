@@ -16,17 +16,38 @@ class OrderDetailScreen extends StatefulWidget {
   State<OrderDetailScreen> createState() => _OrderDetailScreenState();
 }
 
-class _OrderDetailScreenState extends State<OrderDetailScreen> {
+class _OrderDetailScreenState extends State<OrderDetailScreen>
+    with TickerProviderStateMixin {
   Future<Map<String, dynamic>>? _future;
   Future<Map<String, dynamic>?>? _userFuture;
   Future<_Catalog>? _catalogFuture;
   bool _busy = false;
   bool _changed = false;
+  late AnimationController _fadeController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
+    );
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _fadeController.dispose();
+    super.dispose();
   }
 
   void _load() {
@@ -46,6 +67,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         });
         _catalogFuture ??= _loadCatalog(client);
       });
+      _fadeController.forward();
     }
   }
 
@@ -68,13 +90,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    CircularProgressIndicator(
-                      color: colorScheme.primary,
-                    ),
-                    const SizedBox(height: 16),
+                    _LoadingIndicator(color: colorScheme.primary),
+                    const SizedBox(height: 24),
                     Text(
                       '加载订单详情...',
-                      style: theme.textTheme.bodyMedium?.copyWith(
+                      style: theme.textTheme.bodyLarge?.copyWith(
                         color: colorScheme.onSurfaceVariant,
                       ),
                     ),
@@ -85,49 +105,61 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           }
           if (snapshot.hasError) {
             return Scaffold(
+              backgroundColor: colorScheme.surface,
               appBar: AppBar(
                 title: const Text('订单详情'),
                 backgroundColor: colorScheme.surface,
                 elevation: 0,
               ),
               body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: colorScheme.errorContainer.withOpacity(0.3),
-                        shape: BoxShape.circle,
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: colorScheme.errorContainer.withOpacity(0.3),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.error_outline_rounded,
+                          size: 56,
+                          color: colorScheme.error,
+                        ),
                       ),
-                      child: Icon(
-                        Icons.error_outline_rounded,
-                        size: 48,
-                        color: colorScheme.error,
+                      const SizedBox(height: 24),
+                      Text(
+                        '加载失败',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      '加载失败',
-                      style: theme.textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      snapshot.error.toString(),
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
+                      const SizedBox(height: 12),
+                      Text(
+                        snapshot.error.toString(),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        textAlign: TextAlign.center,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+                      const SizedBox(height: 32),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('重新加载'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             );
           }
           final data = snapshot.data ?? {};
           final order = data['order'] as Map<String, dynamic>? ?? {};
-          final items = (data['items'] as List<dynamic>? ?? [])
-              .cast<Map<String, dynamic>>();
+          final items =
+              (data['items'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
           final payments = (data['payments'] as List<dynamic>? ?? [])
               .cast<Map<String, dynamic>>();
           final events = _normalizeEvents(
@@ -138,6 +170,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           final statusInfo = _getStatusInfo(status);
 
           return Scaffold(
+            backgroundColor: colorScheme.surface,
             appBar: AppBar(
               title: const Text('订单详情'),
               backgroundColor: colorScheme.surface,
@@ -160,299 +193,186 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 else
                   IconButton(
                     icon: const Icon(Icons.refresh_rounded),
-                    onPressed: _load,
+                    onPressed: () {
+                      _fadeController.reset();
+                      _load();
+                    },
                   ),
               ],
             ),
-            body: CustomScrollView(
-              slivers: [
-                // 订单状态头部
-                SliverToBoxAdapter(
-                  child: Container(
-                    margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          statusInfo.color.withOpacity(0.15),
-                          statusInfo.color.withOpacity(0.05),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: statusInfo.color.withOpacity(0.3),
-                        width: 1.5,
-                      ),
+            bottomNavigationBar: SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  border: Border(
+                    top: BorderSide(
+                      color: colorScheme.outlineVariant.withOpacity(0.5),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: statusInfo.color.withOpacity(0.2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            statusInfo.icon,
-                            color: statusInfo.color,
-                            size: 32,
+                  ),
+                ),
+                child: _ActionBar(
+                  busy: _busy,
+                  status: status,
+                  onApprove: () => _perform(
+                    '/admin/api/v1/orders/${widget.orderId}/approve',
+                  ),
+                  onReject: _rejectOrder,
+                  onRetry: () =>
+                      _perform('/admin/api/v1/orders/${widget.orderId}/retry'),
+                  onDelete: () => _perform(
+                    '/admin/api/v1/orders/${widget.orderId}',
+                    method: _ActionMethod.delete,
+                  ),
+                ),
+              ),
+            ),
+            body: FadeTransition(
+              opacity: _fadeAnimation,
+              child: DefaultTabController(
+                length: 4,
+                child: Column(
+                  children: [
+                    _OrderStatusHeader(
+                      orderId: order['id'] ?? '-',
+                      status: status,
+                      statusInfo: statusInfo,
+                      amount: order['total_amount'],
+                      currency: order['currency'] ?? 'CNY',
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colorScheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: colorScheme.outlineVariant.withOpacity(0.5),
                           ),
                         ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        child: TabBar(
+                          labelColor: colorScheme.primary,
+                          unselectedLabelColor: colorScheme.onSurfaceVariant,
+                          indicatorColor: colorScheme.primary,
+                          indicatorSize: TabBarIndicatorSize.tab,
+                          tabs: const [
+                            Tab(text: '概览'),
+                            Tab(text: '付款'),
+                            Tab(text: '订单项'),
+                            Tab(text: '事件'),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
                             children: [
-                              Text(
-                                '订单 #${order['id'] ?? '-'}',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  color: colorScheme.onSurface,
-                                ),
+                              _OrderInfoCard(
+                                order: order,
+                                status: status,
+                                statusInfo: statusInfo,
                               ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: statusInfo.color
-                                          .withOpacity(0.2),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      _statusText(status),
-                                      style: TextStyle(
-                                        color: statusInfo.color,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    '${_money(order['total_amount'])} ${order['currency'] ?? 'CNY'}',
-                                    style: theme.textTheme.titleLarge?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      color: colorScheme.primary,
-                                      fontSize: 22,
-                                    ),
-                                  ),
-                                ],
+                              const SizedBox(height: 12),
+                              _UserInfoCard(
+                                orderId: order['user_id'] ?? '-',
+                                userFuture: _userFuture,
                               ),
                             ],
                           ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                // 主要内容
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // 订单信息卡片
-                        _InfoCard(
-                          title: '订单信息',
-                          icon: Icons.receipt_long_rounded,
-                          lines: [
-                            _InfoLine(
-                              label: '订单号',
-                              value: order['order_no']?.toString() ?? '-',
-                            ),
-                            _InfoLine(
-                              label: '状态',
-                              value: _statusText(status),
-                              valueColor: statusInfo.color,
-                            ),
-                            _InfoLine(
-                              label: '金额',
-                              value:
-                                  '${_money(order['total_amount'])} ${order['currency'] ?? 'CNY'}',
-                              valueColor: colorScheme.primary,
-                              valueBold: true,
-                            ),
-                            _InfoLine(
-                              label: '创建时间',
-                              value: _formatLocal(
-                                  order['created_at']?.toString() ?? ''),
-                            ),
-                            if (order['approved_by'] != null)
-                              _InfoLine(
-                                label: '审核人',
-                                value: order['approved_by'].toString(),
+                          ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                            children: [
+                              _SectionHeader(
+                                title: '付款信息',
+                                icon: Icons.payments_rounded,
+                                count: payments.length,
                               ),
-                            if (order['approved_at'] != null)
-                              _InfoLine(
-                                label: '审核时间',
-                                value: _formatLocal(
-                                    order['approved_at'].toString()),
+                              const SizedBox(height: 12),
+                              if (payments.isEmpty)
+                                const _EmptyState(
+                                  icon: Icons.payments_outlined,
+                                  text: '暂无付款记录',
+                                )
+                              else
+                                ...payments.map((p) => _PaymentCard(payment: p)),
+                            ],
+                          ),
+                          ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                            children: [
+                              _SectionHeader(
+                                title: '订单项',
+                                icon: Icons.shopping_cart_rounded,
+                                count: items.length,
                               ),
-                            if ((order['rejected_reason'] ?? '')
-                                .toString()
-                                .isNotEmpty)
-                              _InfoLine(
-                                label: '驳回原因',
-                                value: order['rejected_reason'].toString(),
-                                valueColor: colorScheme.error,
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        // 用户信息卡片
-                        FutureBuilder<Map<String, dynamic>?>(
-                          future: _userFuture,
-                          builder: (context, userSnap) {
-                            final raw = userSnap.data ?? {};
-                            final user = raw['user'] is Map<String, dynamic>
-                                ? raw['user'] as Map<String, dynamic>
-                                : (raw['data'] is Map<String, dynamic>
-                                      ? raw['data'] as Map<String, dynamic>
-                                      : raw);
-                            final err = raw['_error']?.toString();
-                            final qq = (user['qq'] ?? '').toString();
-                            final baseUrl = context
-                                    .read<AppState>()
-                                    .apiClient
-                                    ?.baseUrl ??
-                                '';
-                            final avatarUrl = _resolveAvatar(
-                              user['avatar_url'] ?? user['avatar'],
-                              qq,
-                              baseUrl,
-                            );
-                            return _InfoCard(
-                              title: '用户信息',
-                              icon: Icons.person_rounded,
-                              leading: _Avatar(url: avatarUrl, radius: 20),
-                              lines: [
-                                _InfoLine(
-                                  label: '用户ID',
-                                  value: order['user_id']?.toString() ?? '-',
-                                ),
-                                _InfoLine(
-                                  label: '用户名',
-                                  value: user['username']?.toString() ?? '-',
-                                ),
-                                _InfoLine(
-                                  label: '邮箱',
-                                  value: user['email']?.toString() ?? '-',
-                                ),
-                                _InfoLine(
-                                  label: '手机号',
-                                  value: user['phone']?.toString() ?? '-',
-                                ),
-                                _InfoLine(
-                                  label: 'QQ',
-                                  value: qq.isEmpty ? '-' : qq,
-                                ),
-                                if (err != null)
-                                  _InfoLine(
-                                    label: '错误',
-                                    value: '用户信息加载失败：$err',
-                                    valueColor: colorScheme.error,
-                                  ),
-                              ],
-                            );
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        // 操作按钮
-                        _ActionBar(
-                          busy: _busy,
-                          status: status,
-                          onApprove: () => _perform(
-                            '/admin/api/v1/orders/${widget.orderId}/approve',
-                          ),
-                          onReject: _rejectOrder,
-                          onRetry: () => _perform(
-                              '/admin/api/v1/orders/${widget.orderId}/retry'),
-                          onDelete: () => _perform(
-                            '/admin/api/v1/orders/${widget.orderId}',
-                            method: _ActionMethod.delete,
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        // 付款信息
-                        _SectionTitle(
-                          title: '付款信息',
-                          icon: Icons.payments_rounded,
-                        ),
-                        const SizedBox(height: 8),
-                        if (payments.isEmpty)
-                          const _EmptyLine(text: '暂无付款记录')
-                        else
-                          ...payments.map(
-                            (p) => _PaymentCard(payment: p),
-                          ),
-                        const SizedBox(height: 20),
-                        // 订单项
-                        _SectionTitle(
-                          title: '订单项',
-                          icon: Icons.shopping_cart_rounded,
-                        ),
-                        const SizedBox(height: 8),
-                        if (items.isEmpty)
-                          const _EmptyLine(text: '暂无订单项')
-                        else
-                          FutureBuilder<_Catalog>(
-                            future: _catalogFuture,
-                            builder: (context, catSnap) {
-                              final catalog = catSnap.data;
-                              return Column(
-                                children: [
-                                  ...items.map((item) {
-                                    final pkgId = _asInt(item['package_id']);
-                                    final pkg = catalog?.packages[pkgId];
-                                    final plan = catalog?.planGroups[
-                                        _asInt(pkg?['plan_group_id'])];
-                                    final region = catalog
-                                        ?.regions[_asInt(plan?['region_id'])];
-                                    final regionName =
-                                        (region?['name'] ?? '').toString();
-                                    final lineName =
-                                        (plan?['name'] ?? '').toString();
-                                    final pkgName =
-                                        (pkg?['name'] ?? '').toString();
-                                    final specText =
-                                        _specSummary(item['spec'], pkg);
-                                    return _OrderItemCard(
-                                      pkgName: pkgName,
-                                      regionName: regionName,
-                                      lineName: lineName,
-                                      item: item,
-                                      specText: specText,
+                              const SizedBox(height: 12),
+                              if (items.isEmpty)
+                                const _EmptyState(
+                                  icon: Icons.shopping_basket_outlined,
+                                  text: '暂无订单项',
+                                )
+                              else
+                                FutureBuilder<_Catalog>(
+                                  future: _catalogFuture,
+                                  builder: (context, catSnap) {
+                                    final catalog = catSnap.data;
+                                    return Column(
+                                      children: items.map((item) {
+                                        final pkgId = _asInt(item['package_id']);
+                                        final pkg = catalog?.packages[pkgId];
+                                        final plan = catalog?.planGroups[
+                                            _asInt(pkg?['plan_group_id'])];
+                                        final region = catalog
+                                            ?.regions[_asInt(plan?['region_id'])];
+                                        final regionName =
+                                            (region?['name'] ?? '').toString();
+                                        final lineName =
+                                            (plan?['name'] ?? '').toString();
+                                        final pkgName =
+                                            (pkg?['name'] ?? '').toString();
+                                        final specText =
+                                            _specSummary(item['spec'], pkg);
+                                        return _OrderItemCard(
+                                          pkgName: pkgName,
+                                          regionName: regionName,
+                                          lineName: lineName,
+                                          item: item,
+                                          specText: specText,
+                                        );
+                                      }).toList(),
                                     );
-                                  }),
-                                ],
-                              );
-                            },
+                                  },
+                                ),
+                            ],
                           ),
-                        const SizedBox(height: 20),
-                        // 事件流
-                        _SectionTitle(
-                          title: '事件流',
-                          icon: Icons.event_rounded,
-                        ),
-                        const SizedBox(height: 8),
-                        if (events.isEmpty)
-                          const _EmptyLine(text: '暂无事件')
-                        else
-                          ...events.map((ev) => _EventTile(ev: ev)),
-                        const SizedBox(height: 32),
-                      ],
+                          ListView(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                            children: [
+                              _SectionHeader(
+                                title: '事件流',
+                                icon: Icons.event_rounded,
+                                count: events.length,
+                              ),
+                              const SizedBox(height: 12),
+                              if (events.isEmpty)
+                                const _EmptyState(
+                                  icon: Icons.history_outlined,
+                                  text: '暂无事件记录',
+                                )
+                              else
+                                ...events.map((ev) => _EventTile(ev: ev)),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           );
         },
@@ -481,18 +401,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline_rounded, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(child: Text('操作失败：$e')),
-              ],
-            ),
-            backgroundColor:
-                Theme.of(context).colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-          ),
+          _ErrorSnackBar(message: '操作失败：$e'),
         );
       }
     } finally {
@@ -504,58 +413,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final controller = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Theme.of(context)
-                    .colorScheme
-                    .errorContainer
-                    .withOpacity(0.3),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.cancel_rounded,
-                color: Theme.of(context).colorScheme.error,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Text('驳回订单'),
-          ],
-        ),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(
-            hintText: '请输入驳回原因',
-            filled: true,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            child: const Text('确认驳回'),
-          ),
-        ],
-      ),
+      builder: (context) => _RejectDialog(controller: controller),
     );
-    if (ok == true) {
+    if (ok == true && mounted) {
       await _perform(
         '/admin/api/v1/orders/${widget.orderId}/reject',
         body: {
@@ -568,40 +428,304 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 }
 
-// 状态信息
-_StatusInfo _getStatusInfo(String status) {
-  switch (status) {
-    case 'pending_payment':
-      return const _StatusInfo('待支付', Icons.schedule_rounded, Color(0xFFEF6C00));
-    case 'pending_review':
-      return const _StatusInfo('待审核', Icons.hourglass_top_rounded, Color(0xFFEF6C00));
-    case 'approved':
-      return const _StatusInfo('已通过', Icons.check_circle_rounded, Color(0xFF00A68C));
-    case 'provisioning':
-      return const _StatusInfo('开通中', Icons.rocket_launch_rounded, Color(0xFF1E88E5));
-    case 'active':
-      return const _StatusInfo('已完成', Icons.verified_rounded, Color(0xFF00A68C));
-    case 'failed':
-      return const _StatusInfo('失败', Icons.error_rounded, Color(0xFFD32F2F));
-    case 'rejected':
-      return const _StatusInfo('已驳回', Icons.cancel_rounded, Color(0xFFD32F2F));
-    case 'canceled':
-      return const _StatusInfo('已取消', Icons.block_rounded, Color(0xFF757575));
-    default:
-      return _StatusInfo(status, Icons.info_rounded, const Color(0xFF546E7A));
+// =============================================================================
+// 状态头部卡片
+// =============================================================================
+
+class _OrderStatusHeader extends StatelessWidget {
+  final dynamic orderId;
+  final String status;
+  final _StatusInfo statusInfo;
+  final dynamic amount;
+  final String currency;
+
+  const _OrderStatusHeader({
+    required this.orderId,
+    required this.status,
+    required this.statusInfo,
+    required this.amount,
+    required this.currency,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            statusInfo.color.withOpacity(0.15),
+            statusInfo.color.withOpacity(0.05),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: statusInfo.color.withOpacity(0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          _StatusBadge(icon: statusInfo.icon, color: statusInfo.color),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '订单 #$orderId',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _StatusLabel(status: status, statusInfo: statusInfo),
+                    const SizedBox(width: 12),
+                    Text(
+                      '${_money(amount)} $currency',
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.primary,
+                        fontSize: 22,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _StatusInfo {
-  final String label;
+class _StatusBadge extends StatelessWidget {
   final IconData icon;
   final Color color;
-  const _StatusInfo(this.label, this.icon, this.color);
+
+  const _StatusBadge({required this.icon, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        icon,
+        color: color,
+        size: 32,
+      ),
+    );
+  }
 }
+
+class _StatusLabel extends StatelessWidget {
+  final String status;
+  final _StatusInfo statusInfo;
+
+  const _StatusLabel({
+    required this.status,
+    required this.statusInfo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: statusInfo.color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        _statusText(status),
+        style: TextStyle(
+          color: statusInfo.color,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// 订单信息卡片
+// =============================================================================
+
+class _OrderInfoCard extends StatelessWidget {
+  final Map<String, dynamic> order;
+  final String status;
+  final _StatusInfo statusInfo;
+
+  const _OrderInfoCard({
+    required this.order,
+    required this.status,
+    required this.statusInfo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return _InfoCard(
+      title: '订单信息',
+      icon: Icons.receipt_long_rounded,
+      dense: true,
+      columns: 2,
+      lines: [
+        _InfoLine(
+          label: '订单号',
+          value: order['order_no']?.toString() ?? '-',
+          icon: Icons.confirmation_number_rounded,
+        ),
+        _InfoLine(
+          label: '状态',
+          value: _statusText(status),
+          valueColor: statusInfo.color,
+          icon: Icons.info_rounded,
+        ),
+        _InfoLine(
+          label: '金额',
+          value: '${_money(order['total_amount'])} ${order['currency'] ?? 'CNY'}',
+          valueColor: colorScheme.primary,
+          valueBold: true,
+          icon: Icons.payments_rounded,
+        ),
+        _InfoLine(
+          label: '创建时间',
+          value: _formatLocal(order['created_at']?.toString() ?? ''),
+          icon: Icons.access_time_rounded,
+        ),
+        if (order['approved_by'] != null)
+          _InfoLine(
+            label: '审核人',
+            value: order['approved_by'].toString(),
+            icon: Icons.person_rounded,
+          ),
+        if (order['approved_at'] != null)
+          _InfoLine(
+            label: '审核时间',
+            value: _formatLocal(order['approved_at'].toString()),
+            icon: Icons.event_available_rounded,
+          ),
+        if ((order['rejected_reason'] ?? '').toString().isNotEmpty)
+          _InfoLine(
+            label: '驳回原因',
+            value: order['rejected_reason'].toString(),
+            valueColor: colorScheme.error,
+            icon: Icons.cancel_rounded,
+            fullWidth: true,
+          ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// 用户信息卡片
+// =============================================================================
+
+class _UserInfoCard extends StatelessWidget {
+  final dynamic orderId;
+  final Future<Map<String, dynamic>?>? userFuture;
+
+  const _UserInfoCard({
+    required this.orderId,
+    required this.userFuture,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: userFuture,
+      builder: (context, userSnap) {
+        final raw = userSnap.data ?? {};
+        final user = raw['user'] is Map<String, dynamic>
+            ? raw['user'] as Map<String, dynamic>
+            : (raw['data'] is Map<String, dynamic>
+                  ? raw['data'] as Map<String, dynamic>
+                  : raw);
+        final err = raw['_error']?.toString();
+        final qq = (user['qq'] ?? '').toString();
+        final baseUrl =
+            context.read<AppState>().apiClient?.baseUrl ?? '';
+        final avatarUrl = _resolveAvatar(
+          user['avatar_url'] ?? user['avatar'],
+          qq,
+          baseUrl,
+        );
+
+        return _InfoCard(
+          title: '用户信息',
+          icon: Icons.person_rounded,
+          leading: _Avatar(url: avatarUrl, radius: 20),
+          dense: true,
+          columns: 2,
+          lines: [
+            _InfoLine(
+              label: '用户ID',
+              value: orderId.toString(),
+              icon: Icons.tag_rounded,
+            ),
+            _InfoLine(
+              label: '用户名',
+              value: user['username']?.toString() ?? '-',
+              icon: Icons.person_rounded,
+            ),
+            _InfoLine(
+              label: '邮箱',
+              value: user['email']?.toString() ?? '-',
+              icon: Icons.email_rounded,
+            ),
+            _InfoLine(
+              label: '手机号',
+              value: user['phone']?.toString() ?? '-',
+              icon: Icons.phone_rounded,
+            ),
+            _InfoLine(
+              label: 'QQ',
+              value: qq.isEmpty ? '-' : qq,
+              icon: Icons.chat_rounded,
+            ),
+            if (err != null)
+              _InfoLine(
+                label: '错误',
+                value: '用户信息加载失败：$err',
+                valueColor: colorScheme.error,
+                icon: Icons.error_outline_rounded,
+                fullWidth: true,
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// =============================================================================
+// 操作按钮栏
+// =============================================================================
 
 enum _ActionMethod { post, delete }
 
-// 操作按钮栏
 class _ActionBar extends StatelessWidget {
   final bool busy;
   final String status;
@@ -610,7 +734,7 @@ class _ActionBar extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback onDelete;
 
-  _ActionBar({
+  const _ActionBar({
     required this.busy,
     required this.status,
     required this.onApprove,
@@ -621,27 +745,22 @@ class _ActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     final canApprove = status == 'pending_review' || status == 'rejected';
     final canReject = status == 'pending_review';
     final canRetry = status == 'failed';
-    final canDelete =
-        status == 'pending_review' ||
+    final canDelete = status == 'pending_review' ||
         status == 'rejected' ||
         status == 'failed' ||
         status == 'canceled';
-
     final isDisabled = status == 'active' || status == 'completed';
 
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: colorScheme.outlineVariant.withOpacity(0.5),
+          color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
           width: 1,
         ),
       ),
@@ -780,24 +899,163 @@ class _ActionButton extends StatelessWidget {
   }
 }
 
-// 信息卡片
-class _InfoCard extends StatelessWidget {
+// =============================================================================
+// 驳回对话框
+// =============================================================================
+
+class _RejectDialog extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _RejectDialog({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      title: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: colorScheme.errorContainer.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              Icons.cancel_rounded,
+              color: colorScheme.error,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Text('驳回订单'),
+        ],
+      ),
+      content: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          hintText: '请输入驳回原因',
+          filled: true,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        maxLines: 3,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: FilledButton.styleFrom(
+            backgroundColor: colorScheme.error,
+          ),
+          child: const Text('确认驳回'),
+        ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// 分节标题
+// =============================================================================
+
+class _SectionHeader extends StatelessWidget {
   final String title;
   final IconData icon;
-  final List<_InfoLine> lines;
-  final Widget? leading;
+  final int count;
 
-  const _InfoCard({
+  const _SectionHeader({
     required this.title,
-    required this.lines,
     required this.icon,
-    this.leading,
+    this.count = 0,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: colorScheme.onSurface,
+          ),
+        ),
+        if (count > 0) ...[
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '$count',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.primary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// 信息卡片基类
+// =============================================================================
+
+class _InfoCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final List<_InfoLine> lines;
+  final Widget? leading;
+  final bool dense;
+  final int columns;
+
+  const _InfoCard({
+    required this.title,
+    required this.lines,
+    required this.icon,
+    this.leading,
+    this.dense = false,
+    this.columns = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final headerPadding =
+        dense ? const EdgeInsets.fromLTRB(12, 12, 12, 10) : const EdgeInsets.fromLTRB(16, 16, 16, 12);
+    final contentPadding = dense ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
 
     return Container(
       decoration: BoxDecoration(
@@ -807,13 +1065,20 @@ class _InfoCard extends StatelessWidget {
           color: colorScheme.outlineVariant.withOpacity(0.5),
           width: 1,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 标题栏
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            padding: headerPadding,
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest.withOpacity(0.4),
               borderRadius: const BorderRadius.only(
@@ -849,29 +1114,66 @@ class _InfoCard extends StatelessWidget {
           ),
           // 内容
           Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                ...lines.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final line = entry.value;
-                  return Column(
+            padding: contentPadding,
+            child: columns <= 1
+                ? Column(
                     children: [
-                      line,
-                      if (index < lines.length - 1)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 80, top: 10, bottom: 10),
-                          child: Divider(
-                            height: 1,
-                            thickness: 1,
-                            color: colorScheme.outlineVariant.withOpacity(0.3),
+                      for (var i = 0; i < lines.length; i++) ...[
+                        lines[i],
+                        if (i < lines.length - 1)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              left: 80,
+                              top: 12,
+                              bottom: 12,
+                            ),
+                            child: Divider(
+                              height: 1,
+                              thickness: 1,
+                              color: colorScheme.outlineVariant.withOpacity(0.3),
+                            ),
                           ),
-                        ),
+                      ],
                     ],
-                  );
-                }),
-              ],
-            ),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final spacing = 12.0;
+                      final colWidth =
+                          (constraints.maxWidth - spacing * (columns - 1)) / columns;
+                      final compactLines =
+                          lines.where((line) => !line.fullWidth).toList();
+                      final fullLines =
+                          lines.where((line) => line.fullWidth).toList();
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: spacing,
+                            runSpacing: 10,
+                            children: compactLines
+                                .map(
+                                  (line) => SizedBox(
+                                    width: colWidth,
+                                    child: line,
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          if (fullLines.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            ...fullLines.map(
+                              (line) => Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: line,
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -879,18 +1181,21 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-// 信息行
 class _InfoLine extends StatelessWidget {
   final String label;
   final String value;
   final Color? valueColor;
   final bool valueBold;
+  final IconData? icon;
+  final bool fullWidth;
 
   const _InfoLine({
     required this.label,
     required this.value,
     this.valueColor,
     this.valueBold = false,
+    this.icon,
+    this.fullWidth = false,
   });
 
   @override
@@ -901,8 +1206,22 @@ class _InfoLine extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (icon != null)
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(
+              icon,
+              size: 14,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        if (icon != null) const SizedBox(width: 10),
         SizedBox(
-          width: 70,
+          width: icon == null ? 70 : 60,
           child: Text(
             label,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -926,7 +1245,462 @@ class _InfoLine extends StatelessWidget {
   }
 }
 
-// 头像
+// =============================================================================
+// 空状态
+// =============================================================================
+
+class _EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _EmptyState({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 48,
+            color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            text,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// 付款卡片
+// =============================================================================
+
+class _PaymentCard extends StatelessWidget {
+  final Map<String, dynamic> payment;
+
+  const _PaymentCard({required this.payment});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    final status = payment['status']?.toString() ?? '';
+    final statusColor = _getPaymentStatusColor(status);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withOpacity(0.5),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primaryContainer.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.payment_rounded,
+                    size: 22,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        payment['method']?.toString() ?? '-',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _paymentStatusText(status),
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '¥${_money(payment['amount'])}',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            if ((payment['trade_no'] ?? '').toString().isNotEmpty ||
+                (payment['note'] ?? '').toString().isNotEmpty ||
+                payment['created_at'] != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 14, left: 48),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if ((payment['trade_no'] ?? '').toString().isNotEmpty)
+                      _DetailRow(
+                        icon: Icons.confirmation_number_rounded,
+                        label: '交易号',
+                        value: payment['trade_no'].toString(),
+                      ),
+                    if ((payment['note'] ?? '').toString().isNotEmpty)
+                      _DetailRow(
+                        icon: Icons.note_rounded,
+                        label: '备注',
+                        value: payment['note'].toString(),
+                      ),
+                    if (payment['created_at'] != null)
+                      _DetailRow(
+                        icon: Icons.access_time_rounded,
+                        label: '创建时间',
+                        value: _formatLocal(payment['created_at'].toString()),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// 订单项卡片
+// =============================================================================
+
+class _OrderItemCard extends StatelessWidget {
+  final String pkgName;
+  final String regionName;
+  final String lineName;
+  final Map<String, dynamic> item;
+  final String specText;
+
+  const _OrderItemCard({
+    required this.pkgName,
+    required this.regionName,
+    required this.lineName,
+    required this.item,
+    required this.specText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withOpacity(0.5),
+          width: 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 标题行
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.secondaryContainer.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.inventory_2_rounded,
+                    size: 22,
+                    color: colorScheme.secondary,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        pkgName.isNotEmpty ? pkgName : '套餐',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'ID: ${item['package_id'] ?? '-'} · 系统: ${item['system_id'] ?? '-'}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '¥${_money(item['amount'])}',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            // 详细信息
+            Padding(
+              padding: const EdgeInsets.only(top: 14, left: 48),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DetailRow(
+                    icon: Icons.format_list_numbered_rounded,
+                    label: '数量',
+                    value: item['qty']?.toString() ?? '-',
+                  ),
+                  if (regionName.isNotEmpty || lineName.isNotEmpty)
+                    _DetailRow(
+                      icon: Icons.public_rounded,
+                      label: '地区/线路',
+                      value:
+                          '${regionName.isNotEmpty ? regionName : '-'} / ${lineName.isNotEmpty ? lineName : '-'}',
+                    ),
+                  if ((item['action'] ?? '').toString().isNotEmpty)
+                    _DetailRow(
+                      icon: Icons.bolt_rounded,
+                      label: '动作',
+                      value: item['action'].toString(),
+                    ),
+                  if ((item['duration_months'] ?? '').toString().isNotEmpty)
+                    _DetailRow(
+                      icon: Icons.calendar_month_rounded,
+                      label: '时长',
+                      value: '${item['duration_months']} 个月',
+                    ),
+                  if ((item['automation_instance_id'] ?? '').toString().isNotEmpty)
+                    _DetailRow(
+                      icon: Icons.cloud_rounded,
+                      label: '实例',
+                      value: item['automation_instance_id'].toString(),
+                    ),
+                  _DetailRow(
+                    icon: Icons.memory_rounded,
+                    label: '规格',
+                    value: specText,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: colorScheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            '$label：',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// 事件卡片
+// =============================================================================
+
+class _EventTile extends StatelessWidget {
+  final Map<String, dynamic> ev;
+
+  const _EventTile({required this.ev});
+
+  @override
+  Widget build(BuildContext context) {
+    final type = ev['type']?.toString() ?? '';
+    final meta = _eventMeta(type);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withOpacity(0.5),
+          width: 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: meta.color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                meta.icon,
+                color: meta.color,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    meta.label,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  if (_eventSummary(ev).isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        _eventSummary(ev),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Text(
+              _formatTime(ev['created_at']?.toString() ?? ''),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// 头像组件
+// =============================================================================
+
 class _Avatar extends StatelessWidget {
   final String url;
   final double radius;
@@ -993,568 +1767,106 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-// 分节标题
-class _SectionTitle extends StatelessWidget {
-  final String title;
+// =============================================================================
+// 加载指示器
+// =============================================================================
+
+class _LoadingIndicator extends StatelessWidget {
+  final Color color;
+
+  const _LoadingIndicator({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: CircularProgressIndicator(
+        strokeWidth: 3,
+        color: color,
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// 错误提示条
+// =============================================================================
+
+class _ErrorSnackBar extends SnackBar {
+  final String message;
+
+  _ErrorSnackBar({required this.message})
+      : super(
+          content: Row(
+            children: const [
+              Icon(Icons.error_outline_rounded, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(child: Text('操作失败，请稍后重试')),
+            ],
+          ),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        );
+}
+
+// =============================================================================
+// 状态和格式化工具类
+// =============================================================================
+
+class _StatusInfo {
+  final String label;
   final IconData icon;
-
-  const _SectionTitle({required this.title, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: colorScheme.primaryContainer.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: colorScheme.primary,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          title,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: colorScheme.onSurface,
-          ),
-        ),
-      ],
-    );
-  }
+  final Color color;
+  const _StatusInfo(this.label, this.icon, this.color);
 }
 
-// 空状态
-class _EmptyLine extends StatelessWidget {
-  final String text;
-
-  const _EmptyLine({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.inbox_rounded,
-            size: 20,
-            color: colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class _EventMeta {
+  final String label;
+  final IconData icon;
+  final Color color;
+  const _EventMeta(this.label, this.icon, this.color);
 }
 
-// 付款卡片
-class _PaymentCard extends StatelessWidget {
-  final Map<String, dynamic> payment;
+class _Catalog {
+  final Map<int, Map<String, dynamic>> packages;
+  final Map<int, Map<String, dynamic>> planGroups;
+  final Map<int, Map<String, dynamic>> regions;
 
-  const _PaymentCard({required this.payment});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    final status = payment['status']?.toString() ?? '';
-    final statusColor = _getPaymentStatusColor(status);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primaryContainer.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.payment_rounded,
-                    size: 20,
-                    color: colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        payment['method']?.toString() ?? '-',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              _paymentStatusText(status),
-                              style: TextStyle(
-                                color: statusColor,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  '¥${_money(payment['amount'])}',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            if ((payment['trade_no'] ?? '').toString().isNotEmpty ||
-                (payment['note'] ?? '').toString().isNotEmpty ||
-                payment['created_at'] != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12, left: 42),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if ((payment['trade_no'] ?? '').toString().isNotEmpty)
-                      _buildInfoRow(
-                        context,
-                        Icons.confirmation_number_rounded,
-                        '交易号',
-                        payment['trade_no'].toString(),
-                      ),
-                    if ((payment['note'] ?? '').toString().isNotEmpty)
-                      _buildInfoRow(
-                        context,
-                        Icons.note_rounded,
-                        '备注',
-                        payment['note'].toString(),
-                      ),
-                    if (payment['created_at'] != null)
-                      _buildInfoRow(
-                        context,
-                        Icons.access_time_rounded,
-                        '创建时间',
-                        _formatLocal(payment['created_at'].toString()),
-                      ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value,
-  ) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$label：',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-Color _getPaymentStatusColor(String status) {
-  switch (status) {
-    case 'paid':
-      return const Color(0xFF00A68C);
-    case 'approved':
-      return const Color(0xFF00A68C);
-    case 'pending':
-      return const Color(0xFFEF6C00);
-    case 'pending_review':
-      return const Color(0xFFEF6C00);
-    case 'rejected':
-      return const Color(0xFFD32F2F);
-    default:
-      return const Color(0xFF546E7A);
-  }
-}
-
-// 订单项卡片
-class _OrderItemCard extends StatelessWidget {
-  final String pkgName;
-  final String regionName;
-  final String lineName;
-  final Map<String, dynamic> item;
-  final String specText;
-
-  const _OrderItemCard({
-    required this.pkgName,
-    required this.regionName,
-    required this.lineName,
-    required this.item,
-    required this.specText,
+  const _Catalog({
+    required this.packages,
+    required this.planGroups,
+    required this.regions,
   });
+}
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+// =============================================================================
+// 工具函数
+// =============================================================================
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 标题行
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: colorScheme.secondaryContainer.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    Icons.inventory_2_rounded,
-                    size: 20,
-                    color: colorScheme.secondary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        pkgName.isNotEmpty ? pkgName : '套餐',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        'ID: ${item['package_id'] ?? '-'} · 系统: ${item['system_id'] ?? '-'}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Text(
-                  '¥${_money(item['amount'])}',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    color: colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            // 详细信息
-            Padding(
-              padding: const EdgeInsets.only(top: 12, left: 42),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildDetailRow(
-                    context,
-                    Icons.format_list_numbered_rounded,
-                    '数量',
-                    item['qty']?.toString() ?? '-',
-                  ),
-                  if (regionName.isNotEmpty || lineName.isNotEmpty)
-                    _buildDetailRow(
-                      context,
-                      Icons.public_rounded,
-                      '地区/线路',
-                      '${regionName.isNotEmpty ? regionName : '-'} / ${lineName.isNotEmpty ? lineName : '-'}',
-                    ),
-                  if ((item['action'] ?? '').toString().isNotEmpty)
-                    _buildDetailRow(
-                      context,
-                      Icons.bolt_rounded,
-                      '动作',
-                      item['action'].toString(),
-                    ),
-                  if ((item['duration_months'] ?? '').toString().isNotEmpty)
-                    _buildDetailRow(
-                      context,
-                      Icons.calendar_month_rounded,
-                      '时长',
-                      '${item['duration_months']} 个月',
-                    ),
-                  if ((item['automation_instance_id'] ?? '').toString().isNotEmpty)
-                    _buildDetailRow(
-                      context,
-                      Icons.cloud_rounded,
-                      '实例',
-                      item['automation_instance_id'].toString(),
-                    ),
-                  _buildDetailRow(
-                    context,
-                    Icons.memory_rounded,
-                    '规格',
-                    specText,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+_StatusInfo _getStatusInfo(String status) {
+  switch (status) {
+    case 'pending_payment':
+      return const _StatusInfo('待支付', Icons.schedule_rounded, Color(0xFFEF6C00));
+    case 'pending_review':
+      return const _StatusInfo(
+          '待审核', Icons.hourglass_top_rounded, Color(0xFFEF6C00));
+    case 'approved':
+      return const _StatusInfo('已通过', Icons.check_circle_rounded, Color(0xFF00A68C));
+    case 'provisioning':
+      return const _StatusInfo(
+          '开通中', Icons.rocket_launch_rounded, Color(0xFF1E88E5));
+    case 'active':
+      return const _StatusInfo('已完成', Icons.verified_rounded, Color(0xFF00A68C));
+    case 'failed':
+      return const _StatusInfo('失败', Icons.error_rounded, Color(0xFFD32F2F));
+    case 'rejected':
+      return const _StatusInfo('已驳回', Icons.cancel_rounded, Color(0xFFD32F2F));
+    case 'canceled':
+      return const _StatusInfo('已取消', Icons.block_rounded, Color(0xFF757575));
+    default:
+      return _StatusInfo(status, Icons.info_rounded, const Color(0xFF546E7A));
   }
-
-  Widget _buildDetailRow(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String value,
-  ) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            icon,
-            size: 14,
-            color: colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$label：',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurface,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// 事件卡片
-class _EventTile extends StatelessWidget {
-  final Map<String, dynamic> ev;
-
-  const _EventTile({required this.ev});
-
-  @override
-  Widget build(BuildContext context) {
-    final type = ev['type']?.toString() ?? '';
-    final meta = _eventMeta(type);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withOpacity(0.5),
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: meta.color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                meta.icon,
-                color: meta.color,
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    meta.label,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  if (_eventSummary(ev).isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        _eventSummary(ev),
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Text(
-              _formatTime(ev['created_at']?.toString() ?? ''),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-List<Map<String, dynamic>> _normalizeEvents(List<dynamic> raw) {
-  return raw.map((ev) {
-    final map = Map<String, dynamic>.from(ev as Map);
-    if (map['data'] is String) {
-      try {
-        map['data'] = jsonDecode(map['data']);
-      } catch (_) {}
-    }
-    return map;
-  }).toList();
-}
-
-String _eventSummary(Map<String, dynamic> ev) {
-  final data = ev['data'];
-  if (data is Map<String, dynamic>) {
-    final reason = data['reason'];
-    final message = data['message'];
-    if (reason != null) return '原因：$reason';
-    if (message != null) return '消息：$message';
-  }
-  return '';
-}
-
-String _formatLocal(String raw) {
-  if (raw.isEmpty) return '';
-  final dt = DateTime.tryParse(raw);
-  if (dt == null) return raw;
-  final local = dt.toLocal();
-  return '${local.year}-${_pad2(local.month)}-${_pad2(local.day)} ${_pad2(local.hour)}:${_pad2(local.minute)}:${_pad2(local.second)}';
-}
-
-String _formatTime(String raw) {
-  if (raw.isEmpty) return '';
-  final dt = DateTime.tryParse(raw);
-  if (dt == null) return raw;
-  final local = dt.toLocal();
-  return '${_pad2(local.hour)}:${_pad2(local.minute)}:${_pad2(local.second)}';
-}
-
-String _pad2(int v) => v.toString().padLeft(2, '0');
-
-String _money(dynamic value) {
-  if (value is num) return value.toStringAsFixed(2);
-  return value?.toString() ?? '0.00';
 }
 
 String _statusText(String status) {
@@ -1597,30 +1909,21 @@ String _paymentStatusText(String status) {
   }
 }
 
-String _eventTypeText(String type) {
-  const map = {
-    'order.pending_payment': '待支付',
-    'order.pending_review': '待审核',
-    'order.approved': '已通过',
-    'order.provisioning': '开通中',
-    'order.completed': '已完成',
-    'order.failed': '开通失败',
-    'order.rejected': '已驳回',
-    'order.canceled': '已取消',
-    'order_created': '订单创建',
-    'order_paid': '订单支付',
-    'order_approved': '订单通过',
-    'order_rejected': '订单驳回',
-    'provisioning_started': '开始开通',
-    'provisioning_progress': '开通进度',
-    'provisioning_completed': '开通完成',
-    'provisioning_failed': '开通失败',
-    'payment_created': '支付创建',
-    'payment_approved': '支付通过',
-    'payment_rejected': '支付驳回',
-    'status_changed': '状态变更',
-  };
-  return map[type] ?? type;
+Color _getPaymentStatusColor(String status) {
+  switch (status) {
+    case 'paid':
+      return const Color(0xFF00A68C);
+    case 'approved':
+      return const Color(0xFF00A68C);
+    case 'pending':
+      return const Color(0xFFEF6C00);
+    case 'pending_review':
+      return const Color(0xFFEF6C00);
+    case 'rejected':
+      return const Color(0xFFD32F2F);
+    default:
+      return const Color(0xFF546E7A);
+  }
 }
 
 _EventMeta _eventMeta(String type) {
@@ -1668,12 +1971,76 @@ _EventMeta _eventMeta(String type) {
   }
 }
 
-class _EventMeta {
-  final String label;
-  final IconData icon;
-  final Color color;
+String _eventTypeText(String type) {
+  const map = {
+    'order.pending_payment': '待支付',
+    'order.pending_review': '待审核',
+    'order.approved': '已通过',
+    'order.provisioning': '开通中',
+    'order.completed': '已完成',
+    'order.failed': '开通失败',
+    'order.rejected': '已驳回',
+    'order.canceled': '已取消',
+    'order_created': '订单创建',
+    'order_paid': '订单支付',
+    'order_approved': '订单通过',
+    'order_rejected': '订单驳回',
+    'provisioning_started': '开始开通',
+    'provisioning_progress': '开通进度',
+    'provisioning_completed': '开通完成',
+    'provisioning_failed': '开通失败',
+    'payment_created': '支付创建',
+    'payment_approved': '支付通过',
+    'payment_rejected': '支付驳回',
+    'status_changed': '状态变更',
+  };
+  return map[type] ?? type;
+}
 
-  const _EventMeta(this.label, this.icon, this.color);
+String _eventSummary(Map<String, dynamic> ev) {
+  final data = ev['data'];
+  if (data is Map<String, dynamic>) {
+    final reason = data['reason'];
+    final message = data['message'];
+    if (reason != null) return '原因：$reason';
+    if (message != null) return '消息：$message';
+  }
+  return '';
+}
+
+List<Map<String, dynamic>> _normalizeEvents(List<dynamic> raw) {
+  return raw.map((ev) {
+    final map = Map<String, dynamic>.from(ev as Map);
+    if (map['data'] is String) {
+      try {
+        map['data'] = jsonDecode(map['data']);
+      } catch (_) {}
+    }
+    return map;
+  }).toList();
+}
+
+String _formatLocal(String raw) {
+  if (raw.isEmpty) return '';
+  final dt = DateTime.tryParse(raw);
+  if (dt == null) return raw;
+  final local = dt.toLocal();
+  return '${local.year}-${_pad2(local.month)}-${_pad2(local.day)} ${_pad2(local.hour)}:${_pad2(local.minute)}:${_pad2(local.second)}';
+}
+
+String _formatTime(String raw) {
+  if (raw.isEmpty) return '';
+  final dt = DateTime.tryParse(raw);
+  if (dt == null) return raw;
+  final local = dt.toLocal();
+  return '${_pad2(local.hour)}:${_pad2(local.minute)}:${_pad2(local.second)}';
+}
+
+String _pad2(int v) => v.toString().padLeft(2, '0');
+
+String _money(dynamic value) {
+  if (value is num) return value.toStringAsFixed(2);
+  return value?.toString() ?? '0.00';
 }
 
 String _specSummary(dynamic spec, Map<String, dynamic>? pkg) {
@@ -1717,16 +2084,6 @@ String _specSummary(dynamic spec, Map<String, dynamic>? pkg) {
   return parsed.toString();
 }
 
-String _specRaw(dynamic spec) {
-  if (spec == null) return '-';
-  if (spec is String) return spec;
-  try {
-    return jsonEncode(spec);
-  } catch (_) {
-    return spec.toString();
-  }
-}
-
 String _resolveAvatar(dynamic avatarValue, String qq, String baseUrl) {
   return resolveAvatarUrl(
     baseUrl: baseUrl,
@@ -1755,18 +2112,6 @@ Future<_Catalog> _loadCatalog(ApiClient client) async {
     regions[_asInt(map['id'])] = map;
   }
   return _Catalog(packages: packages, planGroups: planGroups, regions: regions);
-}
-
-class _Catalog {
-  final Map<int, Map<String, dynamic>> packages;
-  final Map<int, Map<String, dynamic>> planGroups;
-  final Map<int, Map<String, dynamic>> regions;
-
-  const _Catalog({
-    required this.packages,
-    required this.planGroups,
-    required this.regions,
-  });
 }
 
 int _asInt(dynamic value) {

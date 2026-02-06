@@ -109,29 +109,16 @@ class _TicketsScreenState extends State<TicketsScreen> {
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
-            Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.maybePop(context),
-                  icon: const Icon(Icons.arrow_back),
-                ),
-                const SizedBox(width: 4),
-                Text('工单管理', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-              ],
-            ),
-            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('处理用户提交的技术支持与咨询工单',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: Colors.black54)),
-                  ],
+                Text(
+                  '工单管理',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
                 OutlinedButton.icon(
                   onPressed: _loading ? null : () => _refresh(),
@@ -140,7 +127,13 @@ class _TicketsScreenState extends State<TicketsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
+            Text(
+              '处理用户提交的技术支持与咨询工单',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 10),
             _FilterCard(
               status: _status,
               onStatusChanged: (value) {
@@ -220,51 +213,159 @@ class _FilterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: status.isEmpty ? null : status,
-                    items: const [
-                      DropdownMenuItem(value: '', child: Text('全部')),
-                      DropdownMenuItem(value: 'open', child: Text('待处理')),
-                      DropdownMenuItem(value: 'waiting_user', child: Text('等待用户')),
-                      DropdownMenuItem(value: 'waiting_admin', child: Text('处理中')),
-                      DropdownMenuItem(value: 'closed', child: Text('已关闭')),
-                    ],
-                    onChanged: (value) => onStatusChanged(value ?? ''),
-                    decoration: const InputDecoration(labelText: '状态'),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: qController,
+                  decoration: const InputDecoration(
+                    hintText: '关键词（标题/内容）',
+                    prefixIcon: Icon(Icons.search),
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextField(
-                    controller: userIdController,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: '用户 ID'),
-                  ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.icon(
+                onPressed: onSearch,
+                icon: const Icon(Icons.search_rounded),
+                label: const Text('搜索'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _StatusFilterChip(
+                  label: '全部',
+                  selected: status.isEmpty,
+                  onTap: () => onStatusChanged(''),
+                ),
+                const SizedBox(width: 8),
+                _StatusFilterChip(
+                  label: '待处理',
+                  selected: status == 'open',
+                  onTap: () => onStatusChanged('open'),
+                ),
+                const SizedBox(width: 8),
+                _StatusFilterChip(
+                  label: '等待用户',
+                  selected: status == 'waiting_user',
+                  onTap: () => onStatusChanged('waiting_user'),
+                ),
+                const SizedBox(width: 8),
+                _StatusFilterChip(
+                  label: '处理中',
+                  selected: status == 'waiting_admin',
+                  onTap: () => onStatusChanged('waiting_admin'),
+                ),
+                const SizedBox(width: 8),
+                _StatusFilterChip(
+                  label: '已关闭',
+                  selected: status == 'closed',
+                  onTap: () => onStatusChanged('closed'),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: qController,
-              decoration: const InputDecoration(labelText: '关键词（标题/内容）'),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(child: FilledButton(onPressed: onSearch, child: const Text('筛选'))),
-                const SizedBox(width: 12),
-                OutlinedButton(onPressed: onReset, child: const Text('重置')),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: userIdController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    hintText: '用户 ID',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: onReset,
+                icon: const Icon(Icons.restart_alt_rounded),
+                label: const Text('重置'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _StatusFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = selected
+        ? colorScheme.primaryContainer.withOpacity(0.7)
+        : colorScheme.surface;
+    final borderColor = selected
+        ? colorScheme.primary
+        : colorScheme.outlineVariant.withOpacity(0.7);
+    final textColor =
+        selected ? colorScheme.primary : colorScheme.onSurface;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                Icon(Icons.check_rounded, size: 16, color: textColor),
+                const SizedBox(width: 6),
               ],
-            )
-          ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -280,16 +381,69 @@ class _TicketCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusMeta = _ticketStatusMeta(item.status);
-    return Card(
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: statusMeta.color.withOpacity(0.12),
-          child: Icon(statusMeta.icon, color: statusMeta.color),
-        ),
-        title: Text(item.subject.isEmpty ? '工单 #${item.id}' : item.subject),
-        subtitle: Text('用户 ${item.username ?? item.userId} · ${_formatLocal(item.createdAt)}'),
-        trailing: _StatusTag(label: statusMeta.label, color: statusMeta.color),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: () => onTap(item),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: statusMeta.color.withOpacity(0.12),
+                child: Icon(statusMeta.icon, color: statusMeta.color),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.subject.isEmpty ? '工单 #${item.id}' : item.subject,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '用户 ${item.username ?? item.userId}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatLocal(item.createdAt),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusTag(label: statusMeta.label, color: statusMeta.color),
+            ],
+          ),
+        ),
       ),
     );
   }

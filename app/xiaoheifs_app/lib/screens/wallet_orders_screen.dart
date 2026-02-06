@@ -86,65 +86,21 @@ class _WalletOrdersScreenState extends State<WalletOrdersScreen> {
         }
         final items = snapshot.data ?? [];
         return Scaffold(
-          appBar: AppBar(
-            title: const Text('钱包订单'),
-            actions: [
-              TextButton(onPressed: _reset, child: const Text('重置')),
-              TextButton(onPressed: _refresh, child: const Text('刷新')),
-            ],
-          ),
+          appBar: AppBar(title: const Text('钱包订单')),
           body: ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: _status.isEmpty ? null : _status,
-                              items: const [
-                                DropdownMenuItem(value: '', child: Text('全部')),
-                                DropdownMenuItem(value: 'pending_review', child: Text('待审核')),
-                                DropdownMenuItem(value: 'approved', child: Text('已通过')),
-                                DropdownMenuItem(value: 'rejected', child: Text('已拒绝')),
-                              ],
-                              onChanged: (value) => _status = value ?? '',
-                              decoration: const InputDecoration(labelText: '状态'),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: _userIdController,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(labelText: '用户ID'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: _loading
-                                  ? null
-                                  : () {
-                                      _page = 1;
-                                      _refresh();
-                                    },
-                              child: const Text('筛选'),
-                            ),
-                          ),
-                        ],
-                      )
-                    ],
-                  ),
-                ),
+              _WalletFilterCard(
+                status: _status,
+                userIdController: _userIdController,
+                loading: _loading,
+                onStatusChanged: (value) => _status = value ?? '',
+                onSearch: () {
+                  _page = 1;
+                  _refresh();
+                },
+                onReset: _reset,
+                onRefresh: _refresh,
               ),
               const SizedBox(height: 12),
               if (items.isEmpty)
@@ -226,40 +182,12 @@ class _WalletOrderTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = _statusColor(item.status);
-    return Card(
-      child: ListTile(
-        title: Text('用户 ${item.userId} · ${_typeText(item.type)}'),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('状态：${_statusText(item.status)} · ${_formatLocal(item.createdAt)}'),
-            if (item.note.isNotEmpty) Text('备注：${item.note}'),
-          ],
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '${item.type == 'withdraw' ? '-' : '+'}¥${item.amount.toStringAsFixed(2)}',
-              style: TextStyle(
-                color: item.type == 'withdraw' ? const Color(0xFFD32F2F) : const Color(0xFF00A68C),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                _statusText(item.status),
-                style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
         onTap: item.status == 'pending_review'
             ? () async {
                 final action = await showModalBottomSheet<String>(
@@ -268,8 +196,14 @@ class _WalletOrderTile extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        ListTile(title: const Text('通过'), onTap: () => Navigator.pop(context, 'approve')),
-                        ListTile(title: const Text('拒绝'), onTap: () => Navigator.pop(context, 'reject')),
+                        ListTile(
+                          title: const Text('通过'),
+                          onTap: () => Navigator.pop(context, 'approve'),
+                        ),
+                        ListTile(
+                          title: const Text('拒绝'),
+                          onTap: () => Navigator.pop(context, 'reject'),
+                        ),
                       ],
                     ),
                   ),
@@ -281,6 +215,274 @@ class _WalletOrderTile extends StatelessWidget {
                 }
               }
             : null,
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            border:
+                Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: colorScheme.shadow.withOpacity(0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  item.type == 'withdraw'
+                      ? Icons.outbox_outlined
+                      : Icons.account_balance_wallet_outlined,
+                  color: statusColor,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '用户 ${item.userId} · ${_typeText(item.type)}',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatLocal(item.createdAt),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (item.note.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        item.note,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${item.type == 'withdraw' ? '-' : '+'}¥${item.amount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: item.type == 'withdraw'
+                          ? const Color(0xFFD32F2F)
+                          : const Color(0xFF00A68C),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _statusText(item.status),
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WalletFilterCard extends StatelessWidget {
+  final String status;
+  final TextEditingController userIdController;
+  final bool loading;
+  final ValueChanged<String?> onStatusChanged;
+  final VoidCallback onSearch;
+  final VoidCallback onReset;
+  final VoidCallback onRefresh;
+
+  const _WalletFilterCard({
+    required this.status,
+    required this.userIdController,
+    required this.loading,
+    required this.onStatusChanged,
+    required this.onSearch,
+    required this.onReset,
+    required this.onRefresh,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: colorScheme.shadow.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                _StatusFilterChip(
+                  label: '全部',
+                  selected: status.isEmpty,
+                  onTap: () => onStatusChanged(''),
+                ),
+                const SizedBox(width: 8),
+                _StatusFilterChip(
+                  label: '待审核',
+                  selected: status == 'pending_review',
+                  onTap: () => onStatusChanged('pending_review'),
+                ),
+                const SizedBox(width: 8),
+                _StatusFilterChip(
+                  label: '已通过',
+                  selected: status == 'approved',
+                  onTap: () => onStatusChanged('approved'),
+                ),
+                const SizedBox(width: 8),
+                _StatusFilterChip(
+                  label: '已拒绝',
+                  selected: status == 'rejected',
+                  onTap: () => onStatusChanged('rejected'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: userIdController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    hintText: '用户 ID',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.icon(
+                onPressed: loading ? null : onSearch,
+                icon: const Icon(Icons.search_rounded),
+                label: const Text('搜索'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onReset,
+                  icon: const Icon(Icons.restart_alt_rounded),
+                  label: const Text('重置'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onRefresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('刷新'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusFilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _StatusFilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = selected
+        ? colorScheme.primaryContainer.withOpacity(0.7)
+        : colorScheme.surface;
+    final borderColor = selected
+        ? colorScheme.primary
+        : colorScheme.outlineVariant.withOpacity(0.7);
+    final textColor =
+        selected ? colorScheme.primary : colorScheme.onSurface;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: borderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                Icon(Icons.check_rounded, size: 16, color: textColor),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
