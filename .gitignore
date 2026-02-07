@@ -66,5 +66,16 @@ Thumbs.db
 /backend/.plan/
 /backend/tmp/
 /backend/data/
+
+
+app/xiaoheifs_app/.claude
+app/xiaoheifs_app/.vscode
+app/xiaoheifs_app/.idea
+app/xiaoheifs_app/.dart_tool
+app/xiaoheifs_app/build
+app/xiaoheifs_app/android/app/google-services.json
+
+
+
 /backend/uploads/
 /frontend/dist/

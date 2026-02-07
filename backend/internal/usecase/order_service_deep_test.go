@@ -190,3 +190,83 @@ func waitForOrderStatus(t *testing.T, repo usecase.OrderRepository, orderID int6
 func timePtr(t time.Time) *time.Time {
 	return &t
 }
+
+func TestOrderService_CreateResizeOrder_NegativeAmountAutoApproves(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "resizeauto", "resizeauto@example.com", "pass")
+
+	baseOrder := domain.Order{UserID: user.ID, OrderNo: "ORD-RESIZE-AUTO", Status: domain.OrderStatusActive, TotalAmount: seed.Package.Monthly, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:   baseOrder.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    seed.Package.Monthly,
+		Status:    domain.OrderItemStatusActive,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	baseItems, _ := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          baseItems[0].ID,
+		AutomationInstanceID: "123",
+		GoodsTypeID:          seed.Package.GoodsTypeID,
+		Name:                 "vm-auto",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         seed.Package.Monthly,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		ExpireAt:             timePtr(time.Now().Add(30 * 24 * time.Hour)),
+	}
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	target := domain.Package{
+		PlanGroupID:       seed.Package.PlanGroupID,
+		Name:              "lower-plan",
+		Cores:             1,
+		MemoryGB:          1,
+		DiskGB:            10,
+		BandwidthMB:       10,
+		PortNum:           1,
+		Monthly:           1,
+		Active:            true,
+		Visible:           true,
+		SortOrder:         99,
+		GoodsTypeID:       seed.Package.GoodsTypeID,
+		ProductID:         seed.Package.ProductID + 1000,
+		CPUModel:          seed.Package.CPUModel,
+		CapacityRemaining: 100,
+	}
+	if err := repo.CreatePackage(context.Background(), &target); err != nil {
+		t.Fatalf("create target package: %v", err)
+	}
+
+	fakeAuto := &testutil.FakeAutomationClient{}
+	autoResolver := &testutil.FakeAutomationResolver{Client: fakeAuto}
+	svc := usecase.NewOrderService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, autoResolver, nil, repo, repo, nil, repo, repo, repo, repo, nil, nil)
+
+	order, quote, err := svc.CreateResizeOrder(context.Background(), user.ID, inst.ID, nil, target.ID, false, nil)
+	if err != nil {
+		t.Fatalf("create resize order: %v", err)
+	}
+	if quote.ChargeAmount >= 0 {
+		t.Fatalf("expected negative charge amount for downgrade, got %d", quote.ChargeAmount)
+	}
+	updated, err := repo.GetOrder(context.Background(), order.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if updated.Status == domain.OrderStatusPendingReview || updated.Status == domain.OrderStatusPendingPayment {
+		t.Fatalf("expected auto-approved flow, got %s", updated.Status)
+	}
+}

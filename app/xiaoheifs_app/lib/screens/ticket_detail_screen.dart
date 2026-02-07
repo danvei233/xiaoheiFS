@@ -55,10 +55,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(subject),
+        title: Text(subject, style: const TextStyle(fontSize: 16)),
+        toolbarHeight: 44,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, size: 20),
             onPressed: _busy ? null : () => _loadAll(showSpinner: false),
           ),
         ],
@@ -91,10 +92,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             createdAt: _ticket['created_at']?.toString() ?? '',
             updatedAt: _ticket['updated_at']?.toString() ?? '',
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Expanded(
             child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
                 final msg = _messages[index];
@@ -306,7 +307,7 @@ void _openUserMenu(
                 padding: const EdgeInsets.all(16),
                 children: [
                   Text('用户操作', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   ListTile(
                     leading: const Icon(Icons.person),
                     title: const Text('查看用户详情'),
@@ -335,7 +336,7 @@ void _openUserMenu(
                     },
                   ),
                   if (vpsResources.isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -350,7 +351,7 @@ void _openUserMenu(
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     ...vpsResources.map((res) {
                       final id = _asInt(res['resource_id']);
                       final detail = vpsDetails[id] ?? {};
@@ -391,7 +392,7 @@ void _openUserMenu(
                                 '状态 ${detail['status'] ?? '-'} · 到期 ${_formatLocal(detail['expire_at']?.toString() ?? '')}',
                               ),
                               if (isOpen) ...[
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 6),
                                 Wrap(
                                   spacing: 8,
                                   runSpacing: 8,
@@ -467,25 +468,25 @@ class _TicketHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(10, 4, 10, 0),
+      padding: const EdgeInsets.all(6),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
         boxShadow: [
           BoxShadow(
             color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Avatar(url: avatarUrl, radius: 22),
-          const SizedBox(width: 12),
+          _Avatar(url: avatarUrl, radius: 14),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -497,6 +498,7 @@ class _TicketHeader extends StatelessWidget {
                         '用户 $userName · ID $userId',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
+                          fontSize: 12,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -505,10 +507,10 @@ class _TicketHeader extends StatelessWidget {
                     _StatusPill(label: statusMeta.label, color: statusMeta.color),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 3),
                 Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
+                  spacing: 4,
+                  runSpacing: 3,
                   children: [
                     if (userEmail.isNotEmpty)
                       _InfoChip(icon: Icons.email_outlined, text: userEmail),
@@ -520,20 +522,22 @@ class _TicketHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 3),
                 Text(
                   '创建 ${_formatLocal(createdAt)} · 更新 ${_formatLocal(updatedAt)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
+                    fontSize: 10,
                   ),
                 ),
                 if (errorText != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       '用户信息加载失败：$errorText',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.error,
+                        fontSize: 10,
                       ),
                     ),
                   ),
@@ -542,7 +546,7 @@ class _TicketHeader extends StatelessWidget {
           ),
           IconButton(
             onPressed: onMenuTap,
-            icon: const Icon(Icons.more_horiz),
+            icon: const Icon(Icons.more_horiz, size: 20),
           ),
         ],
       ),
@@ -569,15 +573,15 @@ class _MessageBubble extends StatelessWidget {
     final bg = isMe ? const Color(0xFF00BFA6) : colorScheme.surface;
     final fg = isMe ? Colors.white : colorScheme.onSurface;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: isMe
             ? MainAxisAlignment.end
             : MainAxisAlignment.start,
         children: [
-          if (!isMe) _Avatar(url: avatar, radius: 16),
-          if (!isMe) const SizedBox(width: 8),
+          if (!isMe) _Avatar(url: avatar, radius: 14),
+          if (!isMe) const SizedBox(width: 6),
           Flexible(
             child: Column(
               crossAxisAlignment: isMe
@@ -585,16 +589,16 @@ class _MessageBubble extends StatelessWidget {
                   : CrossAxisAlignment.start,
               children: [
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 320),
+                  constraints: const BoxConstraints(maxWidth: 300),
                   child: Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
                       color: bg,
                       borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(16),
-                        topRight: const Radius.circular(16),
-                        bottomLeft: Radius.circular(isMe ? 16 : 4),
-                        bottomRight: Radius.circular(isMe ? 4 : 16),
+                        topLeft: const Radius.circular(12),
+                        topRight: const Radius.circular(12),
+                        bottomLeft: Radius.circular(isMe ? 12 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 12),
                       ),
                       border: Border.all(
                         color: colorScheme.outlineVariant.withOpacity(0.5),
@@ -602,22 +606,23 @@ class _MessageBubble extends StatelessWidget {
                     ),
                     child: Text(
                       message['content']?.toString() ?? '',
-                      style: TextStyle(color: fg, height: 1.4),
+                      style: TextStyle(color: fg, height: 1.35, fontSize: 12),
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   '${role.isEmpty ? '-' : role} · ${_formatLocal(message['created_at']?.toString() ?? '')}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
+                    fontSize: 10,
                   ),
                 ),
               ],
             ),
           ),
-          if (isMe) const SizedBox(width: 8),
-          if (isMe) _Avatar(url: avatar, radius: 16),
+          if (isMe) const SizedBox(width: 6),
+          if (isMe) _Avatar(url: avatar, radius: 14),
         ],
       ),
     );
@@ -646,7 +651,7 @@ class _ComposerBar extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
         decoration: BoxDecoration(
           color: colorScheme.surface,
           border: Border(
@@ -658,58 +663,42 @@ class _ComposerBar extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText: '输入回复内容…',
-                      prefixIcon: Icon(Icons.edit_outlined),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton.icon(
-                  onPressed: busy ? null : onSend,
-                  icon: const Icon(Icons.send_rounded),
-                  label: const Text('发送'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
                 Text(
-                  '回复后状态',
+                  '\u56de\u590d\u540e\u72b6\u6001',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
+                    fontSize: 9,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 3),
                 SizedBox(
-                  width: 180,
+                  width: 110,
                   child: DropdownButtonFormField<String>(
                     value: replyStatus.isEmpty ? null : replyStatus,
+                    menuMaxHeight: 240,
+                    style: const TextStyle(fontSize: 10),
                     isDense: true,
+                    iconSize: 16,
+                    dropdownColor: null,
                     items: const [
-                      DropdownMenuItem(value: '', child: Text('不修改')),
-                      DropdownMenuItem(value: 'open', child: Text('待处理')),
+                      DropdownMenuItem(value: '', child: Text('\u4e0d\u4fee\u6539')),
+                      DropdownMenuItem(value: 'open', child: Text('\u5f85\u5904\u7406')),
                       DropdownMenuItem(
                         value: 'waiting_user',
-                        child: Text('等待用户'),
+                        child: Text('\u7b49\u5f85\u7528\u6237'),
                       ),
                       DropdownMenuItem(
                         value: 'waiting_admin',
-                        child: Text('处理中'),
+                        child: Text('\u5904\u7406\u4e2d'),
                       ),
-                      DropdownMenuItem(value: 'closed', child: Text('已关闭')),
+                      DropdownMenuItem(value: 'closed', child: Text('\u5df2\u5173\u95ed')),
                     ],
                     onChanged: onStatusChanged,
                     decoration: const InputDecoration(
                       isDense: true,
                       contentPadding: EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 10,
+                        horizontal: 6,
+                        vertical: 2,
                       ),
                       border: OutlineInputBorder(),
                     ),
@@ -717,6 +706,36 @@ class _ComposerBar extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      hintText: '\u8f93\u5165\u56de\u590d\u5185\u5bb9...',
+                      prefixIcon: Icon(Icons.edit_outlined, size: 14),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                FilledButton.icon(
+                  onPressed: busy ? null : onSend,
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: const Size(0, 28),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(fontSize: 11),
+                  ),
+                  icon: const Icon(Icons.send_rounded, size: 14),
+                  label: const Text('\u53d1\u9001'),
+                ),
+              ],
+            ),
+
           ],
         ),
       ),
@@ -733,7 +752,7 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
@@ -743,7 +762,7 @@ class _StatusPill extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.w600,
-          fontSize: 12,
+          fontSize: 10,
         ),
       ),
     );
@@ -760,22 +779,22 @@ class _InfoChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: colorScheme.onSurfaceVariant),
-          const SizedBox(width: 6),
+          Icon(icon, size: 11, color: colorScheme.onSurfaceVariant),
+          const SizedBox(width: 3),
           Text(
             text,
             style: TextStyle(
               color: colorScheme.onSurfaceVariant,
-              fontSize: 12,
+              fontSize: 10,
               fontWeight: FontWeight.w500,
             ),
           ),

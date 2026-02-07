@@ -684,29 +684,29 @@ onMounted(() => {
 /* Package Card */
 .package-card {
   position: relative;
-  border: 2px solid #e5e7eb;
+  border: 2px solid var(--border);
   border-radius: 12px;
   padding: 16px;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: #fff;
+  background: var(--card);
 }
 
 .package-card:hover:not(.disabled) {
-  border-color: #1677ff;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.1);
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
 .package-card.selected {
-  border-color: #1677ff;
-  background: #f0f7ff;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.15);
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
 }
 
 .package-card.disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  background: #f5f5f5;
+  background: var(--bg-tertiary);
 }
 
 .pkg-header {
@@ -719,7 +719,7 @@ onMounted(() => {
 .pkg-name {
   font-size: 15px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .pkg-specs {
@@ -728,7 +728,7 @@ onMounted(() => {
   justify-content: space-around;
   padding: 12px 0;
   margin-bottom: 12px;
-  background: #fafafa;
+  background: var(--bg-secondary);
   border-radius: 8px;
 }
 
@@ -739,19 +739,19 @@ onMounted(() => {
 .spec-value {
   font-size: 20px;
   font-weight: 600;
-  color: #1677ff;
+  color: var(--primary);
   display: block;
 }
 
 .spec-label {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-secondary);
 }
 
 .spec-divider {
   width: 1px;
   height: 24px;
-  background: #e5e7eb;
+  background: var(--border);
 }
 
 .pkg-footer {
@@ -768,19 +768,19 @@ onMounted(() => {
 
 .price-symbol {
   font-size: 14px;
-  color: #ff4d4f;
+  color: var(--danger);
   font-weight: 500;
 }
 
 .price-amount {
   font-size: 20px;
-  color: #ff4d4f;
+  color: var(--danger);
   font-weight: 700;
 }
 
 .price-unit {
   font-size: 12px;
-  color: #8c8c8c;
+  color: var(--text-secondary);
 }
 
 .pkg-tags {
@@ -793,7 +793,7 @@ onMounted(() => {
   position: absolute;
   top: 8px;
   right: 8px;
-  color: #52c41a;
+  color: var(--success);
   font-size: 20px;
 }
 
@@ -801,16 +801,16 @@ onMounted(() => {
 .section-header {
   font-size: 15px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text-primary);
   margin-bottom: 16px;
 }
 
 /* Addon Slider */
 .addon-item {
   padding: 16px;
-  background: #fafafa;
+  background: var(--bg-secondary);
   border-radius: 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
 }
 
 .addon-header {
@@ -823,18 +823,18 @@ onMounted(() => {
 .addon-title {
   font-size: 14px;
   font-weight: 500;
-  color: #1a1a1a;
+  color: var(--text-primary);
 }
 
 .addon-value {
   font-size: 13px;
-  color: #52c41a;
+  color: var(--success);
   font-weight: 500;
 }
 
 .addon-value-placeholder {
   font-size: 13px;
-  color: #bfbfbf;
+  color: var(--text-tertiary);
 }
 
 .addon-item :deep(.ant-slider) {
@@ -842,29 +842,29 @@ onMounted(() => {
 }
 
 .addon-item :deep(.ant-slider-rail) {
-  background: #e5e7eb;
+  background: var(--border);
 }
 
 .addon-item :deep(.ant-slider-track) {
-  background: #1677ff;
+  background: var(--primary);
 }
 
 .addon-item :deep(.ant-slider-handle) {
-  border-color: #1677ff;
+  border-color: var(--primary);
 }
 
 .addon-item :deep(.ant-slider-handle:hover),
 .addon-item :deep(.ant-slider-handle:focus) {
-  border-color: #4096ff;
+  border-color: var(--primary-light);
 }
 
 .addon-item :deep(.ant-slider-mark-text) {
   font-size: 11px;
-  color: #8c8c8c;
+  color: var(--text-secondary);
 }
 
 .addon-item :deep(.ant-slider-mark-text-active) {
-  color: #1677ff;
+  color: var(--primary);
 }
 
 /* Summary */
@@ -903,11 +903,11 @@ onMounted(() => {
 }
 
 .summary-key {
-  color: #595959;
+  color: var(--text-secondary);
 }
 
 .summary-val {
-  color: #1a1a1a;
+  color: var(--text-primary);
   font-weight: 500;
   text-align: right;
   flex: 1;

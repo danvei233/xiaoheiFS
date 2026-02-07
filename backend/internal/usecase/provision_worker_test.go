@@ -97,3 +97,37 @@ func TestProvisionWorker_DoneWhenOrderMissing(t *testing.T) {
 		t.Fatalf("expected no due jobs, got %v %v", len(jobs), err)
 	}
 }
+
+func TestProvisionWorker_Reconcile_RepairsPrematureProvisioning(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "provfix", "provfix@example.com", "pass")
+
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-STUCK", Status: domain.OrderStatusProvisioning, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	item := domain.OrderItem{
+		OrderID:   order.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    1000,
+		Status:    domain.OrderItemStatusPendingReview,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{item}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+
+	autoResolver := &testutil.FakeAutomationResolver{Client: &testutil.FakeAutomationClient{}}
+	svc := usecase.NewOrderService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, autoResolver, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+
+	if _, err := svc.ReconcileProvisioningOrders(context.Background(), 20); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	updatedOrder, _ := repo.GetOrder(context.Background(), order.ID)
+	if updatedOrder.Status != domain.OrderStatusPendingReview {
+		t.Fatalf("expected pending_review, got %v", updatedOrder.Status)
+	}
+}

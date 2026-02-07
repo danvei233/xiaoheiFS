@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"xiaoheiplay/internal/domain"
@@ -173,48 +174,53 @@ func (s *PaymentService) HandleNotify(ctx context.Context, providerKey string, r
 	if !result.Paid {
 		return result, ErrInvalidInput
 	}
-	payment, err := s.payments.GetPaymentByTradeNo(ctx, result.TradeNo)
-	if err != nil {
-		// Some providers only know the host order no at create time (out_trade_no),
-		// and only provide a platform transaction id at notify time. To keep
-		// callbacks idempotent and compatible, fall back to order_no lookup and
-		// "claim" the payment record by updating its trade_no.
-		if s.orders == nil || result.OrderNo == "" {
-			return result, err
-		}
+	var payment domain.OrderPayment
+	var lookupErr error
+	// Prefer order_no+method correlation to avoid cross-order collisions when trade_no is reused/empty.
+	if s.orders != nil && strings.TrimSpace(result.OrderNo) != "" {
 		order, oerr := s.orders.GetOrderByNo(ctx, result.OrderNo)
-		if oerr != nil {
-			return result, err
-		}
-		items, perr := s.payments.ListPaymentsByOrder(ctx, order.ID)
-		if perr != nil {
-			return result, err
-		}
-		var picked *domain.OrderPayment
-		for i := range items {
-			if items[i].Method == providerKey {
-				picked = &items[i]
-				break
-			}
-		}
-		if picked == nil {
-			return result, err
-		}
-		if result.TradeNo != "" && picked.TradeNo != result.TradeNo {
-			if uerr := s.payments.UpdatePaymentTradeNo(ctx, picked.ID, result.TradeNo); uerr != nil {
-				// If the trade_no is already claimed (replayed notify), accept it if it belongs
-				// to the same order & provider key.
-				if existing, gerr := s.payments.GetPaymentByTradeNo(ctx, result.TradeNo); gerr == nil && existing.OrderID == picked.OrderID && existing.Method == picked.Method {
-					payment = existing
-				} else {
-					return result, uerr
+		if oerr == nil {
+			items, perr := s.payments.ListPaymentsByOrder(ctx, order.ID)
+			if perr == nil {
+				var fallback *domain.OrderPayment
+				for i := range items {
+					if items[i].Method != providerKey {
+						continue
+					}
+					if fallback == nil {
+						fallback = &items[i]
+					}
+					if strings.TrimSpace(result.TradeNo) == "" || items[i].TradeNo == result.TradeNo || strings.TrimSpace(items[i].TradeNo) == "" {
+						payment = items[i]
+						break
+					}
 				}
-			} else {
-				picked.TradeNo = result.TradeNo
+				if payment.ID == 0 && fallback != nil {
+					payment = *fallback
+				}
 			}
 		}
-		if payment.ID == 0 {
-			payment = *picked
+	}
+	if payment.ID == 0 && strings.TrimSpace(result.TradeNo) != "" {
+		p, gerr := s.payments.GetPaymentByTradeNo(ctx, result.TradeNo)
+		if gerr == nil {
+			if p.Method != providerKey {
+				return result, ErrConflict
+			}
+			payment = p
+		} else {
+			lookupErr = gerr
+		}
+	}
+	if payment.ID == 0 {
+		if lookupErr != nil {
+			return result, lookupErr
+		}
+		return result, ErrInvalidInput
+	}
+	if strings.TrimSpace(result.TradeNo) != "" && payment.TradeNo != result.TradeNo {
+		if uerr := s.payments.UpdatePaymentTradeNo(ctx, payment.ID, result.TradeNo); uerr == nil {
+			payment.TradeNo = result.TradeNo
 		}
 	}
 	if payment.Status != domain.PaymentStatusApproved {

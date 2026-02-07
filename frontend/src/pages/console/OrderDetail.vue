@@ -550,14 +550,24 @@ const wechatJsapiParamsJson = computed(() => {
   }
 });
 
+const syncPayAmountFromOrder = () => {
+  const raw = order.value?.total_amount ?? order.value?.totalAmount;
+  if (raw === undefined || raw === null || raw === "") return;
+  const amount = Number(raw);
+  if (!Number.isFinite(amount)) return;
+  formModel.amount = amount;
+};
+
 watch(
-  () => order.value?.total_amount,
-  (val) => {
-    if (val) formModel.amount = Number(val);
-  }
+  () => order.value?.total_amount ?? order.value?.totalAmount,
+  () => {
+    syncPayAmountFromOrder();
+  },
+  { immediate: true }
 );
 
 const showPaymentModal = () => {
+  syncPayAmountFromOrder();
   paymentModalVisible.value = true;
 };
 

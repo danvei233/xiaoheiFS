@@ -293,6 +293,9 @@ func (s *OrderService) SubmitPayment(ctx context.Context, userID int64, orderID 
 	}
 	if input.TradeNo != "" {
 		if existing, err := s.payments.GetPaymentByTradeNo(ctx, input.TradeNo); err == nil {
+			if existing.OrderID != order.ID {
+				return domain.OrderPayment{}, ErrConflict
+			}
 			return existing, nil
 		}
 	}
@@ -1269,6 +1272,7 @@ func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID 
 			return err
 		}
 		if exists {
+			s.promoteRefundWalletOrderIfNeeded(ctx, walletOrders, userID, txRefID)
 			return nil
 		}
 	}
@@ -1285,7 +1289,15 @@ func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID 
 		return err
 	}
 	if _, err := s.wallets.AdjustWalletBalance(ctx, userID, amount, "credit", txRefType, txRefID, fmt.Sprintf("refund wallet order %d", order.ID)); err != nil {
-		return err
+		alreadyDone := false
+		if txRefType != "" && txRefID > 0 {
+			if exists, checkErr := s.wallets.HasWalletTransaction(ctx, userID, txRefType, txRefID); checkErr == nil && exists {
+				alreadyDone = true
+			}
+		}
+		if !alreadyDone {
+			return err
+		}
 	}
 	if err := walletOrders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderApproved, nil, ""); err != nil {
 		return err
@@ -1300,6 +1312,27 @@ func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID 
 		})
 	}
 	return nil
+}
+
+func (s *OrderService) promoteRefundWalletOrderIfNeeded(ctx context.Context, walletOrders WalletOrderRepository, userID int64, txRefID int64) {
+	if walletOrders == nil || txRefID <= 0 {
+		return
+	}
+	orders, _, err := walletOrders.ListWalletOrders(ctx, userID, 50, 0)
+	if err != nil {
+		return
+	}
+	for _, candidate := range orders {
+		if candidate.Type != domain.WalletOrderRefund || candidate.Status != domain.WalletOrderPendingReview {
+			continue
+		}
+		meta := parseJSON(candidate.MetaJSON)
+		if getInt64(meta["order_id"]) != txRefID {
+			continue
+		}
+		_ = walletOrders.UpdateWalletOrderStatus(ctx, candidate.ID, domain.WalletOrderApproved, nil, "")
+		return
+	}
 }
 
 func (s *OrderService) creditResizeRefundOnApprove(ctx context.Context, item domain.OrderItem) error {
@@ -1679,16 +1712,80 @@ func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID i
 	if s.autoLogs == nil {
 		return
 	}
+	if !success {
+		if traceReq, traceResp, traceAction, traceMsg, ok := extractHTTPTraceFromMessage(message); ok {
+			if traceReq != nil {
+				req = traceReq
+			}
+			if traceResp != nil {
+				resp = traceResp
+			}
+			if strings.TrimSpace(traceAction) != "" {
+				action = traceAction
+			}
+			if strings.TrimSpace(traceMsg) != "" {
+				message = traceMsg
+			}
+		}
+	}
+	requestPayload := map[string]any{
+		"method":  "RPC",
+		"url":     strings.TrimSpace(action),
+		"headers": map[string]string{},
+		"body":    req,
+	}
+	status := 500
+	if success {
+		status = 200
+	}
+	responsePayload := map[string]any{
+		"status":      status,
+		"headers":     map[string]string{},
+		"duration_ms": 0,
+	}
+	if resp != nil {
+		responsePayload["body"] = resp
+		responsePayload["format"] = "json"
+		responsePayload["body_json"] = resp
+	} else if strings.TrimSpace(message) != "" {
+		responsePayload["body"] = message
+		responsePayload["format"] = "text"
+	} else {
+		responsePayload["body"] = map[string]any{}
+		responsePayload["format"] = "json"
+	}
 	logEntry := domain.AutomationLog{
 		OrderID:      orderID,
 		OrderItemID:  orderItemID,
 		Action:       action,
-		RequestJSON:  mustJSON(req),
-		ResponseJSON: mustJSON(resp),
+		RequestJSON:  mustJSON(requestPayload),
+		ResponseJSON: mustJSON(responsePayload),
 		Success:      success,
 		Message:      message,
 	}
 	_ = s.autoLogs.CreateAutomationLog(ctx, &logEntry)
+}
+
+func extractHTTPTraceFromMessage(message string) (map[string]any, map[string]any, string, string, bool) {
+	const marker = "http_trace="
+	index := strings.LastIndex(message, marker)
+	if index < 0 {
+		return nil, nil, "", "", false
+	}
+	raw := strings.TrimSpace(message[index+len(marker):])
+	if raw == "" {
+		return nil, nil, "", "", false
+	}
+	var trace struct {
+		Action   string         `json:"action"`
+		Request  map[string]any `json:"request"`
+		Response map[string]any `json:"response"`
+		Message  string         `json:"message"`
+	}
+	if json.Unmarshal([]byte(raw), &trace) != nil {
+		return nil, nil, "", "", false
+	}
+	return trace.Request, trace.Response, trace.Action, trace.Message, true
 }
 
 func parseDurationMonths(specJSON string) int {
@@ -1930,6 +2027,14 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 		}
 		_, _ = s.events.Publish(ctx, order.ID, eventName, map[string]any{"status": order.Status, "total": amount})
 	}
+	if amount <= 0 {
+		if err := s.ApproveOrder(ctx, 0, order.ID); err != nil {
+			return domain.Order{}, ResizeQuote{}, err
+		}
+		if updated, err := s.orders.GetOrder(ctx, order.ID); err == nil {
+			order = updated
+		}
+	}
 	return order, quote, nil
 }
 
@@ -1952,7 +2057,11 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 		return domain.Order{}, 0, err
 	}
 	policy := loadRefundPolicy(ctx, s.settings)
-	amount := calculateRefundAmountForAmount(inst, item.Amount, policy)
+	baseAmount := inst.MonthlyPrice
+	if baseAmount <= 0 {
+		baseAmount = item.Amount
+	}
+	amount := calculateRefundAmountForAmount(inst, baseAmount, policy)
 	if amount <= 0 {
 		return domain.Order{}, 0, ErrForbidden
 	}

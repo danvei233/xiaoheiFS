@@ -192,6 +192,65 @@ func TestPaymentService_HandleNotify_FallbackByOrderNo(t *testing.T) {
 	}
 }
 
+func TestPaymentService_HandleNotify_OrderNoPreferredWhenTradeNoEmpty(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	user := testutil.CreateUser(t, repo, "notify3", "notify3@example.com", "pass")
+	orderA := domain.Order{UserID: user.ID, OrderNo: "ORD-N-A", Status: domain.OrderStatusPendingReview, TotalAmount: 1000, Currency: "CNY"}
+	orderB := domain.Order{UserID: user.ID, OrderNo: "ORD-N-B", Status: domain.OrderStatusPendingPayment, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &orderA); err != nil {
+		t.Fatalf("create order a: %v", err)
+	}
+	if err := repo.CreateOrder(context.Background(), &orderB); err != nil {
+		t.Fatalf("create order b: %v", err)
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{OrderID: orderA.ID, Amount: 1000, Status: domain.OrderItemStatusPendingReview, Action: "create", SpecJSON: "{}"}}); err != nil {
+		t.Fatalf("create items a: %v", err)
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{OrderID: orderB.ID, Amount: 1000, Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}"}}); err != nil {
+		t.Fatalf("create items b: %v", err)
+	}
+	paymentA := domain.OrderPayment{OrderID: orderA.ID, UserID: user.ID, Method: "approval", Amount: 1000, Currency: "CNY", TradeNo: "", Status: domain.PaymentStatusPendingReview}
+	paymentB := domain.OrderPayment{OrderID: orderB.ID, UserID: user.ID, Method: "ezpay.wxpay", Amount: 1000, Currency: "CNY", TradeNo: "", Status: domain.PaymentStatusPendingPayment}
+	if err := repo.CreatePayment(context.Background(), &paymentA); err != nil {
+		t.Fatalf("create payment a: %v", err)
+	}
+	if err := repo.CreatePayment(context.Background(), &paymentB); err != nil {
+		t.Fatalf("create payment b: %v", err)
+	}
+
+	reg := testutil.NewFakePaymentRegistry()
+	reg.RegisterProvider(&testutil.FakePaymentProvider{
+		KeyVal:  "ezpay.wxpay",
+		NameVal: "EZPay / wxpay",
+		VerifyRes: usecase.PaymentNotifyResult{
+			OrderNo: "ORD-N-B",
+			TradeNo: "",
+			Paid:    true,
+			Amount:  1000,
+		},
+	}, true, "")
+	approver := &fakeApprover{}
+	svc := usecase.NewPaymentService(repo, repo, repo, reg, repo, approver, nil)
+
+	if _, err := svc.HandleNotify(context.Background(), "ezpay.wxpay", usecase.RawHTTPRequest{Method: "GET", Path: "/payments/notify/ezpay.wxpay"}); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	paysA, err := repo.ListPaymentsByOrder(context.Background(), orderA.ID)
+	if err != nil || len(paysA) == 0 {
+		t.Fatalf("list payments a: %v", err)
+	}
+	if paysA[0].Status == domain.PaymentStatusApproved {
+		t.Fatalf("approval payment should not be touched by external notify")
+	}
+	paysB, err := repo.ListPaymentsByOrder(context.Background(), orderB.ID)
+	if err != nil || len(paysB) == 0 {
+		t.Fatalf("list payments b: %v", err)
+	}
+	if paysB[0].Status != domain.PaymentStatusApproved {
+		t.Fatalf("expected order b payment approved")
+	}
+}
+
 func TestPaymentService_CustomProviderDisabled(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	user := testutil.CreateUser(t, repo, "custom", "custom@example.com", "pass")

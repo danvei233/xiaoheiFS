@@ -3174,6 +3174,13 @@ func (h *Handler) AdminPluginInstanceConfigSchema(c *gin.Context) {
 		return
 	}
 	category := c.Param("category")
+	if strings.EqualFold(strings.TrimSpace(category), "automation") {
+		c.JSON(http.StatusGone, gin.H{
+			"error":         "deprecated: automation instance config moved to goods type settings",
+			"redirect_path": "/admin/catalog",
+		})
+		return
+	}
 	pluginID := c.Param("plugin_id")
 	instanceID := c.Param("instance_id")
 	jsonSchema, uiSchema, err := h.pluginMgr.GetConfigSchemaInstance(c, category, pluginID, instanceID)
@@ -3190,6 +3197,13 @@ func (h *Handler) AdminPluginInstanceConfigGet(c *gin.Context) {
 		return
 	}
 	category := c.Param("category")
+	if strings.EqualFold(strings.TrimSpace(category), "automation") {
+		c.JSON(http.StatusGone, gin.H{
+			"error":         "deprecated: automation instance config moved to goods type settings",
+			"redirect_path": "/admin/catalog",
+		})
+		return
+	}
 	pluginID := c.Param("plugin_id")
 	instanceID := c.Param("instance_id")
 	cfg, err := h.pluginMgr.GetConfigInstance(c, category, pluginID, instanceID)
@@ -3206,6 +3220,13 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		return
 	}
 	category := c.Param("category")
+	if strings.EqualFold(strings.TrimSpace(category), "automation") {
+		c.JSON(http.StatusGone, gin.H{
+			"error":         "deprecated: automation instance config moved to goods type settings",
+			"redirect_path": "/admin/catalog",
+		})
+		return
+	}
 	pluginID := c.Param("plugin_id")
 	instanceID := c.Param("instance_id")
 	var payload struct {
@@ -4971,20 +4992,10 @@ func (h *Handler) AdminAutomationConfig(c *gin.Context) {
 }
 
 func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
-	if h.integration == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
-		return
-	}
-	var payload usecase.AutomationConfig
-	if err := c.ShouldBindJSON(&payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
-		return
-	}
-	if err := h.integration.UpdateAutomationConfig(c, getUserID(c), payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true})
+	c.JSON(http.StatusGone, gin.H{
+		"error":         "deprecated: automation config is read-only here; use goods type -> automation instance config",
+		"redirect_path": "/admin/catalog",
+	})
 }
 
 func (h *Handler) AdminAutomationSync(c *gin.Context) {

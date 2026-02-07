@@ -73,3 +73,36 @@ func TestSQLiteRepo_AutomationLogsAndProvisionJobs(t *testing.T) {
 		t.Fatalf("update provision job: %v", err)
 	}
 }
+
+func TestSQLiteRepo_ListDueProvisionJobs_WithRFC3339Timezone(t *testing.T) {
+	_, r := newTestRepo(t)
+	ctx := context.Background()
+
+	job := &domain.ProvisionJob{
+		OrderID:     101,
+		OrderItemID: 202,
+		HostID:      303,
+		HostName:    "vm-timezone",
+		Status:      "pending",
+		Attempts:    0,
+		NextRunAt:   time.Now().In(time.FixedZone("CST+8", 8*3600)).Add(-2 * time.Minute),
+		LastError:   "",
+	}
+	if err := r.CreateOrUpdateProvisionJob(ctx, job); err != nil {
+		t.Fatalf("create provision job: %v", err)
+	}
+	due, err := r.ListDueProvisionJobs(ctx, 10)
+	if err != nil {
+		t.Fatalf("list due provision jobs: %v", err)
+	}
+	found := false
+	for _, item := range due {
+		if item.OrderItemID == job.OrderItemID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected timezone due job to be listed")
+	}
+}

@@ -91,3 +91,60 @@ func TestSQLiteRepo_InstanceUpdatesAndEvents(t *testing.T) {
 		t.Fatalf("list events: %v %d", err, len(events))
 	}
 }
+
+func TestSQLiteRepo_UpdateInstanceStatus_AdvancesOrderFromProvisioning(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+
+	user := testutil.CreateUser(t, repo, "provuser", "provuser@example.com", "pass")
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-SYNC", Status: domain.OrderStatusProvisioning, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(ctx, &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	item := domain.OrderItem{
+		OrderID: order.ID, Amount: 1000, Status: domain.OrderItemStatusProvisioning,
+		Action: "create", SpecJSON: "{}", GoodsTypeID: 1,
+	}
+	if err := repo.CreateOrderItems(ctx, []domain.OrderItem{item}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+	items, err := repo.ListOrderItems(ctx, order.ID)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("list items: %v %d", err, len(items))
+	}
+
+	expireAt := time.Now().Add(24 * time.Hour)
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		AutomationInstanceID: "3001",
+		GoodsTypeID:          1,
+		Name:                 "vm-prov",
+		Status:               domain.VPSStatusProvisioning,
+		AdminStatus:          domain.VPSAdminStatusNormal,
+		SpecJSON:             "{}",
+		ExpireAt:             &expireAt,
+	}
+	if err := repo.CreateInstance(ctx, &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	if err := repo.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusRunning, 2); err != nil {
+		t.Fatalf("update status: %v", err)
+	}
+
+	itemAfter, err := repo.GetOrderItem(ctx, items[0].ID)
+	if err != nil {
+		t.Fatalf("get item: %v", err)
+	}
+	if itemAfter.Status != domain.OrderItemStatusActive {
+		t.Fatalf("expected item active, got %s", itemAfter.Status)
+	}
+	orderAfter, err := repo.GetOrder(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if orderAfter.Status != domain.OrderStatusActive {
+		t.Fatalf("expected order active, got %s", orderAfter.Status)
+	}
+}

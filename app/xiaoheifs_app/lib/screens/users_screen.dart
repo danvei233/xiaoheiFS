@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -109,88 +109,92 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Stack(
-      children: [
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          children: [
-            Row(
-              children: [
-                Text(
-                  '用户管理',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
+    return Material(
+      child: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            children: [
+              Row(
+                children: [
+                  Text(
+                    '????',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              _FilterBar(
+                keywordController: _keywordController,
+                status: _statusFilter,
+                onStatusChanged: (value) => _statusFilter = value,
+                onSearch: () {
+                  _page = 1;
+                  _refresh();
+                },
+                onReset: _resetFilters,
+                onRefresh: _refresh,
+              ),
+              const SizedBox(height: 8),
+              if (_items.isEmpty && !_loading)
+                const _EmptyState()
+              else
+                ..._items.map(
+                  (item) => _UserItem(
+                    item: item,
+                    onDetail: () => _openDetail(item),
+                    onEdit: () => _openEdit(item),
+                    onResetPassword: () => _openReset(item),
+                    onToggle: () => _toggleStatus(item),
+                    onImpersonate: () => _impersonate(item),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _FilterBar(
-              keywordController: _keywordController,
-              status: _statusFilter,
-              onStatusChanged: (value) => _statusFilter = value,
-              onSearch: () {
-                _page = 1;
-                _refresh();
-              },
-              onReset: _resetFilters,
-              onRefresh: _refresh,
-            ),
-            const SizedBox(height: 12),
-            if (_items.isEmpty && !_loading)
-              const _EmptyState()
-            else
-              ..._items.map(
-                (item) => _UserItem(
-                  item: item,
-                  onDetail: () => _openDetail(item),
-                  onEdit: () => _openEdit(item),
-                  onResetPassword: () => _openReset(item),
-                  onToggle: () => _toggleStatus(item),
-                  onImpersonate: () => _impersonate(item),
-                ),
+              const SizedBox(height: 8),
+              _PaginationBar(
+                page: _page,
+                pageSize: _pageSize,
+                total: _total,
+                onPrev: _page > 1
+                    ? () {
+                        _page -= 1;
+                        _refresh();
+                      }
+                    : null,
+                onNext: _page * _pageSize < _total
+                    ? () {
+                        _page += 1;
+                        _refresh();
+                      }
+                    : null,
               ),
-            const SizedBox(height: 12),
-            _PaginationBar(
-              page: _page,
-              pageSize: _pageSize,
-              total: _total,
-              onPrev: _page > 1
-                  ? () {
-                      _page -= 1;
-                      _refresh();
-                    }
-                  : null,
-              onNext: _page * _pageSize < _total
-                  ? () {
-                      _page += 1;
-                      _refresh();
-                    }
-                  : null,
+            ],
+          ),
+          if (_loading)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: LinearProgressIndicator(minHeight: 2),
             ),
-          ],
-        ),
-        if (_loading)
-          const Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: LinearProgressIndicator(minHeight: 2),
+          Positioned(
+            right: 12,
+            bottom: 16,
+            child: FloatingActionButton.extended(
+              extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
+              onPressed: _loading ? null : _openCreate,
+              icon: const Icon(Icons.person_add, size: 18),
+              label: const Text('????'),
+            ),
           ),
-        Positioned(
-          right: 16,
-          bottom: 24,
-          child: FloatingActionButton.extended(
-            onPressed: _loading ? null : _openCreate,
-            icon: const Icon(Icons.person_add),
-            label: const Text('创建用户'),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Future<void> _openDetail(UserItem item) async {
+Future<void> _openDetail(UserItem item) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => UserDetailScreen(userId: item.id)),
@@ -231,7 +235,7 @@ class _UsersScreenState extends State<UsersScreen> {
                     decoration: const InputDecoration(labelText: '密码'),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 OutlinedButton(
                   onPressed: () => password.text = _randomPassword(),
                   child: const Text('随机生成'),
@@ -337,7 +341,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 controller: avatar,
                 decoration: const InputDecoration(labelText: '头像 URL'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               DropdownButtonFormField<String>(
                 value: status,
                 items: const [
@@ -474,7 +478,7 @@ class _FilterBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
         boxShadow: [
           BoxShadow(
@@ -485,7 +489,7 @@ class _FilterBar extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8),
         child: Column(
           children: [
             Row(
@@ -495,21 +499,29 @@ class _FilterBar extends StatelessWidget {
                     controller: keywordController,
                     decoration: const InputDecoration(
                       hintText: '关键词（ID/用户名/邮箱/手机号）',
-                      prefixIcon: Icon(Icons.search),
+                      prefixIcon: Icon(Icons.search, size: 18),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 4),
                 FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: const Size(0, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
                   onPressed: onSearch,
                   icon: const Icon(Icons.search_rounded),
                   label: const Text('搜索'),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             SizedBox(
-              height: 38,
+              height: 30,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
@@ -518,13 +530,13 @@ class _FilterBar extends StatelessWidget {
                     selected: status.isEmpty,
                     onTap: () => onStatusChanged(''),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   _FilterChip(
                     label: '正常',
                     selected: status == 'active',
                     onTap: () => onStatusChanged('active'),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   _FilterChip(
                     label: '已禁用',
                     selected: status == 'blocked',
@@ -533,19 +545,31 @@ class _FilterBar extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      minimumSize: const Size(0, 30),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
                     onPressed: onReset,
                     icon: const Icon(Icons.restart_alt_rounded),
                     label: const Text('重置'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 4),
                 Expanded(
                   child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      minimumSize: const Size(0, 30),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(fontSize: 12),
+                    ),
                     onPressed: onRefresh,
                     icon: const Icon(Icons.refresh_rounded),
                     label: const Text('刷新'),
@@ -587,26 +611,27 @@ class _FilterChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: borderColor),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (selected) ...[
-                Icon(Icons.check_rounded, size: 16, color: textColor),
-                const SizedBox(width: 6),
+                Icon(Icons.check_rounded, size: 12, color: textColor),
+                const SizedBox(width: 4),
               ],
               Text(
                 label,
                 style: TextStyle(
                   color: textColor,
                   fontWeight: FontWeight.w600,
+                  fontSize: 11,
                 ),
               ),
             ],
@@ -646,10 +671,10 @@ class _UserItem extends StatelessWidget {
       avatarUrl: item.avatarUrl.isNotEmpty ? item.avatarUrl : null,
     );
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
         boxShadow: [
           BoxShadow(
@@ -661,17 +686,17 @@ class _UserItem extends StatelessWidget {
       ),
       child: InkWell(
         onTap: onDetail,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Avatar(url: avatarUrl, radius: 20),
-                  const SizedBox(width: 12),
+                  _Avatar(url: avatarUrl, radius: 14),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -683,7 +708,8 @@ class _UserItem extends StatelessWidget {
                                 item.username,
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w700,
-                                ),
+                    fontSize: 16,
+                  ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -694,11 +720,12 @@ class _UserItem extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
                           item.contact,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
+                            fontSize: 11,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -706,6 +733,7 @@ class _UserItem extends StatelessWidget {
                           'ID ${item.id} · ${item.roleLabel}',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
+                            fontSize: 10,
                           ),
                         ),
                       ],
@@ -741,10 +769,10 @@ class _UserItem extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 6),
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   _MiniActionButton(
                     icon: Icons.visibility_outlined,
@@ -792,7 +820,7 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
@@ -802,7 +830,7 @@ class _StatusPill extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.w600,
-          fontSize: 12,
+          fontSize: 10,
         ),
       ),
     );
@@ -825,23 +853,23 @@ class _MiniActionButton extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       color: colorScheme.surfaceContainerHighest.withOpacity(0.35),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 16, color: colorScheme.primary),
-              const SizedBox(width: 6),
+              Icon(icon, size: 12, color: colorScheme.primary),
+              const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(
                   color: colorScheme.primary,
                   fontWeight: FontWeight.w600,
-                  fontSize: 12,
+                  fontSize: 10,
                 ),
               ),
             ],
@@ -1000,7 +1028,7 @@ class _PaginationBar extends StatelessWidget {
         Row(
           children: [
             OutlinedButton(onPressed: onPrev, child: const Text('上一页')),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             OutlinedButton(onPressed: onNext, child: const Text('下一页')),
           ],
         ),
@@ -1015,7 +1043,7 @@ class _EmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Center(
-      child: Padding(padding: EdgeInsets.all(32), child: Text('暂无用户')),
+      child: Padding(padding: EdgeInsets.all(16), child: Text('暂无用户')),
     );
   }
 }
@@ -1026,3 +1054,5 @@ int _asInt(dynamic value) {
   if (value is String) return int.tryParse(value) ?? 0;
   return 0;
 }
+
+

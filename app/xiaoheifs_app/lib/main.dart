@@ -1,7 +1,8 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter.material.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state.dart';
@@ -10,7 +11,7 @@ import 'screens/root_scaffold.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (Platform.isAndroid) {
+  if (!kIsWeb && Platform.isAndroid) {
     try {
       await Firebase.initializeApp();
     } catch (_) {}
@@ -31,9 +32,9 @@ class MyApp extends StatelessWidget {
       value: appState,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: '小黑云财务管理系统',
+        title: 'С���Ʋ������ϵͳ',
         theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00A68C)),
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1E88E5)),
           useMaterial3: true,
         ),
         home: Consumer<AppState>(

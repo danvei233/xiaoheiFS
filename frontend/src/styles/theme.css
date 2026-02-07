@@ -41,6 +41,7 @@
   --info: #0284c7;
   --info-light: #0ea5e9;
   --info-bg: rgba(2, 132, 199, 0.1);
+  --primary-bg: rgba(0, 102, 255, 0.08);
 
   /* Borders */
   --border: #e2e8f0;
@@ -703,4 +704,72 @@ a {
   :deep(.ant-card-body) {
     padding: var(--spacing-lg);
   }
+}
+
+/* ==================== Console Dark Mode ==================== */
+.console-dark {
+  /* Background Colors - Deep dark with subtle gradients */
+  --bg-primary: #0f1419;
+  --bg-secondary: #1a1f2e;
+  --bg-tertiary: #252b3d;
+  --card: #1e2433;
+  --card-hover: #252b3d;
+
+  /* Text Colors - High contrast on dark */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --text-inverse: #0f1419;
+
+  /* Brand Colors - Adjusted for dark backgrounds */
+  --primary: #3b82f6;
+  --primary-light: #60a5fa;
+  --primary-dark: #2563eb;
+  --primary-gradient: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
+  --primary-gradient-subtle: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(29, 78, 216, 0.1) 100%);
+  --primary-gradient-glow: radial-gradient(ellipse at center, rgba(59, 130, 246, 0.25) 0%, transparent 70%);
+  --shadow-glow: 0 0 40px rgba(59, 130, 246, 0.3), 0 0 80px rgba(59, 130, 246, 0.2);
+  --shadow-glow-sm: 0 0 20px rgba(59, 130, 246, 0.25), 0 0 40px rgba(59, 130, 246, 0.15);
+
+  /* Accent Colors */
+  --accent: #1e40af;
+  --accent-light: #3b82f6;
+  --accent-gradient: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%);
+
+  /* Semantic Colors - Enhanced for dark mode */
+  --success: #10b981;
+  --success-light: #34d399;
+  --success-bg: rgba(16, 185, 129, 0.15);
+  --warning: #f59e0b;
+  --warning-light: #fbbf24;
+  --warning-bg: rgba(245, 158, 11, 0.15);
+  --danger: #ef4444;
+  --danger-light: #f87171;
+  --danger-bg: rgba(239, 68, 68, 0.15);
+  --info: #0ea5e9;
+  --info-light: #38bdf8;
+  --info-bg: rgba(14, 165, 233, 0.15);
+  --primary-bg: rgba(59, 130, 246, 0.15);
+
+  /* Borders - Darker for contrast */
+  --border: #2d3748;
+  --border-light: #374151;
+  --border-dark: #4a5568;
+
+  /* Shadows - Adjusted for dark backgrounds */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.7), 0 8px 16px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 32px 64px rgba(0, 0, 0, 0.8), 0 12px 24px rgba(0, 0, 0, 0.7);
+  --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-inner-lg: inset 0 4px 8px rgba(0, 0, 0, 0.4);
+
+  /* Glassmorphism - Dark variant */
+  --glass-bg: rgba(30, 36, 51, 0.75);
+  --glass-bg-dark: rgba(30, 36, 51, 0.92);
+  --glass-bg-subtle: rgba(30, 36, 51, 0.5);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }

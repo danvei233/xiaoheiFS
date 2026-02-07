@@ -290,7 +290,8 @@ func migrateSQLite(db *sql.DB) error {
 			FOREIGN KEY(order_id) REFERENCES orders(id),
 			FOREIGN KEY(user_id) REFERENCES users(id)
 		);`,
-		`CREATE UNIQUE INDEX IF NOT EXISTS idx_order_payments_trade_no ON order_payments(trade_no);`,
+		`DROP INDEX IF EXISTS idx_order_payments_trade_no;`,
+		`CREATE INDEX IF NOT EXISTS idx_order_payments_trade_no ON order_payments(trade_no);`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_order_payments_idem ON order_payments(order_id, idempotency_key);`,
 		`CREATE TABLE IF NOT EXISTS billing_cycles (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -689,7 +690,12 @@ func migrateSQLite(db *sql.DB) error {
 	if err := migrateMoneyToCents(db); err != nil {
 		return err
 	}
+	if err := ensureOrderPaymentsTradeNoNotUnique(db); err != nil {
+		return err
+	}
 	_ = backfillVPSInstanceSnapshot(db)
+	_ = backfillMissingVPSInstancesOnce(db, defaultGoodsTypeID)
+	_ = cleanupRestoredVPSInstancesOnce(db)
 	_ = migrateDefaultPermissionGroups(db)
 
 	return nil
@@ -958,6 +964,125 @@ func backfillVPSInstanceSnapshot(db *sql.DB) error {
 	return rows.Err()
 }
 
+func backfillMissingVPSInstances(db *sql.DB, defaultGoodsTypeID int64) error {
+	type missingRow struct {
+		orderItemID          int64
+		userID               int64
+		packageID            int64
+		systemID             int64
+		specJSON             string
+		goodsTypeID          int64
+		automationInstanceID string
+	}
+	rows, err := db.Query(`
+		SELECT oi.id, o.user_id, oi.package_id, oi.system_id, oi.spec_json, oi.goods_type_id, COALESCE(oi.automation_instance_id,'')
+		FROM order_items oi
+		JOIN orders o ON o.id = oi.order_id
+		LEFT JOIN vps_instances v ON v.order_item_id = oi.id
+		WHERE oi.action = 'create' AND oi.status = 'active' AND v.id IS NULL`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var missing []missingRow
+	for rows.Next() {
+		var item missingRow
+		if err := rows.Scan(&item.orderItemID, &item.userID, &item.packageID, &item.systemID, &item.specJSON, &item.goodsTypeID, &item.automationInstanceID); err != nil {
+			return err
+		}
+		item.automationInstanceID = strings.TrimSpace(item.automationInstanceID)
+		if item.automationInstanceID == "" {
+			continue
+		}
+		if item.goodsTypeID <= 0 {
+			item.goodsTypeID = defaultGoodsTypeID
+			if item.goodsTypeID <= 0 {
+				item.goodsTypeID = 1
+			}
+		}
+		missing = append(missing, item)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, item := range missing {
+		var planGroupID int64
+		var pkgName string
+		var pkgCPU, pkgMem, pkgDisk, pkgBW, pkgPort int
+		var pkgPrice int64
+		if err := db.QueryRow(`SELECT plan_group_id, name, cores, memory_gb, disk_gb, bandwidth_mbps, port_num, monthly_price FROM packages WHERE id = ?`, item.packageID).
+			Scan(&planGroupID, &pkgName, &pkgCPU, &pkgMem, &pkgDisk, &pkgBW, &pkgPort, &pkgPrice); err != nil {
+			continue
+		}
+		var regionID, lineID int64
+		var regionName string
+		if planGroupID > 0 {
+			_ = db.QueryRow(`SELECT region_id, line_id FROM plan_groups WHERE id = ?`, planGroupID).Scan(&regionID, &lineID)
+			if regionID > 0 {
+				_ = db.QueryRow(`SELECT name FROM regions WHERE id = ?`, regionID).Scan(&regionName)
+			}
+		}
+		addon := vpsSpecSnapshot{}
+		_ = json.Unmarshal([]byte(item.specJSON), &addon)
+		cpu := pkgCPU + addon.AddCores
+		mem := pkgMem + addon.AddMemGB
+		disk := pkgDisk + addon.AddDiskGB
+		bw := pkgBW + addon.AddBWMbps
+		if pkgPort <= 0 {
+			pkgPort = 30
+		}
+
+		_, _ = db.Exec(`INSERT INTO vps_instances(
+			user_id,order_item_id,automation_instance_id,goods_type_id,name,region,region_id,line_id,
+			package_id,package_name,cpu,memory_gb,disk_gb,bandwidth_mbps,port_num,monthly_price,
+			spec_json,system_id,status,automation_state,admin_status,access_info_json
+		) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			item.userID, item.orderItemID, item.automationInstanceID, item.goodsTypeID, "restored-"+item.automationInstanceID,
+			regionName, regionID, lineID, item.packageID, pkgName, cpu, mem, disk, bw, pkgPort, pkgPrice,
+			item.specJSON, item.systemID, "running", 2, "normal", "{}")
+	}
+	return nil
+}
+
+func backfillMissingVPSInstancesOnce(db *sql.DB, defaultGoodsTypeID int64) error {
+	const doneKey = "migrate.backfill_missing_vps_instances_done"
+	var raw string
+	if err := db.QueryRow(`SELECT value_json FROM settings WHERE key = ?`, doneKey).Scan(&raw); err == nil {
+		if raw == "1" || raw == "true" || raw == "\"true\"" {
+			return nil
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+	if err := backfillMissingVPSInstances(db, defaultGoodsTypeID); err != nil {
+		return err
+	}
+	_, err := db.Exec(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
+		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP`, doneKey, "1")
+	return err
+}
+
+func cleanupRestoredVPSInstancesOnce(db *sql.DB) error {
+	const doneKey = "migrate.cleanup_restored_vps_instances_done"
+	var raw string
+	if err := db.QueryRow(`SELECT value_json FROM settings WHERE key = ?`, doneKey).Scan(&raw); err == nil {
+		if raw == "1" || raw == "true" || raw == "\"true\"" {
+			return nil
+		}
+	} else if err != sql.ErrNoRows {
+		return err
+	}
+	_, err := db.Exec(`DELETE FROM vps_instances WHERE name LIKE 'restored-%'`)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
+		ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP`, doneKey, "1")
+	return err
+}
+
 func migrateMoneyToCents(db *sql.DB) error {
 	const flagKey = "money_cents_migrated"
 	var raw string
@@ -989,4 +1114,101 @@ func migrateMoneyToCents(db *sql.DB) error {
 	}
 	_, err := db.Exec(`INSERT INTO settings(key,value_json,updated_at) VALUES (?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = CURRENT_TIMESTAMP`, flagKey, "1")
 	return err
+}
+
+func ensureOrderPaymentsTradeNoNotUnique(db *sql.DB) error {
+	_, _ = db.Exec(`DROP INDEX IF EXISTS idx_order_payments_trade_no`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_order_payments_trade_no ON order_payments(trade_no)`)
+
+	rows, err := db.Query(`PRAGMA index_list(order_payments)`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	needsRebuild := false
+	for rows.Next() {
+		var seq int
+		var name string
+		var unique int
+		var origin string
+		var partial int
+		if err := rows.Scan(&seq, &name, &unique, &origin, &partial); err != nil {
+			return err
+		}
+		if unique == 0 || name == "idx_order_payments_idem" {
+			continue
+		}
+		idxRows, idxErr := db.Query(fmt.Sprintf(`PRAGMA index_info(%s)`, name))
+		if idxErr != nil {
+			continue
+		}
+		colCount := 0
+		onlyTradeNo := true
+		for idxRows.Next() {
+			var idxSeq int
+			var cid int
+			var colName string
+			if err := idxRows.Scan(&idxSeq, &cid, &colName); err != nil {
+				_ = idxRows.Close()
+				return err
+			}
+			colCount++
+			if strings.TrimSpace(colName) != "trade_no" {
+				onlyTradeNo = false
+			}
+		}
+		_ = idxRows.Close()
+		if colCount == 1 && onlyTradeNo {
+			needsRebuild = true
+			break
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if !needsRebuild {
+		return nil
+	}
+
+	if _, err := db.Exec(`ALTER TABLE order_payments RENAME TO order_payments_old_unique_trade_no`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`CREATE TABLE order_payments (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		order_id INTEGER NOT NULL,
+		user_id INTEGER NOT NULL,
+		method TEXT NOT NULL,
+		amount INTEGER NOT NULL,
+		currency TEXT NOT NULL,
+		trade_no TEXT NOT NULL,
+		note TEXT,
+		screenshot_url TEXT,
+		status TEXT NOT NULL,
+		idempotency_key TEXT,
+		reviewed_by INTEGER,
+		review_reason TEXT,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY(order_id) REFERENCES orders(id),
+		FOREIGN KEY(user_id) REFERENCES users(id)
+	)`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`INSERT INTO order_payments(
+		id, order_id, user_id, method, amount, currency, trade_no, note, screenshot_url, status,
+		idempotency_key, reviewed_by, review_reason, created_at, updated_at
+	) SELECT
+		id, order_id, user_id, method, amount, currency, trade_no, note, screenshot_url, status,
+		idempotency_key, reviewed_by, review_reason, created_at, updated_at
+	FROM order_payments_old_unique_trade_no`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`DROP TABLE order_payments_old_unique_trade_no`); err != nil {
+		return err
+	}
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_order_payments_trade_no ON order_payments(trade_no)`)
+	_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_order_payments_idem ON order_payments(order_id, idempotency_key)`)
+	_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_order_payments_order ON order_payments(order_id)`)
+	return nil
 }

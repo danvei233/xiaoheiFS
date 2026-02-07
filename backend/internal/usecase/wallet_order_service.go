@@ -430,7 +430,11 @@ func (s *WalletOrderService) refundPolicy(ctx context.Context) RefundPolicy {
 }
 
 func (s *WalletOrderService) calculateRefundAmount(inst domain.VPSInstance, item domain.OrderItem, policy RefundPolicy) int64 {
-	return calculateRefundAmountForAmount(inst, item.Amount, policy)
+	baseAmount := inst.MonthlyPrice
+	if baseAmount <= 0 {
+		baseAmount = item.Amount
+	}
+	return calculateRefundAmountForAmount(inst, baseAmount, policy)
 }
 
 func refundElapsedRatio(inst domain.VPSInstance, now time.Time) float64 {

@@ -80,21 +80,33 @@ class _RootScaffoldState extends State<RootScaffold> {
         index: _index,
         children: _tabs.map((tab) => tab.widget).toList(),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (value) {
-          setState(() {
-            _index = value;
-          });
-        },
-        destinations: _tabs
-            .map(
-              (tab) => NavigationDestination(
-                icon: Icon(tab.icon),
-                label: tab.title,
-              ),
-            )
-            .toList(),
+      bottomNavigationBar: NavigationBarTheme(
+        data: const NavigationBarThemeData(
+          height: 48,
+          labelTextStyle: WidgetStatePropertyAll(
+            TextStyle(fontSize: 10, height: 1.0),
+          ),
+          iconTheme: WidgetStatePropertyAll(
+            IconThemeData(size: 18),
+          ),
+        ),
+        child: NavigationBar(
+          selectedIndex: _index,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
+          onDestinationSelected: (value) {
+            setState(() {
+              _index = value;
+            });
+          },
+          destinations: _tabs
+              .map(
+                (tab) => NavigationDestination(
+                  icon: Icon(tab.icon),
+                  label: tab.title,
+                ),
+              )
+              .toList(),
+        ),
       ),
     );
   }

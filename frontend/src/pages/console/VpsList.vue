@@ -1223,7 +1223,7 @@ site.fetchSettings();
 .vps-list-page {
   padding: 0;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf1 100%);
+  background: var(--bg-primary);
 }
 
 /* Page Header with Gradient */
@@ -1355,7 +1355,7 @@ site.fetchSettings();
 
 .stat-card {
   position: relative;
-  background: #ffffff;
+  background: var(--card);
   border-radius: 16px;
   padding: 20px;
   display: flex;

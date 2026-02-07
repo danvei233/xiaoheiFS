@@ -74,7 +74,14 @@ class _OrdersViewState extends State<_OrdersView> {
 
         return Scaffold(
           appBar: AppBar(
+            toolbarHeight: 44,
             title: const Text('订单审核'),
+            titleTextStyle: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600, fontSize: 16),
+            iconTheme: const IconThemeData(size: 20),
+            actionsIconTheme: const IconThemeData(size: 20),
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh_rounded),
@@ -85,7 +92,7 @@ class _OrdersViewState extends State<_OrdersView> {
           body: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
                 child: _FilterCard(
                   expanded: _filterExpanded,
                   status: state.filters.status,
@@ -208,34 +215,39 @@ class _FilterCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.tune_rounded, color: colorScheme.primary, size: 18),
-                const SizedBox(width: 8),
-                Text('筛选条件', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                Icon(Icons.tune_rounded, color: colorScheme.primary, size: 14),
+                const SizedBox(width: 4),
+                Text('筛选条件', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: onToggleExpand,
-                  icon: Icon(expanded ? Icons.expand_less : Icons.expand_more),
-                  label: Text(expanded ? '收起' : '更多'),
+                  icon: Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 16),
+                  label: Text(expanded ? '收起' : '更多', style: const TextStyle(fontSize: 11)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    minimumSize: const Size(0, 26),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                 )
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             SizedBox(
-              height: 44,
+              height: 32,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: 9,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (_, __) => const SizedBox(width: 4),
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
@@ -261,45 +273,63 @@ class _FilterCard extends StatelessWidget {
               ),
             ),
             if (expanded) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 6),
               TextField(
                 controller: userIdCtl,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(
                   labelText: '用户 ID',
                   prefixIcon: Icon(Icons.person_outline),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               TextField(
                 controller: orderNoCtl,
                 decoration: const InputDecoration(
                   labelText: '订单号',
                   prefixIcon: Icon(Icons.receipt_long),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               TextField(
                 controller: keywordCtl,
                 decoration: const InputDecoration(
                   labelText: '关键词 (ID/订单号)',
                   prefixIcon: Icon(Icons.search),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                 ),
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
                     onPressed: onReset,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: const Size(0, 28),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(fontSize: 11),
+                    ),
                     child: const Text('重置'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 6),
                 Expanded(
                   child: FilledButton(
                     onPressed: onSearch,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: const Size(0, 28),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(fontSize: 11),
+                    ),
                     child: const Text('搜索'),
                   ),
                 ),
@@ -340,27 +370,28 @@ class _StatusChip extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         onTap: () => onChanged(value),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(8),
             border: Border.all(color: borderColor),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (selected) ...[
-                Icon(Icons.check_rounded, size: 16, color: textColor),
-                const SizedBox(width: 6),
+                Icon(Icons.check_rounded, size: 12, color: textColor),
+                const SizedBox(width: 3),
               ],
               Text(
                 label,
                 style: TextStyle(
                   color: textColor,
                   fontWeight: FontWeight.w600,
+                  fontSize: 11,
                 ),
               ),
             ],
@@ -417,8 +448,8 @@ class _OrderTile extends StatelessWidget {
           children: [
             // 左侧状态颜色条
             Container(
-              width: 4,
-              height: 140,
+              width: 3,
+              height: 92,
               color: statusMeta.color,
             ),
             Expanded(
@@ -427,17 +458,17 @@ class _OrderTile extends StatelessWidget {
                 child: InkWell(
                   onTap: onOpenDetail,
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(8),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: statusMeta.color.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(8),
+                                borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
                                   color: statusMeta.color.withOpacity(0.3),
                                   width: 1,
@@ -448,16 +479,17 @@ class _OrderTile extends StatelessWidget {
                                 children: [
                                   Icon(
                                     _statusIcon(item.status),
-                                    size: 14,
+                                    size: 10,
                                     color: statusMeta.color,
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 3),
                                   Text(
                                     statusMeta.label,
                                     style: theme.textTheme.bodySmall?.copyWith(
                                       color: statusMeta.color,
                                       fontWeight: FontWeight.w700,
-                                      letterSpacing: 0.3,
+                                      letterSpacing: 0.1,
+                                      fontSize: 10,
                                     ),
                                   ),
                                 ],
@@ -473,35 +505,36 @@ class _OrderTile extends StatelessWidget {
                             else
                               Icon(
                                 Icons.chevron_right_rounded,
-                                size: 20,
+                                size: 18,
                                 color: colorScheme.onSurfaceVariant,
                               ),
                           ],
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 4),
                         Text(
                           item.orderNo.isEmpty ? '订单 #${item.id}' : item.orderNo,
-                          style: theme.textTheme.titleMedium?.copyWith(
+                          style: theme.textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w700,
-                            letterSpacing: -0.3,
+                            letterSpacing: -0.2,
+                            fontSize: 14,
                           ),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 3),
                         Wrap(
-                          spacing: 16,
-                          runSpacing: 6,
+                          spacing: 10,
+                          runSpacing: 2,
                           children: [
                             _InfoChip(icon: Icons.person_outline, text: username),
                             _InfoChip(icon: Icons.badge_outlined, text: 'ID ${item.userId}'),
                             _InfoChip(icon: Icons.schedule, text: _formatLocal(item.createdAt)),
                           ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 4),
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
@@ -509,21 +542,21 @@ class _OrderTile extends StatelessWidget {
                                     colorScheme.primary.withOpacity(0.05),
                                   ],
                                 ),
-                                borderRadius: BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
                                 '¥${item.totalAmount.toStringAsFixed(2)} ${item.currency}',
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.w800,
                                   color: colorScheme.primary,
-                                  fontSize: 20,
+                                  fontSize: 14,
                                 ),
                               ),
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: 4),
                             Wrap(
                               spacing: 6,
-                              runSpacing: 6,
+                              runSpacing: 3,
                               children: [
                                 _ActionButton(
                                   label: '详情',
@@ -585,11 +618,14 @@ class _InfoChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: colorScheme.onSurfaceVariant),
-        const SizedBox(width: 4),
+        Icon(icon, size: 11, color: colorScheme.onSurfaceVariant),
+        const SizedBox(width: 2),
         Text(
           text,
-          style: theme.textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+            fontSize: 10,
+          ),
         ),
       ],
     );
@@ -618,20 +654,20 @@ class _ActionButton extends StatelessWidget {
     final foreground = color ?? colorScheme.primary;
     final style = ButtonStyle(
       padding: WidgetStateProperty.all(
-        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       ),
-      minimumSize: WidgetStateProperty.all(const Size(0, 32)),
+      minimumSize: WidgetStateProperty.all(const Size(0, 24)),
       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       textStyle: WidgetStateProperty.all(
-        theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
+        theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600, fontSize: 10),
       ),
     );
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16),
-        const SizedBox(width: 6),
+        Icon(icon, size: 12),
+        const SizedBox(width: 3),
         Text(label),
       ],
     );
@@ -768,16 +804,35 @@ class _PaginationBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final totalPages = (total / pageSize).ceil();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('第 $page / $totalPages 页 · 共 $total 条'),
+          Text(
+            '第 $page / $totalPages 页 · 共 $total 条',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
           Row(
             children: [
-              OutlinedButton(onPressed: onPrev, child: const Text('上一页')),
-              const SizedBox(width: 8),
-              OutlinedButton(onPressed: onNext, child: const Text('下一页')),
+              OutlinedButton(
+                onPressed: onPrev,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('上一页', style: TextStyle(fontSize: 12)),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton(
+                onPressed: onNext,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: const Size(0, 32),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('下一页', style: TextStyle(fontSize: 12)),
+              ),
             ],
           )
         ],

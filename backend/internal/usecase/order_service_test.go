@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
@@ -77,6 +78,42 @@ func TestOrderService_SubmitPaymentIdempotent(t *testing.T) {
 	}
 }
 
+func TestOrderService_SubmitPayment_RejectsCrossOrderTradeNoReuse(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	user := testutil.CreateUser(t, repo, "pay2", "pay2@example.com", "pass")
+	orderA := domain.Order{UserID: user.ID, OrderNo: "ORD-A", Status: domain.OrderStatusPendingPayment, TotalAmount: 1000, Currency: "CNY"}
+	orderB := domain.Order{UserID: user.ID, OrderNo: "ORD-B", Status: domain.OrderStatusPendingPayment, TotalAmount: 2000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &orderA); err != nil {
+		t.Fatalf("create order a: %v", err)
+	}
+	if err := repo.CreateOrder(context.Background(), &orderB); err != nil {
+		t.Fatalf("create order b: %v", err)
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{OrderID: orderA.ID, Amount: 1000, Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}"}}); err != nil {
+		t.Fatalf("create items a: %v", err)
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{OrderID: orderB.ID, Amount: 2000, Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}"}}); err != nil {
+		t.Fatalf("create items b: %v", err)
+	}
+	svc := usecase.NewOrderService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	if _, err := svc.SubmitPayment(context.Background(), user.ID, orderA.ID, usecase.PaymentInput{
+		Method:   "approval",
+		Amount:   1000,
+		Currency: "CNY",
+		TradeNo:  "TN-CROSS",
+	}, "idem-a"); err != nil {
+		t.Fatalf("submit payment a: %v", err)
+	}
+	if _, err := svc.SubmitPayment(context.Background(), user.ID, orderB.ID, usecase.PaymentInput{
+		Method:   "approval",
+		Amount:   2000,
+		Currency: "CNY",
+		TradeNo:  "TN-CROSS",
+	}, "idem-b"); err != usecase.ErrConflict {
+		t.Fatalf("expected conflict, got %v", err)
+	}
+}
+
 func TestOrderService_CreateOrderFromCartAndCancel(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	seed := testutil.SeedCatalog(t, repo)
@@ -105,5 +142,67 @@ func TestOrderService_CreateOrderFromCartAndCancel(t *testing.T) {
 	}
 	if updated.Status != domain.OrderStatusCanceled {
 		t.Fatalf("expected canceled")
+	}
+}
+
+func TestOrderService_CreateRefundOrder_UsesInstanceMonthlyPrice(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "refundbase", "refundbase@example.com", "pass")
+
+	baseOrder := domain.Order{
+		UserID:      user.ID,
+		OrderNo:     "ORD-REFUND-BASE-MP",
+		Status:      domain.OrderStatusActive,
+		TotalAmount: 200000,
+		Currency:    "CNY",
+	}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:   baseOrder.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    200000,
+		Status:    domain.OrderItemStatusActive,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	items, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	if err != nil || len(items) == 0 {
+		t.Fatalf("list base items: %v", err)
+	}
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		AutomationInstanceID: "999",
+		Name:                 "vm-refund-base",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         3000,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		CreatedAt:            time.Now(),
+	}
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	inst.ExpireAt = &expire
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	svc := usecase.NewOrderService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	refundOrder, amount, err := svc.CreateRefundOrder(context.Background(), user.ID, inst.ID, "test")
+	if err != nil {
+		t.Fatalf("create refund order: %v", err)
+	}
+	if amount != 3000 {
+		t.Fatalf("expected refund amount based on monthly price 3000, got %d", amount)
+	}
+	if refundOrder.TotalAmount != -3000 {
+		t.Fatalf("expected refund order total -3000, got %d", refundOrder.TotalAmount)
 	}
 }

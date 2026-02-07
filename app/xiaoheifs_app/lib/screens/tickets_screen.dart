@@ -106,11 +106,12 @@ class _TicketsScreenState extends State<TicketsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Stack(
-      children: [
-        ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          children: [
+    return Material(
+      child: Stack(
+        children: [
+          ListView(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
+            children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -118,11 +119,18 @@ class _TicketsScreenState extends State<TicketsScreen> {
                   '工单管理',
                   style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
+                        fontSize: 16,
                       ),
                 ),
                 OutlinedButton.icon(
                   onPressed: _loading ? null : () => _refresh(),
-                  icon: const Icon(Icons.refresh),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: const Size(0, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  icon: const Icon(Icons.refresh, size: 16),
                   label: const Text('刷新'),
                 ),
               ],
@@ -133,7 +141,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             _FilterCard(
               status: _status,
               onStatusChanged: (value) {
@@ -149,12 +157,12 @@ class _TicketsScreenState extends State<TicketsScreen> {
               },
               onReset: _resetFilters,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             if (_items.isEmpty && !_loading)
               const _EmptyState()
             else
               ..._items.map((item) => _TicketCard(item: item, onTap: _openDetail)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             _PaginationBar(
               page: _page,
               pageSize: _pageSize,
@@ -181,7 +189,8 @@ class _TicketsScreenState extends State<TicketsScreen> {
             top: 0,
             child: LinearProgressIndicator(minHeight: 2),
           ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -216,16 +225,16 @@ class _FilterCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
         boxShadow: [
           BoxShadow(
             color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            blurRadius: 6,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
@@ -238,21 +247,29 @@ class _FilterCard extends StatelessWidget {
                   controller: qController,
                   decoration: const InputDecoration(
                     hintText: '关键词（标题/内容）',
-                    prefixIcon: Icon(Icons.search),
+                    prefixIcon: Icon(Icons.search, size: 16),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               FilledButton.icon(
                 onPressed: onSearch,
-                icon: const Icon(Icons.search_rounded),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: const Size(0, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+                icon: const Icon(Icons.search_rounded, size: 16),
                 label: const Text('搜索'),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           SizedBox(
-            height: 40,
+            height: 32,
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
@@ -288,7 +305,7 @@ class _FilterCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
@@ -297,14 +314,22 @@ class _FilterCard extends StatelessWidget {
                   keyboardType: TextInputType.number,
                   decoration: const InputDecoration(
                     hintText: '用户 ID',
-                    prefixIcon: Icon(Icons.person_outline),
+                    prefixIcon: Icon(Icons.person_outline, size: 16),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               OutlinedButton.icon(
                 onPressed: onReset,
-                icon: const Icon(Icons.restart_alt_rounded),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  minimumSize: const Size(0, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+                icon: const Icon(Icons.restart_alt_rounded, size: 16),
                 label: const Text('重置'),
               ),
             ],
@@ -342,26 +367,27 @@ class _StatusFilterChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
             border: Border.all(color: borderColor),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (selected) ...[
-                Icon(Icons.check_rounded, size: 16, color: textColor),
-                const SizedBox(width: 6),
+                Icon(Icons.check_rounded, size: 14, color: textColor),
+                const SizedBox(width: 4),
               ],
               Text(
                 label,
                 style: TextStyle(
                   color: textColor,
                   fontWeight: FontWeight.w600,
+                  fontSize: 12,
                 ),
               ),
             ],
@@ -389,17 +415,17 @@ class _TicketCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         onTap: () => onTap(item),
         child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: colorScheme.surface,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
             boxShadow: [
               BoxShadow(
                 color: colorScheme.shadow.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                blurRadius: 6,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
@@ -407,10 +433,11 @@ class _TicketCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
+                radius: 16,
                 backgroundColor: statusMeta.color.withOpacity(0.12),
-                child: Icon(statusMeta.icon, color: statusMeta.color),
+                child: Icon(statusMeta.icon, color: statusMeta.color, size: 16),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -419,11 +446,12 @@ class _TicketCard extends StatelessWidget {
                       item.subject.isEmpty ? '工单 #${item.id}' : item.subject,
                       style: theme.textTheme.titleSmall?.copyWith(
                         fontWeight: FontWeight.w700,
+                        fontSize: 13,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       '用户 ${item.username ?? item.userId}',
                       style: theme.textTheme.bodySmall?.copyWith(
@@ -435,6 +463,7 @@ class _TicketCard extends StatelessWidget {
                       _formatLocal(item.createdAt),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: colorScheme.onSurfaceVariant,
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -516,8 +545,26 @@ class _PaginationBar extends StatelessWidget {
             Wrap(
               spacing: 8,
               children: [
-                OutlinedButton(onPressed: onPrev, child: const Text('上一页')),
-                OutlinedButton(onPressed: onNext, child: const Text('下一页')),
+                OutlinedButton(
+                  onPressed: onPrev,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: const Size(0, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('上一页'),
+                ),
+                OutlinedButton(
+                  onPressed: onNext,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: const Size(0, 30),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('下一页'),
+                ),
               ],
             ),
           ],
@@ -536,14 +583,14 @@ class _StatusTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -596,8 +643,8 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
-        child: Text('暂无工单'),
+        padding: EdgeInsets.all(20),
+        child: Text('暂无工单', style: TextStyle(fontSize: 12)),
       ),
     );
   }

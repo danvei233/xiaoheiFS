@@ -100,8 +100,8 @@ func TestClient_HTTPFlows(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(server.URL+"/index.php/api/cloud", "secret", time.Second)
-	var lastLog httpLogEntry
-	client.WithLogger(func(ctx context.Context, entry httpLogEntry) {
+	var lastLog HTTPLogEntry
+	client.WithLogger(func(ctx context.Context, entry HTTPLogEntry) {
 		lastLog = entry
 	})
 

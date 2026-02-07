@@ -9,7 +9,7 @@ import (
 	"time"
 
 	cloudauth "github.com/alibabacloud-go/cloudauth-20200618/v2/client"
-	openapi "github.com/alibabacloud-go/darabonba-opena
+	openapi "github.com/alibabacloud-go/darabonba-openapi/client"
 	util "github.com/alibabacloud-go/tea-utils/service"
 	"github.com/alibabacloud-go/tea/tea"
 	"google.golang.org/grpc/codes"

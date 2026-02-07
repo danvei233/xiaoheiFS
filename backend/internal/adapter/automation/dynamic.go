@@ -557,10 +557,13 @@ func (d *DynamicClient) retry(cfg dynamicConfig, fn func() error) error {
 
 func (d *DynamicClient) newClient(cfg dynamicConfig) *Client {
 	client := NewClient(cfg.baseURL, cfg.apiKey, cfg.timeout)
-	if d.autoLogs == nil || !cfg.debugEnabled {
+	if d.autoLogs == nil {
 		return client
 	}
-	return client.WithLogger(func(ctx context.Context, entry httpLogEntry) {
+	logFn := func(ctx context.Context, entry HTTPLogEntry) {
+		if !cfg.debugEnabled && entry.Success {
+			return
+		}
 		trace, _ := usecase.GetAutomationLogContext(ctx)
 		if cfg.retentionDays > 0 {
 			before := time.Now().AddDate(0, 0, -cfg.retentionDays)
@@ -578,7 +581,8 @@ func (d *DynamicClient) newClient(cfg dynamicConfig) *Client {
 			Message:      entry.Message,
 		}
 		_ = d.autoLogs.CreateAutomationLog(ctx, &logEntry)
-	})
+	}
+	return client.WithLogger(logFn)
 }
 
 func (d *DynamicClient) loadConfig(ctx context.Context) dynamicConfig {

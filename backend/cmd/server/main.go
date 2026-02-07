@@ -90,7 +90,7 @@ func main() {
 	cartSvc := usecase.NewCartService(repoSQLite, repoSQLite, repoSQLite)
 	broker := sse.NewBroker(repoSQLite)
 	legacyAutomation := automation.NewDynamicClient(repoSQLite, cfg.AutomationBaseURL, cfg.AutomationAPIKey, repoSQLite)
-	automationResolver := automation.NewResolver(repoSQLite, pluginMgr, legacyAutomation)
+	automationResolver := automation.NewResolver(repoSQLite, pluginMgr, legacyAutomation, repoSQLite, repoSQLite)
 	emailSender := email.NewSender(repoSQLite)
 	robotNotifier := robot.NewWebhookNotifier(repoSQLite)
 	pushSender := push.NewFCMSender()

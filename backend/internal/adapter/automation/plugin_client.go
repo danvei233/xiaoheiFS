@@ -2,17 +2,22 @@ package automation
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"xiaoheiplay/internal/adapter/plugins"
+	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/usecase"
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
@@ -22,14 +27,18 @@ type PluginInstanceClient struct {
 	pluginID   string
 	instanceID string
 	timeout    time.Duration
+	settings   usecase.SettingsRepository
+	autoLogs   usecase.AutomationLogRepository
 }
 
-func NewPluginInstanceClient(mgr *plugins.Manager, pluginID, instanceID string) *PluginInstanceClient {
+func NewPluginInstanceClient(mgr *plugins.Manager, pluginID, instanceID string, settings usecase.SettingsRepository, autoLogs usecase.AutomationLogRepository) *PluginInstanceClient {
 	return &PluginInstanceClient{
 		mgr:        mgr,
 		pluginID:   strings.TrimSpace(pluginID),
 		instanceID: strings.TrimSpace(instanceID),
 		timeout:    12 * time.Second,
+		settings:   settings,
+		autoLogs:   autoLogs,
 	}
 }
 
@@ -46,6 +55,201 @@ func (c *PluginInstanceClient) client(ctx context.Context) (pluginv1.AutomationS
 	}
 	cli, _, err := c.mgr.GetAutomationClient(ctx, c.pluginID, c.instanceID)
 	return cli, err
+}
+
+type automationLogConfig struct {
+	debugEnabled  bool
+	retentionDays int
+}
+
+func (c *PluginInstanceClient) loadLogConfig(ctx context.Context) automationLogConfig {
+	cfg := automationLogConfig{}
+	if c.settings == nil {
+		return cfg
+	}
+	if setting, err := c.settings.GetSetting(ctx, "debug_enabled"); err == nil && setting.ValueJSON != "" {
+		cfg.debugEnabled = strings.ToLower(setting.ValueJSON) == "true"
+	}
+	if setting, err := c.settings.GetSetting(ctx, "automation_log_retention_days"); err == nil && setting.ValueJSON != "" {
+		if v, err := strconv.Atoi(setting.ValueJSON); err == nil && v > 0 {
+			cfg.retentionDays = v
+		}
+	}
+	return cfg
+}
+
+func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req any, resp any, duration time.Duration, err error) {
+	if c.autoLogs == nil {
+		return
+	}
+	cfg := c.loadLogConfig(ctx)
+	if !cfg.debugEnabled && err == nil {
+		return
+	}
+	trace, _ := usecase.GetAutomationLogContext(ctx)
+	if cfg.retentionDays > 0 {
+		before := time.Now().AddDate(0, 0, -cfg.retentionDays)
+		_ = c.autoLogs.PurgeAutomationLogs(ctx, before)
+	}
+	reqPayload := map[string]any{
+		"method":  "GRPC",
+		"url":     action,
+		"headers": map[string]string{},
+		"body":    sanitizePayload(toLogPayload(req)),
+	}
+	respPayload := map[string]any{
+		"status":      200,
+		"headers":     map[string]string{},
+		"duration_ms": duration.Milliseconds(),
+	}
+	if err != nil {
+		respPayload["status"] = 500
+		respPayload["body"] = err.Error()
+		respPayload["format"] = "text"
+		if traceReq, traceResp, traceAction, traceMsg, ok := extractHTTPTrace(err); ok {
+			if traceReq != nil {
+				reqPayload = traceReq
+			}
+			if traceResp != nil {
+				respPayload = traceResp
+			}
+			if strings.TrimSpace(traceAction) != "" {
+				action = traceAction
+			}
+			if strings.TrimSpace(traceMsg) != "" {
+				err = errors.New(traceMsg)
+			}
+		}
+	} else {
+		body := sanitizePayload(toLogPayload(resp))
+		respPayload["body"] = body
+		respPayload["format"] = "json"
+		respPayload["body_json"] = body
+	}
+	logEntry := domain.AutomationLog{
+		OrderID:      trace.OrderID,
+		OrderItemID:  trace.OrderItemID,
+		Action:       action,
+		RequestJSON:  mustJSON(reqPayload),
+		ResponseJSON: mustJSON(respPayload),
+		Success:      err == nil,
+		Message:      messageFromErr(err),
+	}
+	_ = c.autoLogs.CreateAutomationLog(ctx, &logEntry)
+}
+
+func extractHTTPTrace(err error) (map[string]any, map[string]any, string, string, bool) {
+	if err == nil {
+		return nil, nil, "", "", false
+	}
+	message := err.Error()
+	const marker = "http_trace="
+	index := strings.LastIndex(message, marker)
+	if index < 0 {
+		return nil, nil, "", "", false
+	}
+	raw := strings.TrimSpace(message[index+len(marker):])
+	if raw == "" {
+		return nil, nil, "", "", false
+	}
+	if decoded, decodeErr := base64.StdEncoding.DecodeString(raw); decodeErr == nil && len(decoded) > 0 {
+		raw = string(decoded)
+	}
+	var trace struct {
+		Action   string         `json:"action"`
+		Request  map[string]any `json:"request"`
+		Response map[string]any `json:"response"`
+		Success  bool           `json:"success"`
+		Message  string         `json:"message"`
+	}
+	if json.Unmarshal([]byte(raw), &trace) != nil {
+		return nil, nil, "", "", false
+	}
+	return trace.Request, trace.Response, trace.Action, trace.Message, true
+}
+
+func messageFromErr(err error) string {
+	if err == nil {
+		return "ok"
+	}
+	return err.Error()
+}
+
+func mustJSON(payload any) string {
+	if payload == nil {
+		return ""
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func toLogPayload(payload any) any {
+	if payload == nil {
+		return nil
+	}
+	if msg, ok := payload.(proto.Message); ok {
+		raw, err := protojson.MarshalOptions{UseProtoNames: true, EmitUnpopulated: true}.Marshal(msg)
+		if err != nil {
+			return map[string]any{"_error": err.Error()}
+		}
+		var out any
+		if err := json.Unmarshal(raw, &out); err == nil {
+			return out
+		}
+		return string(raw)
+	}
+	return payload
+}
+
+func sanitizePayload(payload any) any {
+	switch v := payload.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(v))
+		for key, val := range v {
+			if isSensitiveKey(key) {
+				out[key] = "***"
+				continue
+			}
+			out[key] = sanitizePayload(val)
+		}
+		return out
+	case []any:
+		out := make([]any, 0, len(v))
+		for _, item := range v {
+			out = append(out, sanitizePayload(item))
+		}
+		return out
+	default:
+		return payload
+	}
+}
+
+func isSensitiveKey(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	switch normalized {
+	case "api_key", "apikey", "secret", "token", "access_key", "access_key_id", "access_key_secret":
+		return true
+	default:
+		return strings.Contains(normalized, "secret")
+	}
+}
+
+func (c *PluginInstanceClient) call(ctx context.Context, action string, req proto.Message, fn func(context.Context, pluginv1.AutomationServiceClient) (proto.Message, error)) (proto.Message, error) {
+	cli, err := c.client(ctx)
+	if err != nil {
+		c.logRPC(ctx, action, req, nil, 0, err)
+		return nil, err
+	}
+	cctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+	start := time.Now()
+	resp, err := fn(cctx, cli)
+	err = mapUnimplemented(err)
+	c.logRPC(ctx, action, req, resp, time.Since(start), err)
+	return resp, err
 }
 
 func mapUnimplemented(err error) error {
@@ -67,13 +271,7 @@ func mapUnimplemented(err error) error {
 }
 
 func (c *PluginInstanceClient) CreateHost(ctx context.Context, req usecase.AutomationCreateHostRequest) (usecase.AutomationCreateHostResult, error) {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return usecase.AutomationCreateHostResult{}, err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.CreateInstance(cctx, &pluginv1.CreateInstanceRequest{
+	pb := &pluginv1.CreateInstanceRequest{
 		LineId:        req.LineID,
 		Os:            req.OS,
 		Name:          req.HostName,
@@ -85,24 +283,26 @@ func (c *PluginInstanceClient) CreateHost(ctx context.Context, req usecase.Autom
 		MemoryGb:      int32(req.MemoryGB),
 		DiskGb:        int32(req.DiskGB),
 		BandwidthMbps: int32(req.Bandwidth),
+	}
+	respAny, err := c.call(ctx, "automation.CreateInstance", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.CreateInstance(cctx, pb)
 	})
 	if err != nil {
-		return usecase.AutomationCreateHostResult{}, mapUnimplemented(err)
+		return usecase.AutomationCreateHostResult{}, err
 	}
+	resp := respAny.(*pluginv1.CreateInstanceResponse)
 	return usecase.AutomationCreateHostResult{HostID: resp.GetInstanceId(), Raw: map[string]any{"instance_id": resp.GetInstanceId()}}, nil
 }
 
 func (c *PluginInstanceClient) GetHostInfo(ctx context.Context, hostID int64) (usecase.AutomationHostInfo, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.GetInstanceRequest{InstanceId: hostID}
+	respAny, err := c.call(ctx, "automation.GetInstance", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.GetInstance(cctx, pb)
+	})
 	if err != nil {
 		return usecase.AutomationHostInfo{}, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.GetInstance(cctx, &pluginv1.GetInstanceRequest{InstanceId: hostID})
-	if err != nil {
-		return usecase.AutomationHostInfo{}, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.GetInstanceResponse)
 	inst := resp.GetInstance()
 	var expire *time.Time
 	if inst.GetExpireAtUnix() > 0 {
@@ -126,16 +326,14 @@ func (c *PluginInstanceClient) GetHostInfo(ctx context.Context, hostID int64) (u
 }
 
 func (c *PluginInstanceClient) ListHostSimple(ctx context.Context, searchTag string) ([]usecase.AutomationHostSimple, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.ListInstancesSimpleRequest{SearchTag: strings.TrimSpace(searchTag)}
+	respAny, err := c.call(ctx, "automation.ListInstancesSimple", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListInstancesSimple(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListInstancesSimple(cctx, &pluginv1.ListInstancesSimpleRequest{SearchTag: strings.TrimSpace(searchTag)})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListInstancesSimpleResponse)
 	out := make([]usecase.AutomationHostSimple, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationHostSimple{ID: it.GetId(), HostName: it.GetName(), IP: it.GetIp()})
@@ -144,10 +342,6 @@ func (c *PluginInstanceClient) ListHostSimple(ctx context.Context, searchTag str
 }
 
 func (c *PluginInstanceClient) ElasticUpdate(ctx context.Context, req usecase.AutomationElasticUpdateRequest) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
 	pb := &pluginv1.ElasticUpdateRequest{InstanceId: req.HostID}
 	if req.CPU != nil {
 		pb.Cpu = ptrInt32(int32(*req.CPU))
@@ -164,124 +358,95 @@ func (c *PluginInstanceClient) ElasticUpdate(ctx context.Context, req usecase.Au
 	if req.PortNum != nil {
 		pb.PortNum = ptrInt32(int32(*req.PortNum))
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.ElasticUpdate(cctx, pb)
-	return mapUnimplemented(err)
+	_, err := c.call(ctx, "automation.ElasticUpdate", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ElasticUpdate(cctx, pb)
+	})
+	return err
 }
 
 func ptrInt32(v int32) *int32 { return &v }
 
 func (c *PluginInstanceClient) RenewHost(ctx context.Context, hostID int64, nextDueDate time.Time) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Renew(cctx, &pluginv1.RenewRequest{InstanceId: hostID, NextDueAtUnix: nextDueDate.Unix()})
-	return mapUnimplemented(err)
+	pb := &pluginv1.RenewRequest{InstanceId: hostID, NextDueAtUnix: nextDueDate.Unix()}
+	_, err := c.call(ctx, "automation.Renew", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Renew(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) LockHost(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Lock(cctx, &pluginv1.LockRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.LockRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.Lock", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Lock(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) UnlockHost(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Unlock(cctx, &pluginv1.UnlockRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.UnlockRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.Unlock", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Unlock(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) DeleteHost(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Destroy(cctx, &pluginv1.DestroyRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.DestroyRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.Destroy", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Destroy(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) StartHost(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Start(cctx, &pluginv1.StartRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.StartRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.Start", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Start(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) ShutdownHost(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Shutdown(cctx, &pluginv1.ShutdownRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.ShutdownRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.Shutdown", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Shutdown(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) RebootHost(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Reboot(cctx, &pluginv1.RebootRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.RebootRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.Reboot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Reboot(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) ResetOS(ctx context.Context, hostID int64, templateID int64, password string) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.Rebuild(cctx, &pluginv1.RebuildRequest{InstanceId: hostID, ImageId: templateID, Password: password})
-	return mapUnimplemented(err)
+	pb := &pluginv1.RebuildRequest{InstanceId: hostID, ImageId: templateID, Password: password}
+	_, err := c.call(ctx, "automation.Rebuild", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.Rebuild(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) ResetOSPassword(ctx context.Context, hostID int64, password string) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.ResetPassword(cctx, &pluginv1.ResetPasswordRequest{InstanceId: hostID, Password: password})
-	return mapUnimplemented(err)
+	pb := &pluginv1.ResetPasswordRequest{InstanceId: hostID, Password: password}
+	_, err := c.call(ctx, "automation.ResetPassword", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ResetPassword(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) ([]usecase.AutomationSnapshot, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.ListSnapshotsRequest{InstanceId: hostID}
+	respAny, err := c.call(ctx, "automation.ListSnapshots", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListSnapshots(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListSnapshots(cctx, &pluginv1.ListSnapshotsRequest{InstanceId: hostID})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListSnapshotsResponse)
 	out := make([]usecase.AutomationSnapshot, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationSnapshot{
@@ -295,49 +460,38 @@ func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) 
 }
 
 func (c *PluginInstanceClient) CreateSnapshot(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.CreateSnapshot(cctx, &pluginv1.CreateSnapshotRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.CreateSnapshotRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.CreateSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.CreateSnapshot(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.DeleteSnapshot(cctx, &pluginv1.DeleteSnapshotRequest{InstanceId: hostID, SnapshotId: snapshotID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.DeleteSnapshotRequest{InstanceId: hostID, SnapshotId: snapshotID}
+	_, err := c.call(ctx, "automation.DeleteSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.DeleteSnapshot(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) RestoreSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.RestoreSnapshot(cctx, &pluginv1.RestoreSnapshotRequest{InstanceId: hostID, SnapshotId: snapshotID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.RestoreSnapshotRequest{InstanceId: hostID, SnapshotId: snapshotID}
+	_, err := c.call(ctx, "automation.RestoreSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.RestoreSnapshot(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([]usecase.AutomationBackup, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.ListBackupsRequest{InstanceId: hostID}
+	respAny, err := c.call(ctx, "automation.ListBackups", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListBackups(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListBackups(cctx, &pluginv1.ListBackupsRequest{InstanceId: hostID})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListBackupsResponse)
 	out := make([]usecase.AutomationBackup, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationBackup{
@@ -351,49 +505,38 @@ func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([
 }
 
 func (c *PluginInstanceClient) CreateBackup(ctx context.Context, hostID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.CreateBackup(cctx, &pluginv1.CreateBackupRequest{InstanceId: hostID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.CreateBackupRequest{InstanceId: hostID}
+	_, err := c.call(ctx, "automation.CreateBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.CreateBackup(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) DeleteBackup(ctx context.Context, hostID int64, backupID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.DeleteBackup(cctx, &pluginv1.DeleteBackupRequest{InstanceId: hostID, BackupId: backupID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.DeleteBackupRequest{InstanceId: hostID, BackupId: backupID}
+	_, err := c.call(ctx, "automation.DeleteBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.DeleteBackup(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) RestoreBackup(ctx context.Context, hostID int64, backupID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.RestoreBackup(cctx, &pluginv1.RestoreBackupRequest{InstanceId: hostID, BackupId: backupID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.RestoreBackupRequest{InstanceId: hostID, BackupId: backupID}
+	_, err := c.call(ctx, "automation.RestoreBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.RestoreBackup(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int64) ([]usecase.AutomationFirewallRule, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.ListFirewallRulesRequest{InstanceId: hostID}
+	respAny, err := c.call(ctx, "automation.ListFirewallRules", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListFirewallRules(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListFirewallRules(cctx, &pluginv1.ListFirewallRulesRequest{InstanceId: hostID})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListFirewallRulesResponse)
 	out := make([]usecase.AutomationFirewallRule, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationFirewallRule{
@@ -409,45 +552,37 @@ func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int
 }
 
 func (c *PluginInstanceClient) AddFirewallRule(ctx context.Context, req usecase.AutomationFirewallRuleCreate) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.AddFirewallRule(cctx, &pluginv1.AddFirewallRuleRequest{
+	pb := &pluginv1.AddFirewallRuleRequest{
 		InstanceId: req.HostID,
 		Direction:  req.Direction,
 		Protocol:   req.Protocol,
 		Method:     req.Method,
 		Port:       req.Port,
 		Ip:         req.IP,
+	}
+	_, err := c.call(ctx, "automation.AddFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.AddFirewallRule(cctx, pb)
 	})
-	return mapUnimplemented(err)
+	return err
 }
 
 func (c *PluginInstanceClient) DeleteFirewallRule(ctx context.Context, hostID int64, ruleID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.DeleteFirewallRule(cctx, &pluginv1.DeleteFirewallRuleRequest{InstanceId: hostID, RuleId: ruleID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.DeleteFirewallRuleRequest{InstanceId: hostID, RuleId: ruleID}
+	_, err := c.call(ctx, "automation.DeleteFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.DeleteFirewallRule(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) ListPortMappings(ctx context.Context, hostID int64) ([]usecase.AutomationPortMapping, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.ListPortMappingsRequest{InstanceId: hostID}
+	respAny, err := c.call(ctx, "automation.ListPortMappings", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListPortMappings(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListPortMappings(cctx, &pluginv1.ListPortMappingsRequest{InstanceId: hostID})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListPortMappingsResponse)
 	out := make([]usecase.AutomationPortMapping, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationPortMapping{
@@ -461,71 +596,59 @@ func (c *PluginInstanceClient) ListPortMappings(ctx context.Context, hostID int6
 }
 
 func (c *PluginInstanceClient) AddPortMapping(ctx context.Context, req usecase.AutomationPortMappingCreate) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.AddPortMapping(cctx, &pluginv1.AddPortMappingRequest{
+	pb := &pluginv1.AddPortMappingRequest{
 		InstanceId: req.HostID,
 		Name:       req.Name,
 		Sport:      req.Sport,
 		Dport:      req.Dport,
+	}
+	_, err := c.call(ctx, "automation.AddPortMapping", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.AddPortMapping(cctx, pb)
 	})
-	return mapUnimplemented(err)
+	return err
 }
 
 func (c *PluginInstanceClient) DeletePortMapping(ctx context.Context, hostID int64, mappingID int64) error {
-	cli, err := c.client(ctx)
-	if err != nil {
-		return err
-	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	_, err = cli.DeletePortMapping(cctx, &pluginv1.DeletePortMappingRequest{InstanceId: hostID, MappingId: mappingID})
-	return mapUnimplemented(err)
+	pb := &pluginv1.DeletePortMappingRequest{InstanceId: hostID, MappingId: mappingID}
+	_, err := c.call(ctx, "automation.DeletePortMapping", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.DeletePortMapping(cctx, pb)
+	})
+	return err
 }
 
 func (c *PluginInstanceClient) FindPortCandidates(ctx context.Context, hostID int64, keywords string) ([]int64, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.FindPortCandidatesRequest{InstanceId: hostID, Keywords: strings.TrimSpace(keywords)}
+	respAny, err := c.call(ctx, "automation.FindPortCandidates", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.FindPortCandidates(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.FindPortCandidates(cctx, &pluginv1.FindPortCandidatesRequest{InstanceId: hostID, Keywords: strings.TrimSpace(keywords)})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.FindPortCandidatesResponse)
 	return resp.GetPorts(), nil
 }
 
 func (c *PluginInstanceClient) GetPanelURL(ctx context.Context, hostName string, panelPassword string) (string, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.GetPanelURLRequest{InstanceName: hostName, PanelPassword: panelPassword}
+	respAny, err := c.call(ctx, "automation.GetPanelURL", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.GetPanelURL(cctx, pb)
+	})
 	if err != nil {
 		return "", err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.GetPanelURL(cctx, &pluginv1.GetPanelURLRequest{InstanceName: hostName, PanelPassword: panelPassword})
-	if err != nil {
-		return "", mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.GetPanelURLResponse)
 	return resp.GetUrl(), nil
 }
 
 func (c *PluginInstanceClient) ListAreas(ctx context.Context) ([]usecase.AutomationArea, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.Empty{}
+	respAny, err := c.call(ctx, "automation.ListAreas", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListAreas(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListAreas(cctx, &pluginv1.Empty{})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListAreasResponse)
 	out := make([]usecase.AutomationArea, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationArea{ID: it.GetId(), Name: it.GetName(), State: int(it.GetState())})
@@ -534,16 +657,14 @@ func (c *PluginInstanceClient) ListAreas(ctx context.Context) ([]usecase.Automat
 }
 
 func (c *PluginInstanceClient) ListImages(ctx context.Context, lineID int64) ([]usecase.AutomationImage, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.ListImagesRequest{LineId: lineID}
+	respAny, err := c.call(ctx, "automation.ListImages", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListImages(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListImages(cctx, &pluginv1.ListImagesRequest{LineId: lineID})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListImagesResponse)
 	out := make([]usecase.AutomationImage, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationImage{ImageID: it.GetId(), Name: it.GetName(), Type: it.GetType()})
@@ -552,16 +673,14 @@ func (c *PluginInstanceClient) ListImages(ctx context.Context, lineID int64) ([]
 }
 
 func (c *PluginInstanceClient) ListLines(ctx context.Context) ([]usecase.AutomationLine, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.Empty{}
+	respAny, err := c.call(ctx, "automation.ListLines", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListLines(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListLines(cctx, &pluginv1.Empty{})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListLinesResponse)
 	out := make([]usecase.AutomationLine, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationLine{ID: it.GetId(), Name: it.GetName(), AreaID: it.GetAreaId(), State: int(it.GetState())})
@@ -570,16 +689,14 @@ func (c *PluginInstanceClient) ListLines(ctx context.Context) ([]usecase.Automat
 }
 
 func (c *PluginInstanceClient) ListProducts(ctx context.Context, lineID int64) ([]usecase.AutomationProduct, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.ListPackagesRequest{LineId: lineID}
+	respAny, err := c.call(ctx, "automation.ListPackages", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.ListPackages(cctx, pb)
+	})
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.ListPackages(cctx, &pluginv1.ListPackagesRequest{LineId: lineID})
-	if err != nil {
-		return nil, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.ListPackagesResponse)
 	out := make([]usecase.AutomationProduct, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, usecase.AutomationProduct{
@@ -597,16 +714,14 @@ func (c *PluginInstanceClient) ListProducts(ctx context.Context, lineID int64) (
 }
 
 func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (usecase.AutomationMonitor, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.GetMonitorRequest{InstanceId: hostID}
+	respAny, err := c.call(ctx, "automation.GetMonitor", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.GetMonitor(cctx, pb)
+	})
 	if err != nil {
 		return usecase.AutomationMonitor{}, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.GetMonitor(cctx, &pluginv1.GetMonitorRequest{InstanceId: hostID})
-	if err != nil {
-		return usecase.AutomationMonitor{}, mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.GetMonitorResponse)
 	if strings.TrimSpace(resp.GetRawJson()) == "" {
 		return usecase.AutomationMonitor{}, nil
 	}
@@ -630,15 +745,13 @@ func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (us
 }
 
 func (c *PluginInstanceClient) GetVNCURL(ctx context.Context, hostID int64) (string, error) {
-	cli, err := c.client(ctx)
+	pb := &pluginv1.GetVNCURLRequest{InstanceId: hostID}
+	respAny, err := c.call(ctx, "automation.GetVNCURL", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.GetVNCURL(cctx, pb)
+	})
 	if err != nil {
 		return "", err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
-	resp, err := cli.GetVNCURL(cctx, &pluginv1.GetVNCURLRequest{InstanceId: hostID})
-	if err != nil {
-		return "", mapUnimplemented(err)
-	}
+	resp := respAny.(*pluginv1.GetVNCURLResponse)
 	return resp.GetUrl(), nil
 }

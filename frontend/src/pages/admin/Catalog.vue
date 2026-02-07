@@ -234,13 +234,40 @@
       </a-tab-pane>
     </a-tabs>
 
-    <a-modal v-model:open="goodsTypeOpen" title="商品类型" @ok="submitGoodsType">
+    <a-modal v-model:open="goodsTypeOpen" title="商品类型" :confirm-loading="goodsTypeSaving" @ok="submitGoodsType">
       <a-form layout="vertical">
         <a-form-item label="名称"><a-input v-model:value="goodsTypeForm.name" /></a-form-item>
         <a-form-item label="代码"><a-input v-model:value="goodsTypeForm.code" /></a-form-item>
         <a-form-item label="排序"><a-input-number v-model:value="goodsTypeForm.sort_order" :min="0" style="width: 100%" /></a-form-item>
-        <a-form-item label="automation_plugin_id"><a-input v-model:value="goodsTypeForm.automation_plugin_id" /></a-form-item>
-        <a-form-item label="automation_instance_id"><a-input v-model:value="goodsTypeForm.automation_instance_id" /></a-form-item>
+        <a-form-item label="自动化实例">
+          <a-select
+            v-model:value="selectedAutomationRef"
+            :options="automationOptions"
+            :loading="automationLoading"
+            placeholder="选择 automation 插件实例"
+            show-search
+            option-filter-prop="label"
+            allow-clear
+          />
+        </a-form-item>
+        <a-alert
+          v-if="goodsTypeForm.automation_plugin_id && goodsTypeForm.automation_instance_id"
+          type="info"
+          show-icon
+          :message="`绑定实例: ${goodsTypeForm.automation_plugin_id}/${goodsTypeForm.automation_instance_id}`"
+          style="margin-bottom: 12px"
+        />
+        <a-card v-if="goodsTypeForm.automation_plugin_id && goodsTypeForm.automation_instance_id" size="small" title="自动化实例配置（插件模板）">
+          <a-spin :spinning="automationConfigLoading">
+            <a-alert v-if="automationConfigError" type="error" :message="automationConfigError" show-icon style="margin-bottom: 10px" />
+            <JsonSchemaForm
+              v-if="automationConfigSchema"
+              v-model:modelValue="automationConfigModel"
+              :schema="automationConfigSchema"
+              :uiSchema="automationConfigUI"
+            />
+          </a-spin>
+        </a-card>
         <a-form-item label="启用"><a-switch v-model:checked="goodsTypeForm.active" /></a-form-item>
       </a-form>
     </a-modal>
@@ -480,6 +507,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { CodeOutlined, WindowsOutlined } from "@ant-design/icons-vue";
+import JsonSchemaForm from "@/components/forms/JsonSchemaForm.vue";
 import {
   listRegions,
   createRegion,
@@ -512,7 +540,11 @@ import {
   syncGoodsTypeAutomation,
   createGoodsType,
   updateGoodsType,
-  deleteGoodsType
+  deleteGoodsType,
+  listAdminPlugins,
+  getAdminPluginInstanceConfigSchema,
+  getAdminPluginInstanceConfig,
+  updateAdminPluginInstanceConfig
 } from "@/services/admin";
 import { message, Modal } from "ant-design-vue";
 
@@ -604,6 +636,15 @@ const imageOpen = ref(false);
 const cycleOpen = ref(false);
 
 const goodsTypeOpen = ref(false);
+const goodsTypeSaving = ref(false);
+const automationLoading = ref(false);
+const automationOptions = ref<{ label: string; value: string }[]>([]);
+const selectedAutomationRef = ref<string>("");
+const automationConfigLoading = ref(false);
+const automationConfigError = ref("");
+const automationConfigSchema = ref<any>(null);
+const automationConfigUI = ref<any>({});
+const automationConfigModel = ref<Record<string, any>>({});
 
 const goodsTypeForm = reactive({
   id: null,
@@ -614,6 +655,14 @@ const goodsTypeForm = reactive({
   automation_plugin_id: "",
   automation_instance_id: ""
 });
+
+const safeJson = (s: string) => {
+  try {
+    return JSON.parse(String(s || "{}"));
+  } catch {
+    return null;
+  }
+};
 
 const regionForm = reactive({ id: null, goods_type_id: null, name: "", code: "", active: true });
 const lineForm = reactive({
@@ -879,6 +928,59 @@ const loadGoodsTypeList = async () => {
   }
 };
 
+const loadAutomationInstances = async () => {
+  automationLoading.value = true;
+  try {
+    const res = await listAdminPlugins();
+    const items = (res.data?.items || []).filter((item: any) => String(item.category || "") === "automation");
+    automationOptions.value = items.map((item: any) => {
+      const pluginID = String(item.plugin_id || "");
+      const instanceID = String(item.instance_id || "default");
+      const enabled = !!(item.enabled ?? item.Enabled);
+      return {
+        value: `${pluginID}:${instanceID}`,
+        label: `${pluginID}/${instanceID}${enabled ? "（启用）" : "（未启用）"}`
+      };
+    });
+    if (!selectedAutomationRef.value && automationOptions.value.length > 0) {
+      selectedAutomationRef.value = automationOptions.value[0].value;
+    }
+  } finally {
+    automationLoading.value = false;
+  }
+};
+
+const loadAutomationConfigTemplate = async () => {
+  automationConfigSchema.value = null;
+  automationConfigUI.value = {};
+  automationConfigModel.value = {};
+  automationConfigError.value = "";
+  const pluginID = String(goodsTypeForm.automation_plugin_id || "").trim();
+  const instanceID = String(goodsTypeForm.automation_instance_id || "").trim();
+  if (!pluginID || !instanceID) return;
+  automationConfigLoading.value = true;
+  try {
+    const [schemaRes, cfgRes] = await Promise.all([
+      getAdminPluginInstanceConfigSchema("automation", pluginID, instanceID),
+      getAdminPluginInstanceConfig("automation", pluginID, instanceID)
+    ]);
+    const schemaObj = safeJson(schemaRes.data?.json_schema || "{}");
+    const uiObj = safeJson(schemaRes.data?.ui_schema || "{}") || {};
+    const cfgObj = safeJson(cfgRes.data?.config_json || "{}") || {};
+    if (!schemaObj || String(schemaObj.type || "") !== "object") {
+      automationConfigError.value = "插件未返回有效 object schema";
+      return;
+    }
+    automationConfigSchema.value = schemaObj;
+    automationConfigUI.value = uiObj;
+    automationConfigModel.value = cfgObj;
+  } catch (e: any) {
+    automationConfigError.value = e?.response?.data?.error || "加载自动化实例配置模板失败";
+  } finally {
+    automationConfigLoading.value = false;
+  }
+};
+
 const syncCurrentGoodsType = async () => {
   if (!goodsTypeId.value) return;
   await syncGoodsTypeAutomation(goodsTypeId.value, "merge");
@@ -889,19 +991,37 @@ const syncCurrentGoodsType = async () => {
 const openGoodsType = (record?: any) => {
   if (record) Object.assign(goodsTypeForm, record);
   else Object.assign(goodsTypeForm, { id: null, code: "", name: "", active: true, sort_order: 0, automation_plugin_id: "lightboat", automation_instance_id: "default" });
+  selectedAutomationRef.value = goodsTypeForm.automation_plugin_id && goodsTypeForm.automation_instance_id
+    ? `${goodsTypeForm.automation_plugin_id}:${goodsTypeForm.automation_instance_id}`
+    : "";
+  loadAutomationInstances();
+  loadAutomationConfigTemplate();
   goodsTypeOpen.value = true;
 };
 
 const submitGoodsType = async () => {
-  const payload = { ...goodsTypeForm };
-  if (payload.id) {
-    await updateGoodsType(payload.id, payload);
-  } else {
-    await createGoodsType(payload);
+  goodsTypeSaving.value = true;
+  try {
+    const payload = { ...goodsTypeForm };
+    if (payload.id) {
+      await updateGoodsType(payload.id, payload);
+    } else {
+      await createGoodsType(payload);
+    }
+    if (automationConfigSchema.value && payload.automation_plugin_id && payload.automation_instance_id) {
+      await updateAdminPluginInstanceConfig(
+        "automation",
+        String(payload.automation_plugin_id),
+        String(payload.automation_instance_id),
+        JSON.stringify(automationConfigModel.value || {})
+      );
+    }
+    message.success("OK");
+    goodsTypeOpen.value = false;
+    await loadGoodsTypeList();
+  } finally {
+    goodsTypeSaving.value = false;
   }
-  message.success("OK");
-  goodsTypeOpen.value = false;
-  await loadGoodsTypeList();
 };
 
 const removeGoodsType = (record: any) => {
@@ -924,6 +1044,24 @@ const syncGoodsType = async (record: any) => {
 watch(goodsTypeId, async () => {
   resetRegion();
   await load();
+});
+
+watch(selectedAutomationRef, async (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    goodsTypeForm.automation_plugin_id = "";
+    goodsTypeForm.automation_instance_id = "";
+    automationConfigSchema.value = null;
+    automationConfigUI.value = {};
+    automationConfigModel.value = {};
+    automationConfigError.value = "";
+    return;
+  }
+  const idx = raw.indexOf(":");
+  if (idx <= 0) return;
+  goodsTypeForm.automation_plugin_id = raw.slice(0, idx);
+  goodsTypeForm.automation_instance_id = raw.slice(idx + 1);
+  await loadAutomationConfigTemplate();
 });
 
 const openRegion = (record) => {

@@ -214,6 +214,7 @@ func (s *OrderService) completeProvision(ctx context.Context, job domain.Provisi
 			UserID:               order.UserID,
 			OrderItemID:          item.ID,
 			AutomationInstanceID: fmt.Sprintf("%d", job.HostID),
+			GoodsTypeID:          item.GoodsTypeID,
 			Name:                 name,
 			Region:               snap.Region,
 			RegionID:             snap.RegionID,
@@ -297,6 +298,13 @@ func (s *OrderService) refreshOrderStatus(ctx context.Context, orderID int64) {
 	if err != nil {
 		return
 	}
+	// Only reconcile runtime provisioning states here.
+	// Pending-review/payment orders are controlled by payment-review flow.
+	switch order.Status {
+	case domain.OrderStatusApproved, domain.OrderStatusProvisioning, domain.OrderStatusActive, domain.OrderStatusFailed:
+	default:
+		return
+	}
 	items, err := s.items.ListOrderItems(ctx, orderID)
 	if err != nil {
 		return
@@ -313,6 +321,29 @@ func (s *OrderService) refreshOrderStatus(ctx context.Context, orderID int64) {
 		default:
 			allActive = false
 			anyPending = true
+		}
+	}
+	// Broken-state guard: provisioning order with only review items means it was
+	// transitioned too early; move it back to pending_review for admin decision.
+	if order.Status == domain.OrderStatusProvisioning {
+		allPendingReview := len(items) > 0
+		hasRuntime := false
+		for _, item := range items {
+			switch item.Status {
+			case domain.OrderItemStatusApproved, domain.OrderItemStatusProvisioning, domain.OrderItemStatusActive, domain.OrderItemStatusFailed:
+				hasRuntime = true
+			}
+			if item.Status != domain.OrderItemStatusPendingReview {
+				allPendingReview = false
+			}
+		}
+		if allPendingReview && !hasRuntime {
+			order.Status = domain.OrderStatusPendingReview
+			_ = s.orders.UpdateOrderMeta(ctx, order)
+			if s.events != nil {
+				_, _ = s.events.Publish(ctx, order.ID, "order.pending_review", map[string]any{"status": domain.OrderStatusPendingReview})
+			}
+			return
 		}
 	}
 	status := order.Status

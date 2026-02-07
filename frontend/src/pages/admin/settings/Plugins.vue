@@ -95,7 +95,9 @@
               >
                 Methods
               </a-button>
-              <a-button type="link" size="small" @click="openConfig(record)">配置</a-button>
+              <a-button type="link" size="small" @click="openConfig(record)">
+                {{ String(record.category || "") === "automation" ? "商品配置" : "配置" }}
+              </a-button>
               <a-popconfirm title="确定要卸载该插件吗？" @confirm="uninstall(record)">
                 <a-button type="link" danger size="small">卸载</a-button>
               </a-popconfirm>
@@ -549,6 +551,11 @@ const safeJson = (s: string) => {
 };
 
 const openConfig = async (record: PluginListItem) => {
+  if (String(record.category || "") === "automation") {
+    message.info("automation 插件配置已迁移到 商品类型 页面");
+    window.location.href = "/admin/catalog";
+    return;
+  }
   current.value = record;
   configOpen.value = true;
   schemaLoading.value = true;

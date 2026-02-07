@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -50,7 +50,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
     super.dispose();
   }
 
-  void _load() {
+  void _load({bool animate = true}) {
     final client = context.read<AppState>().apiClient;
     if (client != null) {
       setState(() {
@@ -67,7 +67,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
         });
         _catalogFuture ??= _loadCatalog(client);
       });
-      _fadeController.forward();
+      if (animate) {
+        _fadeController.forward();
+      }
     }
   }
 
@@ -113,7 +115,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
               ),
               body: Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(32),
+                  padding: const EdgeInsets.all(10),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -136,7 +138,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 6),
                       Text(
                         snapshot.error.toString(),
                         style: theme.textTheme.bodyMedium?.copyWith(
@@ -181,8 +183,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                     padding: const EdgeInsets.only(right: 16),
                     child: Center(
                       child: SizedBox(
-                        width: 20,
-                        height: 20,
+                        width: 14,
+                  height: 14,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: colorScheme.primary,
@@ -194,8 +196,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                   IconButton(
                     icon: const Icon(Icons.refresh_rounded),
                     onPressed: () {
-                      _fadeController.reset();
-                      _load();
+                      _load(animate: false);
                     },
                   ),
               ],
@@ -203,7 +204,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
             bottomNavigationBar: SafeArea(
               top: false,
               child: Container(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
                 decoration: BoxDecoration(
                   color: colorScheme.surface,
                   border: Border(
@@ -242,11 +243,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                       currency: order['currency'] ?? 'CNY',
                     ),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
                       child: Container(
                         decoration: BoxDecoration(
                           color: colorScheme.surface,
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: colorScheme.outlineVariant.withOpacity(0.5),
                           ),
@@ -256,6 +257,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                           unselectedLabelColor: colorScheme.onSurfaceVariant,
                           indicatorColor: colorScheme.primary,
                           indicatorSize: TabBarIndicatorSize.tab,
+                          labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                          unselectedLabelStyle: const TextStyle(fontSize: 11),
+                          labelPadding: const EdgeInsets.symmetric(vertical: 6),
                           tabs: const [
                             Tab(text: '概览'),
                             Tab(text: '付款'),
@@ -269,14 +273,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                       child: TabBarView(
                         children: [
                           ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
                             children: [
                               _OrderInfoCard(
                                 order: order,
                                 status: status,
                                 statusInfo: statusInfo,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 6),
                               _UserInfoCard(
                                 orderId: order['user_id'] ?? '-',
                                 userFuture: _userFuture,
@@ -284,14 +288,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                             ],
                           ),
                           ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
                             children: [
                               _SectionHeader(
                                 title: '付款信息',
                                 icon: Icons.payments_rounded,
                                 count: payments.length,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 6),
                               if (payments.isEmpty)
                                 const _EmptyState(
                                   icon: Icons.payments_outlined,
@@ -302,14 +306,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                             ],
                           ),
                           ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
                             children: [
                               _SectionHeader(
                                 title: '订单项',
                                 icon: Icons.shopping_cart_rounded,
                                 count: items.length,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 6),
                               if (items.isEmpty)
                                 const _EmptyState(
                                   icon: Icons.shopping_basket_outlined,
@@ -350,14 +354,14 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                             ],
                           ),
                           ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 88),
+                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
                             children: [
                               _SectionHeader(
                                 title: '事件流',
                                 icon: Icons.event_rounded,
                                 count: events.length,
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 6),
                               if (events.isEmpty)
                                 const _EmptyState(
                                   icon: Icons.history_outlined,
@@ -453,8 +457,8 @@ class _OrderStatusHeader extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -464,38 +468,39 @@ class _OrderStatusHeader extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: statusInfo.color.withOpacity(0.3),
-          width: 1.5,
+          width: 1,
         ),
       ),
       child: Row(
         children: [
           _StatusBadge(icon: statusInfo.icon, color: statusInfo.color),
-          const SizedBox(width: 20),
+          const SizedBox(width: 6),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   '订单 #$orderId',
-                  style: theme.textTheme.titleMedium?.copyWith(
+                  style: theme.textTheme.bodyLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: colorScheme.onSurface,
+                    fontSize: 11,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     _StatusLabel(status: status, statusInfo: statusInfo),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 6),
                     Text(
                       '${_money(amount)} $currency',
                       style: theme.textTheme.titleLarge?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: colorScheme.primary,
-                        fontSize: 22,
+                        fontSize: 12,
                       ),
                     ),
                   ],
@@ -518,7 +523,7 @@ class _StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
         color: color.withOpacity(0.2),
         shape: BoxShape.circle,
@@ -526,7 +531,7 @@ class _StatusBadge extends StatelessWidget {
       child: Icon(
         icon,
         color: color,
-        size: 32,
+        size: 12,
       ),
     );
   }
@@ -546,17 +551,17 @@ class _StatusLabel extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: statusInfo.color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         _statusText(status),
         style: TextStyle(
           color: statusInfo.color,
           fontWeight: FontWeight.w700,
-          fontSize: 13,
+          fontSize: 11,
         ),
       ),
     );
@@ -676,7 +681,7 @@ class _UserInfoCard extends StatelessWidget {
         return _InfoCard(
           title: '用户信息',
           icon: Icons.person_rounded,
-          leading: _Avatar(url: avatarUrl, radius: 20),
+          leading: _Avatar(url: avatarUrl, radius: 14),
           dense: true,
           columns: 2,
           lines: [
@@ -755,10 +760,10 @@ class _ActionBar extends StatelessWidget {
     final isDisabled = status == 'active' || status == 'completed';
 
     return Container(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
           width: 1,
@@ -776,7 +781,7 @@ class _ActionBar extends StatelessWidget {
               onPressed: onApprove,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: _ActionButton(
               label: '驳回',
@@ -786,7 +791,7 @@ class _ActionBar extends StatelessWidget {
               onPressed: onReject,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: _ActionButton(
               label: '重试',
@@ -796,7 +801,7 @@ class _ActionBar extends StatelessWidget {
               onPressed: onRetry,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Expanded(
             child: _ActionButton(
               label: '删除',
@@ -858,20 +863,20 @@ class _ActionButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: isDisabled || isLoading ? null : onPressed,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (isLoading)
                 SizedBox(
-                  width: 20,
-                  height: 20,
+                  width: 14,
+                  height: 14,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
                     valueColor: AlwaysStoppedAnimation<Color>(textColor),
@@ -881,14 +886,15 @@ class _ActionButton extends StatelessWidget {
                 Icon(
                   icon,
                   color: textColor,
-                  size: 20,
+                  size: 12,
                 ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 label,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: textColor,
                   fontWeight: FontWeight.w600,
+                  fontSize: 11,
                 ),
               ),
             ],
@@ -915,12 +921,12 @@ class _RejectDialog extends StatelessWidget {
 
     return AlertDialog(
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(14),
       ),
       title: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: colorScheme.errorContainer.withOpacity(0.3),
               borderRadius: BorderRadius.circular(10),
@@ -928,10 +934,10 @@ class _RejectDialog extends StatelessWidget {
             child: Icon(
               Icons.cancel_rounded,
               color: colorScheme.error,
-              size: 22,
+              size: 12,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 6),
           const Text('驳回订单'),
         ],
       ),
@@ -941,7 +947,7 @@ class _RejectDialog extends StatelessWidget {
           hintText: '请输入驳回原因',
           filled: true,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
         maxLines: 3,
@@ -986,29 +992,30 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: colorScheme.primaryContainer.withOpacity(0.5),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(
             icon,
-            size: 20,
+            size: 12,
             color: colorScheme.primary,
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 6),
         Text(
           title,
-          style: theme.textTheme.titleMedium?.copyWith(
+          style: theme.textTheme.bodyLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: colorScheme.onSurface,
+                    fontSize: 11,
           ),
         ),
         if (count > 0) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
             decoration: BoxDecoration(
               color: colorScheme.primaryContainer.withOpacity(0.5),
               borderRadius: BorderRadius.circular(10),
@@ -1054,13 +1061,13 @@ class _InfoCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     final headerPadding =
-        dense ? const EdgeInsets.fromLTRB(12, 12, 12, 10) : const EdgeInsets.fromLTRB(16, 16, 16, 12);
-    final contentPadding = dense ? const EdgeInsets.all(12) : const EdgeInsets.all(16);
+        dense ? const EdgeInsets.fromLTRB(8, 8, 8, 6) : const EdgeInsets.fromLTRB(10, 10, 10, 8);
+    final contentPadding = dense ? const EdgeInsets.all(8) : const EdgeInsets.all(10);
 
     return Container(
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: colorScheme.outlineVariant.withOpacity(0.5),
           width: 1,
@@ -1068,7 +1075,7 @@ class _InfoCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 8,
+            blurRadius: 5,
             offset: const Offset(0, 2),
           ),
         ],
@@ -1089,24 +1096,25 @@ class _InfoCard extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
                     icon,
-                    size: 18,
+                    size: 12,
                     color: colorScheme.primary,
                   ),
                 ),
-                const SizedBox(width: 12),
-                if (leading != null) ...[leading!, const SizedBox(width: 12)],
+                const SizedBox(width: 6),
+                if (leading != null) ...[leading!, const SizedBox(width: 6)],
                 Text(
                   title,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: colorScheme.onSurface,
+                    fontSize: 11,
                   ),
                 ),
               ],
@@ -1123,9 +1131,9 @@ class _InfoCard extends StatelessWidget {
                         if (i < lines.length - 1)
                           Padding(
                             padding: const EdgeInsets.only(
-                              left: 80,
-                              top: 12,
-                              bottom: 12,
+                              left: 64,
+                              top: 8,
+                              bottom: 8,
                             ),
                             child: Divider(
                               height: 1,
@@ -1138,7 +1146,7 @@ class _InfoCard extends StatelessWidget {
                   )
                 : LayoutBuilder(
                     builder: (context, constraints) {
-                      final spacing = 12.0;
+                      final spacing = 8.0;
                       final colWidth =
                           (constraints.maxWidth - spacing * (columns - 1)) / columns;
                       final compactLines =
@@ -1151,7 +1159,7 @@ class _InfoCard extends StatelessWidget {
                         children: [
                           Wrap(
                             spacing: spacing,
-                            runSpacing: 10,
+                            runSpacing: 6,
                             children: compactLines
                                 .map(
                                   (line) => SizedBox(
@@ -1162,10 +1170,10 @@ class _InfoCard extends StatelessWidget {
                                 .toList(),
                           ),
                           if (fullLines.isNotEmpty) ...[
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 6),
                             ...fullLines.map(
                               (line) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
+                                padding: const EdgeInsets.only(bottom: 6),
                                 child: line,
                               ),
                             ),
@@ -1208,35 +1216,37 @@ class _InfoLine extends StatelessWidget {
       children: [
         if (icon != null)
           Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Icon(
               icon,
-              size: 14,
+              size: 12,
               color: colorScheme.onSurfaceVariant,
             ),
           ),
-        if (icon != null) const SizedBox(width: 10),
+        if (icon != null) const SizedBox(width: 6),
         SizedBox(
-          width: icon == null ? 70 : 60,
+          width: icon == null ? 56 : 48,
           child: Text(
             label,
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w500,
+              fontSize: 11,
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 6),
         Expanded(
           child: Text(
             value,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: valueColor ?? colorScheme.onSurface,
               fontWeight: valueBold ? FontWeight.w700 : FontWeight.w500,
+              fontSize: 11,
             ),
           ),
         ),
@@ -1264,10 +1274,10 @@ class _EmptyState extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: colorScheme.outlineVariant.withOpacity(0.3),
           width: 1,
@@ -1277,10 +1287,10 @@ class _EmptyState extends StatelessWidget {
         children: [
           Icon(
             icon,
-            size: 48,
+            size: 28,
             color: colorScheme.onSurfaceVariant.withOpacity(0.5),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           Text(
             text,
             style: theme.textTheme.bodyMedium?.copyWith(
@@ -1311,10 +1321,10 @@ class _PaymentCard extends StatelessWidget {
     final statusColor = _getPaymentStatusColor(status);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: colorScheme.outlineVariant.withOpacity(0.5),
           width: 1,
@@ -1322,31 +1332,31 @@ class _PaymentCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 8,
+            blurRadius: 5,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: colorScheme.primaryContainer.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     Icons.payment_rounded,
-                    size: 22,
+                    size: 12,
                     color: colorScheme.primary,
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1357,21 +1367,21 @@ class _PaymentCard extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
+                          horizontal: 6,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: statusColor.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           _paymentStatusText(status),
                           style: TextStyle(
                             color: statusColor,
-                            fontSize: 12,
+                            fontSize: 11,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -1392,7 +1402,7 @@ class _PaymentCard extends StatelessWidget {
                 (payment['note'] ?? '').toString().isNotEmpty ||
                 payment['created_at'] != null)
               Padding(
-                padding: const EdgeInsets.only(top: 14, left: 48),
+                padding: const EdgeInsets.only(top: 8, left: 40),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1449,10 +1459,10 @@ class _OrderItemCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: colorScheme.outlineVariant.withOpacity(0.5),
           width: 1,
@@ -1460,13 +1470,13 @@ class _OrderItemCard extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 8,
+            blurRadius: 5,
             offset: const Offset(0, 2),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1474,18 +1484,18 @@ class _OrderItemCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: colorScheme.secondaryContainer.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     Icons.inventory_2_rounded,
-                    size: 22,
+                    size: 12,
                     color: colorScheme.secondary,
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1518,7 +1528,7 @@ class _OrderItemCard extends StatelessWidget {
             ),
             // 详细信息
             Padding(
-              padding: const EdgeInsets.only(top: 14, left: 48),
+              padding: const EdgeInsets.only(top: 8, left: 40),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -1584,21 +1594,22 @@ class _DetailRow extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             icon,
-            size: 16,
+            size: 12,
             color: colorScheme.onSurfaceVariant,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 6),
           Text(
             '$label：',
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant,
               fontWeight: FontWeight.w500,
+              fontSize: 11,
             ),
           ),
           Expanded(
@@ -1606,6 +1617,7 @@ class _DetailRow extends StatelessWidget {
               value,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurface,
+                    fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1633,32 +1645,32 @@ class _EventTile extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: colorScheme.outlineVariant.withOpacity(0.5),
           width: 1,
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(5),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: meta.color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(
                 meta.icon,
                 color: meta.color,
-                size: 20,
+                size: 12,
               ),
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1668,6 +1680,7 @@ class _EventTile extends StatelessWidget {
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: colorScheme.onSurface,
+                    fontSize: 11,
                     ),
                   ),
                   if (_eventSummary(ev).isNotEmpty)
@@ -2120,3 +2133,6 @@ int _asInt(dynamic value) {
   if (value is String) return int.tryParse(value) ?? 0;
   return 0;
 }
+
+
+

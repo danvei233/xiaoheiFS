@@ -394,7 +394,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
@@ -480,7 +480,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
@@ -525,7 +525,7 @@ onMounted(() => {
 }
 
 .content-card {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
@@ -570,7 +570,7 @@ onMounted(() => {
 }
 
 .expiring-card {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
@@ -636,7 +636,7 @@ onMounted(() => {
 }
 
 .expiring-item:hover {
-  background: #fff;
+  background: var(--card);
   border-color: var(--border);
   box-shadow: var(--shadow-sm);
 }

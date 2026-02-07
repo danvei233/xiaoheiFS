@@ -21,7 +21,7 @@ type Client struct {
 	baseURL string
 	apiKey  string
 	http    *http.Client
-	logFn   func(context.Context, httpLogEntry)
+	logFn   func(context.Context, HTTPLogEntry)
 }
 
 func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
@@ -37,7 +37,7 @@ func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
 	}
 }
 
-func (c *Client) WithLogger(fn func(context.Context, httpLogEntry)) *Client {
+func (c *Client) WithLogger(fn func(context.Context, HTTPLogEntry)) *Client {
 	c.logFn = fn
 	return c
 }
@@ -55,7 +55,7 @@ type findPortResponse struct {
 	Type    string  `json:"type"`
 }
 
-type httpLogEntry struct {
+type HTTPLogEntry struct {
 	Action   string
 	Request  map[string]any
 	Response map[string]any
@@ -1065,7 +1065,7 @@ func (c *Client) emitLog(ctx context.Context, method, endpoint string, headers h
 	if err != nil {
 		message = err.Error()
 	}
-	c.logFn(ctx, httpLogEntry{
+	c.logFn(ctx, HTTPLogEntry{
 		Action:   action,
 		Request:  reqPayload,
 		Response: respPayload,

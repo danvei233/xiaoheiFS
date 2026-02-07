@@ -14,10 +14,12 @@ type Resolver struct {
 	goodsTypes usecase.GoodsTypeRepository
 	pluginMgr  *plugins.Manager
 	fallback   usecase.AutomationClient
+	settings   usecase.SettingsRepository
+	autoLogs   usecase.AutomationLogRepository
 }
 
-func NewResolver(goodsTypes usecase.GoodsTypeRepository, pluginMgr *plugins.Manager, fallback usecase.AutomationClient) *Resolver {
-	return &Resolver{goodsTypes: goodsTypes, pluginMgr: pluginMgr, fallback: fallback}
+func NewResolver(goodsTypes usecase.GoodsTypeRepository, pluginMgr *plugins.Manager, fallback usecase.AutomationClient, settings usecase.SettingsRepository, autoLogs usecase.AutomationLogRepository) *Resolver {
+	return &Resolver{goodsTypes: goodsTypes, pluginMgr: pluginMgr, fallback: fallback, settings: settings, autoLogs: autoLogs}
 }
 
 func (r *Resolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (usecase.AutomationClient, error) {
@@ -44,7 +46,7 @@ func (r *Resolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (u
 	if r.pluginMgr == nil {
 		return nil, errors.New("plugin manager missing")
 	}
-	return NewPluginInstanceClient(r.pluginMgr, gt.AutomationPluginID, gt.AutomationInstanceID), nil
+	return NewPluginInstanceClient(r.pluginMgr, gt.AutomationPluginID, gt.AutomationInstanceID, r.settings, r.autoLogs), nil
 }
 
 func DefaultGoodsType(items []domain.GoodsType) *domain.GoodsType {

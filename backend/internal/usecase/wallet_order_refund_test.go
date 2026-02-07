@@ -238,3 +238,34 @@ func TestWalletOrderService_RequestRefund(t *testing.T) {
 		t.Fatalf("expected auto-approved refund")
 	}
 }
+
+func TestWalletOrderService_RequestRefund_UsesInstanceMonthlyPrice(t *testing.T) {
+	settings := &fakeSettingsRepo{values: map[string]string{"refund_requires_approval": "false"}}
+	wallets := &fakeWalletRepo{}
+	orders := &fakeWalletOrderRepo{}
+	item := domain.OrderItem{ID: 20, Amount: 200000, Status: domain.OrderItemStatusActive, Action: "create", SpecJSON: "{}"}
+	inst := domain.VPSInstance{
+		ID:                   2,
+		UserID:               1,
+		OrderItemID:          item.ID,
+		AutomationInstanceID: "100",
+		MonthlyPrice:         3000,
+		CreatedAt:            time.Now(),
+	}
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	inst.ExpireAt = &expire
+
+	vps := &fakeVPSRepo{inst: inst}
+	items := &fakeOrderItemRepo{item: item}
+	auto := &testutil.FakeAutomationClient{}
+	autoResolver := &testutil.FakeAutomationResolver{Client: auto}
+	svc := usecase.NewWalletOrderService(orders, wallets, settings, vps, items, autoResolver, nil)
+
+	refund, _, err := svc.RequestRefund(context.Background(), inst.UserID, inst.ID, "test")
+	if err != nil {
+		t.Fatalf("refund: %v", err)
+	}
+	if refund.Amount != 3000 {
+		t.Fatalf("expected refund based on instance monthly price 3000, got %d", refund.Amount)
+	}
+}

@@ -941,7 +941,97 @@ func (r *SQLiteRepo) DeleteInstance(ctx context.Context, id int64) error {
 }
 
 func (r *SQLiteRepo) UpdateInstanceStatus(ctx context.Context, id int64, status domain.VPSStatus, automationState int) error {
-	_, err := r.db.ExecContext(ctx, `UPDATE vps_instances SET status = ?, automation_state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, automationState, id)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := tx.ExecContext(ctx, `UPDATE vps_instances SET status = ?, automation_state = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, automationState, id); err != nil {
+		return err
+	}
+
+	var orderItemID int64
+	if err := tx.QueryRowContext(ctx, `SELECT order_item_id FROM vps_instances WHERE id = ?`, id).Scan(&orderItemID); err != nil {
+		return err
+	}
+	if orderItemID > 0 {
+		switch {
+		case isReadyVPSStatus(status):
+			_, _ = tx.ExecContext(ctx, `UPDATE order_items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND action = 'create' AND status IN (?,?)`,
+				domain.OrderItemStatusActive, orderItemID, domain.OrderItemStatusApproved, domain.OrderItemStatusProvisioning)
+		case isFailedVPSStatus(status):
+			_, _ = tx.ExecContext(ctx, `UPDATE order_items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND action = 'create' AND status IN (?,?)`,
+				domain.OrderItemStatusFailed, orderItemID, domain.OrderItemStatusApproved, domain.OrderItemStatusProvisioning)
+		}
+
+		var orderID int64
+		if err := tx.QueryRowContext(ctx, `SELECT order_id FROM order_items WHERE id = ?`, orderItemID).Scan(&orderID); err == nil && orderID > 0 {
+			if err := recomputeOrderStatusByItems(ctx, tx, orderID); err != nil {
+				return err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func isReadyVPSStatus(status domain.VPSStatus) bool {
+	switch status {
+	case domain.VPSStatusRunning, domain.VPSStatusStopped, domain.VPSStatusRescue, domain.VPSStatusLocked, domain.VPSStatusExpiredLocked:
+		return true
+	default:
+		return false
+	}
+}
+
+func isFailedVPSStatus(status domain.VPSStatus) bool {
+	return status == domain.VPSStatusReinstallFailed
+}
+
+func recomputeOrderStatusByItems(ctx context.Context, tx *sql.Tx, orderID int64) error {
+	var currentStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM orders WHERE id = ?`, orderID).Scan(&currentStatus); err != nil {
+		return err
+	}
+	switch currentStatus {
+	case string(domain.OrderStatusApproved), string(domain.OrderStatusProvisioning), string(domain.OrderStatusActive), string(domain.OrderStatusFailed):
+	default:
+		return nil
+	}
+
+	var activeCount, failedCount, pendingCount int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM order_items WHERE order_id = ? AND status = ?`, orderID, domain.OrderItemStatusActive).Scan(&activeCount); err != nil {
+		return err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM order_items WHERE order_id = ? AND status = ?`, orderID, domain.OrderItemStatusFailed).Scan(&failedCount); err != nil {
+		return err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(1) FROM order_items WHERE order_id = ? AND status NOT IN (?,?,?,?)`,
+		orderID, domain.OrderItemStatusActive, domain.OrderItemStatusFailed, domain.OrderItemStatusCanceled, domain.OrderItemStatusRejected).Scan(&pendingCount); err != nil {
+		return err
+	}
+
+	next := currentStatus
+	switch {
+	case failedCount > 0:
+		next = string(domain.OrderStatusFailed)
+	case pendingCount > 0:
+		next = string(domain.OrderStatusProvisioning)
+	case activeCount > 0:
+		next = string(domain.OrderStatusActive)
+	}
+	if next == currentStatus {
+		return nil
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, next, orderID)
 	return err
 }
 
@@ -1038,6 +1128,9 @@ func (r *SQLiteRepo) ListPaymentsByOrder(ctx context.Context, orderID int64) ([]
 }
 
 func (r *SQLiteRepo) GetPaymentByTradeNo(ctx context.Context, tradeNo string) (domain.OrderPayment, error) {
+	if strings.TrimSpace(tradeNo) == "" {
+		return domain.OrderPayment{}, sql.ErrNoRows
+	}
 	row := r.db.QueryRowContext(ctx, `SELECT id, order_id, user_id, method, amount, currency, trade_no, note, screenshot_url, status, idempotency_key, reviewed_by, review_reason, created_at, updated_at FROM order_payments WHERE trade_no = ?`, tradeNo)
 	return scanOrderPayment(row)
 }
@@ -1479,7 +1572,7 @@ func (r *SQLiteRepo) ListDueProvisionJobs(ctx context.Context, limit int) ([]dom
 	}
 	rows, err := r.db.QueryContext(ctx, `SELECT id, order_id, order_item_id, host_id, host_name, status, attempts, next_run_at, last_error, created_at, updated_at
 		FROM provision_jobs
-		WHERE status IN ('pending','retry','running') AND next_run_at <= CURRENT_TIMESTAMP
+		WHERE status IN ('pending','retry','running') AND datetime(next_run_at) <= datetime('now')
 		ORDER BY id ASC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err

@@ -137,6 +137,39 @@ func (s *coreServer) newClient() (*automation.Client, error) {
 	return automation.NewClient(cfg.BaseURL, cfg.APIKey, timeout), nil
 }
 
+func (s *coreServer) newClientWithTrace() (*automation.Client, *automation.HTTPLogEntry, error) {
+	client, err := s.newClient()
+	if err != nil {
+		return nil, nil, err
+	}
+	var last automation.HTTPLogEntry
+	client.WithLogger(func(_ context.Context, entry automation.HTTPLogEntry) {
+		last = entry
+	})
+	return client, &last, nil
+}
+
+func wrapHTTPTraceErr(err error, last *automation.HTTPLogEntry) error {
+	if err == nil {
+		return nil
+	}
+	if last == nil || strings.TrimSpace(last.Action) == "" {
+		return err
+	}
+	trace := map[string]any{
+		"action":   last.Action,
+		"request":  last.Request,
+		"response": last.Response,
+		"success":  last.Success,
+		"message":  last.Message,
+	}
+	raw, marshalErr := json.Marshal(trace)
+	if marshalErr != nil {
+		return err
+	}
+	return fmt.Errorf("%w | http_trace=%s", err, string(raw))
+}
+
 type automationServer struct {
 	pluginv1.UnimplementedAutomationServiceServer
 	core *coreServer
@@ -216,7 +249,7 @@ func (a *automationServer) ListImages(ctx context.Context, req *pluginv1.ListIma
 }
 
 func (a *automationServer) CreateInstance(ctx context.Context, req *pluginv1.CreateInstanceRequest) (*pluginv1.CreateInstanceResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
@@ -242,19 +275,19 @@ func (a *automationServer) CreateInstance(ctx context.Context, req *pluginv1.Cre
 	}
 	res, err := c.CreateHost(ctx, r)
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	return &pluginv1.CreateInstanceResponse{InstanceId: res.HostID}, nil
 }
 
 func (a *automationServer) GetInstance(ctx context.Context, req *pluginv1.GetInstanceRequest) (*pluginv1.GetInstanceResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	info, err := c.GetHostInfo(ctx, req.GetInstanceId())
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	expire := int64(0)
 	if info.ExpireAt != nil {

@@ -54,7 +54,7 @@ func TestHandlers_AdminAPIKeysAndDebug(t *testing.T) {
 		"retry":       1,
 		"dry_run":     true,
 	}, token)
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusGone {
 		t.Fatalf("automation config update: %d", rec.Code)
 	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/integrations/automation/sync?mode=merge", nil, token)
