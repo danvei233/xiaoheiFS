@@ -1,0 +1,89 @@
+name: Build xiaoheifs_app
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    name: Android (xiaoheifs_app)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/xiaoheifs_app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build APK (release)
+        run: flutter build apk --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaoheifs_app-android-apk
+          path: app/xiaoheifs_app/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/xiaoheifs_app/build/app/outputs/flutter-apk/app-release.apk
+
+  windows:
+    name: Windows (xiaoheifs_app)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app/xiaoheifs_app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build Windows (release)
+        run: flutter build windows --release
+
+      - name: Package Windows build
+        run: |
+          $out = "build/windows/runner/Release"
+          $zip = "xiaoheifs_app-windows.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
+          Compress-Archive -Path "$out\\*" -DestinationPath $zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaoheifs_app-windows
+          path: app/xiaoheifs_app/xiaoheifs_app-windows.zip
+
+      - name: Upload release asset
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/xiaoheifs_app/xiaoheifs_app-windows.zip

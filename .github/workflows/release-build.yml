@@ -53,40 +53,94 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Write-Host "[1/3] Build frontend..."
+          Write-Host "[1/5] Build frontend..."
           Push-Location frontend
           npm ci
           npm run build
           Pop-Location
 
-          Write-Host "[2/3] Copy dist to build/windows/static..."
+          Write-Host "[2/5] Copy dist to build/windows/static..."
           Remove-Item -Recurse -Force build/windows -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force build/windows/static | Out-Null
           Copy-Item -Path frontend/dist/* -Destination build/windows/static -Recurse -Force
 
-          Write-Host "[3/3] Build backend (windows)..."
+          Write-Host "[3/5] Build backend (windows)..."
           Push-Location backend
           go build -o ..\\build\\windows\\server.exe .\\cmd\\server
           Pop-Location
+
+          Write-Host "[4/5] Build built-in plugins (windows)..."
+          Push-Location backend
+          $plugins = @(
+            @{ id = "payment/ezpay"; pkg = "./plugin-demo/pluginv1/payment_ezpay" },
+            @{ id = "payment/wechatpay_v3"; pkg = "./plugin-demo/pluginv1/payment_wechatpay_v3" },
+            @{ id = "payment/alipay_open"; pkg = "./plugin-demo/pluginv1/payment_alipay_open" },
+            @{ id = "sms/alisms"; pkg = "./plugin-demo/pluginv1/sms_alisms_mock" },
+            @{ id = "sms/tencent_sms"; pkg = "./plugin-demo/pluginv1/sms_tencent_mock" },
+            @{ id = "kyc/aliyun_kyc"; pkg = "./plugin-demo/pluginv1/kyc_aliyun_mock" },
+            @{ id = "kyc/tencent_kyc"; pkg = "./plugin-demo/pluginv1/kyc_tencent_mock" },
+            @{ id = "automation/lightboat"; pkg = "./plugin-demo/pluginv1/automation_lightboat" }
+          )
+          $env:CGO_ENABLED = "0"
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          foreach ($p in $plugins) {
+            $outDir = Join-Path "plugins/$($p.id)" "bin/windows_amd64"
+            New-Item -ItemType Directory -Force $outDir | Out-Null
+            $outFile = Join-Path $outDir "plugin.exe"
+            go build -o $outFile $p.pkg
+          }
+          Pop-Location
+
+          Write-Host "[5/5] Copy plugins to build/windows/plugins..."
+          Remove-Item -Recurse -Force build/windows/plugins -ErrorAction SilentlyContinue
+          Copy-Item -Path backend/plugins -Destination build/windows/plugins -Recurse -Force
 
       - name: Build (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          echo "[1/3] Build frontend..."
+          echo "[1/5] Build frontend..."
           cd frontend
           npm ci
           npm run build
           cd ..
 
-          echo "[2/3] Copy dist to build/linux/static..."
+          echo "[2/5] Copy dist to build/linux/static..."
           rm -rf build/linux
           mkdir -p build/linux/static
           cp -a frontend/dist/. build/linux/static/
 
-          echo "[3/3] Build backend (linux)..."
+          echo "[3/5] Build backend (linux)..."
           cd backend
           go build -o ../build/linux/server ./cmd/server
+          cd ..
+
+          echo "[4/5] Build built-in plugins (linux)..."
+          cd backend
+          export CGO_ENABLED=0
+          export GOOS=linux
+          export GOARCH=amd64
+          for p in \
+            "payment/ezpay ./plugin-demo/pluginv1/payment_ezpay" \
+            "payment/wechatpay_v3 ./plugin-demo/pluginv1/payment_wechatpay_v3" \
+            "payment/alipay_open ./plugin-demo/pluginv1/payment_alipay_open" \
+            "sms/alisms ./plugin-demo/pluginv1/sms_alisms_mock" \
+            "sms/tencent_sms ./plugin-demo/pluginv1/sms_tencent_mock" \
+            "kyc/aliyun_kyc ./plugin-demo/pluginv1/kyc_aliyun_mock" \
+            "kyc/tencent_kyc ./plugin-demo/pluginv1/kyc_tencent_mock" \
+            "automation/lightboat ./plugin-demo/pluginv1/automation_lightboat"; do
+              id="$(echo "$p" | cut -d' ' -f1)"
+              pkg="$(echo "$p" | cut -d' ' -f2)"
+              out_dir="plugins/$id/bin/linux_amd64"
+              mkdir -p "$out_dir"
+              go build -o "$out_dir/plugin" "$pkg"
+          done
+          cd ..
+
+          echo "[5/5] Copy plugins to build/linux/plugins..."
+          rm -rf build/linux/plugins
+          cp -a backend/plugins build/linux/
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
@@ -99,7 +153,7 @@ jobs:
           Push-Location build/windows
           $repoRoot = (Resolve-Path ../..).Path
           $dest = Join-Path $repoRoot $zip
-          Compress-Archive -Path server.exe, static -DestinationPath $dest -Force
+          Compress-Archive -Path server.exe, static, plugins -DestinationPath $dest -Force
           Pop-Location
           (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) | Set-Content "$zip.sha256" -NoNewline
 
@@ -110,7 +164,7 @@ jobs:
           tag='${{ steps.tag.outputs.value }}'
           mkdir -p dist
           out="dist/xiaohei-$tag-linux-amd64.tar.gz"
-          tar -C build/linux -czf "$out" server static
+          tar -C build/linux -czf "$out" server static plugins
           hash="$(sha256sum "$out" | cut -d' ' -f1)"
           echo "$hash  $(basename "$out")" > "$out.sha256"
 
