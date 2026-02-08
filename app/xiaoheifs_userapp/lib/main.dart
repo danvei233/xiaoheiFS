@@ -12,7 +12,11 @@ void main() async {
   await StorageService.init();
 
   // 初始化 API 客户端
-  ApiClient.instance;
+  final client = ApiClient.instance;
+  final savedBaseUrl = StorageService.instance.getApiBaseUrl();
+  if (savedBaseUrl != null && savedBaseUrl.isNotEmpty) {
+    client.updateBaseUrl(savedBaseUrl);
+  }
 
   runApp(
     const ProviderScope(

@@ -1,4 +1,5 @@
-﻿import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/network/api_client.dart';
 import '../../core/storage/storage_service.dart';
 import '../../data/repositories/auth_repository.dart';
 import '../../data/models/user.dart';
@@ -75,7 +76,9 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.loading, error: null);
 
     if (apiUrl != null && apiUrl.isNotEmpty) {
-      await StorageService.instance.setApiBaseUrl(apiUrl);
+      final normalized = _normalizeApiUrl(apiUrl);
+      await StorageService.instance.setApiBaseUrl(normalized);
+      ApiClient.instance.updateBaseUrl(normalized);
     }
 
     try {
@@ -92,6 +95,17 @@ class AuthNotifier extends StateNotifier<AuthState> {
       state = AuthState(status: AuthStatus.error, error: e.toString());
       rethrow;
     }
+  }
+
+  String _normalizeApiUrl(String value) {
+    var url = value.trim();
+    if (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
+    if (!url.endsWith('/api')) {
+      url = '$url/api';
+    }
+    return url;
   }
 
   Future<void> logout() async {
@@ -116,3 +130,4 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 }
+

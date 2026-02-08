@@ -84,21 +84,31 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final authState = ref.watch(authProvider);
     final isLoading = authState.isLoading;
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    _buildHeader(),
+    final darkTheme = Theme.of(context).copyWith(
+      brightness: Brightness.dark,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        brightness: Brightness.dark,
+      ),
+    );
+
+    return Theme(
+      data: darkTheme,
+      child: Scaffold(
+        backgroundColor: AppColors.darkBackground,
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildHeader(),
                     const SizedBox(height: 48),
                     AppInput(
                       label: AppStrings.username,
@@ -200,16 +210,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       isLoading: isLoading,
                     ),
                     const SizedBox(height: 24),
-                    Center(
-                      child: Text(
-                        '${AppStrings.appName} v1.0.0',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.gray400,
+                      Center(
+                        child: Text(
+                          '${AppStrings.appName} v1.0.0',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.gray400,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -262,7 +273,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: AppColors.gray900,
+            color: AppColors.gray100,
           ),
         ),
         const SizedBox(height: 8),
@@ -270,7 +281,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           '请登录您的账户',
           style: TextStyle(
             fontSize: 14,
-            color: AppColors.gray500,
+            color: AppColors.gray400,
           ),
         ),
       ],
