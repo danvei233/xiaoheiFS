@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -35,6 +36,14 @@ func TestHandlers_RegisterLoginAndProfile(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login code: %d", rec.Code)
 	}
+	var loginResp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &loginResp); err != nil {
+		t.Fatalf("parse login response: %v", err)
+	}
+	refreshToken, _ := loginResp["refresh_token"].(string)
+	if refreshToken == "" {
+		t.Fatalf("refresh token missing")
+	}
 
 	user := testutil.CreateUser(t, env.Repo, "bob", "bob@example.com", "pass")
 	token := testutil.IssueJWT(t, env.JWTSecret, user.ID, "user", time.Hour)
@@ -46,7 +55,9 @@ func TestHandlers_RegisterLoginAndProfile(t *testing.T) {
 		t.Fatalf("update profile code: %d", rec.Code)
 	}
 
-	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/refresh", nil, token)
+	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token": refreshToken,
+	}, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("refresh code: %d", rec.Code)
 	}

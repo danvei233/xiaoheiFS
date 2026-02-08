@@ -432,17 +432,22 @@ func (h *Handler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID,
-		"role":    user.Role,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-	})
-	signed, err := token.SignedString(h.jwtSecret)
+	accessToken, err := h.signAuthToken(user.ID, string(user.Role), 24*time.Hour, "access")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"access_token": signed, "expires_in": 86400, "user": gin.H{"id": user.ID, "username": user.Username, "role": user.Role}})
+	refreshToken, err := h.signAuthToken(user.ID, string(user.Role), 7*24*time.Hour, "refresh")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    86400,
+		"user":          gin.H{"id": user.ID, "username": user.Username, "role": user.Role},
+	})
 }
 
 func (h *Handler) Logout(c *gin.Context) {
@@ -570,20 +575,101 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 }
 
 func (h *Handler) Refresh(c *gin.Context) {
-	userID := getUserID(c)
-	roleVal, _ := c.Get("role")
-	role, _ := roleVal.(string)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID,
-		"role":    role,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-	})
-	signed, err := token.SignedString(h.jwtSecret)
+	var payload struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	claims, err := h.parseRefreshToken(payload.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+	userID, ok := parseMapInt64(claims["user_id"])
+	if !ok || userID <= 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+	role, _ := claims["role"].(string)
+	if role == "" {
+		role = "user"
+	}
+	if h.users != nil {
+		if _, err := h.users.GetUserByID(c, userID); err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+			return
+		}
+	}
+	accessToken, err := h.signAuthToken(userID, role, 24*time.Hour, "access")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"access_token": signed, "expires_in": 86400})
+	newRefreshToken, err := h.signAuthToken(userID, role, 7*24*time.Hour, "refresh")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": newRefreshToken,
+		"expires_in":    86400,
+	})
+}
+
+func (h *Handler) signAuthToken(userID int64, role string, ttl time.Duration, tokenType string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": userID,
+		"role":    role,
+		"type":    tokenType,
+		"iat":     time.Now().Unix(),
+		"exp":     time.Now().Add(ttl).Unix(),
+	})
+	return token.SignedString(h.jwtSecret)
+}
+
+func (h *Handler) parseRefreshToken(raw string) (jwt.MapClaims, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, errors.New("empty refresh token")
+	}
+	claims := jwt.MapClaims{}
+	parsed, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, errors.New("unexpected signing method")
+		}
+		return h.jwtSecret, nil
+	})
+	if err != nil || parsed == nil || !parsed.Valid {
+		return nil, errors.New("invalid refresh token")
+	}
+	tokenType, _ := claims["type"].(string)
+	// Backward compatible: allow legacy tokens without type.
+	if tokenType != "" && tokenType != "refresh" {
+		return nil, errors.New("invalid token type")
+	}
+	return claims, nil
+}
+
+func parseMapInt64(v any) (int64, bool) {
+	switch t := v.(type) {
+	case int64:
+		return t, true
+	case int:
+		return int64(t), true
+	case float64:
+		return int64(t), true
+	case json.Number:
+		n, err := t.Int64()
+		return n, err == nil
+	case string:
+		n, err := strconv.ParseInt(strings.TrimSpace(t), 10, 64)
+		return n, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (h *Handler) Me(c *gin.Context) {
