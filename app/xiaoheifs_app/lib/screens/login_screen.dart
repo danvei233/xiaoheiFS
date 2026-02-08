@@ -20,7 +20,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   final _apiUrlController = TextEditingController();
   final _apiKeyController = TextEditingController();
-  final _usernameController = TextEditingController(text: '管理员');
+  final _usernameController = TextEditingController(text: '管理�?);
 
   final _loginUserController = TextEditingController(text: 'admin');
   final _loginPasswordController = TextEditingController();
@@ -70,11 +70,11 @@ class _LoginScreenState extends State<LoginScreen>
         apiUrl: _apiUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
         username: _usernameController.text.trim().isEmpty
-            ? '管理员'
+            ? '管理�?
             : _usernameController.text.trim(),
       );
     } catch (e) {
-      _error = '登录失败：$e';
+      _error = '登录失败�?e';
     } finally {
       if (mounted) {
         setState(() {
@@ -93,25 +93,25 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final apiUrl = _apiUrlController.text.trim();
       final auth = AdminAuthService();
-      final token = await auth.login(
+      final tokens = await auth.login(
         apiUrl: apiUrl,
         username: _loginUserController.text.trim(),
         password: _loginPasswordController.text.trim(),
       );
-      final client = ApiClient(baseUrl: apiUrl, token: token);
+      final client = ApiClient(baseUrl: apiUrl, token: tokens.accessToken);
       final profile = await client.getJson('/admin/api/v1/profile');
       final username = (profile['username'] as String?)?.trim();
       final email = profile['email'] as String?;
       await context.read<AppState>().loginWithPassword(
             apiUrl: apiUrl,
-            token: token,
-            username: username?.isNotEmpty == true ? username! : '管理员',
+            tokens: tokens,
+            username: username?.isNotEmpty == true ? username! : '����Ա',
             email: email,
           );
     } on AuthException catch (e) {
-      _error = '登录失败：${e.message}';
+      _error = '��¼ʧ�ܣ�';
     } catch (e) {
-      _error = '登录失败：$e';
+      _error = '��¼ʧ�ܣ�';
     } finally {
       if (mounted) {
         setState(() {
@@ -168,7 +168,7 @@ Card(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '管理员登录',
+                              '管理员登�?,
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -182,7 +182,7 @@ Card(
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
-                                  return '请输入 API 地址';
+                                  return '请输�?API 地址';
                                 }
                                 return null;
                               },
@@ -210,12 +210,12 @@ Card(
                                         TextFormField(
                                           controller: _loginUserController,
                                           decoration: const InputDecoration(
-                                            labelText: '管理员账号',
+                                            labelText: '管理员账�?,
                                           ),
                                           validator: (value) {
                                             if (value == null ||
                                                 value.trim().isEmpty) {
-                                              return '请输入账号';
+                                              return '请输入账�?;
                                             }
                                             return null;
                                           },
@@ -230,7 +230,7 @@ Card(
                                           validator: (value) {
                                             if (value == null ||
                                                 value.trim().isEmpty) {
-                                              return '请输入密码';
+                                              return '请输入密�?;
                                             }
                                             return null;
                                           },
@@ -269,7 +269,7 @@ Card(
                                           validator: (value) {
                                             if (value == null ||
                                                 value.trim().isEmpty) {
-                                              return '请输入 API Key';
+                                              return '请输�?API Key';
                                             }
                                             return null;
                                           },
@@ -278,8 +278,8 @@ Card(
                                         TextFormField(
                                           controller: _usernameController,
                                           decoration: const InputDecoration(
-                                            labelText: '显示名',
-                                            hintText: '管理员',
+                                            labelText: '显示�?,
+                                            hintText: '管理�?,
                                           ),
                                         ),
                                         const Spacer(),
@@ -388,3 +388,4 @@ class _AppLogo extends StatelessWidget {
     );
   }
 }
+

@@ -2,12 +2,22 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/auth_tokens.dart';
+
 class ApiClient {
   final String baseUrl;
-  final String? token;
+  String? token;
   final String? apiKey;
+  final Future<AuthTokens?> Function()? refreshAuth;
+  final void Function(AuthTokens tokens)? onTokens;
 
-  ApiClient({required this.baseUrl, this.token, this.apiKey});
+  ApiClient({
+    required this.baseUrl,
+    this.token,
+    this.apiKey,
+    this.refreshAuth,
+    this.onTokens,
+  });
 
   Uri _buildUri(String path, [Map<String, String>? query]) {
     final normalizedBase = baseUrl.endsWith('/')
@@ -36,9 +46,7 @@ class ApiClient {
     String path, {
     Map<String, String>? query,
   }) async {
-    final uri = _buildUri(path, query);
-    final resp = await http.get(uri, headers: _headers());
-    return _decode(resp);
+    return _request('GET', path, query: query);
   }
 
   Future<Map<String, dynamic>> postJson(
@@ -46,13 +54,7 @@ class ApiClient {
     Object? body,
     Map<String, String>? query,
   }) async {
-    final uri = _buildUri(path, query);
-    final resp = await http.post(
-      uri,
-      headers: _headers(),
-      body: body == null ? null : jsonEncode(body),
-    );
-    return _decode(resp);
+    return _request('POST', path, body: body, query: query);
   }
 
   Future<Map<String, dynamic>> patchJson(
@@ -60,13 +62,7 @@ class ApiClient {
     Object? body,
     Map<String, String>? query,
   }) async {
-    final uri = _buildUri(path, query);
-    final resp = await http.patch(
-      uri,
-      headers: _headers(),
-      body: body == null ? null : jsonEncode(body),
-    );
-    return _decode(resp);
+    return _request('PATCH', path, body: body, query: query);
   }
 
   Future<Map<String, dynamic>> deleteJson(
@@ -74,13 +70,45 @@ class ApiClient {
     Object? body,
     Map<String, String>? query,
   }) async {
+    return _request('DELETE', path, body: body, query: query);
+  }
+
+  Future<Map<String, dynamic>> _request(
+    String method,
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+  }) async {
     final uri = _buildUri(path, query);
-    final resp = await http.delete(
-      uri,
-      headers: _headers(),
-      body: body == null ? null : jsonEncode(body),
-    );
+    final payload = body == null ? null : jsonEncode(body);
+    http.Response resp = await _send(method, uri, payload);
+    if (resp.statusCode == 401 && refreshAuth != null && apiKey == null) {
+      final tokens = await refreshAuth!.call();
+      if (tokens != null) {
+        token = tokens.accessToken;
+        onTokens?.call(tokens);
+        resp = await _send(method, uri, payload);
+      }
+    }
     return _decode(resp);
+  }
+
+  Future<http.Response> _send(
+    String method,
+    Uri uri,
+    String? payload,
+  ) {
+    final headers = _headers();
+    switch (method) {
+      case 'POST':
+        return http.post(uri, headers: headers, body: payload);
+      case 'PATCH':
+        return http.patch(uri, headers: headers, body: payload);
+      case 'DELETE':
+        return http.delete(uri, headers: headers, body: payload);
+      default:
+        return http.get(uri, headers: headers);
+    }
   }
 
   Map<String, dynamic> _decode(http.Response resp) {

@@ -12,6 +12,8 @@ class AppStorage {
   static const _keyApiKey = 'api_key';
   static const _keyUsername = 'username';
   static const _keyToken = 'token';
+  static const _keyRefreshToken = 'refresh_token';
+  static const _keyTokenExpiresAt = 'token_expires_at';
   static const _keyEmail = 'email';
   static const _keyAuthType = 'auth_type';
   static const _fileName = 'session.json';
@@ -32,6 +34,10 @@ class AppStorage {
     final authType = storedAuthType ?? 'api_key';
     final apiKey = prefs.getString(_keyApiKey);
     final token = prefs.getString(_keyToken);
+    final refreshToken = prefs.getString(_keyRefreshToken);
+    final expiresRaw = prefs.getString(_keyTokenExpiresAt);
+    final tokenExpiresAt =
+        expiresRaw == null ? null : DateTime.tryParse(expiresRaw);
     if (apiUrl == null || apiUrl.isEmpty) {
       return null;
     }
@@ -40,6 +46,8 @@ class AppStorage {
         apiUrl: apiUrl,
         apiKey: apiKey,
         token: token,
+        refreshToken: refreshToken,
+        tokenExpiresAt: tokenExpiresAt,
         username: prefs.getString(_keyUsername) ?? '管理员',
         email: prefs.getString(_keyEmail),
         authType: 'password',
@@ -57,6 +65,8 @@ class AppStorage {
       apiUrl: apiUrl,
       apiKey: apiKey,
       token: token,
+      refreshToken: refreshToken,
+      tokenExpiresAt: tokenExpiresAt,
       username: username,
       email: email,
       authType: authType,
@@ -79,6 +89,19 @@ class AppStorage {
       } else {
         await prefs.remove(_keyToken);
       }
+      if (session.refreshToken != null) {
+        await prefs.setString(_keyRefreshToken, session.refreshToken!);
+      } else {
+        await prefs.remove(_keyRefreshToken);
+      }
+      if (session.tokenExpiresAt != null) {
+        await prefs.setString(
+          _keyTokenExpiresAt,
+          session.tokenExpiresAt!.toIso8601String(),
+        );
+      } else {
+        await prefs.remove(_keyTokenExpiresAt);
+      }
       if (session.email != null) {
         await prefs.setString(_keyEmail, session.email!);
       } else {
@@ -95,6 +118,8 @@ class AppStorage {
       await prefs.remove(_keyApiKey);
       await prefs.remove(_keyUsername);
       await prefs.remove(_keyToken);
+      await prefs.remove(_keyRefreshToken);
+      await prefs.remove(_keyTokenExpiresAt);
       await prefs.remove(_keyEmail);
       await prefs.remove(_keyAuthType);
     } catch (_) {}
@@ -122,6 +147,8 @@ Future<void> _saveToFile(Session session) async {
     'api_url': session.apiUrl,
     'api_key': session.apiKey,
     'token': session.token,
+    'refresh_token': session.refreshToken,
+    'token_expires_at': session.tokenExpiresAt?.toIso8601String(),
     'username': session.username,
     'email': session.email,
     'auth_type': session.authType,
@@ -141,6 +168,10 @@ Future<Session?> _loadFromFile() async {
     final authType = (decoded['auth_type'] as String?) ?? 'api_key';
     if (apiUrl.isEmpty) return null;
     final token = decoded['token'] as String?;
+    final refreshToken = decoded['refresh_token'] as String?;
+    final expiresRaw = decoded['token_expires_at'] as String?;
+    final tokenExpiresAt =
+        expiresRaw == null ? null : DateTime.tryParse(expiresRaw);
     final apiKey = decoded['api_key'] as String?;
     if (authType == 'password' && (token == null || token.isEmpty)) return null;
     if (authType == 'api_key' && (apiKey == null || apiKey.isEmpty)) return null;
@@ -148,6 +179,8 @@ Future<Session?> _loadFromFile() async {
       apiUrl: apiUrl,
       apiKey: apiKey,
       token: token,
+      refreshToken: refreshToken,
+      tokenExpiresAt: tokenExpiresAt,
       username: (decoded['username'] as String?) ?? '管理员',
       email: decoded['email'] as String?,
       authType: authType,

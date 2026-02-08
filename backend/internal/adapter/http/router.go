@@ -140,6 +140,7 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 	admin := r.Group("/admin/api/v1")
 	{
 		admin.POST("/auth/login", handler.AdminLogin)
+		admin.POST("/auth/refresh", handler.AdminRefresh)
 		admin.GET("/avatar/qq/:qq", handler.AdminQQAvatar)
 		admin.Use(middleware.RequireAdminPermissionAuto())
 		admin.GET("/users", handler.AdminUsers)

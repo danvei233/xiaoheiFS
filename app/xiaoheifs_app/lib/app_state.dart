@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'models/session.dart';
+import 'models/auth_tokens.dart';
 import 'services/app_storage.dart';
 import 'services/api_client.dart';
+import 'services/admin_auth.dart';
 
 class AppState extends ChangeNotifier {
   final AppStorage _storage = AppStorage();
@@ -17,7 +19,13 @@ class AppState extends ChangeNotifier {
   ApiClient? get apiClient {
     final s = _session;
     if (s == null) return null;
-    return ApiClient(baseUrl: s.apiUrl, token: s.token, apiKey: s.apiKey);
+    return ApiClient(
+      baseUrl: s.apiUrl,
+      token: s.token,
+      apiKey: s.apiKey,
+      refreshAuth: s.authType == 'password' ? _refreshTokens : null,
+      onTokens: _applyTokens,
+    );
   }
 
   Future<void> load() async {
@@ -43,13 +51,18 @@ class AppState extends ChangeNotifier {
 
   Future<void> loginWithPassword({
     required String apiUrl,
-    required String token,
+    required AuthTokens tokens,
     required String username,
     String? email,
   }) async {
+    final expiresAt = tokens.expiresIn > 0
+        ? DateTime.now().add(Duration(seconds: tokens.expiresIn))
+        : null;
     _session = Session(
       apiUrl: apiUrl,
-      token: token,
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      tokenExpiresAt: expiresAt,
       username: username,
       email: email,
       authType: 'password',
@@ -68,6 +81,8 @@ class AppState extends ChangeNotifier {
     String? apiUrl,
     String? username,
     String? token,
+    String? refreshToken,
+    DateTime? tokenExpiresAt,
     String? apiKey,
     String? email,
   }) async {
@@ -76,10 +91,41 @@ class AppState extends ChangeNotifier {
       apiUrl: apiUrl,
       username: username,
       token: token,
+      refreshToken: refreshToken,
+      tokenExpiresAt: tokenExpiresAt,
       apiKey: apiKey,
       email: email,
     );
     await _storage.saveSession(_session!);
     notifyListeners();
+  }
+
+  Future<AuthTokens?> _refreshTokens() async {
+    final s = _session;
+    if (s == null || s.refreshToken == null || s.refreshToken!.isEmpty) {
+      return null;
+    }
+    final auth = AdminAuthService();
+    try {
+      final tokens = await auth.refresh(
+        apiUrl: s.apiUrl,
+        refreshToken: s.refreshToken!,
+      );
+      _applyTokens(tokens);
+      return tokens;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _applyTokens(AuthTokens tokens) {
+    final expiresAt = tokens.expiresIn > 0
+        ? DateTime.now().add(Duration(seconds: tokens.expiresIn))
+        : null;
+    updateProfile(
+      token: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      tokenExpiresAt: expiresAt,
+    );
   }
 }

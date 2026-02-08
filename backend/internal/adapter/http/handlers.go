@@ -2415,17 +2415,68 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID,
-		"role":    user.Role,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-	})
-	signed, err := token.SignedString(h.jwtSecret)
+	accessToken, err := h.signAuthToken(user.ID, string(user.Role), 24*time.Hour, "access")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"access_token": signed, "expires_in": 86400})
+	refreshToken, err := h.signAuthToken(user.ID, string(user.Role), 7*24*time.Hour, "refresh")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+		"expires_in":    86400,
+	})
+}
+
+func (h *Handler) AdminRefresh(c *gin.Context) {
+	var payload struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	claims, err := h.parseRefreshToken(payload.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+	userID, ok := parseMapInt64(claims["user_id"])
+	if !ok || userID <= 0 {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+	role, _ := claims["role"].(string)
+	if role != string(domain.UserRoleAdmin) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+	if h.users != nil {
+		user, err := h.users.GetUserByID(c, userID)
+		if err != nil || user.Role != domain.UserRoleAdmin {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+			return
+		}
+	}
+	accessToken, err := h.signAuthToken(userID, role, 24*time.Hour, "access")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
+		return
+	}
+	newRefreshToken, err := h.signAuthToken(userID, role, 7*24*time.Hour, "refresh")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  accessToken,
+		"refresh_token": newRefreshToken,
+		"expires_in":    86400,
+	})
 }
 
 func (h *Handler) AdminUsers(c *gin.Context) {
