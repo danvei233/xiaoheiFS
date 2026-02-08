@@ -37,24 +37,46 @@ class MyApp extends ConsumerWidget {
       scaffoldMessengerKey: AppNavigator.messengerKey,
       builder: (context, child) {
         final media = MediaQuery.of(context);
-        final appChild = MediaQuery(
-          data: media.copyWith(textScaler: const TextScaler.linear(1.0)),
-          child: child ?? const SizedBox.shrink(),
-        );
+        final baseChild = child ?? const SizedBox.shrink();
 
         if (defaultTargetPlatform != TargetPlatform.android) {
-          return appChild;
+          return MediaQuery(
+            data: media.copyWith(textScaler: const TextScaler.linear(1.0)),
+            child: baseChild,
+          );
         }
 
-        return Align(
-          alignment: Alignment.topCenter,
+        const scale = 0.75;
+        final scaledMedia = media.copyWith(
+          textScaler: const TextScaler.linear(1.0),
+          size: Size(media.size.width / scale, media.size.height / scale),
+          padding: EdgeInsets.fromLTRB(
+            media.padding.left / scale,
+            media.padding.top / scale,
+            media.padding.right / scale,
+            media.padding.bottom / scale,
+          ),
+          viewPadding: EdgeInsets.fromLTRB(
+            media.viewPadding.left / scale,
+            media.viewPadding.top / scale,
+            media.viewPadding.right / scale,
+            media.viewPadding.bottom / scale,
+          ),
+          viewInsets: EdgeInsets.fromLTRB(
+            media.viewInsets.left / scale,
+            media.viewInsets.top / scale,
+            media.viewInsets.right / scale,
+            media.viewInsets.bottom / scale,
+          ),
+        );
+
+        return ClipRect(
           child: Transform.scale(
-            scale: 0.75,
-            alignment: Alignment.topCenter,
-            child: SizedBox(
-              width: media.size.width / 0.75,
-              height: media.size.height / 0.75,
-              child: appChild,
+            scale: scale,
+            alignment: Alignment.topLeft,
+            child: MediaQuery(
+              data: scaledMedia,
+              child: baseChild,
             ),
           ),
         );

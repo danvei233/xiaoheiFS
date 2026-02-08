@@ -83,6 +83,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final isLoading = authState.isLoading;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isNarrow = screenWidth < 600;
+    final formMaxWidth = isNarrow ? double.infinity : 400.0;
 
     final darkTheme = Theme.of(context).copyWith(
       brightness: Brightness.dark,
@@ -101,7 +104,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 400),
+                constraints: BoxConstraints(maxWidth: formMaxWidth),
                 child: Form(
                   key: _formKey,
                   child: Column(
