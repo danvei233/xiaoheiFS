@@ -318,10 +318,6 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if gin.Mode() != gin.DebugMode {
-			c.Next()
-			return
-		}
 		origin := strings.TrimSpace(c.GetHeader("Origin"))
 		if origin == "" || !isAllowedLocalOrigin(origin) {
 			c.Next()
@@ -330,7 +326,7 @@ func corsMiddleware() gin.HandlerFunc {
 
 		c.Header("Access-Control-Allow-Origin", origin)
 		c.Header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept,X-API-Key")
+		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,Accept,X-API-Key,X-API-Version")
 		c.Header("Access-Control-Allow-Credentials", "true")
 
 		if c.Request.Method == http.MethodOptions {

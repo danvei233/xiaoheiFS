@@ -178,8 +178,7 @@ func (c *Client) CreateHost(ctx context.Context, req usecase.AutomationCreateHos
 func (c *Client) GetHostInfo(ctx context.Context, hostID int64) (usecase.AutomationHostInfo, error) {
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
-	form.Set("hostid", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/hostinfo"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -274,7 +273,7 @@ func (c *Client) ElasticUpdate(ctx context.Context, req usecase.AutomationElasti
 
 func (c *Client) RenewHost(ctx context.Context, hostID int64, nextDueDate time.Time) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("nextduedate", nextDueDate.Format("2006-01-02 15:04:05"))
 	endpoint := c.baseURL + "/renew"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
@@ -301,7 +300,7 @@ func (c *Client) RebootHost(ctx context.Context, hostID int64) error {
 
 func (c *Client) ResetOS(ctx context.Context, hostID int64, templateID int64, password string) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("template_id", strconv.FormatInt(templateID, 10))
 	if password != "" {
 		form.Set("password", password)
@@ -319,7 +318,7 @@ func (c *Client) ResetOS(ctx context.Context, hostID int64, templateID int64, pa
 
 func (c *Client) ResetOSPassword(ctx context.Context, hostID int64, password string) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	if password != "" {
 		form.Set("password", password)
 	}
@@ -336,7 +335,7 @@ func (c *Client) ResetOSPassword(ctx context.Context, hostID int64, password str
 
 func (c *Client) ListSnapshots(ctx context.Context, hostID int64) ([]usecase.AutomationSnapshot, error) {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/snapshot_list"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -358,7 +357,7 @@ func (c *Client) ListSnapshots(ctx context.Context, hostID int64) ([]usecase.Aut
 
 func (c *Client) CreateSnapshot(ctx context.Context, hostID int64) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/snapshot_add"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -372,7 +371,7 @@ func (c *Client) CreateSnapshot(ctx context.Context, hostID int64) error {
 
 func (c *Client) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("id", strconv.FormatInt(snapshotID, 10))
 	endpoint := c.baseURL + "/snapshot_del"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
@@ -387,7 +386,7 @@ func (c *Client) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID in
 
 func (c *Client) RestoreSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("id", strconv.FormatInt(snapshotID, 10))
 	endpoint := c.baseURL + "/snapshot_restore"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
@@ -402,7 +401,7 @@ func (c *Client) RestoreSnapshot(ctx context.Context, hostID int64, snapshotID i
 
 func (c *Client) ListBackups(ctx context.Context, hostID int64) ([]usecase.AutomationBackup, error) {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/backups_list"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -424,7 +423,7 @@ func (c *Client) ListBackups(ctx context.Context, hostID int64) ([]usecase.Autom
 
 func (c *Client) CreateBackup(ctx context.Context, hostID int64) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/backups_add"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -438,7 +437,7 @@ func (c *Client) CreateBackup(ctx context.Context, hostID int64) error {
 
 func (c *Client) DeleteBackup(ctx context.Context, hostID int64, backupID int64) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("id", strconv.FormatInt(backupID, 10))
 	endpoint := c.baseURL + "/backups_del"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
@@ -453,7 +452,7 @@ func (c *Client) DeleteBackup(ctx context.Context, hostID int64, backupID int64)
 
 func (c *Client) RestoreBackup(ctx context.Context, hostID int64, backupID int64) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("id", strconv.FormatInt(backupID, 10))
 	endpoint := c.baseURL + "/backups_restore"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
@@ -469,8 +468,7 @@ func (c *Client) RestoreBackup(ctx context.Context, hostID int64, backupID int64
 func (c *Client) ListFirewallRules(ctx context.Context, hostID int64) ([]usecase.AutomationFirewallRule, error) {
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
-	form.Set("hostid", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/security_acl_list"
 	resp, err := c.doRequest(ctx, http.MethodGet, endpoint+"?"+form.Encode(), nil, "")
 	if err != nil {
@@ -493,8 +491,7 @@ func (c *Client) ListFirewallRules(ctx context.Context, hostID int64) ([]usecase
 func (c *Client) AddFirewallRule(ctx context.Context, req usecase.AutomationFirewallRuleCreate) error {
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	form.Set("host_id", strconv.FormatInt(req.HostID, 10))
-	form.Set("hostid", strconv.FormatInt(req.HostID, 10))
+	setHostID(form, req.HostID)
 	if req.Direction != "" {
 		form.Set("direction", req.Direction)
 	}
@@ -524,8 +521,7 @@ func (c *Client) AddFirewallRule(ctx context.Context, req usecase.AutomationFire
 func (c *Client) DeleteFirewallRule(ctx context.Context, hostID int64, ruleID int64) error {
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
-	form.Set("hostid", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("id", strconv.FormatInt(ruleID, 10))
 	endpoint := c.baseURL + "/security_acl_del"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
@@ -541,8 +537,7 @@ func (c *Client) DeleteFirewallRule(ctx context.Context, hostID int64, ruleID in
 func (c *Client) ListPortMappings(ctx context.Context, hostID int64) ([]usecase.AutomationPortMapping, error) {
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
-	form.Set("hostid", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/nat_acl_list"
 	resp, err := c.doRequest(ctx, http.MethodGet, endpoint+"?"+form.Encode(), nil, "")
 	if err != nil {
@@ -565,8 +560,7 @@ func (c *Client) ListPortMappings(ctx context.Context, hostID int64) ([]usecase.
 func (c *Client) AddPortMapping(ctx context.Context, req usecase.AutomationPortMappingCreate) error {
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	form.Set("host_id", strconv.FormatInt(req.HostID, 10))
-	form.Set("hostid", strconv.FormatInt(req.HostID, 10))
+	setHostID(form, req.HostID)
 	if req.Name != "" {
 		form.Set("name", req.Name)
 	}
@@ -590,8 +584,7 @@ func (c *Client) AddPortMapping(ctx context.Context, req usecase.AutomationPortM
 func (c *Client) DeletePortMapping(ctx context.Context, hostID int64, mappingID int64) error {
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
-	form.Set("hostid", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	form.Set("id", strconv.FormatInt(mappingID, 10))
 	endpoint := c.baseURL + "/remove_port_host"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
@@ -607,8 +600,7 @@ func (c *Client) DeletePortMapping(ctx context.Context, hostID int64, mappingID 
 func (c *Client) FindPortCandidates(ctx context.Context, hostID int64, keywords string) ([]int64, error) {
 	params := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
-	params.Set("host_id", strconv.FormatInt(hostID, 10))
-	params.Set("hostid", strconv.FormatInt(hostID, 10))
+	setHostID(params, hostID)
 	if strings.TrimSpace(keywords) != "" {
 		params.Set("keywords", strings.TrimSpace(keywords))
 	}
@@ -664,7 +656,7 @@ func (c *Client) DeleteHost(ctx context.Context, hostID int64) error {
 
 func (c *Client) simpleHostAction(ctx context.Context, path string, hostID int64) error {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + path
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -823,7 +815,7 @@ func (c *Client) ListProducts(ctx context.Context, lineID int64) ([]usecase.Auto
 
 func (c *Client) GetMonitor(ctx context.Context, hostID int64) (usecase.AutomationMonitor, error) {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/monitor"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -895,7 +887,7 @@ func parseAutomationList(raw json.RawMessage) ([]map[string]any, error) {
 
 func (c *Client) GetVNCURL(ctx context.Context, hostID int64) (string, error) {
 	form := url.Values{}
-	form.Set("host_id", strconv.FormatInt(hostID, 10))
+	setHostID(form, hostID)
 	endpoint := c.baseURL + "/vnc_view"
 	client := &http.Client{
 		Timeout: c.http.Timeout,
@@ -1110,6 +1102,15 @@ func detectBodyFormat(headers http.Header, body []byte) (string, any) {
 		return "html", nil
 	}
 	return "text", nil
+}
+
+func setHostID(values url.Values, hostID int64) {
+	if values == nil {
+		return
+	}
+	id := strconv.FormatInt(hostID, 10)
+	values.Set("host_id", id)
+	values.Set("hostid", id)
 }
 
 func isLikelyJSON(body []byte) bool {

@@ -94,6 +94,7 @@ type OrderItemRepository interface {
 	UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error
 	HasPendingRenewOrder(ctx context.Context, userID, vpsID int64) (bool, error)
 	HasPendingResizeOrder(ctx context.Context, userID, vpsID int64) (bool, error)
+	HasPendingRefundOrder(ctx context.Context, userID, vpsID int64) (bool, error)
 }
 
 type PaymentRepository interface {

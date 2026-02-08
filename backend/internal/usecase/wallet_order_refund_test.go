@@ -205,6 +205,9 @@ func (f *fakeOrderItemRepo) HasPendingRenewOrder(ctx context.Context, userID, vp
 func (f *fakeOrderItemRepo) HasPendingResizeOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
 	return false, nil
 }
+func (f *fakeOrderItemRepo) HasPendingRefundOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
+	return false, nil
+}
 
 func TestWalletOrderService_RequestRefund(t *testing.T) {
 	settings := &fakeSettingsRepo{values: map[string]string{"refund_requires_approval": "false"}}

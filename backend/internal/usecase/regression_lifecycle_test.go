@@ -212,6 +212,9 @@ func (f *fakeLifecycleOrderItemRepo) HasPendingRenewOrder(ctx context.Context, u
 func (f *fakeLifecycleOrderItemRepo) HasPendingResizeOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
 	return false, nil
 }
+func (f *fakeLifecycleOrderItemRepo) HasPendingRefundOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
+	return false, nil
+}
 
 type fakeLifecycleAutomationClient struct {
 	RenewCalls []struct {

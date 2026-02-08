@@ -3,8 +3,10 @@ package automation
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +51,22 @@ func TestClient_HTTPFlows(t *testing.T) {
 		writeOK(w, map[string]any{})
 	})
 	mux.HandleFunc("/index.php/api/cloud/renew", func(w http.ResponseWriter, r *http.Request) {
+		writeOK(w, map[string]any{})
+	})
+	mux.HandleFunc("/index.php/api/cloud/reset_os", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		values, _ := url.ParseQuery(string(body))
+		if values.Get("host_id") == "" || values.Get("hostid") == "" {
+			t.Fatalf("reset_os missing host_id/hostid: %v", values)
+		}
+		writeOK(w, map[string]any{})
+	})
+	mux.HandleFunc("/index.php/api/cloud/reset_password", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		values, _ := url.ParseQuery(string(body))
+		if values.Get("host_id") == "" || values.Get("hostid") == "" {
+			t.Fatalf("reset_password missing host_id/hostid: %v", values)
+		}
 		writeOK(w, map[string]any{})
 	})
 	for _, path := range []string{"/start", "/shutdown", "/reboot", "/lock", "/unlock", "/delete"} {
@@ -137,6 +155,12 @@ func TestClient_HTTPFlows(t *testing.T) {
 	}
 	if err := client.RebootHost(ctx, 1); err != nil {
 		t.Fatalf("reboot: %v", err)
+	}
+	if err := client.ResetOS(ctx, 1, 2, "pw"); err != nil {
+		t.Fatalf("reset os: %v", err)
+	}
+	if err := client.ResetOSPassword(ctx, 1, "pw"); err != nil {
+		t.Fatalf("reset password: %v", err)
 	}
 	if err := client.LockHost(ctx, 1); err != nil {
 		t.Fatalf("lock: %v", err)

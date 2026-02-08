@@ -2206,6 +2206,8 @@ func (h *Handler) VPSRefund(c *gin.Context) {
 		status := http.StatusBadRequest
 		if err == usecase.ErrForbidden {
 			status = http.StatusForbidden
+		} else if err == usecase.ErrConflict {
+			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return

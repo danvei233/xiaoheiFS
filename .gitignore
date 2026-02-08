@@ -79,3 +79,7 @@ app/xiaoheifs_app/android/app/google-services.json
 
 /backend/uploads/
 /frontend/dist/
+/app/xiaoheifs_userapp/.dart_tool/
+/app/xiaoheifs_userapp/.claude/
+/app/xiaoheifs_userapp/.idea/
+/app/xiaoheifs_userapp/build/

@@ -218,6 +218,7 @@ func (f *fakeResizeOrderRepo) DeleteOrder(ctx context.Context, id int64) error {
 type fakeResizeOrderItemRepo struct {
 	items         []domain.OrderItem
 	pendingResize bool
+	pendingRefund bool
 	nextID        int64
 }
 
@@ -265,6 +266,9 @@ func (f *fakeResizeOrderItemRepo) HasPendingRenewOrder(ctx context.Context, user
 }
 func (f *fakeResizeOrderItemRepo) HasPendingResizeOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
 	return f.pendingResize, nil
+}
+func (f *fakeResizeOrderItemRepo) HasPendingRefundOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
+	return f.pendingRefund, nil
 }
 
 type fakeResizeTaskRepo struct {

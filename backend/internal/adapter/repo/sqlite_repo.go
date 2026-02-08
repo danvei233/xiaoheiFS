@@ -849,6 +849,32 @@ func (r *SQLiteRepo) HasPendingResizeOrder(ctx context.Context, userID, vpsID in
 	return false, nil
 }
 
+func (r *SQLiteRepo) HasPendingRefundOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
+	if vpsID <= 0 {
+		return false, nil
+	}
+	pattern1 := fmt.Sprintf("%%\"vps_id\":%d%%", vpsID)
+	pattern2 := fmt.Sprintf("%%\"vps_id\": %d%%", vpsID)
+	rows, err := r.db.QueryContext(ctx, `SELECT oi.spec_json FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.user_id = ? AND oi.action = 'refund' AND o.status IN ('pending_payment','pending_review') AND (oi.spec_json LIKE ? OR oi.spec_json LIKE ?) ORDER BY oi.id DESC LIMIT 20`, userID, pattern1, pattern2)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var spec string
+		if err := rows.Scan(&spec); err != nil {
+			return false, err
+		}
+		var payload struct {
+			VPSID int64 `json:"vps_id"`
+		}
+		if err := json.Unmarshal([]byte(spec), &payload); err == nil && payload.VPSID == vpsID {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (r *SQLiteRepo) UpdateOrderItemStatus(ctx context.Context, id int64, status domain.OrderItemStatus) error {
 	_, err := r.db.ExecContext(ctx, `UPDATE order_items SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, status, id)
 	return err

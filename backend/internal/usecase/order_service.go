@@ -1975,6 +1975,11 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 		} else if pending {
 			return domain.Order{}, ResizeQuote{}, ErrResizeInProgress
 		}
+		if pending, err := s.items.HasPendingRefundOrder(ctx, userID, vpsID); err != nil {
+			return domain.Order{}, ResizeQuote{}, err
+		} else if pending {
+			return domain.Order{}, ResizeQuote{}, ErrConflict
+		}
 	}
 	if s.resizeTasks != nil {
 		if pending, err := s.resizeTasks.HasPendingResizeTask(ctx, vpsID); err != nil {
@@ -2051,6 +2056,23 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	}
 	if inst.UserID != userID {
 		return domain.Order{}, 0, ErrForbidden
+	}
+	if pending, err := s.items.HasPendingRefundOrder(ctx, userID, vpsID); err != nil {
+		return domain.Order{}, 0, err
+	} else if pending {
+		return domain.Order{}, 0, ErrConflict
+	}
+	if pending, err := s.items.HasPendingResizeOrder(ctx, userID, vpsID); err != nil {
+		return domain.Order{}, 0, err
+	} else if pending {
+		return domain.Order{}, 0, ErrConflict
+	}
+	if s.resizeTasks != nil {
+		if pending, err := s.resizeTasks.HasPendingResizeTask(ctx, vpsID); err != nil {
+			return domain.Order{}, 0, err
+		} else if pending {
+			return domain.Order{}, 0, ErrConflict
+		}
 	}
 	item, err := s.items.GetOrderItem(ctx, inst.OrderItemID)
 	if err != nil {
@@ -2148,6 +2170,11 @@ func (s *OrderService) QuoteResizeOrder(ctx context.Context, userID int64, vpsID
 			return ResizeQuote{}, CartSpec{}, err
 		} else if pending {
 			return ResizeQuote{}, CartSpec{}, ErrResizeInProgress
+		}
+		if pending, err := s.items.HasPendingRefundOrder(ctx, userID, vpsID); err != nil {
+			return ResizeQuote{}, CartSpec{}, err
+		} else if pending {
+			return ResizeQuote{}, CartSpec{}, ErrConflict
 		}
 	}
 	if s.resizeTasks != nil {

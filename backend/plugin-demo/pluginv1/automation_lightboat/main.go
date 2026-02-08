@@ -149,6 +149,20 @@ func (s *coreServer) newClientWithTrace() (*automation.Client, *automation.HTTPL
 	return client, &last, nil
 }
 
+func (s *coreServer) retry(fn func() error) error {
+	if s.cfg.Retry < 0 {
+		return fn()
+	}
+	var err error
+	for i := 0; i <= s.cfg.Retry; i++ {
+		err = fn()
+		if err == nil {
+			return nil
+		}
+	}
+	return err
+}
+
 func wrapHTTPTraceErr(err error, last *automation.HTTPLogEntry) error {
 	if err == nil {
 		return nil
@@ -163,11 +177,32 @@ func wrapHTTPTraceErr(err error, last *automation.HTTPLogEntry) error {
 		"success":  last.Success,
 		"message":  last.Message,
 	}
+	msg := extractTraceMessage(trace)
+	if strings.TrimSpace(msg) == "" {
+		msg = err.Error()
+	}
 	raw, marshalErr := json.Marshal(trace)
 	if marshalErr != nil {
-		return err
+		return errors.New(msg)
 	}
-	return fmt.Errorf("%w | http_trace=%s", err, string(raw))
+	return fmt.Errorf("%s | http_trace=%s", msg, string(raw))
+}
+
+func extractTraceMessage(trace map[string]any) string {
+	if trace == nil {
+		return ""
+	}
+	if resp, ok := trace["response"].(map[string]any); ok {
+		if bodyJSON, ok := resp["body_json"].(map[string]any); ok {
+			if msg, ok := bodyJSON["msg"].(string); ok && strings.TrimSpace(msg) != "" {
+				return msg
+			}
+		}
+	}
+	if msg, ok := trace["message"].(string); ok {
+		return strings.TrimSpace(msg)
+	}
+	return ""
 }
 
 type automationServer struct {
@@ -176,13 +211,18 @@ type automationServer struct {
 }
 
 func (a *automationServer) ListAreas(ctx context.Context, _ *pluginv1.Empty) (*pluginv1.ListAreasResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListAreas(ctx)
+	var items []usecase.AutomationArea
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListAreas(ctx)
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationArea, 0, len(items))
 	for _, it := range items {
@@ -192,13 +232,18 @@ func (a *automationServer) ListAreas(ctx context.Context, _ *pluginv1.Empty) (*p
 }
 
 func (a *automationServer) ListLines(ctx context.Context, _ *pluginv1.Empty) (*pluginv1.ListLinesResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListLines(ctx)
+	var items []usecase.AutomationLine
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListLines(ctx)
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationLine, 0, len(items))
 	for _, it := range items {
@@ -208,13 +253,18 @@ func (a *automationServer) ListLines(ctx context.Context, _ *pluginv1.Empty) (*p
 }
 
 func (a *automationServer) ListPackages(ctx context.Context, req *pluginv1.ListPackagesRequest) (*pluginv1.ListPackagesResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListProducts(ctx, req.GetLineId())
+	var items []usecase.AutomationProduct
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListProducts(ctx, req.GetLineId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationPackage, 0, len(items))
 	for _, it := range items {
@@ -233,13 +283,18 @@ func (a *automationServer) ListPackages(ctx context.Context, req *pluginv1.ListP
 }
 
 func (a *automationServer) ListImages(ctx context.Context, req *pluginv1.ListImagesRequest) (*pluginv1.ListImagesResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListImages(ctx, req.GetLineId())
+	var items []usecase.AutomationImage
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListImages(ctx, req.GetLineId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationImage, 0, len(items))
 	for _, it := range items {
@@ -285,7 +340,12 @@ func (a *automationServer) GetInstance(ctx context.Context, req *pluginv1.GetIns
 	if err != nil {
 		return nil, err
 	}
-	info, err := c.GetHostInfo(ctx, req.GetInstanceId())
+	var info usecase.AutomationHostInfo
+	err = a.core.retry(func() error {
+		var callErr error
+		info, callErr = c.GetHostInfo(ctx, req.GetInstanceId())
+		return callErr
+	})
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
@@ -312,13 +372,18 @@ func (a *automationServer) GetInstance(ctx context.Context, req *pluginv1.GetIns
 }
 
 func (a *automationServer) ListInstancesSimple(ctx context.Context, req *pluginv1.ListInstancesSimpleRequest) (*pluginv1.ListInstancesSimpleResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListHostSimple(ctx, req.GetSearchTag())
+	var items []usecase.AutomationHostSimple
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListHostSimple(ctx, req.GetSearchTag())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationInstanceSimple, 0, len(items))
 	for _, it := range items {
@@ -328,62 +393,82 @@ func (a *automationServer) ListInstancesSimple(ctx context.Context, req *pluginv
 }
 
 func (a *automationServer) Start(ctx context.Context, req *pluginv1.StartRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.StartHost(ctx, req.GetInstanceId())
+	err = c.StartHost(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) Shutdown(ctx context.Context, req *pluginv1.ShutdownRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.ShutdownHost(ctx, req.GetInstanceId())
+	err = c.ShutdownHost(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) Reboot(ctx context.Context, req *pluginv1.RebootRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.RebootHost(ctx, req.GetInstanceId())
+	err = c.RebootHost(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) Rebuild(ctx context.Context, req *pluginv1.RebuildRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.ResetOS(ctx, req.GetInstanceId(), req.GetImageId(), req.GetPassword())
+	err = c.ResetOS(ctx, req.GetInstanceId(), req.GetImageId(), req.GetPassword())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) ResetPassword(ctx context.Context, req *pluginv1.ResetPasswordRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.ResetOSPassword(ctx, req.GetInstanceId(), req.GetPassword())
+	err = c.ResetOSPassword(ctx, req.GetInstanceId(), req.GetPassword())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) ElasticUpdate(ctx context.Context, req *pluginv1.ElasticUpdateRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
@@ -411,33 +496,45 @@ func (a *automationServer) ElasticUpdate(ctx context.Context, req *pluginv1.Elas
 		v := int(req.GetPortNum())
 		r.PortNum = &v
 	}
-	return &pluginv1.Empty{}, c.ElasticUpdate(ctx, r)
+	err = c.ElasticUpdate(ctx, r)
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) Lock(ctx context.Context, req *pluginv1.LockRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.LockHost(ctx, req.GetInstanceId())
+	err = c.LockHost(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) Unlock(ctx context.Context, req *pluginv1.UnlockRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.UnlockHost(ctx, req.GetInstanceId())
+	err = c.UnlockHost(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) Renew(ctx context.Context, req *pluginv1.RenewRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
@@ -445,52 +542,75 @@ func (a *automationServer) Renew(ctx context.Context, req *pluginv1.RenewRequest
 		return &pluginv1.Empty{}, nil
 	}
 	next := time.Unix(req.GetNextDueAtUnix(), 0)
-	return &pluginv1.Empty{}, c.RenewHost(ctx, req.GetInstanceId(), next)
+	err = c.RenewHost(ctx, req.GetInstanceId(), next)
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) Destroy(ctx context.Context, req *pluginv1.DestroyRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.DeleteHost(ctx, req.GetInstanceId())
+	err = c.DeleteHost(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) GetPanelURL(ctx context.Context, req *pluginv1.GetPanelURLRequest) (*pluginv1.GetPanelURLResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	url, err := c.GetPanelURL(ctx, req.GetInstanceName(), req.GetPanelPassword())
+	var url string
+	err = a.core.retry(func() error {
+		var callErr error
+		url, callErr = c.GetPanelURL(ctx, req.GetInstanceName(), req.GetPanelPassword())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	return &pluginv1.GetPanelURLResponse{Url: url}, nil
 }
 
 func (a *automationServer) GetVNCURL(ctx context.Context, req *pluginv1.GetVNCURLRequest) (*pluginv1.GetVNCURLResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	url, err := c.GetVNCURL(ctx, req.GetInstanceId())
+	var url string
+	err = a.core.retry(func() error {
+		var callErr error
+		url, callErr = c.GetVNCURL(ctx, req.GetInstanceId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	return &pluginv1.GetVNCURLResponse{Url: url}, nil
 }
 
 func (a *automationServer) GetMonitor(ctx context.Context, req *pluginv1.GetMonitorRequest) (*pluginv1.GetMonitorResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	mon, err := c.GetMonitor(ctx, req.GetInstanceId())
+	var mon usecase.AutomationMonitor
+	err = a.core.retry(func() error {
+		var callErr error
+		mon, callErr = c.GetMonitor(ctx, req.GetInstanceId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	raw := map[string]any{
 		"CpuStats":     float64(mon.CPUPercent),
@@ -506,13 +626,18 @@ func (a *automationServer) GetMonitor(ctx context.Context, req *pluginv1.GetMoni
 }
 
 func (a *automationServer) ListPortMappings(ctx context.Context, req *pluginv1.ListPortMappingsRequest) (*pluginv1.ListPortMappingsResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListPortMappings(ctx, req.GetInstanceId())
+	var items []usecase.AutomationPortMapping
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListPortMappings(ctx, req.GetInstanceId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationPortMapping, 0, len(items))
 	for _, it := range items {
@@ -522,8 +647,8 @@ func (a *automationServer) ListPortMappings(ctx context.Context, req *pluginv1.L
 		}
 		out = append(out, &pluginv1.AutomationPortMapping{
 			Id:    id,
-			Name:  fmt.Sprint(it["name"]),
-			Sport: fmt.Sprint(it["sport"]),
+			Name:  toString(it["name"]),
+			Sport: toString(it["sport"]),
 			Dport: toInt64(it["dport"]),
 		})
 	}
@@ -531,52 +656,70 @@ func (a *automationServer) ListPortMappings(ctx context.Context, req *pluginv1.L
 }
 
 func (a *automationServer) AddPortMapping(ctx context.Context, req *pluginv1.AddPortMappingRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.AddPortMapping(ctx, usecase.AutomationPortMappingCreate{
+	err = c.AddPortMapping(ctx, usecase.AutomationPortMappingCreate{
 		HostID: req.GetInstanceId(),
 		Name:   req.GetName(),
 		Sport:  req.GetSport(),
 		Dport:  req.GetDport(),
 	})
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) DeletePortMapping(ctx context.Context, req *pluginv1.DeletePortMappingRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.DeletePortMapping(ctx, req.GetInstanceId(), req.GetMappingId())
+	err = c.DeletePortMapping(ctx, req.GetInstanceId(), req.GetMappingId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) FindPortCandidates(ctx context.Context, req *pluginv1.FindPortCandidatesRequest) (*pluginv1.FindPortCandidatesResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	ports, err := c.FindPortCandidates(ctx, req.GetInstanceId(), req.GetKeywords())
+	var ports []int64
+	err = a.core.retry(func() error {
+		var callErr error
+		ports, callErr = c.FindPortCandidates(ctx, req.GetInstanceId(), req.GetKeywords())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	return &pluginv1.FindPortCandidatesResponse{Ports: ports}, nil
 }
 
 func (a *automationServer) ListBackups(ctx context.Context, req *pluginv1.ListBackupsRequest) (*pluginv1.ListBackupsResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListBackups(ctx, req.GetInstanceId())
+	var items []usecase.AutomationBackup
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListBackups(ctx, req.GetInstanceId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationBackup, 0, len(items))
 	for _, it := range items {
@@ -590,46 +733,63 @@ func (a *automationServer) ListBackups(ctx context.Context, req *pluginv1.ListBa
 }
 
 func (a *automationServer) CreateBackup(ctx context.Context, req *pluginv1.CreateBackupRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.CreateBackup(ctx, req.GetInstanceId())
+	err = c.CreateBackup(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) DeleteBackup(ctx context.Context, req *pluginv1.DeleteBackupRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.DeleteBackup(ctx, req.GetInstanceId(), req.GetBackupId())
+	err = c.DeleteBackup(ctx, req.GetInstanceId(), req.GetBackupId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) RestoreBackup(ctx context.Context, req *pluginv1.RestoreBackupRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.RestoreBackup(ctx, req.GetInstanceId(), req.GetBackupId())
+	err = c.RestoreBackup(ctx, req.GetInstanceId(), req.GetBackupId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) ListSnapshots(ctx context.Context, req *pluginv1.ListSnapshotsRequest) (*pluginv1.ListSnapshotsResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListSnapshots(ctx, req.GetInstanceId())
+	var items []usecase.AutomationSnapshot
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListSnapshots(ctx, req.GetInstanceId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationSnapshot, 0, len(items))
 	for _, it := range items {
@@ -643,70 +803,87 @@ func (a *automationServer) ListSnapshots(ctx context.Context, req *pluginv1.List
 }
 
 func (a *automationServer) CreateSnapshot(ctx context.Context, req *pluginv1.CreateSnapshotRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.CreateSnapshot(ctx, req.GetInstanceId())
+	err = c.CreateSnapshot(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) DeleteSnapshot(ctx context.Context, req *pluginv1.DeleteSnapshotRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.DeleteSnapshot(ctx, req.GetInstanceId(), req.GetSnapshotId())
+	err = c.DeleteSnapshot(ctx, req.GetInstanceId(), req.GetSnapshotId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) RestoreSnapshot(ctx context.Context, req *pluginv1.RestoreSnapshotRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.RestoreSnapshot(ctx, req.GetInstanceId(), req.GetSnapshotId())
+	err = c.RestoreSnapshot(ctx, req.GetInstanceId(), req.GetSnapshotId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) ListFirewallRules(ctx context.Context, req *pluginv1.ListFirewallRulesRequest) (*pluginv1.ListFirewallRulesResponse, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	items, err := c.ListFirewallRules(ctx, req.GetInstanceId())
+	var items []usecase.AutomationFirewallRule
+	err = a.core.retry(func() error {
+		var callErr error
+		items, callErr = c.ListFirewallRules(ctx, req.GetInstanceId())
+		return callErr
+	})
 	if err != nil {
-		return nil, err
+		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationFirewallRule, 0, len(items))
 	for _, it := range items {
 		out = append(out, &pluginv1.AutomationFirewallRule{
 			Id:        toInt64(it["id"]),
-			Direction: fmt.Sprint(it["direction"]),
-			Protocol:  fmt.Sprint(it["protocol"]),
-			Method:    fmt.Sprint(it["method"]),
-			Port:      fmt.Sprint(it["port"]),
-			Ip:        fmt.Sprint(it["ip"]),
+			Direction: toString(it["direction"]),
+			Protocol:  toString(it["protocol"]),
+			Method:    toString(it["method"]),
+			Port:      toString(it["port"]),
+			Ip:        toString(it["ip"]),
 		})
 	}
 	return &pluginv1.ListFirewallRulesResponse{Items: out}, nil
 }
 
 func (a *automationServer) AddFirewallRule(ctx context.Context, req *pluginv1.AddFirewallRuleRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.AddFirewallRule(ctx, usecase.AutomationFirewallRuleCreate{
+	err = c.AddFirewallRule(ctx, usecase.AutomationFirewallRuleCreate{
 		HostID:    req.GetInstanceId(),
 		Direction: req.GetDirection(),
 		Protocol:  req.GetProtocol(),
@@ -714,17 +891,25 @@ func (a *automationServer) AddFirewallRule(ctx context.Context, req *pluginv1.Ad
 		Port:      req.GetPort(),
 		IP:        req.GetIp(),
 	})
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func (a *automationServer) DeleteFirewallRule(ctx context.Context, req *pluginv1.DeleteFirewallRuleRequest) (*pluginv1.Empty, error) {
-	c, err := a.core.newClient()
+	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{}, nil
 	}
-	return &pluginv1.Empty{}, c.DeleteFirewallRule(ctx, req.GetInstanceId(), req.GetRuleId())
+	err = c.DeleteFirewallRule(ctx, req.GetInstanceId(), req.GetRuleId())
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.Empty{}, nil
 }
 
 func toInt64(v any) int64 {
@@ -744,8 +929,33 @@ func toInt64(v any) int64 {
 	}
 }
 
+func toString(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		if t == "<nil>" || t == "null" {
+			return ""
+		}
+		return t
+	case []byte:
+		return strings.TrimSpace(string(t))
+	default:
+		s := strings.TrimSpace(fmt.Sprint(v))
+		if s == "<nil>" || s == "null" {
+			return ""
+		}
+		return s
+	}
+}
+
 func toTimeUnix(v1 any, v2 any) int64 {
 	if v := toInt64(v2); v > 0 {
+		// support milliseconds
+		if v > 1_000_000_000_000 {
+			return v / 1000
+		}
 		return v
 	}
 	s := strings.TrimSpace(fmt.Sprint(v1))
@@ -753,9 +963,18 @@ func toTimeUnix(v1 any, v2 any) int64 {
 		return 0
 	}
 	if i, err := strconv.ParseInt(s, 10, 64); err == nil && i > 0 {
+		if i > 1_000_000_000_000 {
+			return i / 1000
+		}
 		return i
 	}
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t.Unix()
+	}
+	if t, err := time.Parse("2006-01-02 15:04:05", s); err == nil {
+		return t.Unix()
+	}
+	if t, err := time.Parse("2006-01-02", s); err == nil {
 		return t.Unix()
 	}
 	return 0
