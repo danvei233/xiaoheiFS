@@ -71,10 +71,14 @@ jobs:
 
       - name: Package Windows build
         run: |
-          $out = "build/windows/runner/Release"
+          $releaseDir = Get-ChildItem -Path "build/windows" -Recurse -Directory -Filter Release |
+            Where-Object { $_.FullName -match "runner[\\\\/]Release$" } |
+            Select-Object -First 1
+          if (-not $releaseDir) { throw "Windows Release directory not found under build/windows/**/runner/Release" }
+          $out = $releaseDir.FullName
           $zip = "xiaoheifs_app-windows.zip"
           if (Test-Path $zip) { Remove-Item $zip }
-          Compress-Archive -Path "$out\\*" -DestinationPath $zip
+          Compress-Archive -Path (Join-Path $out "*") -DestinationPath $zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
