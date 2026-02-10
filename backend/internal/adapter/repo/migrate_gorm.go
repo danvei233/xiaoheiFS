@@ -58,8 +58,8 @@ func migrateGorm(db *gorm.DB) error {
 
 type userRow struct {
 	ID                int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Username          string    `gorm:"column:username;not null;uniqueIndex"`
-	Email             string    `gorm:"column:email;not null;uniqueIndex"`
+	Username          string    `gorm:"size:191;column:username;not null;uniqueIndex"`
+	Email             string    `gorm:"size:191;column:email;not null;uniqueIndex"`
 	QQ                string    `gorm:"column:qq"`
 	PasswordHash      string    `gorm:"column:password_hash;not null"`
 	Role              string    `gorm:"column:role;not null"`
@@ -76,7 +76,7 @@ type userRow struct {
 func (userRow) TableName() string { return "users" }
 
 type captchaRow struct {
-	ID        string    `gorm:"primaryKey;column:id"`
+	ID        string    `gorm:"size:191;primaryKey;column:id"`
 	CodeHash  string    `gorm:"column:code_hash;not null"`
 	ExpiresAt time.Time `gorm:"column:expires_at;not null"`
 	CreatedAt time.Time `gorm:"column:created_at"`
@@ -86,9 +86,9 @@ func (captchaRow) TableName() string { return "captchas" }
 
 type verificationCodeRow struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Channel   string    `gorm:"column:channel;not null;index:idx_verification_codes_receiver,priority:1"`
-	Receiver  string    `gorm:"column:receiver;not null;index:idx_verification_codes_receiver,priority:2"`
-	Purpose   string    `gorm:"column:purpose;not null;index:idx_verification_codes_receiver,priority:3"`
+	Channel   string    `gorm:"size:191;column:channel;not null;index:idx_verification_codes_receiver,priority:1"`
+	Receiver  string    `gorm:"size:191;column:receiver;not null;index:idx_verification_codes_receiver,priority:2"`
+	Purpose   string    `gorm:"size:191;column:purpose;not null;index:idx_verification_codes_receiver,priority:3"`
 	CodeHash  string    `gorm:"column:code_hash;not null"`
 	ExpiresAt time.Time `gorm:"column:expires_at;not null;index:idx_verification_codes_expires"`
 	CreatedAt time.Time `gorm:"column:created_at"`
@@ -98,13 +98,13 @@ func (verificationCodeRow) TableName() string { return "verification_codes" }
 
 type goodsTypeRow struct {
 	ID                   int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Code                 string    `gorm:"column:code;uniqueIndex:idx_goods_types_code_unique,where:code <> ''"`
+	Code                 string    `gorm:"size:191;column:code;uniqueIndex:idx_goods_types_code_unique,where:code <> ''"`
 	Name                 string    `gorm:"column:name;not null"`
 	Active               int       `gorm:"column:active;not null;default:1"`
 	SortOrder            int       `gorm:"column:sort_order;not null;default:0"`
-	AutomationCategory   string    `gorm:"column:automation_category;not null;default:automation;uniqueIndex:idx_goods_types_automation_unique"`
-	AutomationPluginID   string    `gorm:"column:automation_plugin_id;not null;default:'';uniqueIndex:idx_goods_types_automation_unique"`
-	AutomationInstanceID string    `gorm:"column:automation_instance_id;not null;default:'';uniqueIndex:idx_goods_types_automation_unique"`
+	AutomationCategory   string    `gorm:"size:191;column:automation_category;not null;default:automation;uniqueIndex:idx_goods_types_automation_unique"`
+	AutomationPluginID   string    `gorm:"size:191;column:automation_plugin_id;not null;default:'';uniqueIndex:idx_goods_types_automation_unique"`
+	AutomationInstanceID string    `gorm:"size:191;column:automation_instance_id;not null;default:'';uniqueIndex:idx_goods_types_automation_unique"`
 	CreatedAt            time.Time `gorm:"column:created_at"`
 	UpdatedAt            time.Time `gorm:"column:updated_at"`
 }
@@ -114,7 +114,7 @@ func (goodsTypeRow) TableName() string { return "goods_types" }
 type regionRow struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	GoodsTypeID int64     `gorm:"column:goods_type_id;not null;default:0;index;uniqueIndex:idx_regions_gt_code_unique"`
-	Code        string    `gorm:"column:code;not null;uniqueIndex:idx_regions_gt_code_unique"`
+	Code        string    `gorm:"size:191;column:code;not null;uniqueIndex:idx_regions_gt_code_unique"`
 	Name        string    `gorm:"column:name;not null"`
 	Active      int       `gorm:"column:active;not null;default:1"`
 	CreatedAt   time.Time `gorm:"column:created_at"`
@@ -216,11 +216,11 @@ func (cartItemRow) TableName() string { return "cart_items" }
 type orderRow struct {
 	ID             int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID         int64      `gorm:"column:user_id;not null;index;uniqueIndex:idx_orders_idem"`
-	OrderNo        string     `gorm:"column:order_no;not null;uniqueIndex"`
+	OrderNo        string     `gorm:"size:191;column:order_no;not null;uniqueIndex"`
 	Status         string     `gorm:"column:status;not null"`
 	TotalAmount    int64      `gorm:"column:total_amount;not null"`
 	Currency       string     `gorm:"column:currency;not null"`
-	IdempotencyKey *string    `gorm:"column:idempotency_key;uniqueIndex:idx_orders_idem"`
+	IdempotencyKey *string    `gorm:"size:191;column:idempotency_key;uniqueIndex:idx_orders_idem"`
 	PendingReason  string     `gorm:"column:pending_reason"`
 	ApprovedBy     *int64     `gorm:"column:approved_by"`
 	ApprovedAt     *time.Time `gorm:"column:approved_at"`
@@ -309,7 +309,7 @@ func (adminAuditLogRow) TableName() string { return "admin_audit_logs" }
 type apiKeyRow struct {
 	ID                int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	Name              string     `gorm:"column:name;not null"`
-	KeyHash           string     `gorm:"column:key_hash;not null;uniqueIndex"`
+	KeyHash           string     `gorm:"size:191;column:key_hash;not null;uniqueIndex"`
 	Status            string     `gorm:"column:status;not null"`
 	ScopesJSON        string     `gorm:"column:scopes_json;not null"`
 	PermissionGroupID *int64     `gorm:"column:permission_group_id"`
@@ -321,7 +321,7 @@ type apiKeyRow struct {
 func (apiKeyRow) TableName() string { return "api_keys" }
 
 type settingRow struct {
-	Key       string    `gorm:"primaryKey;column:key"`
+	Key       string    `gorm:"size:191;primaryKey;column:key"`
 	ValueJSON string    `gorm:"column:value_json;not null"`
 	UpdatedAt time.Time `gorm:"column:updated_at"`
 }
@@ -330,7 +330,7 @@ func (settingRow) TableName() string { return "settings" }
 
 type emailTemplateRow struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Name      string    `gorm:"column:name;not null;uniqueIndex"`
+	Name      string    `gorm:"size:191;column:name;not null;uniqueIndex"`
 	Subject   string    `gorm:"column:subject;not null"`
 	Body      string    `gorm:"column:body;not null"`
 	Enabled   int       `gorm:"column:enabled;not null;default:1"`
@@ -347,11 +347,11 @@ type orderPaymentRow struct {
 	Method         string    `gorm:"column:method;not null"`
 	Amount         int64     `gorm:"column:amount;not null"`
 	Currency       string    `gorm:"column:currency;not null"`
-	TradeNo        string    `gorm:"column:trade_no;not null;uniqueIndex:idx_order_payments_trade_no"`
+	TradeNo        string    `gorm:"size:191;column:trade_no;not null;uniqueIndex:idx_order_payments_trade_no"`
 	Note           *string   `gorm:"column:note"`
 	ScreenshotURL  *string   `gorm:"column:screenshot_url"`
 	Status         string    `gorm:"column:status;not null"`
-	IdempotencyKey *string   `gorm:"column:idempotency_key;uniqueIndex:idx_order_payments_idem"`
+	IdempotencyKey *string   `gorm:"size:191;column:idempotency_key;uniqueIndex:idx_order_payments_idem"`
 	ReviewedBy     *int64    `gorm:"column:reviewed_by"`
 	ReviewReason   string    `gorm:"column:review_reason"`
 	CreatedAt      time.Time `gorm:"column:created_at"`
@@ -410,7 +410,7 @@ type resizeTaskRow struct {
 	VPSID       int64      `gorm:"column:vps_id;not null;index"`
 	OrderID     int64      `gorm:"column:order_id;not null"`
 	OrderItemID int64      `gorm:"column:order_item_id;not null"`
-	Status      string     `gorm:"column:status;not null;index"`
+	Status      string     `gorm:"size:191;column:status;not null;index"`
 	ScheduledAt *time.Time `gorm:"column:scheduled_at"`
 	StartedAt   *time.Time `gorm:"column:started_at"`
 	FinishedAt  *time.Time `gorm:"column:finished_at"`
@@ -433,7 +433,7 @@ func (integrationSyncLogRow) TableName() string { return "integration_sync_logs"
 
 type permissionGroupRow struct {
 	ID              int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Name            string    `gorm:"column:name;not null;uniqueIndex"`
+	Name            string    `gorm:"size:191;column:name;not null;uniqueIndex"`
 	Description     string    `gorm:"column:description"`
 	PermissionsJSON string    `gorm:"column:permissions_json;not null"`
 	CreatedAt       time.Time `gorm:"column:created_at"`
@@ -445,7 +445,7 @@ func (permissionGroupRow) TableName() string { return "permission_groups" }
 type passwordResetTokenRow struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID    int64     `gorm:"column:user_id;not null;index"`
-	Token     string    `gorm:"column:token;not null;uniqueIndex"`
+	Token     string    `gorm:"size:191;column:token;not null;uniqueIndex"`
 	ExpiresAt time.Time `gorm:"column:expires_at;not null"`
 	Used      int       `gorm:"column:used;not null;default:0"`
 	CreatedAt time.Time `gorm:"column:created_at"`
@@ -455,7 +455,7 @@ func (passwordResetTokenRow) TableName() string { return "password_reset_tokens"
 
 type permissionRow struct {
 	ID           int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Code         string    `gorm:"column:code;not null;uniqueIndex"`
+	Code         string    `gorm:"size:191;column:code;not null;uniqueIndex"`
 	Name         string    `gorm:"column:name;not null"`
 	FriendlyName string    `gorm:"column:friendly_name"`
 	Category     string    `gorm:"column:category;not null"`
@@ -469,9 +469,9 @@ func (permissionRow) TableName() string { return "permissions" }
 
 type cmsCategoryRow struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Key       string    `gorm:"column:key;not null;uniqueIndex:idx_cms_categories_key_lang"`
+	Key       string    `gorm:"size:191;column:key;not null;uniqueIndex:idx_cms_categories_key_lang"`
 	Name      string    `gorm:"column:name;not null"`
-	Lang      string    `gorm:"column:lang;not null;default:zh-CN;uniqueIndex:idx_cms_categories_key_lang"`
+	Lang      string    `gorm:"size:191;column:lang;not null;default:zh-CN;uniqueIndex:idx_cms_categories_key_lang"`
 	SortOrder int       `gorm:"column:sort_order;not null;default:0"`
 	Visible   int       `gorm:"column:visible;not null;default:1"`
 	CreatedAt time.Time `gorm:"column:created_at"`
@@ -484,11 +484,11 @@ type cmsPostRow struct {
 	ID          int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	CategoryID  int64      `gorm:"column:category_id;not null;index"`
 	Title       string     `gorm:"column:title;not null"`
-	Slug        string     `gorm:"column:slug;not null;uniqueIndex"`
+	Slug        string     `gorm:"size:191;column:slug;not null;uniqueIndex"`
 	Summary     string     `gorm:"column:summary;not null;default:''"`
 	ContentHTML string     `gorm:"column:content_html;not null"`
 	CoverURL    string     `gorm:"column:cover_url;not null;default:''"`
-	Lang        string     `gorm:"column:lang;not null;default:zh-CN;index"`
+	Lang        string     `gorm:"size:191;column:lang;not null;default:zh-CN;index"`
 	Status      string     `gorm:"column:status;not null;default:draft"`
 	Pinned      int        `gorm:"column:pinned;not null;default:0"`
 	SortOrder   int        `gorm:"column:sort_order;not null;default:0"`
@@ -501,7 +501,7 @@ func (cmsPostRow) TableName() string { return "cms_posts" }
 
 type cmsBlockRow struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Page        string    `gorm:"column:page;not null;index"`
+	Page        string    `gorm:"size:191;column:page;not null;index"`
 	Type        string    `gorm:"column:type;not null"`
 	Title       string    `gorm:"column:title;not null;default:''"`
 	Subtitle    string    `gorm:"column:subtitle;not null;default:''"`
@@ -533,7 +533,7 @@ type ticketRow struct {
 	ID            int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID        int64      `gorm:"column:user_id;not null;index"`
 	Subject       string     `gorm:"column:subject;not null"`
-	Status        string     `gorm:"column:status;not null;default:open;index"`
+	Status        string     `gorm:"size:191;column:status;not null;default:open;index"`
 	LastReplyAt   *time.Time `gorm:"column:last_reply_at"`
 	LastReplyBy   *int64     `gorm:"column:last_reply_by"`
 	LastReplyRole string     `gorm:"column:last_reply_role;not null;default:user"`
@@ -636,7 +636,7 @@ type pushTokenRow struct {
 	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID    int64     `gorm:"column:user_id;not null;uniqueIndex:idx_push_tokens_user_token,priority:1;index:idx_push_tokens_user"`
 	Platform  string    `gorm:"column:platform;not null"`
-	Token     string    `gorm:"column:token;not null;uniqueIndex:idx_push_tokens_user_token,priority:2"`
+	Token     string    `gorm:"size:191;column:token;not null;uniqueIndex:idx_push_tokens_user_token,priority:2"`
 	DeviceID  string    `gorm:"column:device_id;not null;default:''"`
 	CreatedAt time.Time `gorm:"column:created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at"`
@@ -660,9 +660,9 @@ func (realnameVerificationRow) TableName() string { return "realname_verificatio
 
 type pluginInstallationRow struct {
 	ID              int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Category        string    `gorm:"column:category;not null;uniqueIndex:idx_plugin_installations_cat_id_instance"`
-	PluginID        string    `gorm:"column:plugin_id;not null;uniqueIndex:idx_plugin_installations_cat_id_instance"`
-	InstanceID      string    `gorm:"column:instance_id;not null;uniqueIndex:idx_plugin_installations_cat_id_instance"`
+	Category        string    `gorm:"size:191;column:category;not null;uniqueIndex:idx_plugin_installations_cat_id_instance"`
+	PluginID        string    `gorm:"size:191;column:plugin_id;not null;uniqueIndex:idx_plugin_installations_cat_id_instance"`
+	InstanceID      string    `gorm:"size:191;column:instance_id;not null;uniqueIndex:idx_plugin_installations_cat_id_instance"`
 	Enabled         int       `gorm:"column:enabled;not null;default:0"`
 	SignatureStatus string    `gorm:"column:signature_status;not null;default:unsigned"`
 	ConfigCipher    string    `gorm:"column:config_cipher;not null"`
@@ -674,10 +674,10 @@ func (pluginInstallationRow) TableName() string { return "plugin_installations" 
 
 type pluginPaymentMethodRow struct {
 	ID         int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Category   string    `gorm:"column:category;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
-	PluginID   string    `gorm:"column:plugin_id;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
-	InstanceID string    `gorm:"column:instance_id;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
-	Method     string    `gorm:"column:method;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
+	Category   string    `gorm:"size:191;column:category;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
+	PluginID   string    `gorm:"size:191;column:plugin_id;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
+	InstanceID string    `gorm:"size:191;column:instance_id;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
+	Method     string    `gorm:"size:191;column:method;not null;uniqueIndex:idx_plugin_payment_methods_unique"`
 	Enabled    int       `gorm:"column:enabled;not null;default:1"`
 	CreatedAt  time.Time `gorm:"column:created_at"`
 	UpdatedAt  time.Time `gorm:"column:updated_at"`
