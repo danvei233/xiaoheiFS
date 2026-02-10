@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
 
+	mysqlDriver "github.com/go-sql-driver/mysql"
 	"gopkg.in/yaml.v3"
 )
 
@@ -244,12 +246,20 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		PermissionGroupID: &superAdminGroupID,
 	}
 	if err := repoAny.CreateUser(ctx, user); err != nil {
+		if isDuplicateEntryError(err) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "admin already exists"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Persist DB config so next boot uses the installed DB even without env vars.
-	configPath := installConfigPath
+	// Persist DB config to the same config file that loader currently resolves,
+	// so subsequent restarts do not fall back to sqlite due to CWD differences.
+	configPath := strings.TrimSpace(config.LocalConfigPath())
+	if configPath == "" {
+		configPath = installConfigPath
+	}
 	if dir := filepath.Dir(configPath); dir != "" && dir != "." {
 		_ = os.MkdirAll(dir, 0o755)
 	}
@@ -294,4 +304,18 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		"restart_required": cfg.DBType != "sqlite",
 		"config_file":      configPath,
 	})
+}
+
+func isDuplicateEntryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var me *mysqlDriver.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 1062
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate entry") ||
+		strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "constraint failed")
 }

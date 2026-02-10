@@ -1399,6 +1399,27 @@ func (r *SQLiteRepo) UpsertPluginPaymentMethod(ctx context.Context, m *domain.Pl
 	if m == nil || strings.TrimSpace(m.Category) == "" || strings.TrimSpace(m.PluginID) == "" || strings.TrimSpace(m.InstanceID) == "" || strings.TrimSpace(m.Method) == "" {
 		return usecase.ErrInvalidInput
 	}
+	if r.gdb != nil {
+		row := pluginPaymentMethodModel{
+			Category:   m.Category,
+			PluginID:   m.PluginID,
+			InstanceID: m.InstanceID,
+			Method:     m.Method,
+			Enabled:    boolToInt(m.Enabled),
+			UpdatedAt:  time.Now(),
+		}
+		return r.gdb.WithContext(ctx).
+			Clauses(clause.OnConflict{
+				Columns: []clause.Column{
+					{Name: "category"},
+					{Name: "plugin_id"},
+					{Name: "instance_id"},
+					{Name: "method"},
+				},
+				DoUpdates: clause.AssignmentColumns([]string{"enabled", "updated_at"}),
+			}).
+			Create(&row).Error
+	}
 	_, err := r.db.ExecContext(ctx, `INSERT INTO plugin_payment_methods(category,plugin_id,instance_id,method,enabled,created_at,updated_at)
 		VALUES (?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
 		ON CONFLICT(category,plugin_id,instance_id,method) DO UPDATE SET enabled = excluded.enabled, updated_at = CURRENT_TIMESTAMP`,
@@ -2566,6 +2587,24 @@ func (r *SQLiteRepo) UpsertPushToken(ctx context.Context, token *domain.PushToke
 	if token.UpdatedAt.IsZero() {
 		token.UpdatedAt = time.Now()
 	}
+	if r.gdb != nil {
+		row := pushTokenModel{
+			UserID:    token.UserID,
+			Platform:  token.Platform,
+			Token:     token.Token,
+			DeviceID:  token.DeviceID,
+			CreatedAt: token.CreatedAt,
+			UpdatedAt: token.UpdatedAt,
+		}
+		return r.gdb.WithContext(ctx).
+			Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "user_id"}, {Name: "token"}},
+				DoUpdates: clause.AssignmentColumns([]string{
+					"platform", "device_id", "updated_at",
+				}),
+			}).
+			Create(&row).Error
+	}
 	_, err := r.db.ExecContext(ctx, `
 		INSERT INTO push_tokens(user_id, platform, token, device_id, created_at, updated_at)
 		VALUES (?,?,?,?,?,?)
@@ -2875,13 +2914,17 @@ func (r *SQLiteRepo) UpdateWalletOrderStatus(ctx context.Context, id int64, stat
 
 func scanUser(row scanner) (domain.User, error) {
 	var u domain.User
+	var qq sql.NullString
 	var avatar sql.NullString
 	var phone sql.NullString
 	var bio sql.NullString
 	var intro sql.NullString
 	var permissionGroupID sql.NullInt64
-	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.QQ, &avatar, &phone, &bio, &intro, &permissionGroupID, &u.PasswordHash, &u.Role, &u.Status, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.Email, &qq, &avatar, &phone, &bio, &intro, &permissionGroupID, &u.PasswordHash, &u.Role, &u.Status, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return domain.User{}, rEnsure(err)
+	}
+	if qq.Valid {
+		u.QQ = qq.String
 	}
 	if avatar.Valid {
 		u.Avatar = avatar.String
@@ -3142,6 +3185,19 @@ type pluginInstallationModel struct {
 
 func (pluginInstallationModel) TableName() string { return "plugin_installations" }
 
+type pluginPaymentMethodModel struct {
+	ID         int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	Category   string    `gorm:"column:category"`
+	PluginID   string    `gorm:"column:plugin_id"`
+	InstanceID string    `gorm:"column:instance_id"`
+	Method     string    `gorm:"column:method"`
+	Enabled    int       `gorm:"column:enabled"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+	UpdatedAt  time.Time `gorm:"column:updated_at"`
+}
+
+func (pluginPaymentMethodModel) TableName() string { return "plugin_payment_methods" }
+
 type provisionJobModel struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	OrderID     int64     `gorm:"column:order_id"`
@@ -3180,6 +3236,18 @@ type walletModel struct {
 }
 
 func (walletModel) TableName() string { return "user_wallets" }
+
+type pushTokenModel struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	UserID    int64     `gorm:"column:user_id"`
+	Platform  string    `gorm:"column:platform"`
+	Token     string    `gorm:"column:token"`
+	DeviceID  string    `gorm:"column:device_id"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}
+
+func (pushTokenModel) TableName() string { return "push_tokens" }
 
 func boolToInt(v bool) int {
 	if v {
