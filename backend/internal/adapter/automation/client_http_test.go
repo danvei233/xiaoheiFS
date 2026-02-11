@@ -208,3 +208,73 @@ func TestClient_HTTPFlows(t *testing.T) {
 		}
 	}
 }
+
+func TestClient_ListAreas_FallbackToAreaEndpoint(t *testing.T) {
+	mux := http.NewServeMux()
+	writeOK := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 1,
+			"msg":  "ok",
+			"data": data,
+		})
+	}
+
+	mux.HandleFunc("/index.php/api/cloud/line", func(w http.ResponseWriter, r *http.Request) {
+		writeOK(w, []map[string]any{
+			{"id": 101, "line_name": "L1", "area_id": 9, "state": 1},
+			{"id": 102, "line_name": "L2", "area_id": 9, "state": 1},
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := NewClient(server.URL+"/index.php/api/cloud", "secret", time.Second)
+	items, err := client.ListAreas(context.Background())
+	if err != nil {
+		t.Fatalf("list areas fallback failed: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != 9 || items[0].Name != "Area 9" {
+		t.Fatalf("unexpected areas: %#v", items)
+	}
+}
+
+func TestClient_ListAreas_DeriveFromLines(t *testing.T) {
+	mux := http.NewServeMux()
+	writeOK := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 1,
+			"msg":  "ok",
+			"data": data,
+		})
+	}
+
+	mux.HandleFunc("/index.php/api/cloud/area_list", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("not found"))
+	})
+	mux.HandleFunc("/index.php/api/cloud/area", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte("not found"))
+	})
+	mux.HandleFunc("/index.php/api/cloud/line", func(w http.ResponseWriter, r *http.Request) {
+		writeOK(w, []map[string]any{
+			{"id": 11, "line_name": "L1", "area_id": 7, "state": 1},
+			{"id": 12, "line_name": "L2", "area_id": 8, "state": 1},
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := NewClient(server.URL+"/index.php/api/cloud", "secret", time.Second)
+	items, err := client.ListAreas(context.Background())
+	if err != nil {
+		t.Fatalf("list areas from lines failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("unexpected areas: %#v", items)
+	}
+}

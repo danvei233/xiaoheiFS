@@ -90,7 +90,6 @@ type Handler struct {
 	jwtSecret     []byte
 	passwordReset *usecase.PasswordResetService
 	permissionSvc *usecase.PermissionService
-	automation    usecase.AutomationClient
 	pluginDir     string
 	pluginPass    string
 	pluginMgr     *plugins.Manager
@@ -120,7 +119,7 @@ type authSettings struct {
 	LoginRateLimitMax      int
 }
 
-func NewHandler(authSvc *usecase.AuthService, catalogSvc *usecase.CatalogService, goodsTypes *usecase.GoodsTypeService, cartSvc *usecase.CartService, orderSvc *usecase.OrderService, vpsSvc *usecase.VPSService, adminSvc *usecase.AdminService, adminVPS *usecase.AdminVPSService, integration *usecase.IntegrationService, reportSvc *usecase.ReportService, cmsSvc *usecase.CMSService, ticketSvc *usecase.TicketService, walletSvc *usecase.WalletService, walletOrder *usecase.WalletOrderService, paymentSvc *usecase.PaymentService, messageSvc *usecase.MessageCenterService, statusSvc *usecase.ServerStatusService, realnameSvc *usecase.RealNameService, orderItems usecase.OrderItemRepository, users usecase.UserRepository, orderRepo usecase.OrderRepository, vpsRepo usecase.VPSRepository, payments usecase.PaymentRepository, eventsRepo usecase.EventRepository, automationLogs usecase.AutomationLogRepository, settings usecase.SettingsRepository, permissions usecase.PermissionRepository, uploads usecase.UploadRepository, broker *sse.Broker, jwtSecret string, automation usecase.AutomationClient, passwordReset *usecase.PasswordResetService, permissionSvc *usecase.PermissionService, taskSvc *usecase.ScheduledTaskService) *Handler {
+func NewHandler(authSvc *usecase.AuthService, catalogSvc *usecase.CatalogService, goodsTypes *usecase.GoodsTypeService, cartSvc *usecase.CartService, orderSvc *usecase.OrderService, vpsSvc *usecase.VPSService, adminSvc *usecase.AdminService, adminVPS *usecase.AdminVPSService, integration *usecase.IntegrationService, reportSvc *usecase.ReportService, cmsSvc *usecase.CMSService, ticketSvc *usecase.TicketService, walletSvc *usecase.WalletService, walletOrder *usecase.WalletOrderService, paymentSvc *usecase.PaymentService, messageSvc *usecase.MessageCenterService, statusSvc *usecase.ServerStatusService, realnameSvc *usecase.RealNameService, orderItems usecase.OrderItemRepository, users usecase.UserRepository, orderRepo usecase.OrderRepository, vpsRepo usecase.VPSRepository, payments usecase.PaymentRepository, eventsRepo usecase.EventRepository, automationLogs usecase.AutomationLogRepository, settings usecase.SettingsRepository, permissions usecase.PermissionRepository, uploads usecase.UploadRepository, broker *sse.Broker, jwtSecret string, passwordReset *usecase.PasswordResetService, permissionSvc *usecase.PermissionService, taskSvc *usecase.ScheduledTaskService) *Handler {
 	return &Handler{
 		authSvc:       authSvc,
 		catalogSvc:    catalogSvc,
@@ -152,7 +151,6 @@ func NewHandler(authSvc *usecase.AuthService, catalogSvc *usecase.CatalogService
 		uploads:       uploads,
 		broker:        broker,
 		jwtSecret:     []byte(jwtSecret),
-		automation:    automation,
 		passwordReset: passwordReset,
 		permissionSvc: permissionSvc,
 		taskSvc:       taskSvc,
@@ -4845,57 +4843,74 @@ func (h *Handler) AdminSystemImageBulkDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminSystemImageSync(c *gin.Context) {
+	if h.integration == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+		return
+	}
+
 	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
-	if lineID <= 0 {
-		planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
-		if planGroupID > 0 {
-			if plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID); err == nil {
+	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
+
+	if planGroupID > 0 {
+		if plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID); err == nil {
+			if lineID <= 0 {
 				lineID = plan.LineID
+			}
+			if goodsTypeID <= 0 {
+				goodsTypeID = plan.GoodsTypeID
 			}
 		}
 	}
-	if lineID <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "line_id required"})
+
+	if goodsTypeID <= 0 && lineID > 0 {
+		if plans, err := h.catalogSvc.ListPlanGroups(c); err == nil {
+			for _, plan := range plans {
+				if plan.LineID == lineID && plan.GoodsTypeID > 0 {
+					goodsTypeID = plan.GoodsTypeID
+					break
+				}
+			}
+		}
+	}
+
+	if goodsTypeID <= 0 && h.goodsTypes != nil {
+		if items, err := h.goodsTypes.List(c); err == nil && len(items) > 0 {
+			sort.SliceStable(items, func(i, j int) bool {
+				if items[i].SortOrder == items[j].SortOrder {
+					return items[i].ID < items[j].ID
+				}
+				return items[i].SortOrder < items[j].SortOrder
+			})
+			if items[0].ID > 0 {
+				goodsTypeID = items[0].ID
+			}
+		}
+	}
+
+	if goodsTypeID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "goods_type_id required"})
 		return
 	}
-	images, err := h.automation.ListImages(c, lineID)
+
+	result, err := h.integration.SyncAutomationForGoodsType(c, goodsTypeID, "merge")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	existingImages, _ := h.catalogSvc.ListSystemImages(c, 0)
-	byImageID := map[int64]domain.SystemImage{}
-	for _, img := range existingImages {
-		if img.ImageID > 0 {
-			byImageID[img.ImageID] = img
+
+	count := result.Images
+	resp := gin.H{
+		"count":         count,
+		"goods_type_id": goodsTypeID,
+	}
+	if lineID > 0 {
+		resp["line_id"] = lineID
+		if images, lerr := h.catalogSvc.ListSystemImages(c, lineID); lerr == nil {
+			resp["count"] = len(images)
 		}
 	}
-	mappedIDs := make([]int64, 0, len(images))
-	for _, img := range images {
-		imgType := "linux"
-		if strings.Contains(strings.ToLower(img.Type), "win") {
-			imgType = "windows"
-		}
-		if existing, ok := byImageID[img.ImageID]; ok {
-			existing.Name = img.Name
-			existing.Type = imgType
-			_ = h.catalogSvc.UpdateSystemImage(c, existing)
-			if existing.ID > 0 {
-				mappedIDs = append(mappedIDs, existing.ID)
-			}
-			continue
-		}
-		newImg := domain.SystemImage{ImageID: img.ImageID, Name: img.Name, Type: imgType, Enabled: true}
-		_ = h.catalogSvc.CreateSystemImage(c, &newImg)
-		if newImg.ID > 0 {
-			mappedIDs = append(mappedIDs, newImg.ID)
-		}
-	}
-	if err := h.catalogSvc.SetLineSystemImages(c, lineID, mappedIDs); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"count": len(images)})
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *Handler) AdminAPIKeys(c *gin.Context) {
@@ -5109,51 +5124,61 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 }
 
 func (h *Handler) AdminAutomationConfig(c *gin.Context) {
-	if h.integration == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+	if h.pluginMgr == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"base_url":      "",
+			"api_key":       "",
+			"enabled":       false,
+			"timeout_sec":   12,
+			"retry":         0,
+			"dry_run":       false,
+			"configured":    false,
+			"compat_mode":   false,
+			"plugins_ready": false,
+			"config_source": "goods_type_plugin_instance",
+		})
 		return
 	}
-	cfg, err := h.integration.GetAutomationConfig(c)
+	cfg, present, binding, enabled, err := h.readAutomationPluginConfig(c)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "config error"})
+		c.JSON(http.StatusConflict, gin.H{
+			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
+			"code":          "no_writable_automation_instance",
+			"redirect_path": "/admin/catalog",
+		})
 		return
 	}
+	if cfg.TimeoutSec <= 0 {
+		cfg.TimeoutSec = 12
+	}
+	if cfg.Retry < 0 {
+		cfg.Retry = 0
+	}
+	configured := present["base_url"] && strings.TrimSpace(cfg.BaseURL) != "" &&
+		present["api_key"] && strings.TrimSpace(cfg.APIKey) != ""
 	resp := gin.H{
-		"base_url":    cfg.BaseURL,
-		"api_key":     cfg.APIKey,
-		"enabled":     cfg.Enabled,
-		"timeout_sec": cfg.TimeoutSec,
-		"retry":       cfg.Retry,
-		"dry_run":     cfg.DryRun,
+		"base_url":      cfg.BaseURL,
+		"api_key":       cfg.APIKey,
+		"enabled":       enabled,
+		"timeout_sec":   cfg.TimeoutSec,
+		"retry":         cfg.Retry,
+		"dry_run":       cfg.DryRun,
+		"plugin_id":     binding.PluginID,
+		"instance_id":   binding.InstanceID,
+		"configured":    configured,
+		"compat_mode":   false,
+		"config_source": "goods_type_plugin_instance",
 	}
-	source := "legacy_settings"
-	if h.pluginMgr != nil {
-		if pluginCfg, present, binding, enabled, perr := h.readAutomationPluginConfig(c); perr == nil {
-			cfg = mergeAutomationConfig(cfg, pluginCfg, present)
-			cfg.Enabled = enabled
-			resp["base_url"] = cfg.BaseURL
-			resp["api_key"] = cfg.APIKey
-			resp["enabled"] = cfg.Enabled
-			resp["timeout_sec"] = cfg.TimeoutSec
-			resp["retry"] = cfg.Retry
-			resp["dry_run"] = cfg.DryRun
-			resp["plugin_id"] = binding.PluginID
-			resp["instance_id"] = binding.InstanceID
-			source = "plugin_instance"
-		}
-	}
-	resp["config_source"] = source
 	c.JSON(http.StatusOK, resp)
 }
 
 func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
-	if h.integration == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
-		return
-	}
-	current, err := h.integration.GetAutomationConfig(c)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "config error"})
+	if h.pluginMgr == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":            true,
+			"compat_mode":   false,
+			"plugins_ready": false,
+		})
 		return
 	}
 	var payload struct {
@@ -5168,14 +5193,28 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
+	binding, err := h.resolveWritableAutomationBinding(c)
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
+			"code":          "no_writable_automation_instance",
+			"redirect_path": "/admin/catalog",
+		})
+		return
+	}
+
+	current := usecase.AutomationConfig{}
+	cfgJSON, err := h.pluginMgr.GetConfigInstance(c, "automation", binding.PluginID, binding.InstanceID)
+	if err == nil {
+		if cfg, _, perr := parseAutomationConfigJSON(cfgJSON); perr == nil {
+			current = cfg
+		}
+	}
 	if payload.BaseURL != nil {
 		current.BaseURL = strings.TrimSpace(*payload.BaseURL)
 	}
 	if payload.APIKey != nil {
 		current.APIKey = strings.TrimSpace(*payload.APIKey)
-	}
-	if payload.Enabled != nil {
-		current.Enabled = *payload.Enabled
 	}
 	if payload.TimeoutSec != nil {
 		current.TimeoutSec = *payload.TimeoutSec
@@ -5186,29 +5225,11 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 	if payload.DryRun != nil {
 		current.DryRun = *payload.DryRun
 	}
-
-	if err := h.integration.UpdateAutomationConfig(c, getUserID(c), current); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	if current.TimeoutSec <= 0 {
+		current.TimeoutSec = 12
 	}
-
-	if h.pluginMgr == nil {
-		c.JSON(http.StatusOK, gin.H{
-			"ok":          true,
-			"compat_mode": true,
-			"warning":     "plugin manager disabled; updated legacy settings only",
-		})
-		return
-	}
-
-	binding, err := h.resolveWritableAutomationBinding(c)
-	if err != nil {
-		c.JSON(http.StatusConflict, gin.H{
-			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
-			"code":          "no_writable_automation_instance",
-			"redirect_path": "/admin/catalog",
-		})
-		return
+	if current.Retry < 0 {
+		current.Retry = 0
 	}
 
 	rawCfg, _ := json.Marshal(map[string]any{
@@ -5223,21 +5244,23 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 		return
 	}
 
-	if current.Enabled {
-		if err := h.pluginMgr.EnableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
-			writePluginHandlerError(c, err)
-			return
-		}
-	} else {
-		if err := h.pluginMgr.DisableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
+	if payload.Enabled != nil {
+		if *payload.Enabled {
+			if err := h.pluginMgr.EnableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
+				writePluginHandlerError(c, err)
+				return
+			}
+		} else {
+			if err := h.pluginMgr.DisableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"ok":          true,
-		"compat_mode": true,
+		"compat_mode": false,
 		"plugin_id":   binding.PluginID,
 		"instance_id": binding.InstanceID,
 	})
@@ -5315,7 +5338,6 @@ func (h *Handler) collectAutomationBindingCandidates(c *gin.Context) []automatio
 			}
 		}
 	}
-	candidates = append(candidates, automationBinding{PluginID: "lightboat", InstanceID: plugins.DefaultInstanceID})
 
 	uniq := make(map[string]struct{}, len(candidates))
 	out := make([]automationBinding, 0, len(candidates))

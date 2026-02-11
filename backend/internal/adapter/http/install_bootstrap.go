@@ -7,7 +7,7 @@ func NewInstallBootstrapServer(jwtSecret string) *Server {
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		jwtSecret,
-		nil, nil, nil, nil,
+		nil, nil, nil,
 	)
 	middleware := NewMiddleware(jwtSecret, nil, nil)
 	return NewServer(handler, middleware)

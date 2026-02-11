@@ -90,15 +90,13 @@ func main() {
 	}
 	pluginMgr := plugins.NewManager(cfg.PluginsDir, repoSQLite, pluginCipher, plugins.ParseEd25519PublicKeys(cfg.PluginOfficialKeys))
 	_ = pluginMgr.BootstrapFromDisk(context.Background(), repoSQLite)
-	_ = plugins.MigrateLegacyAutomationToPlugins(context.Background(), repoSQLite, repoSQLite, pluginMgr)
 	pluginMgr.StartEnabled(context.Background())
 
 	catalogSvc := usecase.NewCatalogService(repoSQLite, repoSQLite, repoSQLite)
 	goodsTypeSvc := usecase.NewGoodsTypeService(repoSQLite, repoSQLite)
 	cartSvc := usecase.NewCartService(repoSQLite, repoSQLite, repoSQLite)
 	broker := sse.NewBroker(repoSQLite)
-	legacyAutomation := automation.NewDynamicClient(repoSQLite, cfg.AutomationBaseURL, cfg.AutomationAPIKey, repoSQLite)
-	automationResolver := automation.NewResolver(repoSQLite, pluginMgr, legacyAutomation, repoSQLite, repoSQLite)
+	automationResolver := automation.NewResolver(repoSQLite, pluginMgr, repoSQLite, repoSQLite)
 	emailSender := email.NewSender(repoSQLite)
 	robotNotifier := robot.NewWebhookNotifier(repoSQLite)
 	pushSender := push.NewFCMSender()
@@ -140,7 +138,7 @@ func main() {
 	_ = os.MkdirAll(pluginDir, 0o755)
 	_ = paymentRegistry.StartWatcher(context.Background(), pluginDir)
 
-	handler := http.NewHandlerWithServices(authSvc, catalogSvc, goodsTypeSvc, cartSvc, orderSvc, vpsSvc, adminSvc, adminVPSSvc, integrationSvc, reportSvc, cmsSvc, ticketSvc, walletSvc, walletOrderSvc, paymentSvc, messageSvc, statusSvc, realnameSvc, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, broker, cfg.JWTSecret, legacyAutomation, passwordResetSvc, permissionSvc, taskSvc)
+	handler := http.NewHandlerWithServices(authSvc, catalogSvc, goodsTypeSvc, cartSvc, orderSvc, vpsSvc, adminSvc, adminVPSSvc, integrationSvc, reportSvc, cmsSvc, ticketSvc, walletSvc, walletOrderSvc, paymentSvc, messageSvc, statusSvc, realnameSvc, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, broker, cfg.JWTSecret, passwordResetSvc, permissionSvc, taskSvc)
 	handler.SetPaymentPluginConfig(pluginDir, pluginPassword)
 	handler.SetPushService(pushSvc)
 	handler.SetPluginManager(pluginMgr)

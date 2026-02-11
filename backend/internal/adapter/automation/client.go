@@ -728,21 +728,27 @@ func (c *Client) ListImages(ctx context.Context, lineID int64) ([]usecase.Automa
 }
 
 func (c *Client) ListAreas(ctx context.Context) ([]usecase.AutomationArea, error) {
-	endpoint := c.baseURL + "/area_list"
-	resp, err := c.doRequest(ctx, http.MethodGet, endpoint, nil, "")
-	if err != nil {
-		return nil, err
+	lines, lineErr := c.ListLines(ctx)
+	if lineErr != nil {
+		return nil, lineErr
 	}
-	if resp.Code != 1 {
-		return nil, fmt.Errorf("automation error: %s", resp.Msg)
+	uniq := map[int64]usecase.AutomationArea{}
+	for _, line := range lines {
+		if line.AreaID <= 0 {
+			continue
+		}
+		if _, exists := uniq[line.AreaID]; exists {
+			continue
+		}
+		uniq[line.AreaID] = usecase.AutomationArea{
+			ID:    line.AreaID,
+			Name:  fmt.Sprintf("Area %d", line.AreaID),
+			State: line.State,
+		}
 	}
-	var items []areaItem
-	if err := json.Unmarshal(resp.Data, &items); err != nil {
-		return nil, err
-	}
-	out := make([]usecase.AutomationArea, 0, len(items))
-	for _, item := range items {
-		out = append(out, usecase.AutomationArea{ID: item.ID, Name: item.Name, State: item.State})
+	out := make([]usecase.AutomationArea, 0, len(uniq))
+	for _, area := range uniq {
+		out = append(out, area)
 	}
 	return out, nil
 }
@@ -996,6 +1002,11 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io
 		c.emitLog(ctx, method, endpoint, req.Header, string(reqBody), resp, nil, time.Since(start), err)
 		return apiResponse{}, err
 	}
+	if isLikelyHTML(bytes.TrimSpace(b)) {
+		err := fmt.Errorf("upstream returned HTML (status=%d) for %s %s; likely wrong API route", resp.StatusCode, method, endpointPath(endpoint))
+		c.emitLog(ctx, method, endpoint, req.Header, string(reqBody), resp, b, time.Since(start), err)
+		return apiResponse{}, err
+	}
 	var parsed apiResponse
 	if err := json.Unmarshal(b, &parsed); err != nil {
 		c.emitLog(ctx, method, endpoint, req.Header, string(reqBody), resp, b, time.Since(start), err)
@@ -1072,6 +1083,27 @@ func actionFromEndpoint(method, endpoint string) string {
 		return strings.TrimSpace(method) + " " + endpoint
 	}
 	return strings.TrimSpace(method) + " " + parsed.Path
+}
+
+func endpointPath(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || strings.TrimSpace(parsed.Path) == "" {
+		return endpoint
+	}
+	if strings.TrimSpace(parsed.RawQuery) == "" {
+		return parsed.Path
+	}
+	return parsed.Path + "?" + parsed.RawQuery
+}
+
+func shouldRetryAreaEndpoint(msg string) bool {
+	s := strings.ToLower(strings.TrimSpace(msg))
+	if s == "" {
+		return false
+	}
+	return strings.Contains(s, "method not exists") ||
+		strings.Contains(s, "returned html") ||
+		strings.Contains(s, "invalid character '<'")
 }
 
 func headerMap(h http.Header) map[string]string {

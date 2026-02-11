@@ -13,24 +13,28 @@ import (
 type Resolver struct {
 	goodsTypes usecase.GoodsTypeRepository
 	pluginMgr  *plugins.Manager
-	fallback   usecase.AutomationClient
 	settings   usecase.SettingsRepository
 	autoLogs   usecase.AutomationLogRepository
 }
 
-func NewResolver(goodsTypes usecase.GoodsTypeRepository, pluginMgr *plugins.Manager, fallback usecase.AutomationClient, settings usecase.SettingsRepository, autoLogs usecase.AutomationLogRepository) *Resolver {
-	return &Resolver{goodsTypes: goodsTypes, pluginMgr: pluginMgr, fallback: fallback, settings: settings, autoLogs: autoLogs}
+func NewResolver(goodsTypes usecase.GoodsTypeRepository, pluginMgr *plugins.Manager, settings usecase.SettingsRepository, autoLogs usecase.AutomationLogRepository) *Resolver {
+	return &Resolver{goodsTypes: goodsTypes, pluginMgr: pluginMgr, settings: settings, autoLogs: autoLogs}
 }
 
 func (r *Resolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (usecase.AutomationClient, error) {
-	if goodsTypeID <= 0 {
-		if r.fallback != nil {
-			return r.fallback, nil
-		}
-		return nil, errors.New("goods_type_id required")
-	}
 	if r.goodsTypes == nil {
 		return nil, errors.New("goods type repo missing")
+	}
+	if goodsTypeID <= 0 {
+		items, err := r.goodsTypes.ListGoodsTypes(ctx)
+		if err != nil {
+			return nil, errors.New("goods_type_id required")
+		}
+		def := DefaultGoodsType(items)
+		if def == nil || def.ID <= 0 {
+			return nil, errors.New("goods_type_id required")
+		}
+		goodsTypeID = def.ID
 	}
 	gt, err := r.goodsTypes.GetGoodsType(ctx, goodsTypeID)
 	if err != nil {

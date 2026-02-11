@@ -35,6 +35,8 @@ const emit = defineEmits<{
 }>();
 
 const localModel = reactive<Record<string, any>>({});
+let syncingFromParent = false;
+let lastSnapshot = "{}";
 
 const safeParse = (obj: any) => {
   try {
@@ -44,12 +46,25 @@ const safeParse = (obj: any) => {
   }
 };
 
+const snapshotOf = (obj: any) => {
+  try {
+    return JSON.stringify(obj || {});
+  } catch {
+    return "{}";
+  }
+};
+
 watch(
   () => props.modelValue,
   (v) => {
     const next = safeParse(v);
+    const nextSnapshot = snapshotOf(next);
+    if (nextSnapshot === lastSnapshot) return;
+    syncingFromParent = true;
     Object.keys(localModel).forEach((k) => delete localModel[k]);
     Object.assign(localModel, next);
+    lastSnapshot = nextSnapshot;
+    syncingFromParent = false;
   },
   { immediate: true, deep: true }
 );
@@ -57,7 +72,12 @@ watch(
 watch(
   localModel,
   () => {
-    emit("update:modelValue", safeParse(localModel));
+    if (syncingFromParent) return;
+    const next = safeParse(localModel);
+    const nextSnapshot = snapshotOf(next);
+    if (nextSnapshot === lastSnapshot) return;
+    lastSnapshot = nextSnapshot;
+    emit("update:modelValue", next);
   },
   { deep: true }
 );
@@ -87,4 +107,3 @@ const orderedKeys = computed(() => {
   margin-bottom: 12px;
 }
 </style>
-

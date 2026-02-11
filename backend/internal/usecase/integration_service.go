@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"xiaoheiplay/internal/domain"
@@ -37,42 +36,6 @@ func NewIntegrationService(settings SettingsRepository, catalog CatalogRepositor
 	return &IntegrationService{settings: settings, catalog: catalog, images: images, goodsTypes: goodsTypes, automation: automation, logs: logs}
 }
 
-func (s *IntegrationService) GetAutomationConfig(ctx context.Context) (AutomationConfig, error) {
-	cfg := AutomationConfig{}
-	cfg.BaseURL = getSettingValue(ctx, s.settings, "automation_base_url")
-	cfg.APIKey = getSettingValue(ctx, s.settings, "automation_api_key")
-	cfg.Enabled = strings.ToLower(getSettingValue(ctx, s.settings, "automation_enabled")) == "true"
-	if v := getSettingValue(ctx, s.settings, "automation_timeout_sec"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			cfg.TimeoutSec = i
-		}
-	}
-	if v := getSettingValue(ctx, s.settings, "automation_retry"); v != "" {
-		if i, err := strconv.Atoi(v); err == nil {
-			cfg.Retry = i
-		}
-	}
-	cfg.DryRun = strings.ToLower(getSettingValue(ctx, s.settings, "automation_dry_run")) == "true"
-	return cfg, nil
-}
-
-func (s *IntegrationService) UpdateAutomationConfig(ctx context.Context, adminID int64, cfg AutomationConfig) error {
-	if s.settings == nil {
-		return ErrInvalidInput
-	}
-	_ = s.settings.UpsertSetting(ctx, domain.Setting{Key: "automation_base_url", ValueJSON: cfg.BaseURL})
-	_ = s.settings.UpsertSetting(ctx, domain.Setting{Key: "automation_api_key", ValueJSON: cfg.APIKey})
-	_ = s.settings.UpsertSetting(ctx, domain.Setting{Key: "automation_enabled", ValueJSON: boolToString(cfg.Enabled)})
-	if cfg.TimeoutSec > 0 {
-		_ = s.settings.UpsertSetting(ctx, domain.Setting{Key: "automation_timeout_sec", ValueJSON: fmt.Sprintf("%d", cfg.TimeoutSec)})
-	}
-	if cfg.Retry >= 0 {
-		_ = s.settings.UpsertSetting(ctx, domain.Setting{Key: "automation_retry", ValueJSON: fmt.Sprintf("%d", cfg.Retry)})
-	}
-	_ = s.settings.UpsertSetting(ctx, domain.Setting{Key: "automation_dry_run", ValueJSON: boolToString(cfg.DryRun)})
-	return nil
-}
-
 func (s *IntegrationService) SyncAutomation(ctx context.Context, mode string) (SyncResult, error) {
 	if s.goodsTypes == nil {
 		return SyncResult{}, ErrInvalidInput
@@ -101,15 +64,17 @@ func (s *IntegrationService) SyncAutomationForGoodsType(ctx context.Context, goo
 	if mode == "" {
 		mode = "merge"
 	}
-	areas, err := cli.ListAreas(ctx)
-	if err != nil {
-		s.appendSyncLog(ctx, "area", mode, "failed", err.Error())
-		return SyncResult{}, err
-	}
 	lines, err := cli.ListLines(ctx)
 	if err != nil {
 		s.appendSyncLog(ctx, "line", mode, "failed", err.Error())
 		return SyncResult{}, err
+	}
+	areas, err := cli.ListAreas(ctx)
+	if err != nil {
+		// Some upstream implementations do not provide a standalone area endpoint.
+		// Continue sync by deriving minimal area identities from lines.
+		s.appendSyncLog(ctx, "area", mode, "warn", "area endpoint unavailable; fallback to line-derived areas: "+err.Error())
+		areas = []AutomationArea{}
 	}
 
 	allRegions, _ := s.catalog.ListRegions(ctx)
@@ -364,13 +329,6 @@ func (s *IntegrationService) appendSyncLog(ctx context.Context, target, mode, st
 	})
 }
 
-func boolToString(v bool) string {
-	if v {
-		return "true"
-	}
-	return "false"
-}
-
 func normalizeImageType(v string) string {
 	normalized := strings.ToLower(strings.TrimSpace(v))
 	if strings.Contains(normalized, "win") {
@@ -380,15 +338,4 @@ func normalizeImageType(v string) string {
 		return "linux"
 	}
 	return "linux"
-}
-
-func getSettingValue(ctx context.Context, repo SettingsRepository, key string) string {
-	if repo == nil {
-		return ""
-	}
-	setting, err := repo.GetSetting(ctx, key)
-	if err != nil {
-		return ""
-	}
-	return setting.ValueJSON
 }

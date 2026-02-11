@@ -1,6 +1,7 @@
 package testutilhttp
 
 import (
+	"context"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -8,6 +9,7 @@ import (
 	"xiaoheiplay/internal/adapter/http"
 	"xiaoheiplay/internal/adapter/repo"
 	"xiaoheiplay/internal/adapter/sse"
+	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/usecase"
 )
@@ -69,6 +71,7 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 	reportSvc := usecase.NewReportService(repoSQLite, repoSQLite, repoSQLite)
 	cmsSvc := usecase.NewCMSService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
 	ticketSvc := usecase.NewTicketService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
+	seedDefaultGoodsType(t, repoSQLite)
 
 	jwtSecret := "test-secret"
 	handler := http.NewHandler(
@@ -76,7 +79,7 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 		adminSvc, adminVPSSvc, integrationSvc, reportSvc, cmsSvc, ticketSvc, walletSvc, walletOrderSvc,
 		paymentSvc, messageSvc, nil, realnameSvc, repoSQLite, repoSQLite, repoSQLite,
 		repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite,
-		broker, jwtSecret, automation, nil, permissionSvc, nil,
+		broker, jwtSecret, nil, permissionSvc, nil,
 	)
 	middleware := http.NewMiddleware(jwtSecret, nil, permissionSvc)
 	server := http.NewServer(handler, middleware)
@@ -105,5 +108,26 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 		NotifySvc:     notifySvc,
 		Handler:       handler,
 		Router:        server.Engine,
+	}
+}
+
+func seedDefaultGoodsType(t *testing.T, repoSQLite *repo.GormRepo) {
+	t.Helper()
+	ctx := context.Background()
+	items, err := repoSQLite.ListGoodsTypes(ctx)
+	if err == nil && len(items) > 0 {
+		return
+	}
+	gt := domain.GoodsType{
+		Code:                 "__env_default__",
+		Name:                 "Env Default",
+		Active:               true,
+		SortOrder:            1,
+		AutomationCategory:   "automation",
+		AutomationPluginID:   "lightboat",
+		AutomationInstanceID: "default",
+	}
+	if err := repoSQLite.CreateGoodsType(ctx, &gt); err != nil {
+		t.Fatalf("seed default goods type: %v", err)
 	}
 }

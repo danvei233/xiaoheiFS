@@ -107,26 +107,6 @@ func (f fakeAutomationSync) GetVNCURL(ctx context.Context, hostID int64) (string
 	return "", nil
 }
 
-func TestIntegrationService_Config(t *testing.T) {
-	_, repo := testutil.NewTestDB(t, false)
-	svc := usecase.NewIntegrationService(repo, repo, repo, repo, nil, repo)
-
-	if err := svc.UpdateAutomationConfig(context.Background(), 0, usecase.AutomationConfig{
-		BaseURL: "http://a",
-		APIKey:  "k",
-		Enabled: true,
-	}); err != nil {
-		t.Fatalf("update config: %v", err)
-	}
-	cfg, err := svc.GetAutomationConfig(context.Background())
-	if err != nil {
-		t.Fatalf("get config: %v", err)
-	}
-	if cfg.BaseURL != "http://a" || cfg.APIKey != "k" || !cfg.Enabled {
-		t.Fatalf("unexpected config: %#v", cfg)
-	}
-}
-
 func TestIntegrationService_SyncAutomation(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	gt := domain.GoodsType{
