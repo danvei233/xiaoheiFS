@@ -62,6 +62,9 @@ func migrateGorm(db *gorm.DB) error {
 		if err := fixMySQLPartialUniqueIndexes(db); err != nil {
 			return err
 		}
+		if err := fixMySQLTextColumns(db); err != nil {
+			return err
+		}
 	}
 	if err := repairTimestampNulls(db, models); err != nil {
 		return err
@@ -118,6 +121,20 @@ func fixMySQLPartialUniqueIndexes(db *gorm.DB) error {
 		return err
 	}
 
+	return nil
+}
+
+func fixMySQLTextColumns(db *gorm.DB) error {
+	stmts := []string{
+		"ALTER TABLE cms_blocks MODIFY COLUMN content_json LONGTEXT NOT NULL",
+		"ALTER TABLE cms_blocks MODIFY COLUMN custom_html LONGTEXT NOT NULL",
+		"ALTER TABLE cms_posts MODIFY COLUMN content_html LONGTEXT NOT NULL",
+	}
+	for _, stmt := range stmts {
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -551,7 +568,7 @@ type cmsPostRow struct {
 	Title       string     `gorm:"column:title;not null"`
 	Slug        string     `gorm:"size:191;column:slug;not null;uniqueIndex"`
 	Summary     string     `gorm:"column:summary;not null;default:''"`
-	ContentHTML string     `gorm:"column:content_html;not null"`
+	ContentHTML string     `gorm:"type:longtext;column:content_html;not null"`
 	CoverURL    string     `gorm:"column:cover_url;not null;default:''"`
 	Lang        string     `gorm:"size:191;column:lang;not null;default:zh-CN;index"`
 	Status      string     `gorm:"column:status;not null;default:draft"`
@@ -570,8 +587,8 @@ type cmsBlockRow struct {
 	Type        string    `gorm:"column:type;not null"`
 	Title       string    `gorm:"column:title;not null;default:''"`
 	Subtitle    string    `gorm:"column:subtitle;not null;default:''"`
-	ContentJSON string    `gorm:"column:content_json;not null;default:''"`
-	CustomHTML  string    `gorm:"column:custom_html;not null;default:''"`
+	ContentJSON string    `gorm:"type:longtext;column:content_json;not null"`
+	CustomHTML  string    `gorm:"type:longtext;column:custom_html;not null"`
 	Lang        string    `gorm:"column:lang;not null;default:zh-CN"`
 	Visible     int       `gorm:"column:visible;not null;default:1"`
 	SortOrder   int       `gorm:"column:sort_order;not null;default:0"`

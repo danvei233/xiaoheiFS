@@ -90,26 +90,45 @@ const logColumns = [
 ];
 
 const load = async () => {
-  const res = await getAutomationConfig();
-  const data = res.data || {};
-  form.base_url = data.base_url || "";
-  form.api_key = data.api_key || "";
-  form.enabled = data.enabled ?? false;
-  form.timeout_sec = data.timeout_sec ?? 15;
-  form.retry = data.retry ?? 0;
-  form.dry_run = data.dry_run ?? false;
+  try {
+    const res = await getAutomationConfig();
+    const data = res.data || {};
+    form.base_url = data.base_url || "";
+    form.api_key = data.api_key || "";
+    form.enabled = data.enabled ?? false;
+    form.timeout_sec = data.timeout_sec ?? 15;
+    form.retry = data.retry ?? 0;
+    form.dry_run = data.dry_run ?? false;
+  } catch (e) {
+    const errMsg = e && e.response && e.response.data ? e.response.data.error : "";
+    message.error(errMsg || "加载自动化配置失败");
+  }
 };
 
 const loadLogs = async () => {
-  const res = await listAutomationSyncLogs();
-  logs.value = res.data?.items || [];
+  try {
+    const res = await listAutomationSyncLogs();
+    logs.value = res.data?.items || [];
+  } catch (e) {
+    logs.value = [];
+    const errMsg = e && e.response && e.response.data ? e.response.data.error : "";
+    message.error(errMsg || "加载同步日志失败");
+  }
 };
 
 const loadStats = async () => {
-  const [linesRes, packagesRes, imagesRes] = await Promise.all([listLines(), listPackages(), listSystemImages()]);
-  syncStats.lines = (linesRes.data?.items || []).length;
-  syncStats.packages = (packagesRes.data?.items || []).length;
-  syncStats.images = (imagesRes.data?.items || []).length;
+  try {
+    const [linesRes, packagesRes, imagesRes] = await Promise.all([listLines(), listPackages(), listSystemImages()]);
+    syncStats.lines = (linesRes.data?.items || []).length;
+    syncStats.packages = (packagesRes.data?.items || []).length;
+    syncStats.images = (imagesRes.data?.items || []).length;
+  } catch (e) {
+    syncStats.lines = 0;
+    syncStats.packages = 0;
+    syncStats.images = 0;
+    const errMsg = e && e.response && e.response.data ? e.response.data.error : "";
+    message.error(errMsg || "加载同步统计失败");
+  }
 };
 
 const goCatalog = () => {
@@ -117,9 +136,7 @@ const goCatalog = () => {
   router.push("/admin/catalog");
 };
 
-onMounted(() => {
-  load();
-  loadLogs();
-  loadStats();
+onMounted(async () => {
+  await Promise.all([load(), loadLogs(), loadStats()]);
 });
 </script>

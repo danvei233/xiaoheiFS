@@ -661,8 +661,8 @@ type cmsBlockSeedRow struct {
 	Type        string
 	Title       string
 	Subtitle    string
-	ContentJSON string `gorm:"column:content_json"`
-	CustomHTML  string `gorm:"column:custom_html"`
+	ContentJSON string `gorm:"type:longtext;column:content_json"`
+	CustomHTML  string `gorm:"type:longtext;column:custom_html"`
 	Lang        string
 	Visible     int
 	SortOrder   int       `gorm:"column:sort_order"`

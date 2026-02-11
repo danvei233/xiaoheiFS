@@ -3125,7 +3125,7 @@ func (h *Handler) AdminPluginEnable(c *gin.Context) {
 	category := c.Param("category")
 	pluginID := c.Param("plugin_id")
 	if err := h.pluginMgr.EnableInstance(c, category, pluginID, plugins.DefaultInstanceID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
@@ -3262,7 +3262,7 @@ func (h *Handler) AdminPluginInstanceEnable(c *gin.Context) {
 	pluginID := c.Param("plugin_id")
 	instanceID := c.Param("instance_id")
 	if err := h.pluginMgr.EnableInstance(c, category, pluginID, instanceID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
@@ -3313,13 +3313,6 @@ func (h *Handler) AdminPluginInstanceConfigSchema(c *gin.Context) {
 		return
 	}
 	category := c.Param("category")
-	if strings.EqualFold(strings.TrimSpace(category), "automation") {
-		c.JSON(http.StatusGone, gin.H{
-			"error":         "deprecated: automation instance config moved to goods type settings",
-			"redirect_path": "/admin/catalog",
-		})
-		return
-	}
 	pluginID := c.Param("plugin_id")
 	instanceID := c.Param("instance_id")
 	jsonSchema, uiSchema, err := h.pluginMgr.GetConfigSchemaInstance(c, category, pluginID, instanceID)
@@ -3336,13 +3329,6 @@ func (h *Handler) AdminPluginInstanceConfigGet(c *gin.Context) {
 		return
 	}
 	category := c.Param("category")
-	if strings.EqualFold(strings.TrimSpace(category), "automation") {
-		c.JSON(http.StatusGone, gin.H{
-			"error":         "deprecated: automation instance config moved to goods type settings",
-			"redirect_path": "/admin/catalog",
-		})
-		return
-	}
 	pluginID := c.Param("plugin_id")
 	instanceID := c.Param("instance_id")
 	cfg, err := h.pluginMgr.GetConfigInstance(c, category, pluginID, instanceID)
@@ -3359,13 +3345,6 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		return
 	}
 	category := c.Param("category")
-	if strings.EqualFold(strings.TrimSpace(category), "automation") {
-		c.JSON(http.StatusGone, gin.H{
-			"error":         "deprecated: automation instance config moved to goods type settings",
-			"redirect_path": "/admin/catalog",
-		})
-		return
-	}
 	pluginID := c.Param("plugin_id")
 	instanceID := c.Param("instance_id")
 	var payload struct {
@@ -3383,6 +3362,24 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		h.adminSvc.Audit(c, getUserID(c), "plugin.config_update", "plugin", category+"/"+pluginID+"/"+instanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func writePluginHandlerError(c *gin.Context, err error) {
+	if cfgErr, ok := plugins.AsConfigValidationError(err); ok && cfgErr != nil {
+		resp := gin.H{
+			"error": cfgErr.Error(),
+			"code":  strings.TrimSpace(cfgErr.Code),
+		}
+		if len(cfgErr.MissingFields) > 0 {
+			resp["missing_fields"] = cfgErr.MissingFields
+		}
+		if p := strings.TrimSpace(cfgErr.RedirectPath); p != "" {
+			resp["redirect_path"] = p
+		}
+		c.JSON(http.StatusConflict, resp)
+		return
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 }
 
 func (h *Handler) AdminPluginDeleteFiles(c *gin.Context) {
@@ -5121,14 +5118,330 @@ func (h *Handler) AdminAutomationConfig(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "config error"})
 		return
 	}
-	c.JSON(http.StatusOK, cfg)
+	resp := gin.H{
+		"base_url":    cfg.BaseURL,
+		"api_key":     cfg.APIKey,
+		"enabled":     cfg.Enabled,
+		"timeout_sec": cfg.TimeoutSec,
+		"retry":       cfg.Retry,
+		"dry_run":     cfg.DryRun,
+	}
+	source := "legacy_settings"
+	if h.pluginMgr != nil {
+		if pluginCfg, present, binding, enabled, perr := h.readAutomationPluginConfig(c); perr == nil {
+			cfg = mergeAutomationConfig(cfg, pluginCfg, present)
+			cfg.Enabled = enabled
+			resp["base_url"] = cfg.BaseURL
+			resp["api_key"] = cfg.APIKey
+			resp["enabled"] = cfg.Enabled
+			resp["timeout_sec"] = cfg.TimeoutSec
+			resp["retry"] = cfg.Retry
+			resp["dry_run"] = cfg.DryRun
+			resp["plugin_id"] = binding.PluginID
+			resp["instance_id"] = binding.InstanceID
+			source = "plugin_instance"
+		}
+	}
+	resp["config_source"] = source
+	c.JSON(http.StatusOK, resp)
 }
 
 func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
-	c.JSON(http.StatusGone, gin.H{
-		"error":         "deprecated: automation config is read-only here; use goods type -> automation instance config",
-		"redirect_path": "/admin/catalog",
+	if h.integration == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+		return
+	}
+	current, err := h.integration.GetAutomationConfig(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "config error"})
+		return
+	}
+	var payload struct {
+		BaseURL    *string `json:"base_url"`
+		APIKey     *string `json:"api_key"`
+		Enabled    *bool   `json:"enabled"`
+		TimeoutSec *int    `json:"timeout_sec"`
+		Retry      *int    `json:"retry"`
+		DryRun     *bool   `json:"dry_run"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	if payload.BaseURL != nil {
+		current.BaseURL = strings.TrimSpace(*payload.BaseURL)
+	}
+	if payload.APIKey != nil {
+		current.APIKey = strings.TrimSpace(*payload.APIKey)
+	}
+	if payload.Enabled != nil {
+		current.Enabled = *payload.Enabled
+	}
+	if payload.TimeoutSec != nil {
+		current.TimeoutSec = *payload.TimeoutSec
+	}
+	if payload.Retry != nil {
+		current.Retry = *payload.Retry
+	}
+	if payload.DryRun != nil {
+		current.DryRun = *payload.DryRun
+	}
+
+	if err := h.integration.UpdateAutomationConfig(c, getUserID(c), current); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if h.pluginMgr == nil {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":          true,
+			"compat_mode": true,
+			"warning":     "plugin manager disabled; updated legacy settings only",
+		})
+		return
+	}
+
+	binding, err := h.resolveWritableAutomationBinding(c)
+	if err != nil {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
+			"code":          "no_writable_automation_instance",
+			"redirect_path": "/admin/catalog",
+		})
+		return
+	}
+
+	rawCfg, _ := json.Marshal(map[string]any{
+		"base_url":    current.BaseURL,
+		"api_key":     current.APIKey,
+		"timeout_sec": current.TimeoutSec,
+		"retry":       current.Retry,
+		"dry_run":     current.DryRun,
 	})
+	if err := h.pluginMgr.UpdateConfigInstance(c, "automation", binding.PluginID, binding.InstanceID, string(rawCfg)); err != nil {
+		writePluginHandlerError(c, err)
+		return
+	}
+
+	if current.Enabled {
+		if err := h.pluginMgr.EnableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
+			writePluginHandlerError(c, err)
+			return
+		}
+	} else {
+		if err := h.pluginMgr.DisableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"ok":          true,
+		"compat_mode": true,
+		"plugin_id":   binding.PluginID,
+		"instance_id": binding.InstanceID,
+	})
+}
+
+type automationBinding struct {
+	PluginID   string
+	InstanceID string
+}
+
+func (h *Handler) readAutomationPluginConfig(c *gin.Context) (usecase.AutomationConfig, map[string]bool, automationBinding, bool, error) {
+	if h.pluginMgr == nil {
+		return usecase.AutomationConfig{}, nil, automationBinding{}, false, errors.New("plugins disabled")
+	}
+	items, err := h.pluginMgr.List(c)
+	if err != nil {
+		return usecase.AutomationConfig{}, nil, automationBinding{}, false, err
+	}
+	enabledByBinding := map[string]bool{}
+	for _, item := range items {
+		if !strings.EqualFold(strings.TrimSpace(item.Category), "automation") {
+			continue
+		}
+		key := strings.TrimSpace(item.PluginID) + ":" + strings.TrimSpace(item.InstanceID)
+		enabledByBinding[key] = item.Enabled
+	}
+	for _, binding := range h.collectAutomationBindingCandidates(c) {
+		cfgJSON, err := h.pluginMgr.GetConfigInstance(c, "automation", binding.PluginID, binding.InstanceID)
+		if err != nil {
+			continue
+		}
+		cfg, present, err := parseAutomationConfigJSON(cfgJSON)
+		if err != nil {
+			continue
+		}
+		key := binding.PluginID + ":" + binding.InstanceID
+		return cfg, present, binding, enabledByBinding[key], nil
+	}
+	return usecase.AutomationConfig{}, nil, automationBinding{}, false, errors.New("automation plugin instance not found")
+}
+
+func (h *Handler) resolveWritableAutomationBinding(c *gin.Context) (automationBinding, error) {
+	if h.pluginMgr == nil {
+		return automationBinding{}, errors.New("plugins disabled")
+	}
+	for _, binding := range h.collectAutomationBindingCandidates(c) {
+		if _, err := h.pluginMgr.GetConfigInstance(c, "automation", binding.PluginID, binding.InstanceID); err == nil {
+			return binding, nil
+		}
+	}
+	return automationBinding{}, errors.New("automation plugin instance not found")
+}
+
+func (h *Handler) collectAutomationBindingCandidates(c *gin.Context) []automationBinding {
+	candidates := make([]automationBinding, 0, 4)
+	if h.goodsTypes != nil {
+		items, err := h.goodsTypes.List(c)
+		if err == nil {
+			sort.SliceStable(items, func(i, j int) bool {
+				if items[i].SortOrder == items[j].SortOrder {
+					return items[i].ID < items[j].ID
+				}
+				return items[i].SortOrder < items[j].SortOrder
+			})
+			for _, item := range items {
+				if !strings.EqualFold(strings.TrimSpace(item.AutomationCategory), "automation") {
+					continue
+				}
+				pluginID := strings.TrimSpace(item.AutomationPluginID)
+				instanceID := strings.TrimSpace(item.AutomationInstanceID)
+				if pluginID == "" || instanceID == "" {
+					continue
+				}
+				candidates = append(candidates, automationBinding{PluginID: pluginID, InstanceID: instanceID})
+			}
+		}
+	}
+	candidates = append(candidates, automationBinding{PluginID: "lightboat", InstanceID: plugins.DefaultInstanceID})
+
+	uniq := make(map[string]struct{}, len(candidates))
+	out := make([]automationBinding, 0, len(candidates))
+	for _, candidate := range candidates {
+		key := candidate.PluginID + ":" + candidate.InstanceID
+		if _, exists := uniq[key]; exists {
+			continue
+		}
+		uniq[key] = struct{}{}
+		out = append(out, candidate)
+	}
+	return out
+}
+
+func parseAutomationConfigJSON(raw string) (usecase.AutomationConfig, map[string]bool, error) {
+	cfg := usecase.AutomationConfig{}
+	present := map[string]bool{}
+	payload := strings.TrimSpace(raw)
+	if payload == "" {
+		return cfg, present, nil
+	}
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(payload), &obj); err != nil {
+		return cfg, present, err
+	}
+	if v, ok := obj["base_url"]; ok {
+		cfg.BaseURL = strings.TrimSpace(toString(v))
+		present["base_url"] = true
+	}
+	if v, ok := obj["api_key"]; ok {
+		cfg.APIKey = strings.TrimSpace(toString(v))
+		present["api_key"] = true
+	}
+	if v, ok := obj["timeout_sec"]; ok {
+		if n, ok := toInt(v); ok {
+			cfg.TimeoutSec = n
+		}
+		present["timeout_sec"] = true
+	}
+	if v, ok := obj["retry"]; ok {
+		if n, ok := toInt(v); ok {
+			cfg.Retry = n
+		}
+		present["retry"] = true
+	}
+	if v, ok := obj["dry_run"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.DryRun = b
+		}
+		present["dry_run"] = true
+	}
+	return cfg, present, nil
+}
+
+func mergeAutomationConfig(base, override usecase.AutomationConfig, present map[string]bool) usecase.AutomationConfig {
+	out := base
+	if present["base_url"] && strings.TrimSpace(override.BaseURL) != "" {
+		out.BaseURL = override.BaseURL
+	}
+	if present["api_key"] && strings.TrimSpace(override.APIKey) != "" {
+		out.APIKey = override.APIKey
+	}
+	if present["timeout_sec"] && override.TimeoutSec > 0 {
+		out.TimeoutSec = override.TimeoutSec
+	}
+	if present["retry"] && override.Retry >= 0 {
+		out.Retry = override.Retry
+	}
+	if present["dry_run"] {
+		out.DryRun = override.DryRun
+	}
+	return out
+}
+
+func toString(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case fmt.Stringer:
+		return t.String()
+	default:
+		return fmt.Sprintf("%v", t)
+	}
+}
+
+func toInt(v any) (int, bool) {
+	switch t := v.(type) {
+	case int:
+		return t, true
+	case int8:
+		return int(t), true
+	case int16:
+		return int(t), true
+	case int32:
+		return int(t), true
+	case int64:
+		return int(t), true
+	case uint:
+		return int(t), true
+	case uint8:
+		return int(t), true
+	case uint16:
+		return int(t), true
+	case uint32:
+		return int(t), true
+	case uint64:
+		return int(t), true
+	case float32:
+		return int(t), true
+	case float64:
+		return int(t), true
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(n), true
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(t))
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	default:
+		return 0, false
+	}
 }
 
 func (h *Handler) AdminAutomationSync(c *gin.Context) {

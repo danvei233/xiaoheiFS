@@ -975,7 +975,13 @@ const loadAutomationConfigTemplate = async () => {
     automationConfigUI.value = uiObj;
     automationConfigModel.value = cfgObj;
   } catch (e: any) {
-    automationConfigError.value = e?.response?.data?.error || "加载自动化实例配置模板失败";
+    const data = e?.response?.data || {};
+    const missing = Array.isArray(data?.missing_fields) ? data.missing_fields.filter(Boolean) : [];
+    if (String(data?.code || "") === "missing_required_config" && missing.length > 0) {
+      automationConfigError.value = `${String(data?.error || "自动化实例配置不完整")}。缺少: ${missing.join(", ")}`;
+    } else {
+      automationConfigError.value = data?.error || "加载自动化实例配置模板失败";
+    }
   } finally {
     automationConfigLoading.value = false;
   }

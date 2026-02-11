@@ -54,7 +54,7 @@ func TestHandlers_AdminAPIKeysAndDebug(t *testing.T) {
 		"retry":       1,
 		"dry_run":     true,
 	}, token)
-	if rec.Code != http.StatusGone {
+	if rec.Code != http.StatusOK {
 		t.Fatalf("automation config update: %d", rec.Code)
 	}
 	gt := domain.GoodsType{Code: "default", Name: "Default", Active: true}

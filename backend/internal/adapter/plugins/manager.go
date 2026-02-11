@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -106,6 +107,35 @@ type ListItem struct {
 	HealthMessage   string                       `json:"health_message"`
 	Capabilities    Manifest                     `json:"manifest"`
 	Entry           EntryInfo                    `json:"entry"`
+}
+
+type ConfigValidationError struct {
+	Code          string
+	Message       string
+	MissingFields []string
+	RedirectPath  string
+}
+
+func (e *ConfigValidationError) Error() string {
+	if e == nil {
+		return "invalid config"
+	}
+	msg := strings.TrimSpace(e.Message)
+	if msg != "" {
+		return msg
+	}
+	if strings.TrimSpace(e.Code) != "" {
+		return e.Code
+	}
+	return "invalid config"
+}
+
+func AsConfigValidationError(err error) (*ConfigValidationError, bool) {
+	var target *ConfigValidationError
+	if errors.As(err, &target) {
+		return target, true
+	}
+	return nil, false
 }
 
 func (m *Manager) List(ctx context.Context) ([]ListItem, error) {
@@ -744,6 +774,20 @@ func (m *Manager) validateConfig(ctx context.Context, category, pluginID string,
 		return err
 	}
 	defer client.Kill()
+	sctx, scancel := context.WithTimeout(ctx, 5*time.Second)
+	schemaResp, schemaErr := core.GetConfigSchema(sctx, &pluginv1.Empty{})
+	scancel()
+	if schemaErr == nil && schemaResp != nil {
+		missing := missingRequiredConfigFields(schemaResp.GetJsonSchema(), configJSON)
+		if len(missing) > 0 {
+			return &ConfigValidationError{
+				Code:          "missing_required_config",
+				Message:       "missing required config: " + strings.Join(missing, ", "),
+				MissingFields: missing,
+				RedirectPath:  redirectPathForCategory(category),
+			}
+		}
+	}
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	resp, err := core.ValidateConfig(cctx, &pluginv1.ValidateConfigRequest{ConfigJson: configJSON})
@@ -751,10 +795,176 @@ func (m *Manager) validateConfig(ctx context.Context, category, pluginID string,
 		return err
 	}
 	if resp != nil && !resp.Ok {
-		if resp.Error != "" {
-			return errors.New(resp.Error)
+		msg := strings.TrimSpace(resp.Error)
+		if msg == "" {
+			msg = "invalid config"
 		}
-		return errors.New("invalid config")
+		missing := parseMissingFieldsFromError(msg)
+		code := "invalid_plugin_config"
+		if len(missing) > 0 {
+			code = "missing_required_config"
+		}
+		return &ConfigValidationError{
+			Code:          code,
+			Message:       msg,
+			MissingFields: missing,
+			RedirectPath:  redirectPathForCategory(category),
+		}
 	}
 	return nil
+}
+
+func missingRequiredConfigFields(schemaJSON, configJSON string) []string {
+	var schemaAny any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(schemaJSON)), &schemaAny); err != nil {
+		return nil
+	}
+	cfgRaw := strings.TrimSpace(configJSON)
+	if cfgRaw == "" {
+		cfgRaw = "{}"
+	}
+	var cfgAny any
+	if err := json.Unmarshal([]byte(cfgRaw), &cfgAny); err != nil {
+		cfgAny = map[string]any{}
+	}
+	fields := collectMissingRequiredFields(schemaAny, cfgAny, nil)
+	if len(fields) == 0 {
+		return nil
+	}
+	uniq := make(map[string]struct{}, len(fields))
+	for _, f := range fields {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		uniq[f] = struct{}{}
+	}
+	out := make([]string, 0, len(uniq))
+	for f := range uniq {
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func collectMissingRequiredFields(schema any, cfg any, prefix []string) []string {
+	schemaMap, ok := schema.(map[string]any)
+	if !ok {
+		return nil
+	}
+	props, _ := schemaMap["properties"].(map[string]any)
+	requiredRaw, _ := schemaMap["required"].([]any)
+	cfgMap, _ := cfg.(map[string]any)
+
+	requiredSet := map[string]struct{}{}
+	out := make([]string, 0)
+	for _, item := range requiredRaw {
+		name, _ := item.(string)
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		requiredSet[name] = struct{}{}
+		path := appendPath(prefix, name)
+		fullName := strings.Join(path, ".")
+		val, exists := cfgMap[name]
+		if !exists || isEmptyRequiredValue(val) {
+			out = append(out, fullName)
+			continue
+		}
+		if childSchema, ok := props[name]; ok {
+			out = append(out, collectMissingRequiredFields(childSchema, val, path)...)
+		}
+	}
+
+	for name, childSchema := range props {
+		if _, exists := requiredSet[name]; exists {
+			continue
+		}
+		val, exists := cfgMap[name]
+		if !exists || val == nil {
+			continue
+		}
+		out = append(out, collectMissingRequiredFields(childSchema, val, appendPath(prefix, name))...)
+	}
+
+	return out
+}
+
+func appendPath(prefix []string, name string) []string {
+	next := make([]string, 0, len(prefix)+1)
+	next = append(next, prefix...)
+	next = append(next, name)
+	return next
+}
+
+func isEmptyRequiredValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t) == ""
+	}
+	return false
+}
+
+func parseMissingFieldsFromError(msg string) []string {
+	raw := strings.TrimSpace(msg)
+	if raw == "" {
+		return nil
+	}
+	lower := strings.ToLower(raw)
+	idx := strings.Index(lower, "required")
+	if idx <= 0 {
+		return nil
+	}
+	prefix := strings.TrimSpace(raw[:idx])
+	prefix = strings.Trim(prefix, ":")
+	if prefix == "" {
+		return nil
+	}
+	replacer := strings.NewReplacer(",", "/", ";", "/", "|", "/", " and ", "/", " AND ", "/")
+	prefix = replacer.Replace(prefix)
+	parts := strings.Split(prefix, "/")
+	uniq := map[string]struct{}{}
+	for _, p := range parts {
+		token := strings.TrimSpace(p)
+		if token == "" {
+			continue
+		}
+		if !isLikelyFieldName(token) {
+			continue
+		}
+		uniq[token] = struct{}{}
+	}
+	if len(uniq) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(uniq))
+	for k := range uniq {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func isLikelyFieldName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func redirectPathForCategory(category string) string {
+	if strings.EqualFold(strings.TrimSpace(category), "automation") {
+		return "/admin/catalog"
+	}
+	return ""
 }
