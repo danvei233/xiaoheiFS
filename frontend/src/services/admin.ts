@@ -335,40 +335,13 @@ export const updateAdminPluginConfig = (category: string, pluginId: string, conf
   http.put<{ ok?: boolean }>(`/admin/api/v1/plugins/${category}/${pluginId}/config`, { config_json: configJson });
 
 export const getAdminPluginInstanceConfigSchema = (category: string, pluginId: string, instanceId: string) =>
-  http
-    .get<{ json_schema?: string; ui_schema?: string }>(`/admin/api/v1/plugins/${category}/${pluginId}/${instanceId}/config/schema`)
-    .catch((err) => {
-      if (shouldFallbackAutomationInstanceConfig(category, instanceId, err)) {
-        return getAdminPluginConfigSchema(category, pluginId);
-      }
-      return Promise.reject(err);
-    });
+  http.get<{ json_schema?: string; ui_schema?: string }>(`/admin/api/v1/plugins/${category}/${pluginId}/${instanceId}/config/schema`);
 
 export const getAdminPluginInstanceConfig = (category: string, pluginId: string, instanceId: string) =>
-  http.get<{ config_json?: string }>(`/admin/api/v1/plugins/${category}/${pluginId}/${instanceId}/config`).catch((err) => {
-    if (shouldFallbackAutomationInstanceConfig(category, instanceId, err)) {
-      return getAdminPluginConfig(category, pluginId);
-    }
-    return Promise.reject(err);
-  });
+  http.get<{ config_json?: string }>(`/admin/api/v1/plugins/${category}/${pluginId}/${instanceId}/config`);
 
 export const updateAdminPluginInstanceConfig = (category: string, pluginId: string, instanceId: string, configJson: string) =>
-  http
-    .put<{ ok?: boolean }>(`/admin/api/v1/plugins/${category}/${pluginId}/${instanceId}/config`, { config_json: configJson })
-    .catch((err) => {
-      if (shouldFallbackAutomationInstanceConfig(category, instanceId, err)) {
-        return updateAdminPluginConfig(category, pluginId, configJson);
-      }
-      return Promise.reject(err);
-    });
-
-const shouldFallbackAutomationInstanceConfig = (category: string, instanceId: string, err: any): boolean => {
-  if (String(category || "").toLowerCase() !== "automation") return false;
-  if (String(instanceId || "default") !== "default") return false;
-  const status = Number(err?.response?.status || 0);
-  const msg = String(err?.response?.data?.error || "").toLowerCase();
-  return status === 410 || msg.includes("deprecated") || msg.includes("moved to goods type settings");
-};
+  http.put<{ ok?: boolean }>(`/admin/api/v1/plugins/${category}/${pluginId}/${instanceId}/config`, { config_json: configJson });
 
 export const listAdminPluginPaymentMethods = (params: { category?: string; plugin_id: string; instance_id?: string }) =>
   http.get<{ items?: PluginPaymentMethodItem[] }>("/admin/api/v1/plugins/payment-methods", { params });

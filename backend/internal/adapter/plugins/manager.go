@@ -324,8 +324,11 @@ func (m *Manager) EnableInstance(ctx context.Context, category, pluginID, instan
 	if strings.TrimSpace(cfg) == "" {
 		cfg = "{}"
 	}
-	if err := m.validateConfig(ctx, category, pluginID, cfg); err != nil {
-		return err
+	// Automation config is managed per goods-type workflow, not as a hard precondition for plugin enable.
+	if !strings.EqualFold(strings.TrimSpace(category), "automation") {
+		if err := m.validateConfig(ctx, category, pluginID, cfg); err != nil {
+			return err
+		}
 	}
 	_, err = m.runtime.Start(ctx, category, pluginID, inst.InstanceID, cfg)
 	if err != nil {
