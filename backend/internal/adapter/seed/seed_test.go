@@ -119,15 +119,15 @@ func TestEnsurePermissionGroupsBackfillDashboardRevenue(t *testing.T) {
 	}
 
 	for _, name := range []string{"运维管理员", "客服管理员"} {
-		var raw string
+		var rawPerms string
 		if err := gdb.Table("permission_groups").
 			Select("permissions_json").
 			Where("name = ?", name).
-			Scan(&raw).Error; err != nil {
+			Scan(&rawPerms).Error; err != nil {
 			t.Fatalf("select perms: %v", err)
 		}
 		var perms []string
-		if err := json.Unmarshal([]byte(raw), &perms); err != nil {
+		if err := json.Unmarshal([]byte(rawPerms), &perms); err != nil {
 			t.Fatalf("unmarshal perms: %v", err)
 		}
 		found := false

@@ -380,7 +380,7 @@ func (s *AdminService) UpdateProfile(ctx context.Context, userID int64, email, q
 		return err
 	}
 	if email != "" && email != user.Email {
-		if _, err := s.users.GetUserByUsernameOrEmail(ctx, email); err == nil {
+		if existing, err := s.users.GetUserByUsernameOrEmail(ctx, email); err == nil && existing.ID != user.ID {
 			return ErrConflict
 		}
 		user.Email = email

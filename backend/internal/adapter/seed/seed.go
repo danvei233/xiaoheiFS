@@ -371,24 +371,74 @@ func EnsurePermissionGroups(gdb *gorm.DB) error {
 		{Name: "客服管理员", Description: "负责用户和订单查询", PermissionsJSON: csAdminPerms},
 		{Name: "财务管理员", Description: "负责订单审核和财务管理", PermissionsJSON: financeAdminPerms},
 	}
+
 	for i := range groups {
+		group := groups[i]
 		if err := gdb.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "name"}},
-			DoNothing: true,
-		}).Create(&groups[i]).Error; err != nil {
+			Columns: []clause.Column{{Name: "name"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"description":      group.Description,
+				"permissions_json": group.PermissionsJSON,
+				"updated_at":       time.Now(),
+			}),
+		}).Create(&group).Error; err != nil {
 			return err
 		}
 	}
 
-	for _, groupName := range []string{"运维管理员", "客服管理员", "财务管理员"} {
-		if err := ensurePermissionInGroup(gdb, groupName, "dashboard.revenue"); err != nil {
-			return err
-		}
+	var allGroups []permissionGroupSeedRow
+	if err := gdb.Order("id ASC").Find(&allGroups).Error; err != nil {
+		return err
+	}
+	if len(allGroups) == 0 {
+		return nil
 	}
 
-	return gdb.Model(&userSeedRow{}).
+	superAdminGroupID := int64(0)
+	for _, group := range allGroups {
+		var perms []string
+		if json.Unmarshal([]byte(group.PermissionsJSON), &perms) != nil {
+			continue
+		}
+		for _, p := range perms {
+			if strings.TrimSpace(p) == "*" {
+				superAdminGroupID = group.ID
+				break
+			}
+		}
+		if superAdminGroupID > 0 {
+			break
+		}
+	}
+	if superAdminGroupID == 0 {
+		for _, group := range allGroups {
+			name := strings.TrimSpace(group.Name)
+			if name == "超级管理员" || strings.Contains(strings.ToLower(name), "super") {
+				superAdminGroupID = group.ID
+				break
+			}
+		}
+	}
+	if superAdminGroupID == 0 {
+		superAdminGroupID = allGroups[0].ID
+	}
+
+	if err := gdb.Model(&userSeedRow{}).
 		Where("role = ? AND (permission_group_id IS NULL OR permission_group_id = 0)", "admin").
-		Update("permission_group_id", 1).Error
+		Update("permission_group_id", superAdminGroupID).Error; err != nil {
+		return err
+	}
+
+	var primaryAdmin userSeedRow
+	if err := gdb.Where("role = ?", "admin").Order("id ASC").Take(&primaryAdmin).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	return gdb.Model(&userSeedRow{}).
+		Where("id = ?", primaryAdmin.ID).
+		Update("permission_group_id", superAdminGroupID).Error
 }
 
 func EnsureCMSDefaults(gdb *gorm.DB) error {

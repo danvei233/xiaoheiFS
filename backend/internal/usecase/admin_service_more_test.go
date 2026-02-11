@@ -53,6 +53,42 @@ func TestAdminService_PermissionGroupsAndProfile(t *testing.T) {
 	}
 }
 
+func TestAdminService_UpdateProfile_SelfEmailNoConflict(t *testing.T) {
+	repo := newTestRepo(t)
+	ctx := context.Background()
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte("pass"), bcrypt.DefaultCost)
+	admin := domain.User{
+		Username:     "admin_self",
+		Email:        "admin_self@example.com",
+		PasswordHash: string(hash),
+		Role:         domain.UserRoleAdmin,
+		Status:       domain.UserStatusActive,
+	}
+	if err := repo.CreateUser(ctx, &admin); err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	other := domain.User{
+		Username:     "other_user",
+		Email:        "other@example.com",
+		PasswordHash: string(hash),
+		Role:         domain.UserRoleAdmin,
+		Status:       domain.UserStatusActive,
+	}
+	if err := repo.CreateUser(ctx, &other); err != nil {
+		t.Fatalf("create other: %v", err)
+	}
+
+	svc := usecase.NewAdminService(repo, repo, repo, repo, repo, repo, repo)
+
+	if err := svc.UpdateProfile(ctx, admin.ID, "admin_self@example.com", "123456"); err != nil {
+		t.Fatalf("self email should not conflict: %v", err)
+	}
+	if err := svc.UpdateProfile(ctx, admin.ID, "other@example.com", "123456"); err != usecase.ErrConflict {
+		t.Fatalf("expected conflict for duplicate email, got: %v", err)
+	}
+}
+
 func TestAdminVPSService_CoreOps(t *testing.T) {
 	repo := newTestRepo(t)
 	ctx := context.Background()

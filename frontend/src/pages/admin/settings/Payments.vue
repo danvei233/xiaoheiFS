@@ -153,7 +153,8 @@ const fetchData = async () => {
   loading.value = true;
   try {
     const res = await listAdminPaymentProviders();
-    providers.value = res.data?.items || [];
+    const items = res.data?.items || [];
+    providers.value = items.filter((item: any) => String(item?.key || "").toLowerCase() !== "yipay");
   } finally {
     loading.value = false;
   }

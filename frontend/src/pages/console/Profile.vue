@@ -177,7 +177,6 @@
             v-model:value="form.username"
             placeholder="请输入用户名"
             size="large"
-            prefix="<UserOutlined />"
           >
             <template #prefix>
               <UserOutlined />

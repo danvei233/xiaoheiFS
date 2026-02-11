@@ -885,13 +885,16 @@ func (h *Handler) SystemImages(c *gin.Context) {
 	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
 	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
 	if planGroupID > 0 {
-		if plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID); err == nil {
-			if !plan.Active || !plan.Visible {
-				c.JSON(http.StatusOK, gin.H{"items": []SystemImageDTO{}})
-				return
-			}
-			lineID = plan.LineID
+		plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"items": []SystemImageDTO{}})
+			return
 		}
+		if !plan.Active || !plan.Visible || plan.LineID <= 0 {
+			c.JSON(http.StatusOK, gin.H{"items": []SystemImageDTO{}})
+			return
+		}
+		lineID = plan.LineID
 	}
 	items, err := h.catalogSvc.ListSystemImages(c, lineID)
 	if err != nil {
@@ -2785,10 +2788,22 @@ func (h *Handler) AdminPaymentProviders(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "payment disabled"})
 		return
 	}
-	items, err := h.paymentSvc.ListProviders(c, true)
+	includeDisabled := strings.EqualFold(strings.TrimSpace(c.Query("include_disabled")), "true")
+	includeLegacy := strings.EqualFold(strings.TrimSpace(c.Query("include_legacy")), "true")
+	items, err := h.paymentSvc.ListProviders(c, includeDisabled)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	if !includeLegacy {
+		filtered := make([]usecase.PaymentProviderInfo, 0, len(items))
+		for _, item := range items {
+			if strings.EqualFold(strings.TrimSpace(item.Key), "yipay") {
+				continue
+			}
+			filtered = append(filtered, item)
+		}
+		items = filtered
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toPaymentProviderDTOs(items)})
 }
@@ -4200,9 +4215,16 @@ func (h *Handler) AdminSystemImages(c *gin.Context) {
 	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
 	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
 	if planGroupID > 0 {
-		if plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID); err == nil {
-			lineID = plan.LineID
+		plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plan_group not found"})
+			return
 		}
+		if plan.LineID <= 0 {
+			c.JSON(http.StatusOK, gin.H{"items": []SystemImageDTO{}})
+			return
+		}
+		lineID = plan.LineID
 	}
 	items, err := h.catalogSvc.ListSystemImages(c, lineID)
 	if err != nil {
@@ -4851,9 +4873,16 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
 	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
 	if planGroupID > 0 {
-		if plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID); err == nil {
-			lineID = plan.LineID
+		plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plan_group not found"})
+			return
 		}
+		if plan.LineID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "line_id required for plan_group"})
+			return
+		}
+		lineID = plan.LineID
 	}
 
 	if lineID > 0 {
@@ -6005,14 +6034,22 @@ func (h *Handler) AdminAdminUpdate(c *gin.Context) {
 		return
 	}
 	if id == getUserID(c) {
-		if payload.PermissionGroupID != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot update permission group"})
-			return
-		}
 		existing, err := h.users.GetUserByID(c, id)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+		// Allow self-update requests that include the current permission_group_id.
+		// Only block an actual attempt to switch permission group.
+		if payload.PermissionGroupID != nil {
+			existingGroupID := int64(0)
+			if existing.PermissionGroupID != nil {
+				existingGroupID = *existing.PermissionGroupID
+			}
+			if *payload.PermissionGroupID != existingGroupID {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "cannot update permission group"})
+				return
+			}
 		}
 		payload.PermissionGroupID = existing.PermissionGroupID
 	}

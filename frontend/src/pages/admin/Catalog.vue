@@ -739,13 +739,62 @@ const regionNameById = (id) => {
   return match?.name || String(id || "-");
 };
 
+const toPositiveInt = (value) => {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return null;
+  return Math.trunc(num);
+};
+
 const resolveCloudLineId = (value) => {
-  const numeric = Number(value);
+  const numeric = toPositiveInt(value);
+  if (!numeric) return null;
   const byId = lines.value.find((item) => Number(item.id) === numeric);
-  if (byId?.line_id != null && byId.line_id !== "") return byId.line_id;
+  const byIdLine = toPositiveInt(byId?.line_id);
+  if (byIdLine) return byIdLine;
   const byLineId = lines.value.find((item) => Number(item.line_id) === numeric);
-  if (byLineId?.line_id != null && byLineId.line_id !== "") return byLineId.line_id;
+  const mapped = toPositiveInt(byLineId?.line_id);
+  if (mapped) return mapped;
   return null;
+};
+
+const LINE_NUMERIC_FIELDS = new Set([
+  "region_id",
+  "line_id",
+  "unit_core",
+  "unit_mem",
+  "unit_disk",
+  "unit_bw",
+  "add_core_min",
+  "add_core_max",
+  "add_core_step",
+  "add_mem_min",
+  "add_mem_max",
+  "add_mem_step",
+  "add_disk_min",
+  "add_disk_max",
+  "add_disk_step",
+  "add_bw_min",
+  "add_bw_max",
+  "add_bw_step",
+  "capacity_remaining",
+  "sort_order"
+]);
+
+const normalizeLinePayload = (source) => {
+  const input = (source || {}) as Record<string, any>;
+  const payload: Record<string, any> = {};
+  Object.keys(input).forEach((key) => {
+    if (key === "id" || key === "image_ids") return;
+    const value = input[key];
+    if (value === undefined || value === null || value === "") return;
+    if (LINE_NUMERIC_FIELDS.has(key)) {
+      const num = Number(value);
+      if (Number.isFinite(num)) payload[key] = num;
+      return;
+    }
+    payload[key] = value;
+  });
+  return payload;
 };
 
 const isWindowsType = (value) => String(value || "").toLowerCase().includes("win");
@@ -1189,7 +1238,8 @@ const resetLine = () =>
   });
 
 const submitLine = async () => {
-  const { image_ids, ...payload } = lineForm;
+  const imageIDs = Array.isArray(lineForm.image_ids) ? lineForm.image_ids : [];
+  const payload = normalizeLinePayload(lineForm);
   let res;
   if (lineForm.id) {
     res = await updateLine(lineForm.id, payload);
@@ -1198,7 +1248,7 @@ const submitLine = async () => {
   }
   const lineId = lineForm.id ?? res?.data?.id ?? res?.data?.ID;
   if (lineId) {
-    await setLineSystemImages(lineId, { image_ids: Array.isArray(image_ids) ? image_ids : [] });
+    await setLineSystemImages(lineId, { image_ids: imageIDs });
   }
   message.success("已保存线路");
   lineOpen.value = false;

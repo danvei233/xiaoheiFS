@@ -552,16 +552,22 @@ watch(() => form.planGroupId, async (val) => {
     systemImages.value = [];
     return;
   }
+  const plan = planGroups.value.find((item) => item.id === val);
+  const lineID = Number(plan?.line_id || 0);
+  if (!lineID) {
+    systemImages.value = [];
+    return;
+  }
   loadingImages.value = true;
   try {
-    const res = await listSystemImages({ plan_group_id: val });
+    const res = await listSystemImages({ plan_group_id: val, line_id: lineID });
     systemImages.value = (res.data?.items || []).filter((img) => img.enabled !== false);
   } finally {
     loadingImages.value = false;
   }
 });
 
-watch(systemImages.value, (list) => {
+watch(() => systemImages.value, (list) => {
   if (!list.length) return;
   const exists = list.some((img) => img.id === form.systemId);
   if (!form.systemId || !exists) {

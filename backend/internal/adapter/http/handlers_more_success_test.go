@@ -146,3 +146,41 @@ func TestHandlers_UserExtraSuccess(t *testing.T) {
 		t.Fatalf("dashboard missing orders")
 	}
 }
+
+func TestHandlers_SystemImages_ByPlanGroupWithoutLineID_ReturnsEmpty(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	seed := testutil.SeedCatalog(t, env.Repo)
+	user := testutil.CreateUser(t, env.Repo, "imgscope", "imgscope@example.com", "pass")
+	token := testutil.IssueJWT(t, env.JWTSecret, user.ID, "user", time.Hour)
+
+	plan := domain.PlanGroup{
+		RegionID:          seed.Region.ID,
+		Name:              "NoLine",
+		LineID:            0,
+		UnitCore:          1,
+		UnitMem:           1,
+		UnitDisk:          1,
+		UnitBW:            1,
+		Active:            true,
+		Visible:           true,
+		CapacityRemaining: -1,
+		SortOrder:         0,
+	}
+	if err := env.Repo.CreatePlanGroup(context.Background(), &plan); err != nil {
+		t.Fatalf("create plan group: %v", err)
+	}
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/system-images?plan_group_id="+testutil.Itoa(plan.ID), nil, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("system images: %d", rec.Code)
+	}
+	var resp struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Items) != 0 {
+		t.Fatalf("expected empty items, got %d", len(resp.Items))
+	}
+}

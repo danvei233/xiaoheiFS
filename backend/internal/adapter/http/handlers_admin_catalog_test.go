@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 	"time"
@@ -119,5 +120,56 @@ func TestHandlers_AdminCatalogOps(t *testing.T) {
 	}, token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("region bulk delete: %d", rec.Code)
+	}
+}
+
+func TestHandlers_AdminSystemImageSync_PlanGroupWithoutLineID(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	groupID := ensureAdminGroup(t, env)
+	admin := testutil.CreateAdmin(t, env.Repo, "adminimgscope", "adminimgscope@example.com", "pass", groupID)
+	token := testutil.IssueJWT(t, env.JWTSecret, admin.ID, "admin", time.Hour)
+
+	regionID := createRegion(t, env, token)
+	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/plan-groups", map[string]any{
+		"region_id": regionID,
+		"name":      "NoLinePlan",
+		"line_id":   0,
+		"unit_core": 1,
+		"unit_mem":  1,
+		"unit_disk": 1,
+		"unit_bw":   1,
+		"active":    true,
+		"visible":   true,
+	}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("plan group create: %d", rec.Code)
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created: %v", err)
+	}
+	if created.ID <= 0 {
+		t.Fatalf("invalid plan group id")
+	}
+
+	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/admin/api/v1/system-images?plan_group_id="+testutil.Itoa(created.ID), nil, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin system images: %d", rec.Code)
+	}
+	var listResp struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	if len(listResp.Items) != 0 {
+		t.Fatalf("expected empty items, got %d", len(listResp.Items))
+	}
+
+	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/system-images/sync?plan_group_id="+testutil.Itoa(created.ID), nil, token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
 	}
 }
