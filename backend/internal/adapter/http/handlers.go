@@ -4849,68 +4849,63 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 	}
 
 	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
 	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
-
 	if planGroupID > 0 {
 		if plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID); err == nil {
-			if lineID <= 0 {
-				lineID = plan.LineID
-			}
-			if goodsTypeID <= 0 {
-				goodsTypeID = plan.GoodsTypeID
-			}
+			lineID = plan.LineID
 		}
 	}
 
-	if goodsTypeID <= 0 && lineID > 0 {
-		if plans, err := h.catalogSvc.ListPlanGroups(c); err == nil {
-			for _, plan := range plans {
-				if plan.LineID == lineID && plan.GoodsTypeID > 0 {
-					goodsTypeID = plan.GoodsTypeID
-					break
-				}
-			}
+	if lineID > 0 {
+		count, err := h.integration.SyncAutomationImagesForLine(c, lineID, "merge")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
-	}
-
-	if goodsTypeID <= 0 && h.goodsTypes != nil {
-		if items, err := h.goodsTypes.List(c); err == nil && len(items) > 0 {
-			sort.SliceStable(items, func(i, j int) bool {
-				if items[i].SortOrder == items[j].SortOrder {
-					return items[i].ID < items[j].ID
-				}
-				return items[i].SortOrder < items[j].SortOrder
-			})
-			if items[0].ID > 0 {
-				goodsTypeID = items[0].ID
-			}
+		resp := gin.H{
+			"count":   count,
+			"line_id": lineID,
 		}
-	}
-
-	if goodsTypeID <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "goods_type_id required"})
+		if images, lerr := h.catalogSvc.ListSystemImages(c, lineID); lerr == nil {
+			resp["line_image_count"] = len(images)
+		}
+		c.JSON(http.StatusOK, resp)
 		return
 	}
 
+	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	if goodsTypeID <= 0 {
+		if h.goodsTypes == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "goods_type_id required"})
+			return
+		}
+		items, err := h.goodsTypes.List(c)
+		if err != nil || len(items) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "goods_type_id required"})
+			return
+		}
+		sort.SliceStable(items, func(i, j int) bool {
+			if items[i].SortOrder == items[j].SortOrder {
+				return items[i].ID < items[j].ID
+			}
+			return items[i].SortOrder < items[j].SortOrder
+		})
+		goodsTypeID = items[0].ID
+	}
 	result, err := h.integration.SyncAutomationForGoodsType(c, goodsTypeID, "merge")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-
-	count := result.Images
-	resp := gin.H{
-		"count":         count,
+	c.JSON(http.StatusOK, gin.H{
+		"count":         result.Images,
 		"goods_type_id": goodsTypeID,
-	}
-	if lineID > 0 {
-		resp["line_id"] = lineID
-		if images, lerr := h.catalogSvc.ListSystemImages(c, lineID); lerr == nil {
-			resp["count"] = len(images)
-		}
-	}
-	c.JSON(http.StatusOK, resp)
+		"sync_result": gin.H{
+			"lines":    result.Lines,
+			"products": result.Products,
+			"images":   result.Images,
+		},
+	})
 }
 
 func (h *Handler) AdminAPIKeys(c *gin.Context) {

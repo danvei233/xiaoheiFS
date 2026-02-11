@@ -587,6 +587,7 @@ const selectedCycleKeys = ref([]);
 
 const packageLineId = ref(null);
 const imageLineId = ref(null);
+const lineScopedImages = ref([]);
 const batchOpen = ref(false);
 const generatedPackages = ref([]);
 
@@ -596,7 +597,10 @@ const filteredPackages = computed(() => {
   return packages.value.filter((item) => Number(item.plan_group_id) === target);
 });
 
-const filteredImages = computed(() => systemImages.value);
+const filteredImages = computed(() => {
+  if (!imageLineId.value) return systemImages.value;
+  return lineScopedImages.value;
+});
 
 const regionSelection = computed(() => ({
   selectedRowKeys: selectedRegionKeys.value,
@@ -767,6 +771,28 @@ const loadLineImages = async (lineId) => {
   lineForm.image_ids = items.map((row) => row.id ?? row.ID).filter(Boolean);
 };
 
+const mapSystemImageRow = (row) => ({
+  id: row.id ?? row.ID,
+  image_id: row.image_id ?? row.ImageID,
+  name: row.name ?? row.Name,
+  type: row.type ?? row.Type,
+  enabled: row.enabled ?? row.Enabled
+});
+
+const loadScopedImages = async () => {
+  if (!imageLineId.value) {
+    lineScopedImages.value = [];
+    return;
+  }
+  const cloudLineId = resolveCloudLineId(imageLineId.value);
+  if (!cloudLineId) {
+    lineScopedImages.value = [];
+    return;
+  }
+  const res = await listSystemImages({ line_id: cloudLineId });
+  lineScopedImages.value = (res.data?.items || []).map(mapSystemImageRow);
+};
+
 const regionColumns = [
   { title: "ID", dataIndex: "id", key: "id", sorter: sortByNumber("id") },
   { title: "名称", dataIndex: "name", key: "name", sorter: sortByString("name") },
@@ -910,6 +936,7 @@ const load = async () => {
     min_qty: row.min_qty ?? row.MinQty,
     max_qty: row.max_qty ?? row.MaxQty
   }));
+  await loadScopedImages();
 };
 
 const loadGoodsTypeList = async () => {
@@ -1050,6 +1077,10 @@ const syncGoodsType = async (record: any) => {
 watch(goodsTypeId, async () => {
   resetRegion();
   await load();
+});
+
+watch(imageLineId, async () => {
+  await loadScopedImages();
 });
 
 watch(selectedAutomationRef, async (value) => {
@@ -1311,9 +1342,9 @@ const syncImages = async () => {
     message.error("无法解析线路 ID");
     return;
   }
-  await syncSystemImages({ line_id: cloudLineId });
+  await syncSystemImages({ line_id: cloudLineId, plan_group_id: imageLineId.value });
   message.success("已触发同步");
-  load();
+  await load();
 };
 
 const batchForm = reactive({

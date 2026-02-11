@@ -240,6 +240,34 @@ func TestClient_ListAreas_FallbackToAreaEndpoint(t *testing.T) {
 	}
 }
 
+func TestClient_ListLines_LineIDFallback(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/index.php/api/cloud/line", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 1,
+			"msg":  "ok",
+			"data": []map[string]any{
+				{"line_id": 88, "line_name": "L88", "area_id": 1, "state": 1},
+			},
+		})
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := NewClient(server.URL+"/index.php/api/cloud", "secret", time.Second)
+	lines, err := client.ListLines(context.Background())
+	if err != nil {
+		t.Fatalf("list lines: %v", err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	if lines[0].ID != 88 {
+		t.Fatalf("expected line id 88, got %d", lines[0].ID)
+	}
+}
+
 func TestClient_ListAreas_DeriveFromLines(t *testing.T) {
 	mux := http.NewServeMux()
 	writeOK := func(w http.ResponseWriter, data any) {

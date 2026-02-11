@@ -85,13 +85,15 @@ type hostListItem struct {
 }
 
 type lineItem struct {
-	ID       int64  `json:"id"`
-	LineName string `json:"line_name"`
-	Name     string `json:"name"`
-	Remark   string `json:"remark"`
-	LineAPI  string `json:"line_api"`
-	AreaID   int64  `json:"area_id"`
-	State    int    `json:"state"`
+	ID          int64  `json:"id"`
+	LineID      int64  `json:"line_id"`
+	ThirdLineID int64  `json:"third_line_id"`
+	LineName    string `json:"line_name"`
+	Name        string `json:"name"`
+	Remark      string `json:"remark"`
+	LineAPI     string `json:"line_api"`
+	AreaID      int64  `json:"area_id"`
+	State       int    `json:"state"`
 }
 
 type imageItem struct {
@@ -768,6 +770,13 @@ func (c *Client) ListLines(ctx context.Context) ([]usecase.AutomationLine, error
 	}
 	out := make([]usecase.AutomationLine, 0, len(items))
 	for _, item := range items {
+		id := item.ID
+		if id <= 0 {
+			id = item.LineID
+		}
+		if id <= 0 {
+			id = item.ThirdLineID
+		}
 		name := strings.TrimSpace(item.LineName)
 		if name == "" {
 			name = strings.TrimSpace(item.Name)
@@ -779,9 +788,9 @@ func (c *Client) ListLines(ctx context.Context) ([]usecase.AutomationLine, error
 			name = strings.TrimSpace(item.LineAPI)
 		}
 		if name == "" {
-			name = fmt.Sprintf("line-%d", item.ID)
+			name = fmt.Sprintf("line-%d", id)
 		}
-		out = append(out, usecase.AutomationLine{ID: item.ID, Name: name, AreaID: item.AreaID, State: item.State})
+		out = append(out, usecase.AutomationLine{ID: id, Name: name, AreaID: item.AreaID, State: item.State})
 	}
 	return out, nil
 }

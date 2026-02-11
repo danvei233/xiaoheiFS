@@ -149,4 +149,119 @@ func TestIntegrationService_SyncAutomation(t *testing.T) {
 	}
 }
 
+func TestIntegrationService_SyncAutomationImagesForLine(t *testing.T) {
+	ctx := context.Background()
+	_, repo := testutil.NewTestDB(t, false)
+	gt := domain.GoodsType{
+		Code:      "default",
+		Name:      "Default",
+		Active:    true,
+		SortOrder: 1,
+	}
+	if err := repo.CreateGoodsType(ctx, &gt); err != nil {
+		t.Fatalf("create goods type: %v", err)
+	}
+	region := domain.Region{GoodsTypeID: gt.ID, Code: "r1", Name: "Region1", Active: true}
+	if err := repo.CreateRegion(ctx, &region); err != nil {
+		t.Fatalf("create region: %v", err)
+	}
+	plan := domain.PlanGroup{
+		GoodsTypeID:       gt.ID,
+		RegionID:          region.ID,
+		Name:              "Line1",
+		LineID:            10,
+		UnitCore:          1,
+		UnitMem:           1,
+		UnitDisk:          1,
+		UnitBW:            1,
+		Active:            true,
+		Visible:           true,
+		CapacityRemaining: -1,
+	}
+	if err := repo.CreatePlanGroup(ctx, &plan); err != nil {
+		t.Fatalf("create plan group: %v", err)
+	}
+
+	auto := fakeAutomationSync{
+		images: map[int64][]usecase.AutomationImage{
+			10: {
+				{ImageID: 201, Name: "Ubuntu 22.04", Type: "linux"},
+				{ImageID: 202, Name: "Windows 2022", Type: "windows"},
+			},
+		},
+	}
+	svc := usecase.NewIntegrationService(repo, repo, repo, repo, &testutil.FakeAutomationResolver{Client: auto}, repo)
+	count, err := svc.SyncAutomationImagesForLine(ctx, 10, "merge")
+	if err != nil {
+		t.Fatalf("sync line images: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected count=2, got %d", count)
+	}
+	items, err := repo.ListSystemImages(ctx, 10)
+	if err != nil {
+		t.Fatalf("list line images: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 line images, got %d", len(items))
+	}
+}
+
+func TestIntegrationService_SyncAutomationImagesForLine_PlanGroupIDFallback(t *testing.T) {
+	ctx := context.Background()
+	_, repo := testutil.NewTestDB(t, false)
+	gt := domain.GoodsType{
+		Code:      "default",
+		Name:      "Default",
+		Active:    true,
+		SortOrder: 1,
+	}
+	if err := repo.CreateGoodsType(ctx, &gt); err != nil {
+		t.Fatalf("create goods type: %v", err)
+	}
+	region := domain.Region{GoodsTypeID: gt.ID, Code: "r1", Name: "Region1", Active: true}
+	if err := repo.CreateRegion(ctx, &region); err != nil {
+		t.Fatalf("create region: %v", err)
+	}
+	plan := domain.PlanGroup{
+		GoodsTypeID:       gt.ID,
+		RegionID:          region.ID,
+		Name:              "Line1",
+		LineID:            10,
+		UnitCore:          1,
+		UnitMem:           1,
+		UnitDisk:          1,
+		UnitBW:            1,
+		Active:            true,
+		Visible:           true,
+		CapacityRemaining: -1,
+	}
+	if err := repo.CreatePlanGroup(ctx, &plan); err != nil {
+		t.Fatalf("create plan group: %v", err)
+	}
+
+	auto := fakeAutomationSync{
+		images: map[int64][]usecase.AutomationImage{
+			10: {
+				{ImageID: 301, Name: "Ubuntu", Type: "linux"},
+			},
+		},
+	}
+	svc := usecase.NewIntegrationService(repo, repo, repo, repo, &testutil.FakeAutomationResolver{Client: auto}, repo)
+	count, err := svc.SyncAutomationImagesForLine(ctx, plan.ID, "merge")
+	if err != nil {
+		t.Fatalf("sync line images by plan group id: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected count=1, got %d", count)
+	}
+	items, err := repo.ListSystemImages(ctx, 10)
+	if err != nil {
+		t.Fatalf("list line images: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 line image, got %d", len(items))
+	}
+}
+
 var _ usecase.AutomationClient = (*fakeAutomationSync)(nil)

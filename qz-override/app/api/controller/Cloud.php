@@ -576,7 +576,18 @@ if ($search !== '') {
 
     public function mirror_image(){
         $image_model = new ServersImageConfig();
-        $list = $image_model->select();
+        $line_id = (int)$this->request->param('line_id', 0);
+        $list = [];
+        if ($line_id > 0) {
+            try {
+                $list = $image_model->where(['line_id' => $line_id])->select();
+            } catch (\Throwable $e) {
+                $list = [];
+            }
+        }
+        if (empty($list) || (is_object($list) && method_exists($list, 'isEmpty') && $list->isEmpty())) {
+            $list = $image_model->select();
+        }
         $data = [];
         foreach ($list as $k=>$v){
             $data[] = [
@@ -903,4 +914,3 @@ public function elastic_update(){
         $this->success_qz('succ',$hostinfo);
     }
 }
-

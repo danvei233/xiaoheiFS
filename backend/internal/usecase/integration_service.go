@@ -53,6 +53,58 @@ func (s *IntegrationService) SyncAutomation(ctx context.Context, mode string) (S
 	return s.SyncAutomationForGoodsType(ctx, def.ID, mode)
 }
 
+func (s *IntegrationService) SyncAutomationImagesForLine(ctx context.Context, lineID int64, mode string) (int, error) {
+	if s.automation == nil || s.catalog == nil || s.images == nil || lineID <= 0 {
+		return 0, ErrInvalidInput
+	}
+	if mode == "" {
+		mode = "merge"
+	}
+	plans, err := s.catalog.ListPlanGroups(ctx)
+	if err != nil {
+		return 0, err
+	}
+	var goodsTypeID int64
+	var bestPlanID int64
+	for _, plan := range plans {
+		if plan.LineID != lineID || plan.GoodsTypeID <= 0 {
+			continue
+		}
+		if goodsTypeID == 0 || plan.ID < bestPlanID {
+			goodsTypeID = plan.GoodsTypeID
+			bestPlanID = plan.ID
+		}
+	}
+	if goodsTypeID <= 0 {
+		plan, err := s.catalog.GetPlanGroup(ctx, lineID)
+		if err == nil && plan.GoodsTypeID > 0 && plan.LineID > 0 {
+			goodsTypeID = plan.GoodsTypeID
+			lineID = plan.LineID
+		}
+	}
+	if goodsTypeID <= 0 {
+		return 0, fmt.Errorf("line_id %d not bound to any goods type", lineID)
+	}
+	cli, err := s.automation.ClientForGoodsType(ctx, goodsTypeID)
+	if err != nil {
+		return 0, err
+	}
+	knownImages, _ := s.images.ListAllSystemImages(ctx)
+	imageByID := map[int64]domain.SystemImage{}
+	for _, img := range knownImages {
+		if img.ImageID > 0 {
+			imageByID[img.ImageID] = img
+		}
+	}
+	count, created, err := s.syncLineImages(ctx, cli, lineID, mode, imageByID)
+	if err != nil {
+		s.appendSyncLog(ctx, "mirror_image", mode, "failed", err.Error())
+		return 0, err
+	}
+	s.appendSyncLog(ctx, "mirror_image", mode, "ok", fmt.Sprintf("goods_type_id=%d line_id=%d images=%d created=%d", goodsTypeID, lineID, count, created))
+	return count, nil
+}
+
 func (s *IntegrationService) SyncAutomationForGoodsType(ctx context.Context, goodsTypeID int64, mode string) (SyncResult, error) {
 	if s.automation == nil || s.catalog == nil || goodsTypeID <= 0 {
 		return SyncResult{}, ErrInvalidInput
@@ -265,41 +317,12 @@ func (s *IntegrationService) SyncAutomationForGoodsType(ctx context.Context, goo
 
 	createdImages := 0
 	for _, line := range lines {
-		images, err := cli.ListImages(ctx, line.ID)
+		_, created, err := s.syncLineImages(ctx, cli, line.ID, mode, imageByID)
 		if err != nil {
 			s.appendSyncLog(ctx, "mirror_image", mode, "failed", err.Error())
 			return SyncResult{}, err
 		}
-		lineImageIDs := make([]int64, 0, len(images))
-		seen := map[int64]struct{}{}
-		for _, img := range images {
-			imageType := normalizeImageType(img.Type)
-			if existing, ok := imageByID[img.ImageID]; ok {
-				existing.Name = img.Name
-				existing.Type = imageType
-				if mode == "override" {
-					existing.Enabled = true
-				}
-				_ = s.images.UpdateSystemImage(ctx, existing)
-				if _, ok := seen[existing.ID]; !ok {
-					lineImageIDs = append(lineImageIDs, existing.ID)
-					seen[existing.ID] = struct{}{}
-				}
-			} else {
-				newImg := domain.SystemImage{ImageID: img.ImageID, Name: img.Name, Type: imageType, Enabled: true}
-				_ = s.images.CreateSystemImage(ctx, &newImg)
-				imageByID[img.ImageID] = newImg
-				createdImages++
-				if newImg.ID > 0 {
-					lineImageIDs = append(lineImageIDs, newImg.ID)
-					seen[newImg.ID] = struct{}{}
-				}
-			}
-		}
-		if err := s.images.SetLineSystemImages(ctx, line.ID, lineImageIDs); err != nil {
-			s.appendSyncLog(ctx, "mirror_image", mode, "failed", err.Error())
-			return SyncResult{}, err
-		}
+		createdImages += created
 	}
 
 	s.appendSyncLog(ctx, "area", mode, "ok", fmt.Sprintf("goods_type_id=%d areas=%d", goodsTypeID, len(areas)))
@@ -308,6 +331,44 @@ func (s *IntegrationService) SyncAutomationForGoodsType(ctx context.Context, goo
 	s.appendSyncLog(ctx, "mirror_image", mode, "ok", fmt.Sprintf("goods_type_id=%d images=%d", goodsTypeID, createdImages))
 
 	return SyncResult{Lines: createdLines, Products: createdProducts, Images: createdImages}, nil
+}
+
+func (s *IntegrationService) syncLineImages(ctx context.Context, cli AutomationClient, lineID int64, mode string, imageByID map[int64]domain.SystemImage) (int, int, error) {
+	images, err := cli.ListImages(ctx, lineID)
+	if err != nil {
+		return 0, 0, err
+	}
+	lineImageIDs := make([]int64, 0, len(images))
+	seen := map[int64]struct{}{}
+	created := 0
+	for _, img := range images {
+		imageType := normalizeImageType(img.Type)
+		if existing, ok := imageByID[img.ImageID]; ok {
+			existing.Name = img.Name
+			existing.Type = imageType
+			if mode == "override" {
+				existing.Enabled = true
+			}
+			_ = s.images.UpdateSystemImage(ctx, existing)
+			if _, ok := seen[existing.ID]; !ok {
+				lineImageIDs = append(lineImageIDs, existing.ID)
+				seen[existing.ID] = struct{}{}
+			}
+			continue
+		}
+		newImg := domain.SystemImage{ImageID: img.ImageID, Name: img.Name, Type: imageType, Enabled: true}
+		_ = s.images.CreateSystemImage(ctx, &newImg)
+		imageByID[img.ImageID] = newImg
+		created++
+		if newImg.ID > 0 {
+			lineImageIDs = append(lineImageIDs, newImg.ID)
+			seen[newImg.ID] = struct{}{}
+		}
+	}
+	if err := s.images.SetLineSystemImages(ctx, lineID, lineImageIDs); err != nil {
+		return 0, 0, err
+	}
+	return len(images), created, nil
 }
 
 func (s *IntegrationService) ListSyncLogs(ctx context.Context, target string, limit, offset int) ([]domain.IntegrationSyncLog, int, error) {
