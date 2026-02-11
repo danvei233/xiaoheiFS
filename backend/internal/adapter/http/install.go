@@ -269,7 +269,11 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	// so subsequent restarts do not fall back to sqlite due to CWD differences.
 	configPath := strings.TrimSpace(config.LocalConfigPath())
 	if configPath == "" {
-		configPath = installConfigPath
+		if exePath, err := os.Executable(); err == nil {
+			configPath = filepath.Join(filepath.Dir(exePath), installConfigPath)
+		} else {
+			configPath = installConfigPath
+		}
 	}
 	if dir := filepath.Dir(configPath); dir != "" && dir != "." {
 		_ = os.MkdirAll(dir, 0o755)

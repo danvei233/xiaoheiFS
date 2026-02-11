@@ -30,6 +30,14 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if strings.TrimSpace(cfg.DBType) == "" {
+		log.Printf("db config missing; entering install bootstrap mode on %s", cfg.Addr)
+		server := http.NewInstallBootstrapServer(cfg.JWTSecret)
+		if err := server.Engine.Run(cfg.Addr); err != nil {
+			log.Fatalf("server: %v", err)
+		}
+		return
+	}
 
 	conn, err := db.Open(cfg)
 	if err != nil {

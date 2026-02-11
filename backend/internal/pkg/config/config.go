@@ -127,6 +127,14 @@ func readLocalConfig() (*fileConfig, string) {
 		filepath.Join("backend", localConfigYML),
 		filepath.Join("backend", localConfigJSON),
 	}
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		candidates = append(candidates,
+			filepath.Join(exeDir, localConfigYAML),
+			filepath.Join(exeDir, localConfigYML),
+			filepath.Join(exeDir, localConfigJSON),
+		)
+	}
 
 	var fallbackFC *fileConfig
 	var fallbackPath string
