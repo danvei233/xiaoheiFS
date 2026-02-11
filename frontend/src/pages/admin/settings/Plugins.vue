@@ -3,14 +3,14 @@
     <!-- payment-method toggles are host-managed -->
     <div class="hero">
       <div class="hero-left">
-        <div class="hero-title">鎻掍欢绠＄悊</div>
-        <div class="hero-subtle">缁熶竴绠＄悊 SMS / 鏀粯 / 瀹炲悕 / 鏈潵鏇村绫诲瀷锛氬畨瑁呫€佸惎鍋溿€侀厤缃笌鍋ュ悍</div>
+        <div class="hero-title">插件管理</div>
+        <div class="hero-subtle">统一管理 SMS / 支付 / 实名 / 更多类型：安装、启停、配置与健康</div>
       </div>
       <div class="hero-actions">
-        <a-button @click="fetchData" :loading="loading">鍒锋柊</a-button>
-        <a-button @click="openDiscover" :loading="discoverLoading">鍙戠幇纾佺洏鎻掍欢</a-button>
+        <a-button @click="fetchData" :loading="loading">刷新</a-button>
+        <a-button @click="openDiscover" :loading="discoverLoading">发现磁盘插件</a-button>
         <a-upload :custom-request="onInstallUpload" :show-upload-list="false" accept=".zip,.tar.gz,.tgz">
-          <a-button type="primary">瀹夎鎻掍欢</a-button>
+          <a-button type="primary">安装插件</a-button>
         </a-upload>
       </div>
     </div>
@@ -18,7 +18,7 @@
     <a-card :bordered="false" class="card">
       <div class="filters">
         <a-segmented v-model:value="category" :options="categoryOptions" />
-        <a-input-search v-model:value="keyword" placeholder="鎼滅储鎻掍欢鍚?/ plugin_id" style="width: 260px" allow-clear />
+        <a-input-search v-model:value="keyword" placeholder="搜索插件名 / plugin_id" style="width: 260px" allow-clear />
       </div>
 
       <a-table
@@ -63,9 +63,9 @@
                 {{ record.health_status || "-" }}
               </a-tag>
               <div class="health-subtle">
-                <span v-if="record.last_health_at">鏈€鍚庯細{{ formatTime(record.last_health_at) }}</span>
-                <span v-else>鏆傛棤蹇冭烦</span>
-                <span v-if="record.health_message" class="health-msg">路 {{ record.health_message }}</span>
+                <span v-if="record.last_health_at">最后：{{ formatTime(record.last_health_at) }}</span>
+                <span v-else>暂无心跳</span>
+                <span v-if="record.health_message" class="health-msg">· {{ record.health_message }}</span>
               </div>
             </div>
           </template>
@@ -80,7 +80,7 @@
               <a-tag v-if="record.manifest?.capabilities?.automation" color="gold">
                 automation: {{ (record.manifest.capabilities.automation.features || []).length }} features
               </a-tag>
-              <a-button type="link" size="small" @click="openManifest(record)">璇︽儏</a-button>
+              <a-button type="link" size="small" @click="openManifest(record)">详情</a-button>
             </div>
           </template>
 
@@ -96,10 +96,10 @@
                 Methods
               </a-button>
               <a-button type="link" size="small" @click="openConfig(record)">
-                {{ String(record.category || "") === "automation" ? "鍟嗗搧閰嶇疆" : "閰嶇疆" }}
+                {{ String(record.category || "") === "automation" ? "商品配置" : "配置" }}
               </a-button>
-              <a-popconfirm title="纭畾瑕佸嵏杞借鎻掍欢鍚楋紵" @confirm="uninstall(record)">
-                <a-button type="link" danger size="small">鍗歌浇</a-button>
+              <a-popconfirm title="确定要卸载该插件吗？" @confirm="uninstall(record)">
+                <a-button type="link" danger size="small">卸载</a-button>
               </a-popconfirm>
             </a-space>
           </template>
@@ -205,7 +205,7 @@
     </a-modal>
 
     <!-- Manifest drawer -->
-    <a-drawer v-model:open="manifestOpen" title="鎻掍欢鑳藉姏" width="520">
+    <a-drawer v-model:open="manifestOpen" title="插件能力" width="520">
       <a-descriptions bordered size="small" :column="1">
         <a-descriptions-item label="plugin_id">{{ current?.plugin_id }}</a-descriptions-item>
         <a-descriptions-item label="category">{{ current?.category }}</a-descriptions-item>
@@ -280,7 +280,7 @@ const category = ref<string>("all");
 const keyword = ref<string>("");
 
 const categoryOptions = [
-  { label: "鍏ㄩ儴", value: "all" },
+  { label: "全部", value: "all" },
   { label: "payment", value: "payment" },
   { label: "sms", value: "sms" },
   { label: "kyc", value: "kyc" },
@@ -290,14 +290,14 @@ const categoryOptions = [
 const rowKey = (r: any) => `${r.category}/${r.plugin_id}/${r.instance_id || "default"}`;
 
 const columns = [
-  { title: "鎻掍欢", key: "plugin" },
-  { title: "绫诲瀷", dataIndex: "category", key: "category", width: 110 },
+  { title: "插件", key: "plugin" },
+  { title: "类型", dataIndex: "category", key: "category", width: 110 },
   { title: "instance", dataIndex: "instance_id", key: "instance_id", width: 140 },
-  { title: "绛惧悕", key: "signature", width: 120 },
-  { title: "鍚敤", key: "enabled", width: 90 },
-  { title: "鍋ュ悍", key: "health", width: 220 },
-  { title: "鑳藉姏", key: "capabilities", width: 240 },
-  { title: "鎿嶄綔", key: "actions", width: 150 }
+  { title: "签名", key: "signature", width: 120 },
+  { title: "启用", key: "enabled", width: 90 },
+  { title: "健康", key: "health", width: 220 },
+  { title: "能力", key: "capabilities", width: 240 },
+  { title: "操作", key: "actions", width: 150 }
 ];
 
 const filtered = computed(() => {
@@ -316,7 +316,7 @@ const fetchData = async () => {
     const res = await listAdminPlugins();
     items.value = (res.data?.items || []) as PluginListItem[];
   } catch (e: any) {
-    message.error(e?.response?.data?.error || "鍔犺浇澶辫触");
+    message.error(e?.response?.data?.error || "加载失败");
   } finally {
     loading.value = false;
   }
@@ -359,7 +359,7 @@ const toggleEnabled = async (record: any, checked: boolean) => {
     if (checked) await enableAdminPluginInstance(record.category, record.plugin_id, record.instance_id || "default");
     else await disableAdminPluginInstance(record.category, record.plugin_id, record.instance_id || "default");
     record.enabled = checked;
-    message.success("鎿嶄綔鎴愬姛");
+    message.success("操作成功");
   } catch (e: any) {
     const data = e?.response?.data || {};
     const code = String(data?.code || "");
@@ -372,7 +372,7 @@ const toggleEnabled = async (record: any, checked: boolean) => {
         window.location.href = redirectPath;
       }
     } else {
-      message.error(data?.error || "鎿嶄綔澶辫触");
+      message.error(data?.error || "操作失败");
     }
   } finally {
     busyKey.value = "";
@@ -411,7 +411,7 @@ const tryInstall = async (file: File, pwd?: string) => {
   installing.value = true;
   try {
     await installAdminPlugin(file, pwd);
-    message.success("瀹夎鎴愬姛");
+    message.success("安装成功");
     adminPwdOpen.value = false;
     adminPassword.value = "";
     pendingFile.value = null;
@@ -419,7 +419,7 @@ const tryInstall = async (file: File, pwd?: string) => {
     return true;
   } catch (e: any) {
     const status = e?.response?.status;
-    const err = e?.response?.data?.error || "瀹夎澶辫触";
+    const err = e?.response?.data?.error || "安装失败";
     if (status === 403 && String(err).includes("admin_password")) {
       pendingFile.value = file;
       adminPwdOpen.value = true;
@@ -443,7 +443,7 @@ const confirmInstall = async () => {
   if (!pendingFile.value) return;
   const pwd = adminPassword.value.trim();
   if (!pwd) {
-    message.error("璇疯緭鍏ョ鐞嗗憳瀵嗙爜");
+    message.error("请输入管理员密码");
     return;
   }
   await tryInstall(pendingFile.value, pwd);
@@ -460,11 +460,11 @@ const importAdminPassword = ref("");
 const importTarget = ref<PluginDiscoverItem | null>(null);
 
 const discoverColumns = [
-  { title: "鎻掍欢", key: "plugin" },
-  { title: "绫诲瀷", dataIndex: "category", key: "category", width: 110 },
-  { title: "绛惧悕", key: "signature", width: 120 },
-  { title: "骞冲彴", key: "platform", width: 220 },
-  { title: "鎿嶄綔", key: "actions", width: 120 }
+  { title: "插件", key: "plugin" },
+  { title: "类型", dataIndex: "category", key: "category", width: 110 },
+  { title: "签名", key: "signature", width: 120 },
+  { title: "平台", key: "platform", width: 220 },
+  { title: "操作", key: "actions", width: 120 }
 ];
 
 const openDiscover = async () => {
@@ -474,7 +474,7 @@ const openDiscover = async () => {
     const res = await discoverAdminPlugins();
     discovered.value = (res.data?.items || []) as PluginDiscoverItem[];
   } catch (e: any) {
-    message.error(e?.response?.data?.error || "鍙戠幇澶辫触");
+    message.error(e?.response?.data?.error || "发现失败");
   } finally {
     discoverLoading.value = false;
   }
@@ -486,12 +486,12 @@ const doImport = async (item: PluginDiscoverItem, pwd?: string) => {
   importing.value = true;
   try {
     await importAdminPluginFromDisk(String(item.category || ""), String(item.plugin_id || ""), pwd);
-    message.success("瀵煎叆鎴愬姛");
+    message.success("导入成功");
     await openDiscover();
     await fetchData();
   } catch (e: any) {
     const status = e?.response?.status;
-    const err = e?.response?.data?.error || "瀵煎叆澶辫触";
+    const err = e?.response?.data?.error || "导入失败";
     if (status === 403 && String(err).includes("admin_password")) {
       importTarget.value = item;
       importPwdOpen.value = true;
@@ -517,7 +517,7 @@ const confirmImport = async () => {
   if (!importTarget.value) return;
   const pwd = importAdminPassword.value.trim();
   if (!pwd) {
-    message.error("璇疯緭鍏ョ鐞嗗憳瀵嗙爜");
+    message.error("请输入管理员密码");
     return;
   }
   importPwdOpen.value = false;
@@ -530,10 +530,10 @@ const confirmImport = async () => {
 const uninstall = async (record: any) => {
   try {
     await deleteAdminPluginInstance(record.category, record.plugin_id, record.instance_id || "default");
-    message.success("鍗歌浇鎴愬姛");
+    message.success("卸载成功");
     fetchData();
   } catch (e: any) {
-    message.error(e?.response?.data?.error || "鍗歌浇澶辫触");
+    message.error(e?.response?.data?.error || "卸载失败");
   }
 };
 
@@ -564,7 +564,7 @@ const safeJson = (s: string) => {
 
 const openConfig = async (record: PluginListItem) => {
   if (String(record.category || "") === "automation") {
-    message.info("automation 鎻掍欢閰嶇疆宸茶縼绉诲埌 鍟嗗搧绫诲瀷 椤甸潰");
+    message.info("automation 插件配置已迁移到 商品类型 页面");
     window.location.href = "/admin/catalog";
     return;
   }
@@ -584,14 +584,14 @@ const openConfig = async (record: PluginListItem) => {
     const uj = safeJson(schemaRes.data?.ui_schema || "{}") || {};
     const cfg = safeJson(cfgRes.data?.config_json || "{}") || {};
     if (!sj || String(sj.type || "") !== "object") {
-      schemaError.value = "鎻掍欢 schema 鏃犳硶瑙ｆ瀽鎴栦笉鏄?object 绫诲瀷";
+      schemaError.value = "插件 schema 无法解析或不是 object 类型";
     } else {
       schemaObj.value = sj;
       uiObj.value = uj;
     }
     configModel.value = cfg;
   } catch (e: any) {
-    schemaError.value = e?.response?.data?.error || "鍔犺浇閰嶇疆澶辫触";
+    schemaError.value = e?.response?.data?.error || "加载配置失败";
   } finally {
     schemaLoading.value = false;
   }
@@ -608,11 +608,11 @@ const saveConfig = async () => {
       current.value.instance_id || "default",
       payload
     );
-    message.success("淇濆瓨鎴愬姛");
+    message.success("保存成功");
     configOpen.value = false;
     fetchData();
   } catch (e: any) {
-    message.error(e?.response?.data?.error || "淇濆瓨澶辫触");
+    message.error(e?.response?.data?.error || "保存失败");
   } finally {
     saving.value = false;
   }
@@ -656,7 +656,7 @@ const openPaymentMethods = async (record: PluginListItem) => {
     });
     methodItems.value = (res.data?.items || []) as PluginPaymentMethodItem[];
   } catch (e: any) {
-    message.error(e?.response?.data?.error || "鍔犺浇澶辫触");
+    message.error(e?.response?.data?.error || "加载失败");
   } finally {
     methodsLoading.value = false;
   }

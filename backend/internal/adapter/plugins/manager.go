@@ -46,6 +46,16 @@ func NewManager(baseDir string, repo usecase.PluginInstallationRepository, ciphe
 
 const DefaultInstanceID = "default"
 
+const (
+	automationCategory         = "automation"
+	automationConfigJSONSchema = `{"type":"object","properties":{"base_url":{"type":"string","title":"Base URL"},"api_key":{"type":"string","title":"API Key","format":"password"},"timeout_sec":{"type":"integer","title":"Timeout (sec)","minimum":1},"retry":{"type":"integer","title":"Retry","minimum":0},"dry_run":{"type":"boolean","title":"Dry Run"}}}`
+	automationConfigUISchema   = `{}`
+)
+
+func isAutomationCategory(category string) bool {
+	return strings.EqualFold(strings.TrimSpace(category), automationCategory)
+}
+
 func (m *Manager) PluginDir(category, pluginID string) string {
 	return filepath.Join(m.baseDir, strings.TrimSpace(category), strings.TrimSpace(pluginID))
 }
@@ -252,6 +262,9 @@ func (m *Manager) GetConfigSchema(ctx context.Context, category, pluginID string
 }
 
 func (m *Manager) GetConfigSchemaInstance(ctx context.Context, category, pluginID, _ string) (jsonSchema, uiSchema string, err error) {
+	if isAutomationCategory(category) {
+		return automationConfigJSONSchema, automationConfigUISchema, nil
+	}
 	client, core, _, err := m.dialCore(ctx, category, pluginID)
 	if err != nil {
 		return "", "", err
@@ -271,6 +284,9 @@ func (m *Manager) GetConfig(ctx context.Context, category, pluginID string) (str
 }
 
 func (m *Manager) redactSecretFields(ctx context.Context, category, pluginID string, configJSON string) (string, error) {
+	if isAutomationCategory(category) {
+		return configJSON, nil
+	}
 	client, core, _, err := m.dialCore(ctx, category, pluginID)
 	if err != nil {
 		return "", err
@@ -325,7 +341,7 @@ func (m *Manager) EnableInstance(ctx context.Context, category, pluginID, instan
 		cfg = "{}"
 	}
 	// Automation config is managed per goods-type workflow, not as a hard precondition for plugin enable.
-	if !strings.EqualFold(strings.TrimSpace(category), "automation") {
+	if !isAutomationCategory(category) {
 		if err := m.validateConfig(ctx, category, pluginID, cfg); err != nil {
 			return err
 		}
@@ -385,20 +401,24 @@ func (m *Manager) UpdateConfigInstance(ctx context.Context, category, pluginID, 
 		configJSON = "{}"
 	}
 
-	oldCfg, err := m.decryptConfig(inst.ConfigCipher)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(oldCfg) == "" {
-		oldCfg = "{}"
-	}
-
-	merged, err := m.mergeSecretFields(ctx, category, pluginID, oldCfg, configJSON)
-	if err != nil {
-		return err
-	}
-	if err := m.validateConfig(ctx, category, pluginID, merged); err != nil {
-		return err
+	merged := configJSON
+	if !isAutomationCategory(category) {
+		oldCfg, err := m.decryptConfig(inst.ConfigCipher)
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(oldCfg) == "" {
+			oldCfg = "{}"
+		}
+		merged, err = m.mergeSecretFields(ctx, category, pluginID, oldCfg, configJSON)
+		if err != nil {
+			return err
+		}
+		if err := m.validateConfig(ctx, category, pluginID, merged); err != nil {
+			return err
+		}
+	} else if !json.Valid([]byte(merged)) {
+		return errors.New("invalid config json")
 	}
 	cipherText, err := m.encryptConfig(merged)
 	if err != nil {
