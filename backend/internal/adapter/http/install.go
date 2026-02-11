@@ -194,24 +194,24 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "migrate: " + err.Error()})
 		return
 	}
-	if err := seed.EnsureSettingsGorm(conn.Gorm); err != nil {
+	if err := seed.EnsureSettings(conn.Gorm); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed settings: " + err.Error()})
 		return
 	}
-	if err := seed.EnsurePermissionDefaultsGorm(conn.Gorm); err != nil {
+	if err := seed.EnsurePermissionDefaults(conn.Gorm); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed permission defaults: " + err.Error()})
 		return
 	}
-	if err := seed.EnsurePermissionGroupsGorm(conn.Gorm); err != nil {
+	if err := seed.EnsurePermissionGroups(conn.Gorm); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed permission groups: " + err.Error()})
 		return
 	}
 	// CMS defaults and base seed (only if empty) to keep install snappy and idempotent.
-	if err := seed.EnsureCMSDefaultsGorm(conn.Gorm); err != nil {
+	if err := seed.EnsureCMSDefaults(conn.Gorm); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed cms defaults: " + err.Error()})
 		return
 	}
-	if err := seed.SeedIfEmptyGorm(conn.Gorm); err != nil {
+	if err := seed.SeedIfEmpty(conn.Gorm); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed: " + err.Error()})
 		return
 	}
@@ -224,11 +224,9 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		_ = repoAny.UpsertSetting(ctx, domain.Setting{Key: "site_url", ValueJSON: siteURL})
 	}
 
-	if _, err := repoAny.GetUserByUsernameOrEmail(ctx, adminUser); err == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "admin already exists"})
-		return
-	} else if !errors.Is(err, usecase.ErrNotFound) {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "query admin failed: " + err.Error()})
+	existingAdmin, adminLookupErr := repoAny.GetUserByUsernameOrEmail(ctx, adminUser)
+	if adminLookupErr != nil && !errors.Is(adminLookupErr, usecase.ErrNotFound) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "query admin failed: " + adminLookupErr.Error()})
 		return
 	}
 
@@ -248,23 +246,54 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash failed"})
 		return
 	}
-	user := &domain.User{
-		Username:          adminUser,
-		Email:             adminUser + "@local",
-		PasswordHash:      string(hash),
-		Role:              domain.UserRoleAdmin,
-		Status:            domain.UserStatusActive,
-		PermissionGroupID: &superAdminGroupID,
-	}
-	if err := repoAny.CreateUser(ctx, user); err != nil {
-		if isDuplicateEntryError(err) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "admin already exists"})
+	if adminLookupErr == nil {
+		existingAdmin.Username = adminUser
+		if strings.TrimSpace(existingAdmin.Email) == "" {
+			existingAdmin.Email = adminUser + "@local"
+		}
+		existingAdmin.Role = domain.UserRoleAdmin
+		existingAdmin.Status = domain.UserStatusActive
+		existingAdmin.PermissionGroupID = &superAdminGroupID
+		if err := repoAny.UpdateUser(ctx, existingAdmin); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "update admin failed: " + err.Error()})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
+		if err := repoAny.UpdateUserPassword(ctx, existingAdmin.ID, string(hash)); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "update admin password failed: " + err.Error()})
+			return
+		}
+	} else {
+		user := &domain.User{
+			Username:          adminUser,
+			Email:             adminUser + "@local",
+			PasswordHash:      string(hash),
+			Role:              domain.UserRoleAdmin,
+			Status:            domain.UserStatusActive,
+			PermissionGroupID: &superAdminGroupID,
+		}
+		if err := repoAny.CreateUser(ctx, user); err != nil {
+			if isDuplicateEntryError(err) {
+				adminNow, getErr := repoAny.GetUserByUsernameOrEmail(ctx, adminUser)
+				if getErr == nil {
+					adminNow.Role = domain.UserRoleAdmin
+					adminNow.Status = domain.UserStatusActive
+					adminNow.PermissionGroupID = &superAdminGroupID
+					if strings.TrimSpace(adminNow.Email) == "" {
+						adminNow.Email = adminUser + "@local"
+					}
+					if updateErr := repoAny.UpdateUser(ctx, adminNow); updateErr == nil {
+						if passErr := repoAny.UpdateUserPassword(ctx, adminNow.ID, string(hash)); passErr == nil {
+							goto persistConfig
+						}
+					}
+				}
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
+persistConfig:
 	// Persist DB config to the same config file that loader currently resolves,
 	// so subsequent restarts do not fall back to sqlite due to CWD differences.
 	configPath := strings.TrimSpace(config.LocalConfigPath())

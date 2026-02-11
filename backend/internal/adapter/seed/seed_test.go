@@ -1,17 +1,18 @@
 package seed
 
 import (
-	"database/sql"
 	"encoding/json"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"gorm.io/gorm"
 	"xiaoheiplay/internal/adapter/repo"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
 )
 
-func newSeedDB(t *testing.T) (*sql.DB, string) {
+func newSeedDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "seed.db")
@@ -25,19 +26,19 @@ func newSeedDB(t *testing.T) (*sql.DB, string) {
 	if err := repo.Migrate(conn.Gorm); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return conn.SQL, conn.Dialect
+	return conn.Gorm
 }
 
 func TestSeedIfEmpty(t *testing.T) {
-	conn, dialect := newSeedDB(t)
-	if err := EnsureSettings(conn, dialect); err != nil {
+	gdb := newSeedDB(t)
+	if err := EnsureSettings(gdb); err != nil {
 		t.Fatalf("ensure settings: %v", err)
 	}
-	if err := SeedIfEmpty(conn); err != nil {
+	if err := SeedIfEmpty(gdb); err != nil {
 		t.Fatalf("seed if empty: %v", err)
 	}
-	var count int
-	if err := conn.QueryRow(`SELECT COUNT(1) FROM regions`).Scan(&count); err != nil {
+	var count int64
+	if err := gdb.Table("regions").Count(&count).Error; err != nil {
 		t.Fatalf("count regions: %v", err)
 	}
 	if count == 0 {
@@ -46,18 +47,18 @@ func TestSeedIfEmpty(t *testing.T) {
 }
 
 func TestEnsureDefaultsAndCMS(t *testing.T) {
-	conn, dialect := newSeedDB(t)
-	if err := EnsurePermissionDefaults(conn, dialect); err != nil {
+	gdb := newSeedDB(t)
+	if err := EnsurePermissionDefaults(gdb); err != nil {
 		t.Fatalf("ensure permission defaults: %v", err)
 	}
-	if err := EnsurePermissionGroups(conn, dialect); err != nil {
+	if err := EnsurePermissionGroups(gdb); err != nil {
 		t.Fatalf("ensure permission groups: %v", err)
 	}
-	if err := EnsureCMSDefaults(conn, dialect); err != nil {
+	if err := EnsureCMSDefaults(gdb); err != nil {
 		t.Fatalf("ensure cms defaults: %v", err)
 	}
-	var count int
-	if err := conn.QueryRow(`SELECT COUNT(1) FROM cms_categories`).Scan(&count); err != nil {
+	var count int64
+	if err := gdb.Table("cms_categories").Count(&count).Error; err != nil {
 		t.Fatalf("count cms categories: %v", err)
 	}
 	if count == 0 {
@@ -66,15 +67,23 @@ func TestEnsureDefaultsAndCMS(t *testing.T) {
 }
 
 func TestSeedIfEmptySkip(t *testing.T) {
-	conn, _ := newSeedDB(t)
-	if _, err := conn.Exec(`INSERT INTO regions(code,name,active) VALUES (?,?,?)`, "area-x", "Region X", 1); err != nil {
+	gdb := newSeedDB(t)
+	now := time.Now()
+	if err := gdb.Table("regions").Create(map[string]any{
+		"goods_type_id": int64(0),
+		"code":          "area-x",
+		"name":          "Region X",
+		"active":        1,
+		"created_at":    now,
+		"updated_at":    now,
+	}).Error; err != nil {
 		t.Fatalf("insert region: %v", err)
 	}
-	if err := SeedIfEmpty(conn); err != nil {
+	if err := SeedIfEmpty(gdb); err != nil {
 		t.Fatalf("seed if empty: %v", err)
 	}
-	var count int
-	if err := conn.QueryRow(`SELECT COUNT(1) FROM regions`).Scan(&count); err != nil {
+	var count int64
+	if err := gdb.Table("regions").Count(&count).Error; err != nil {
 		t.Fatalf("count regions: %v", err)
 	}
 	if count != 1 {
@@ -82,24 +91,39 @@ func TestSeedIfEmptySkip(t *testing.T) {
 	}
 }
 
-func TestEnsurePermissionGroups_BackfillDashboardRevenue(t *testing.T) {
-	conn, dialect := newSeedDB(t)
+func TestEnsurePermissionGroupsBackfillDashboardRevenue(t *testing.T) {
+	gdb := newSeedDB(t)
 
-	// Simulate an existing installation with older permissions for default groups.
-	if _, err := conn.Exec(`INSERT INTO permission_groups(name,description,permissions_json) VALUES (?,?,?)`, "运维管理员", "old", `["dashboard.overview","dashboard.vps_status"]`); err != nil {
+	now := time.Now()
+	if err := gdb.Table("permission_groups").Create(map[string]any{
+		"name":             "运维管理员",
+		"description":      "old",
+		"permissions_json": `["dashboard.overview","dashboard.vps_status"]`,
+		"created_at":       now,
+		"updated_at":       now,
+	}).Error; err != nil {
 		t.Fatalf("insert ops group: %v", err)
 	}
-	if _, err := conn.Exec(`INSERT INTO permission_groups(name,description,permissions_json) VALUES (?,?,?)`, "客服管理员", "old", `["dashboard.overview"]`); err != nil {
+	if err := gdb.Table("permission_groups").Create(map[string]any{
+		"name":             "客服管理员",
+		"description":      "old",
+		"permissions_json": `["dashboard.overview"]`,
+		"created_at":       now,
+		"updated_at":       now,
+	}).Error; err != nil {
 		t.Fatalf("insert cs group: %v", err)
 	}
 
-	if err := EnsurePermissionGroups(conn, dialect); err != nil {
+	if err := EnsurePermissionGroups(gdb); err != nil {
 		t.Fatalf("ensure permission groups: %v", err)
 	}
 
 	for _, name := range []string{"运维管理员", "客服管理员"} {
 		var raw string
-		if err := conn.QueryRow(`SELECT permissions_json FROM permission_groups WHERE name = ?`, name).Scan(&raw); err != nil {
+		if err := gdb.Table("permission_groups").
+			Select("permissions_json").
+			Where("name = ?", name).
+			Scan(&raw).Error; err != nil {
 			t.Fatalf("select perms: %v", err)
 		}
 		var perms []string

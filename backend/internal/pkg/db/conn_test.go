@@ -26,3 +26,10 @@ func TestOpenMissingDBType(t *testing.T) {
 		t.Fatalf("expected missing APP_DB_TYPE error, got %v", err)
 	}
 }
+
+func TestOpenSQLiteMissingDBPath(t *testing.T) {
+	_, err := Open(config.Config{DBType: "sqlite"})
+	if err == nil || !strings.Contains(err.Error(), "missing APP_DB_PATH for sqlite") {
+		t.Fatalf("expected missing APP_DB_PATH for sqlite, got %v", err)
+	}
+}

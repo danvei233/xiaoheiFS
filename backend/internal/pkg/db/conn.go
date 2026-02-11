@@ -33,6 +33,9 @@ func Open(cfg config.Config) (*Conn, error) {
 
 	switch dbType {
 	case "sqlite":
+		if strings.TrimSpace(cfg.DBPath) == "" {
+			return nil, errors.New("missing APP_DB_PATH for sqlite")
+		}
 		dir := filepath.Dir(cfg.DBPath)
 		if dir != "" && dir != "." {
 			if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {

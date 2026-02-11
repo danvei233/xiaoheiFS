@@ -52,20 +52,20 @@ func main() {
 	if initLockErr != nil && !os.IsNotExist(initLockErr) {
 		log.Fatalf("init lock: %v", initLockErr)
 	}
-	if err := seed.EnsureSettingsGorm(conn.Gorm); err != nil {
+	if err := seed.EnsureSettings(conn.Gorm); err != nil {
 		log.Fatalf("seed settings: %v", err)
 	}
-	if err := seed.EnsurePermissionDefaultsGorm(conn.Gorm); err != nil {
+	if err := seed.EnsurePermissionDefaults(conn.Gorm); err != nil {
 		log.Fatalf("seed permission defaults: %v", err)
 	}
-	if err := seed.EnsurePermissionGroupsGorm(conn.Gorm); err != nil {
+	if err := seed.EnsurePermissionGroups(conn.Gorm); err != nil {
 		log.Fatalf("seed permission groups: %v", err)
 	}
 	if !initLocked {
-		if err := seed.EnsureCMSDefaultsGorm(conn.Gorm); err != nil {
+		if err := seed.EnsureCMSDefaults(conn.Gorm); err != nil {
 			log.Fatalf("seed cms defaults: %v", err)
 		}
-		if err := seed.SeedIfEmptyGorm(conn.Gorm); err != nil {
+		if err := seed.SeedIfEmpty(conn.Gorm); err != nil {
 			log.Fatalf("seed: %v", err)
 		}
 		if err := os.MkdirAll(filepath.Dir(initLockPath), 0o755); err != nil {
