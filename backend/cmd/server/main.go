@@ -44,20 +44,20 @@ func main() {
 	if initLockErr != nil && !os.IsNotExist(initLockErr) {
 		log.Fatalf("init lock: %v", initLockErr)
 	}
-	if err := seed.EnsureSettings(conn.SQL, conn.Dialect); err != nil {
+	if err := seed.EnsureSettingsGorm(conn.Gorm); err != nil {
 		log.Fatalf("seed settings: %v", err)
 	}
-	if err := seed.EnsurePermissionDefaults(conn.SQL, conn.Dialect); err != nil {
+	if err := seed.EnsurePermissionDefaultsGorm(conn.Gorm); err != nil {
 		log.Fatalf("seed permission defaults: %v", err)
 	}
-	if err := seed.EnsurePermissionGroups(conn.SQL, conn.Dialect); err != nil {
+	if err := seed.EnsurePermissionGroupsGorm(conn.Gorm); err != nil {
 		log.Fatalf("seed permission groups: %v", err)
 	}
 	if !initLocked {
-		if err := seed.EnsureCMSDefaults(conn.SQL, conn.Dialect); err != nil {
+		if err := seed.EnsureCMSDefaultsGorm(conn.Gorm); err != nil {
 			log.Fatalf("seed cms defaults: %v", err)
 		}
-		if err := seed.SeedIfEmpty(conn.SQL); err != nil {
+		if err := seed.SeedIfEmptyGorm(conn.Gorm); err != nil {
 			log.Fatalf("seed: %v", err)
 		}
 		if err := os.MkdirAll(filepath.Dir(initLockPath), 0o755); err != nil {
@@ -71,7 +71,7 @@ func main() {
 		log.Fatalf("uploads dir: %v", err)
 	}
 
-	repoSQLite := repo.NewSQLiteRepo(conn.Gorm)
+	repoSQLite := repo.NewGormRepo(conn.Gorm)
 
 	pluginCipher, err := cryptox.NewAESGCM(cfg.PluginMasterKey)
 	if err != nil {
@@ -152,7 +152,7 @@ func main() {
 	}
 }
 
-func getSettingValue(repo *repo.SQLiteRepo, key string) string {
+func getSettingValue(repo *repo.GormRepo, key string) string {
 	setting, err := repo.GetSetting(context.Background(), key)
 	if err != nil {
 		return ""
