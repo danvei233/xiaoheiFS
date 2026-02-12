@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.2.0+1
 
 environment:
   sdk: ^3.10.8
@@ -38,6 +38,8 @@ dependencies:
   # State management
   flutter_riverpod: ^2.5.0
   riverpod_annotation: ^2.3.5
+
+  firebase_core: ^3.9.0
 
   # HTTP requests
   dio: ^5.4.3
@@ -86,6 +88,7 @@ dev_dependencies:
   riverpod_generator: ^2.4.0
   riverpod_lint: ^2.3.10
   custom_lint: ^0.6.4
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -97,6 +100,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  assets:
+    - assets/app_icon.png
+    - assets/app_icon.svg
 
   # To add assets to your application, add an assets section, like this:
   # assets:
@@ -128,4 +135,21 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# Flutter Launcher Icons configuration
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/app_icon.png"
+  adaptive_icon_background: "#667eea"
+  adaptive_icon_foreground: "assets/app_icon.png"
+  min_sdk_android: 21
+  web:
+    generate: false
+  windows:
+    generate: false
+  macos:
+    generate: false
+  linux:
+    generate: false
 

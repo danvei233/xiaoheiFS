@@ -1,6 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../providers/realname_provider.dart';
@@ -14,26 +13,20 @@ class RealnamePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final realnameState = ref.watch(realnameProvider);
-    final isMobileLike = MediaQuery.of(context).size.width <= 1024;
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && isMobileLike) {
-          context.go('/console/more');
-        }
-      },
-      child: Scaffold(
+    return Scaffold(
       body: realnameState.loading
           ? const Center(child: CircularProgressIndicator())
           : realnameState.error != null
-              ? Center(child: Text('错误: ${realnameState.error}'))
-              : _buildContent(context, ref, realnameState.data ?? {}),
-      ),
+          ? Center(child: Text('错误: ${realnameState.error}'))
+          : _buildContent(context, ref, realnameState.data ?? {}),
     );
   }
 
-  Widget _buildContent(BuildContext context, WidgetRef ref, Map<String, dynamic> status) {
+  Widget _buildContent(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> status,
+  ) {
     final isVerified = status['verified'] == true;
     final verification = status['verification'] is Map<String, dynamic>
         ? status['verification'] as Map<String, dynamic>
@@ -87,10 +80,7 @@ class RealnamePage extends ConsumerWidget {
             const SizedBox(height: 24),
             const Text(
               '提交实名认证',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             _buildVerificationForm(context, ref, verification),
@@ -103,16 +93,23 @@ class RealnamePage extends ConsumerWidget {
     );
   }
 
-  Widget _buildVerificationForm(BuildContext context, WidgetRef ref, Map<String, dynamic>? verification) {
+  Widget _buildVerificationForm(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? verification,
+  ) {
     final realNameController = TextEditingController();
     final idNumberController = TextEditingController();
 
     if (verification != null) {
-      realNameController.text = verification['real_name'] ?? verification['realName'] ?? '';
-      idNumberController.text = verification['id_number'] ?? verification['idNumber'] ?? '';
+      realNameController.text =
+          verification['real_name'] ?? verification['realName'] ?? '';
+      idNumberController.text =
+          verification['id_number'] ?? verification['idNumber'] ?? '';
     }
 
-    final canEdit = verification == null || verification['status'] == 'rejected';
+    final canEdit =
+        verification == null || verification['status'] == 'rejected';
 
     return Card(
       child: Padding(
@@ -133,7 +130,8 @@ class RealnamePage extends ConsumerWidget {
               enabled: canEdit,
               maxLength: 18,
             ),
-            if (verification != null && verification['status'] == 'rejected') ...[
+            if (verification != null &&
+                verification['status'] == 'rejected') ...[
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
@@ -162,19 +160,19 @@ class RealnamePage extends ConsumerWidget {
                 onPressed: () async {
                   try {
                     await ref.read(realnameProvider.notifier).submit({
-                          'real_name': realNameController.text,
-                          'id_number': idNumberController.text,
-                        });
+                      'real_name': realNameController.text,
+                      'id_number': idNumberController.text,
+                    });
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('提交成功')),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('提交成功')));
                     }
                   } catch (e) {
                     if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(e.toString())),
-                      );
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(e.toString())));
                     }
                   }
                 },
@@ -189,8 +187,10 @@ class RealnamePage extends ConsumerWidget {
   Widget _buildVerificationInfo(Map<String, dynamic> verification) {
     final realName = verification['real_name'] ?? verification['realName'];
     final idNumber = verification['id_number'] ?? verification['idNumber'];
-    final submittedAt = verification['submitted_at'] ?? verification['submittedAt'];
-    final reviewedAt = verification['reviewed_at'] ?? verification['reviewedAt'];
+    final submittedAt =
+        verification['submitted_at'] ?? verification['submittedAt'];
+    final reviewedAt =
+        verification['reviewed_at'] ?? verification['reviewedAt'];
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -199,17 +199,11 @@ class RealnamePage extends ConsumerWidget {
           children: [
             const Text(
               '认证信息',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             _buildInfoRow('真实姓名', realName?.toString()),
-            _buildInfoRow(
-              '身份证号',
-              _maskIdNumber(idNumber?.toString()),
-            ),
+            _buildInfoRow('身份证号', _maskIdNumber(idNumber?.toString())),
             _buildInfoRow('提交时间', submittedAt?.toString()),
             if (reviewedAt != null)
               _buildInfoRow('审核时间', reviewedAt?.toString()),
@@ -226,19 +220,12 @@ class RealnamePage extends ConsumerWidget {
         children: [
           SizedBox(
             width: 80,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: AppColors.gray500,
-              ),
-            ),
+            child: Text(label, style: TextStyle(color: AppColors.gray500)),
           ),
           Expanded(
             child: Text(
               value ?? '-',
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -256,4 +243,3 @@ class RealnamePage extends ConsumerWidget {
     return value.replaceRange(start, end, '*' * (end - start));
   }
 }
-

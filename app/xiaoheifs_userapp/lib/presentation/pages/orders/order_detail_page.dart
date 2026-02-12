@@ -531,7 +531,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                 final status = p['status'] ?? p['Status'] ?? '';
                 return ListTile(
                   title: Text('$method'),
-                  subtitle: Text('״̬: $status'),
+                  subtitle: Text('状态: $status'),
                   trailing: Text(MoneyFormatter.format(amount)),
                 );
               }),

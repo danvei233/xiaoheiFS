@@ -185,6 +185,10 @@ func (s *OrderService) completeProvision(ctx context.Context, job domain.Provisi
 	if err != nil {
 		return err
 	}
+	effectiveHostID := job.HostID
+	if info.HostID > 0 {
+		effectiveHostID = info.HostID
+	}
 	status := MapAutomationState(info.State)
 	expireAt := info.ExpireAt
 	if expireAt == nil {
@@ -202,6 +206,13 @@ func (s *OrderService) completeProvision(ctx context.Context, job domain.Provisi
 	accessInfo := mergeAccessInfo("", info)
 	inst, err := s.vps.GetInstanceByOrderItem(ctx, job.OrderItemID)
 	if err == nil {
+		if effectiveHostID > 0 && inst.AutomationInstanceID != fmt.Sprintf("%d", effectiveHostID) {
+			inst.AutomationInstanceID = fmt.Sprintf("%d", effectiveHostID)
+			if name != "" {
+				inst.Name = name
+			}
+			_ = s.vps.UpdateInstanceLocal(ctx, inst)
+		}
 		accessInfo = mergeAccessInfo(inst.AccessInfoJSON, info)
 		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State)
 		if expireAt != nil {
@@ -213,7 +224,7 @@ func (s *OrderService) completeProvision(ctx context.Context, job domain.Provisi
 		newInst := domain.VPSInstance{
 			UserID:               order.UserID,
 			OrderItemID:          item.ID,
-			AutomationInstanceID: fmt.Sprintf("%d", job.HostID),
+			AutomationInstanceID: fmt.Sprintf("%d", effectiveHostID),
 			GoodsTypeID:          item.GoodsTypeID,
 			Name:                 name,
 			Region:               snap.Region,
@@ -240,7 +251,7 @@ func (s *OrderService) completeProvision(ctx context.Context, job domain.Provisi
 		}
 	}
 	_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusActive)
-	_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", job.HostID))
+	_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", effectiveHostID))
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID})
 	}
@@ -403,7 +414,7 @@ func (s *OrderService) ReconcileProvisioningOrders(ctx context.Context, limit in
 				}
 				if isVPSReadyStatus(inst.Status) {
 					_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusActive)
-					if item.AutomationInstanceID == "" && inst.AutomationInstanceID != "" {
+					if inst.AutomationInstanceID != "" && item.AutomationInstanceID != inst.AutomationInstanceID {
 						_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, inst.AutomationInstanceID)
 					}
 				}

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/utils/avatar_url.dart';
 import '../../providers/auth_provider.dart';
 
 class MorePage extends ConsumerWidget {
@@ -59,7 +61,12 @@ class MorePage extends ConsumerWidget {
   }
 
   Widget _buildUserCard(BuildContext context, dynamic user) {
-    final avatar = user?.avatarUrl ?? user?.avatar;
+    final avatar = resolveUserAvatarUrl(
+      baseUrl: ApiClient.instance.dio.options.baseUrl,
+      qq: user?.qq?.toString(),
+      avatarUrl: user?.avatarUrl?.toString(),
+      avatar: user?.avatar?.toString(),
+    );
     final username = user?.username ?? '未登录';
     final email = user?.email ?? '';
     return Card(
@@ -70,17 +77,20 @@ class MorePage extends ConsumerWidget {
           padding: const EdgeInsets.all(20),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: AppColors.primaryLight,
-                backgroundImage: avatar != null && avatar.toString().isNotEmpty
-                    ? NetworkImage(avatar.toString())
-                    : null,
-                child: Text(
-                  username.toString().isNotEmpty ? username.toString()[0].toUpperCase() : 'U',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              if (avatar.isNotEmpty)
+                CircleAvatar(
+                  radius: 28,
+                  backgroundImage: NetworkImage(avatar),
+                )
+              else
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: AppColors.primaryLight,
+                  child: Text(
+                    username.toString().isNotEmpty ? username.toString()[0].toUpperCase() : 'U',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

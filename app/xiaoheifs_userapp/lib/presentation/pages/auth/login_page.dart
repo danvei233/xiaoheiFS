@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../../core/config/api_config.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
@@ -94,10 +95,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             password: password,
             apiUrl: apiUrl,
           );
-    } catch (e) {
-      final message = _normalizeError(e.toString());
-      _setErrorMessage(message);
-      _showErrorSnackBar(message);
+    } catch (_) {
+      // Error is handled by authProvider listener to avoid duplicate toasts.
     }
   }
 
@@ -267,23 +266,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (lower.contains('localhost') || lower.contains('127.0.0.1')) {
       return 'Android 设备不能访问手机自身 localhost，请改成电脑局域网 IP。';
     }
+    if (lower.contains('invalid credentials')) {
+      return '无效登录凭据';
+    }
     return text;
   }
 
   Widget _buildHeader() {
     return Column(
       children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(
-            Icons.cloud_outlined,
-            size: 48,
-            color: Colors.white,
+        SizedBox(
+          width: 100,
+          height: 100,
+          child: SvgPicture.asset(
+            'assets/app_icon.svg',
+            fit: BoxFit.contain,
           ),
         ),
         const SizedBox(height: 24),

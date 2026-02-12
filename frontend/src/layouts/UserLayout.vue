@@ -236,7 +236,7 @@
             <h2>{{ brandName }}</h2>
           </div>
           <nav class="mobile-nav">
-            <router-link
+            <div
               v-for="group in menuGroups"
               :key="group.title"
               class="mobile-menu-group"
@@ -254,7 +254,7 @@
                 <span>{{ item.label }}</span>
                 <span v-if="item.badge" class="mobile-menu-badge">{{ item.badge }}</span>
               </router-link>
-            </router-link>
+            </div>
           </nav>
         </div>
       </a-drawer>

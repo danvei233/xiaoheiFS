@@ -478,6 +478,17 @@ func (s *OrderService) RefreshOrder(ctx context.Context, userID int64, orderID i
 		if err != nil {
 			continue
 		}
+		effectiveHostID := hostID
+		if info.HostID > 0 {
+			effectiveHostID = info.HostID
+		}
+		if effectiveHostID > 0 && inst.AutomationInstanceID != fmt.Sprintf("%d", effectiveHostID) {
+			inst.AutomationInstanceID = fmt.Sprintf("%d", effectiveHostID)
+			if info.HostName != "" {
+				inst.Name = info.HostName
+			}
+			_ = s.vps.UpdateInstanceLocal(ctx, inst)
+		}
 		status := MapAutomationState(info.State)
 		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State)
 		if info.ExpireAt != nil {
@@ -492,9 +503,9 @@ func (s *OrderService) RefreshOrder(ctx context.Context, userID int64, orderID i
 		}
 		if isReadyState(info.State) {
 			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusActive)
-			if inst.AutomationInstanceID == "" {
-				_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", info.HostID))
-			}
+		}
+		if inst.AutomationInstanceID != "" && item.AutomationInstanceID != inst.AutomationInstanceID {
+			_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, inst.AutomationInstanceID)
 		}
 		refreshed, _ := s.vps.GetInstance(ctx, inst.ID)
 		updated = append(updated, refreshed)
@@ -1637,6 +1648,13 @@ func (s *OrderService) ensureProvisioningInstance(ctx context.Context, order dom
 	}
 	inst, err := s.vps.GetInstanceByOrderItem(ctx, item.ID)
 	if err == nil {
+		if hostID > 0 && inst.AutomationInstanceID != fmt.Sprintf("%d", hostID) {
+			inst.AutomationInstanceID = fmt.Sprintf("%d", hostID)
+			if hostName != "" {
+				inst.Name = hostName
+			}
+			_ = s.vps.UpdateInstanceLocal(ctx, inst)
+		}
 		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusProvisioning, 0)
 		if inst.ExpireAt == nil {
 			_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, expireAt)

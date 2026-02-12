@@ -71,6 +71,10 @@ class StatusTag extends StatelessWidget {
         bgColor = AppColors.orderPending.withOpacity(0.1);
         textColor = AppColors.orderPending;
         break;
+      case 'provisioning':
+        bgColor = AppColors.orderPending.withOpacity(0.1);
+        textColor = AppColors.orderPending;
+        break;
       case 'active':
         bgColor = AppColors.orderPaid.withOpacity(0.1);
         textColor = AppColors.orderPaid;
@@ -147,6 +151,8 @@ class StatusTag extends StatelessWidget {
     switch (status?.toLowerCase()) {
       case 'pending_payment':
         return '等待支付';
+      case 'provisioning':
+        return '开通中';
       case 'active':
         return '生效中';
       case 'pending_review':

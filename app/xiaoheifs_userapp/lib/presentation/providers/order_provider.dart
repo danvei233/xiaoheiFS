@@ -75,9 +75,7 @@ final orderDetailProvider = StateNotifierProvider<OrderDetailNotifier, OrderDeta
 });
 
 class OrderListNotifier extends StateNotifier<OrderListState> {
-  OrderListNotifier(this._repo) : super(const OrderListState()) {
-    fetchOrders();
-  }
+  OrderListNotifier(this._repo) : super(const OrderListState());
 
   final OrderRepository _repo;
   final Map<String, _OrderCacheEntry> _cache = {};
@@ -88,6 +86,7 @@ class OrderListNotifier extends StateNotifier<OrderListState> {
     int limit = 10,
     int offset = 0,
     bool force = false,
+    bool silent = false,
   }) async {
     final cacheKey = _cacheKey(status, limit, offset);
     if (!force) {
@@ -102,7 +101,12 @@ class OrderListNotifier extends StateNotifier<OrderListState> {
         return;
       }
     }
-    state = state.copyWith(loading: true, error: null);
+    final hasData = state.items.isNotEmpty;
+    if (!silent || !hasData) {
+      state = state.copyWith(loading: true, error: null);
+    } else if (state.error != null) {
+      state = state.copyWith(error: null);
+    }
     try {
       final payload = await _repo.listOrders(status: status, limit: limit, offset: offset);
       final items = payload['items'];
@@ -116,8 +120,19 @@ class OrderListNotifier extends StateNotifier<OrderListState> {
     }
   }
 
-  Future<void> refresh({String? status, int limit = 10, int offset = 0}) async {
-    await fetchOrders(status: status, limit: limit, offset: offset, force: true);
+  Future<void> refresh({
+    String? status,
+    int limit = 10,
+    int offset = 0,
+    bool silent = true,
+  }) async {
+    await fetchOrders(
+      status: status,
+      limit: limit,
+      offset: offset,
+      force: true,
+      silent: silent,
+    );
   }
 
   String _cacheKey(String? status, int limit, int offset) =>

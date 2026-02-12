@@ -1,11 +1,15 @@
-﻿import 'dart:ui';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/utils/avatar_url.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/nav_history_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/refresh_provider.dart';
 import '../../providers/site_provider.dart';
@@ -15,16 +19,18 @@ import '../../providers/site_provider.dart';
 class MainLayout extends ConsumerStatefulWidget {
   final Widget child;
 
-  const MainLayout({
-    super.key,
-    required this.child,
-  });
+  const MainLayout({super.key, required this.child});
 
   @override
   ConsumerState<MainLayout> createState() => _MainLayoutState();
 }
 
 class _MainLayoutState extends ConsumerState<MainLayout> {
+  DateTime? _lastBackPressTime;
+  String? _lastSyncedLocation;
+  bool _pendingResetHistory = false;
+  bool _navigatingFromHistoryBack = false;
+
   BoxDecoration _glassDecoration(
     ColorScheme colorScheme, {
     bool top = false,
@@ -57,9 +63,12 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(() => ref.read(notificationProvider.notifier).fetchUnreadCount());
+    Future.microtask(
+      () => ref.read(notificationProvider.notifier).fetchUnreadCount(),
+    );
     Future.microtask(() => ref.read(siteProvider.notifier).fetchSettings());
   }
+
   static const List<NavigationItem> _desktopItems = [
     NavigationItem(
       icon: Icons.dashboard_outlined,
@@ -145,6 +154,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   ];
 
   void _onDestinationSelected(int index, List<NavigationItem> items) {
+    _pendingResetHistory = true;
     context.go(items[index].route);
   }
 
@@ -179,62 +189,98 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
     final user = authState.user;
-    final unreadCount = ref.watch(notificationProvider.select((state) => state.unreadCount));
+    final unreadCount = ref.watch(
+      notificationProvider.select((state) => state.unreadCount),
+    );
     final siteName = ref.watch(siteProvider.select((state) => state.siteName));
     final isDesktop = MediaQuery.of(context).size.width > 1024;
     final location = GoRouterState.of(context).uri.path;
+    _syncNavHistory(location);
 
     if (isDesktop) {
       final selectedIndex = _desktopIndexForLocation(location);
       return _wrapBackHandler(
         isDesktop: true,
-        location: location,
-        child: _buildDesktopLayout(user, selectedIndex, unreadCount, location, siteName),
+        child: _buildDesktopLayout(
+          user,
+          selectedIndex,
+          unreadCount,
+          location,
+          siteName,
+        ),
       );
     }
 
     final selectedIndex = _mobileIndexForLocation(location);
     return _wrapBackHandler(
       isDesktop: false,
-      location: location,
-      child: _buildMobileLayout(user, selectedIndex, unreadCount, location, siteName),
+      child: _buildMobileLayout(
+        user,
+        selectedIndex,
+        unreadCount,
+        location,
+        siteName,
+      ),
     );
   }
 
-  Widget _wrapBackHandler({
-    required bool isDesktop,
-    required String location,
-    required Widget child,
-  }) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (Navigator.of(context).canPop()) {
-          return true;
+  Widget _wrapBackHandler({required bool isDesktop, required Widget child}) {
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+
+        final previousRoute = ref.read(navHistoryProvider.notifier).pop();
+        if (previousRoute != null) {
+          _navigatingFromHistoryBack = true;
+          context.go(previousRoute);
+          return;
         }
 
-        final backRoute = _resolveBackRoute(location);
-        if (backRoute != null && backRoute != location) {
-          context.go(backRoute);
-          return false;
+        if (!isDesktop) {
+          final now = DateTime.now();
+          if (_lastBackPressTime != null &&
+              now.difference(_lastBackPressTime!).inSeconds < 2) {
+            SystemNavigator.pop();
+          } else {
+            _lastBackPressTime = now;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('再按一次返回键退出'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
         }
-
-        // Already at root page: allow system pop/exit.
-        return !isDesktop;
       },
       child: child,
     );
   }
 
-  String? _resolveBackRoute(String location) {
-    if (location.startsWith('/console/vps/')) return '/console/vps';
-    if (location.startsWith('/console/orders/')) return '/console/orders';
-    if (location.startsWith('/console/tickets/')) return '/console/tickets';
-    if (location.startsWith('/console/notifications')) return '/console/more';
-    if (location.startsWith('/console/buy')) return '/console/vps';
-    if (location.startsWith('/console/billing')) return '/console/more';
-    if (location.startsWith('/console/realname')) return '/console/more';
-    if (location.startsWith('/console/profile')) return '/console/more';
-    return null;
+  void _syncNavHistory(String location) {
+    if (_lastSyncedLocation == location) {
+      return;
+    }
+    _lastSyncedLocation = location;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final navHistory = ref.read(navHistoryProvider.notifier);
+
+      if (_pendingResetHistory) {
+        navHistory.resetTo(location);
+        _pendingResetHistory = false;
+        _navigatingFromHistoryBack = false;
+        return;
+      }
+
+      if (_navigatingFromHistoryBack) {
+        _navigatingFromHistoryBack = false;
+        return;
+      }
+
+      navHistory.push(location);
+    });
   }
 
   int _desktopIndexForLocation(String location) {
@@ -249,7 +295,8 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   }
 
   int _mobileIndexForLocation(String location) {
-    if (location.startsWith('/console/vps') || location.startsWith('/console/buy')) {
+    if (location.startsWith('/console/vps') ||
+        location.startsWith('/console/buy')) {
       return 1;
     }
     if (location.startsWith('/console/cart')) return 2;
@@ -275,43 +322,44 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       body: SafeArea(
         child: Row(
           children: [
-          NavigationRail(
-            selectedIndex: selectedIndex,
-            onDestinationSelected: (index) => _onDestinationSelected(index, _desktopItems),
-            labelType: NavigationRailLabelType.all,
-            leading: Column(
-              children: [
-                const SizedBox(height: 16),
-                _buildLogo(),
-                const SizedBox(height: 32),
-              ],
+            NavigationRail(
+              selectedIndex: selectedIndex,
+              onDestinationSelected: (index) =>
+                  _onDestinationSelected(index, _desktopItems),
+              labelType: NavigationRailLabelType.all,
+              leading: Column(
+                children: [
+                  const SizedBox(height: 16),
+                  _buildLogo(),
+                  const SizedBox(height: 32),
+                ],
+              ),
+              trailing: Column(
+                children: [
+                  const Divider(),
+                  _buildUserMenu(user),
+                  const SizedBox(height: 16),
+                ],
+              ),
+              destinations: _desktopItems
+                  .map(
+                    (item) => NavigationRailDestination(
+                      icon: Icon(item.icon),
+                      selectedIcon: Icon(item.selectedIcon),
+                      label: Text(item.label),
+                    ),
+                  )
+                  .toList(),
             ),
-            trailing: Column(
-              children: [
-                const Divider(),
-                _buildUserMenu(user),
-                const SizedBox(height: 16),
-              ],
+            const VerticalDivider(thickness: 1, width: 1),
+            Expanded(
+              child: Column(
+                children: [
+                  _buildTopBar(user, siteName, unreadCount, route),
+                  Expanded(child: widget.child),
+                ],
+              ),
             ),
-            destinations: _desktopItems
-                .map(
-                  (item) => NavigationRailDestination(
-                    icon: Icon(item.icon),
-                    selectedIcon: Icon(item.selectedIcon),
-                    label: Text(item.label),
-                  ),
-                )
-                .toList(),
-          ),
-          const VerticalDivider(thickness: 1, width: 1),
-          Expanded(
-            child: Column(
-              children: [
-                _buildTopBar(user, siteName, unreadCount, route),
-                Expanded(child: widget.child),
-              ],
-            ),
-          ),
           ],
         ),
       ),
@@ -342,7 +390,8 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
             decoration: _glassDecoration(colorScheme, top: true),
             child: BottomNavigationBar(
               currentIndex: selectedIndex,
-              onTap: (index) => _onDestinationSelected(index, _mobilePrimaryItems),
+              onTap: (index) =>
+                  _onDestinationSelected(index, _mobilePrimaryItems),
               type: BottomNavigationBarType.fixed,
               backgroundColor: Colors.transparent,
               elevation: 0,
@@ -384,17 +433,19 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
           const SizedBox(height: 8),
           Text(
             siteName.isNotEmpty ? siteName : AppStrings.appTitle,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTopBar(dynamic user, String title, int unreadCount, String route) {
+  Widget _buildTopBar(
+    dynamic user,
+    String title,
+    int unreadCount,
+    String route,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final onSurface = colorScheme.onSurface;
     return ClipRect(
@@ -423,7 +474,12 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     );
   }
 
-  Widget _buildMobileTopBar(dynamic user, int unreadCount, String route, String siteName) {
+  Widget _buildMobileTopBar(
+    dynamic user,
+    int unreadCount,
+    String route,
+    String siteName,
+  ) {
     final colorScheme = Theme.of(context).colorScheme;
     final onSurface = colorScheme.onSurface;
     final isNarrow = MediaQuery.of(context).size.width < 390;
@@ -431,7 +487,10 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: isNarrow ? 12 : 16, vertical: isNarrow ? 8 : 12),
+          padding: EdgeInsets.symmetric(
+            horizontal: isNarrow ? 12 : 16,
+            vertical: isNarrow ? 8 : 12,
+          ),
           decoration: _glassDecoration(colorScheme, bottom: true),
           child: Row(
             children: [
@@ -453,11 +512,15 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     );
   }
 
-    Widget _buildHeaderActions(int unreadCount, String route) {
+  Widget _buildHeaderActions(int unreadCount, String route) {
     return Row(
       children: [
         IconButton(
-          onPressed: () => ref.read(pageRefreshProvider.notifier).state = RefreshEvent(route: route, nonce: DateTime.now().millisecondsSinceEpoch),
+          onPressed: () =>
+              ref.read(pageRefreshProvider.notifier).state = RefreshEvent(
+                route: route,
+                nonce: DateTime.now().millisecondsSinceEpoch,
+              ),
           icon: const Icon(Icons.refresh),
           tooltip: AppStrings.refresh,
         ),
@@ -476,7 +539,10 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
                   right: -2,
                   top: -2,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.danger,
                       borderRadius: BorderRadius.circular(10),
@@ -497,22 +563,26 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   }
 
   Widget _buildUserMenu(dynamic user) {
-    final avatar = user?.avatarUrl ?? user?.avatar;
+    final avatarUrl = resolveUserAvatarUrl(
+      baseUrl: ApiClient.instance.dio.options.baseUrl,
+      qq: user?.qq?.toString(),
+      avatarUrl: user?.avatarUrl?.toString(),
+      avatar: user?.avatar?.toString(),
+    );
     return PopupMenuButton<String>(
-      icon: CircleAvatar(
-        backgroundColor: AppColors.primaryLight,
-        backgroundImage: avatar != null && avatar.toString().isNotEmpty
-            ? NetworkImage(avatar.toString())
-            : null,
-        child: Text(
-          (user?.username ?? 'U')[0].toUpperCase(),
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-      ),
+      icon: avatarUrl.isNotEmpty
+          ? CircleAvatar(backgroundImage: NetworkImage(avatarUrl))
+          : CircleAvatar(
+              backgroundColor: AppColors.primaryLight,
+              child: Text(
+                (user?.username ?? 'U')[0].toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
       onSelected: (value) {
         if (value == 'profile') {
           context.go('/console/profile');
@@ -522,10 +592,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         }
       },
       itemBuilder: (context) => [
-        PopupMenuItem(
-          value: 'profile',
-          child: Text(user?.username ?? 'User'),
-        ),
+        PopupMenuItem(value: 'profile', child: Text(user?.username ?? 'User')),
         const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'logout',
@@ -556,16 +623,3 @@ class NavigationItem {
     required this.route,
   });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

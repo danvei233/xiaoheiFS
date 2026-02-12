@@ -1,6 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/utils/money_formatter.dart';
@@ -13,28 +12,19 @@ class BillingPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final walletState = ref.watch(walletProvider);
-    final isMobileLike = MediaQuery.of(context).size.width <= 1024;
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && isMobileLike) {
-          context.go('/console/more');
-        }
-      },
-      child: Scaffold(
+    return Scaffold(
       body: walletState.loading
           ? const Center(child: CircularProgressIndicator())
           : walletState.error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      '加载钱包失败：${walletState.error}',
-                      style: const TextStyle(color: AppColors.danger),
-                    ),
-                  ),
-                )
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  '加载钱包失败：${walletState.error}',
+                  style: const TextStyle(color: AppColors.danger),
+                ),
+              ),
+            )
           : RefreshIndicator(
               onRefresh: () => ref.read(walletProvider.notifier).refresh(),
               child: SingleChildScrollView(
@@ -51,14 +41,12 @@ class BillingPage extends ConsumerWidget {
                 ),
               ),
             ),
-      ),
     );
   }
 
   Widget _buildBalanceCard(Map<String, dynamic>? wallet) {
     final rawWallet = wallet?['wallet'];
-    final data =
-        rawWallet is Map ? rawWallet.cast<String, dynamic>() : wallet;
+    final data = rawWallet is Map ? rawWallet.cast<String, dynamic>() : wallet;
     final balance = double.tryParse('${data?['balance'] ?? 0}') ?? 0;
     final currency = data?['currency'] ?? 'CNY';
     return Card(
@@ -82,7 +70,10 @@ class BillingPage extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              MoneyFormatter.format(balance, currency: currency == 'CNY' ? '¥' : currency),
+              MoneyFormatter.format(
+                balance,
+                currency: currency == 'CNY' ? '¥' : currency,
+              ),
               style: const TextStyle(
                 fontSize: 36,
                 fontWeight: FontWeight.bold,
@@ -95,7 +86,11 @@ class BillingPage extends ConsumerWidget {
     );
   }
 
-  Widget _buildActionButtons(BuildContext context, WidgetRef ref, Map<String, dynamic>? wallet) {
+  Widget _buildActionButtons(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? wallet,
+  ) {
     return Row(
       children: [
         Expanded(
@@ -132,10 +127,7 @@ class BillingPage extends ConsumerWidget {
           children: [
             const Text(
               AppStrings.transactionHistory,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
             if (transactions.isEmpty)
@@ -150,9 +142,13 @@ class BillingPage extends ConsumerWidget {
                 final type = tx['type'] ?? '';
                 final amount = tx['amount'] ?? 0;
                 final createdAt = tx['created_at'] ?? '';
-                final amountValue = amount is num ? amount.toDouble() : double.tryParse(amount.toString()) ?? 0;
+                final amountValue = amount is num
+                    ? amount.toDouble()
+                    : double.tryParse(amount.toString()) ?? 0;
                 final typeLabel = _mapTxType(type.toString());
-                final amountColor = amountValue < 0 ? AppColors.danger : AppColors.success;
+                final amountColor = amountValue < 0
+                    ? AppColors.danger
+                    : AppColors.success;
                 return ListTile(
                   title: Text(typeLabel),
                   subtitle: Text('$createdAt'),
@@ -203,28 +199,28 @@ class BillingPage extends ConsumerWidget {
             onPressed: () async {
               final amount = double.tryParse(amountController.text.trim()) ?? 0;
               if (amount <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入有效金额')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('请输入有效金额')));
                 return;
               }
               try {
                 await ref.read(walletProvider.notifier).recharge({
-                      'amount': amount,
-                      'note': noteController.text.trim(),
-                    });
+                  'amount': amount,
+                  'note': noteController.text.trim(),
+                });
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('充值提交成功')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('充值提交成功')));
                   await ref.read(walletProvider.notifier).refresh();
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString())),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(e.toString())));
                 }
               }
             },
@@ -235,12 +231,15 @@ class BillingPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _showWithdrawDialog(BuildContext context, WidgetRef ref, Map<String, dynamic>? wallet) async {
+  Future<void> _showWithdrawDialog(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic>? wallet,
+  ) async {
     final amountController = TextEditingController();
     final noteController = TextEditingController();
     final rawWallet = wallet?['wallet'];
-    final data =
-        rawWallet is Map ? rawWallet.cast<String, dynamic>() : wallet;
+    final data = rawWallet is Map ? rawWallet.cast<String, dynamic>() : wallet;
     final balance = double.tryParse('${data?['balance'] ?? 0}') ?? 0;
 
     await showDialog(
@@ -273,35 +272,35 @@ class BillingPage extends ConsumerWidget {
             onPressed: () async {
               final amount = double.tryParse(amountController.text.trim()) ?? 0;
               if (amount <= 0) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('请输入有效金额')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('请输入有效金额')));
                 return;
               }
               if (amount > balance) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('提现金额不能大于余额')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('提现金额不能大于余额')));
                 return;
               }
               try {
                 await ref.read(walletProvider.notifier).withdraw({
-                      'amount': amount,
-                      'note': noteController.text.trim(),
-                      'meta': {'channel': 'manual'},
-                    });
+                  'amount': amount,
+                  'note': noteController.text.trim(),
+                  'meta': {'channel': 'manual'},
+                });
                 if (context.mounted) {
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('提现提交成功')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('提现提交成功')));
                   await ref.read(walletProvider.notifier).refresh();
                 }
               } catch (e) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString())),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(e.toString())));
                 }
               }
             },
@@ -329,4 +328,3 @@ class BillingPage extends ConsumerWidget {
     }
   }
 }
-

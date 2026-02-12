@@ -88,9 +88,16 @@ class AuthNotifier extends StateNotifier<AuthState> {
         password: password,
       );
 
+      User? user = response.user;
+      try {
+        user = await _authRepository.getMe();
+      } catch (_) {
+        // Keep login response user as fallback when profile endpoint is temporarily unavailable.
+      }
+
       state = AuthState(
         status: AuthStatus.authenticated,
-        user: response.user,
+        user: user,
       );
     } catch (e) {
       state = AuthState(status: AuthStatus.error, error: e.toString());

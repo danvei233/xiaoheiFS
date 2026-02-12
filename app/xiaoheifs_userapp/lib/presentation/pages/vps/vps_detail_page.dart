@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/network/api_client.dart';
@@ -43,8 +44,6 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
   bool _showOsPassword = false;
   bool _showPanelPassword = false;
   String _currentRoute = '';
-  int _tabIndex = 0;
-  bool _fabLocked = false;
 
   @override
   void initState() {
@@ -78,24 +77,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
   }
 
   void _handleTabChanged() {
-    if (_tabController.indexIsChanging) {
-      if (!_fabLocked) {
-        setState(() => _fabLocked = true);
-      }
-      return;
-    }
-    final nextIndex = _tabController.index;
-    if (_tabIndex == nextIndex) {
-      if (_fabLocked) {
-        setState(() => _fabLocked = false);
-      }
-      return;
-    }
-    setState(() {
-      _tabIndex = nextIndex;
-      _fabLocked = false;
-    });
-    _refreshSecurityTabIfNeeded(nextIndex);
+    if (_tabController.indexIsChanging) return;
+    _refreshSecurityTabIfNeeded(_tabController.index);
   }
 
   void _refreshSecurityTabIfNeeded(int index) {
@@ -124,59 +107,12 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     final error = ref.watch(vpsDetailProvider.select((s) => s.error));
 
     return Scaffold(
-      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: _buildFab(),
       body: detail == null && loading
           ? const Center(child: CircularProgressIndicator())
           : detail == null && error != null
               ? Center(child: Text(error))
               : _buildContent(context, detail ?? {}, loading),
     );
-  }
-
-  Widget? _buildFab() {
-    switch (_tabIndex) {
-      case 2:
-        return FloatingActionButton(
-          onPressed: _fabLocked ? null : () => _openFirewallDialog(context),
-          child: const Icon(Icons.add),
-        );
-      case 3:
-        return FloatingActionButton(
-          onPressed: _fabLocked ? null : () => _openPortDialog(context),
-          child: const Icon(Icons.add),
-        );
-      case 4:
-        return FloatingActionButton(
-          onPressed: _fabLocked
-              ? null
-              : () async {
-            await _operate(
-              context,
-              () => ref.read(vpsRepositoryProvider).createSnapshot(widget.id),
-              '快照已创建',
-            );
-            ref.invalidate(vpsSnapshotsProvider(widget.id));
-          },
-          child: const Icon(Icons.add),
-        );
-      case 5:
-        return FloatingActionButton(
-          onPressed: _fabLocked
-              ? null
-              : () async {
-            await _operate(
-              context,
-              () => ref.read(vpsRepositoryProvider).createBackup(widget.id),
-              '备份已创建',
-            );
-            ref.invalidate(vpsBackupsProvider(widget.id));
-          },
-          child: const Icon(Icons.add),
-        );
-      default:
-        return null;
-    }
   }
 
   Widget _buildContent(BuildContext context, Map<String, dynamic> detail, bool loading) {
@@ -194,14 +130,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
           controller: _tabController,
           isScrollable: true,
           tabAlignment: TabAlignment.center,
-          onTap: (index) {
-            if (_tabIndex == index) return;
-            setState(() {
-              _tabIndex = index;
-              _fabLocked = true;
-            });
-            _refreshSecurityTabIfNeeded(index);
-          },
+          onTap: _refreshSecurityTabIfNeeded,
           tabs: const [
             Tab(text: '总览'),
             Tab(text: '实时监控'),
@@ -890,8 +819,11 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
 
         return LayoutBuilder(
           builder: (context, constraints) {
-            final isWide = constraints.maxWidth >= 900;
-            final cardWidth = isWide ? (constraints.maxWidth - 32) / 2 : constraints.maxWidth;
+            final maxWidth = constraints.maxWidth;
+            final columns = maxWidth >= 1280 ? 3 : (maxWidth >= 760 ? 2 : 1);
+            final cardWidth = columns == 1
+                ? maxWidth
+                : (maxWidth - (columns - 1) * 16) / columns;
             return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Wrap(
@@ -899,7 +831,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                 runSpacing: 16,
                 children: [
                   SizedBox(
-                    width: constraints.maxWidth,
+                    width: maxWidth,
                     child: _buildCard(
                       title: '系统表现',
                       icon: Icons.security,
@@ -1000,11 +932,12 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
 
   Widget _buildFirewall(BuildContext context) {
     final firewallAsync = ref.watch(vpsFirewallProvider(widget.id));
-    return firewallAsync.when(
+    return _buildTabFabShell(
+      body: firewallAsync.when(
       data: (items) {
         final rules = items.map(_normalizeFirewallRule).toList();
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           children: [
             if (rules.isEmpty)
               const EmptyState(message: AppStrings.noData, icon: Icons.security),
@@ -1041,16 +974,19 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(e.toString())),
+      ),
+      onPressed: () => _openFirewallDialog(context),
     );
   }
 
   Widget _buildPorts(BuildContext context) {
     final portsAsync = ref.watch(vpsPortsProvider(widget.id));
-    return portsAsync.when(
+    return _buildTabFabShell(
+      body: portsAsync.when(
       data: (items) {
         final ports = items.map(_normalizePortMapping).toList();
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           children: [
             if (ports.isEmpty)
               const EmptyState(message: AppStrings.noData, icon: Icons.swap_horiz),
@@ -1089,16 +1025,19 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(e.toString())),
+      ),
+      onPressed: () => _openPortDialog(context),
     );
   }
 
   Widget _buildSnapshots(BuildContext context) {
     final snapshotAsync = ref.watch(vpsSnapshotsProvider(widget.id));
-    return snapshotAsync.when(
+    return _buildTabFabShell(
+      body: snapshotAsync.when(
       data: (items) {
         final snapshots = items.map(_normalizeSnapshotItem).toList();
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           children: [
             if (snapshots.isEmpty)
               const EmptyState(message: AppStrings.noData, icon: Icons.camera_alt),
@@ -1149,16 +1088,26 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(e.toString())),
+      ),
+      onPressed: () async {
+        await _operate(
+          context,
+          () => ref.read(vpsRepositoryProvider).createSnapshot(widget.id),
+          '快照已创建',
+        );
+        ref.invalidate(vpsSnapshotsProvider(widget.id));
+      },
     );
   }
 
   Widget _buildBackups(BuildContext context) {
     final backupAsync = ref.watch(vpsBackupsProvider(widget.id));
-    return backupAsync.when(
+    return _buildTabFabShell(
+      body: backupAsync.when(
       data: (items) {
         final backups = items.map(_normalizeBackupItem).toList();
         return ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
           children: [
             if (backups.isEmpty)
               const EmptyState(message: AppStrings.noData, icon: Icons.cloud),
@@ -1209,6 +1158,37 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       },
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text(e.toString())),
+      ),
+      onPressed: () async {
+        await _operate(
+          context,
+          () => ref.read(vpsRepositoryProvider).createBackup(widget.id),
+          '备份已创建',
+        );
+        ref.invalidate(vpsBackupsProvider(widget.id));
+      },
+    );
+  }
+
+  Widget _buildTabFabShell({
+    required Widget body,
+    required VoidCallback onPressed,
+  }) {
+    return Stack(
+      children: [
+        Positioned.fill(child: body),
+        Positioned(
+          right: 16,
+          bottom: 16,
+          child: SafeArea(
+            minimum: const EdgeInsets.only(right: 0, bottom: 0),
+            child: FloatingActionButton(
+              onPressed: onPressed,
+              child: const Icon(Icons.add),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -2224,16 +2204,47 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     final platform = getPlatformUtils();
 
     if (platform.isMobile) {
+      if (password.trim().isNotEmpty) {
+        await Clipboard.setData(ClipboardData(text: password));
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('已复制系统密码')));
+        }
+      }
+
       if (isWindows) {
-        final opened = await _launchUrl(
-          _buildMsRdLink(remote.host, remote.port, username),
-          silent: true,
-        );
+        final rdpUrl = _buildRdpSchemeLink(remote.host, remote.port, username, password);
+        final candidates = <String>[rdpUrl];
+        if (platform.isAndroid) {
+          candidates.add(
+            _buildAndroidRdpIntentUrl(
+              remote.host,
+              remote.port,
+              username,
+              password,
+              packageName: 'com.android.chrome',
+            ),
+          );
+          candidates.add(
+            _buildAndroidRdpIntentUrl(
+              remote.host,
+              remote.port,
+              username,
+              password,
+              packageName: 'com.microsoft.rdc.androidx',
+            ),
+          );
+        }
+        var opened = false;
+        for (final candidate in candidates) {
+          opened = await _launchUrl(candidate, silent: true);
+          if (opened) break;
+        }
         if (!opened && mounted) {
-          final tip = '远程地址: ${remote.host}:${remote.port}\n用户: $username\n密码: $password';
+          final tip = '远程地址: ${remote.host}:${remote.port}\n用户: $username\n密码: $password\nURL: $rdpUrl';
           await Clipboard.setData(ClipboardData(text: tip));
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('ms-rd 唤起失败，已复制连接信息，请检查 Windows App 的默认链接权限'),
+            content: Text('RDP 唤起失败，已复制连接信息，请检查客户端是否支持 rdp:// 协议'),
           ));
         }
       } else {
@@ -2325,31 +2336,32 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     return 'rdp:$encodedRemote&$encodedUser&$encodedPass';
   }
 
-  String _buildRdpLegacyLink(String host, String port, String username, String password) {
-    final remote = Uri.encodeComponent('$host:$port');
-    final user = Uri.encodeComponent(username);
-    final pass = Uri.encodeComponent(password);
-    return 'rdp:full%20address=s:$remote&username=s:$user&password=s:$pass';
+  String _buildRdpSchemeLink(String host, String port, String username, String password) {
+    final remote = '$host:$port';
+    final encodedUser = Uri.encodeComponent(username);
+    final encodedPassword = Uri.encodeComponent(password);
+    return 'rdp://full%20address=s:$remote&username=s:$encodedUser&password=s:$encodedPassword';
   }
 
-  String _buildRdpNoPasswordLink(String host, String port, String username) {
-    final remote = Uri.encodeComponent('$host:$port');
-    final user = Uri.encodeComponent(username);
-    return 'rdp:full%20address=s:$remote&username=s:$user';
+  String _buildAndroidRdpIntentUrl(
+    String host,
+    String port,
+    String username,
+    String password, {
+    String? packageName,
+  }) {
+    final remote = '$host:$port';
+    final encodedUser = Uri.encodeComponent(username);
+    final encodedPassword = Uri.encodeComponent(password);
+    final packagePart = packageName == null || packageName.isEmpty
+        ? ''
+        : ';package=$packageName';
+    return 'intent://full%20address=s:$remote&username=s:$encodedUser&password=s:$encodedPassword'
+        '#Intent;scheme=rdp$packagePart;end';
   }
 
   String _buildSshLink(String host, String port, String username) {
     return 'ssh://$username@$host:$port';
-  }
-
-  String _buildMsRdLink(String host, String port, String username) {
-    final encoded = Uri.encodeComponent('$host:$port');
-    return 'ms-rd://connect?hostname=$encoded&username=$username';
-  }
-
-  String _buildMsRdcLink(String host, String port, String username) {
-    final encoded = Uri.encodeComponent('$host:$port');
-    return 'ms-rdc://connect?hostname=$encoded&username=$username';
   }
 
   String _buildTermiusLink(String host, String port, String username) {
@@ -2380,7 +2392,6 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
   }
 
   Future<bool> _launchUrl(String url, {bool silent = false}) async {
-    final uri = Uri.parse(url);
     try {
       final platform = getPlatformUtils();
       final modes = platform.isMobile
@@ -2390,10 +2401,14 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
               LaunchMode.platformDefault,
             ]
           : const [LaunchMode.platformDefault];
+      final lower = url.toLowerCase();
+      final isWebLink = lower.startsWith('http://') || lower.startsWith('https://');
 
       for (final mode in modes) {
         try {
-          final opened = await launchUrl(uri, mode: mode);
+          final opened = isWebLink
+              ? await launchUrl(Uri.parse(url), mode: mode)
+              : await launchUrlString(url, mode: mode);
           if (opened) return true;
         } catch (_) {
           // Try next mode.

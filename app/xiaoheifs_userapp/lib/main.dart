@@ -1,4 +1,5 @@
-﻿import 'package:flutter/foundation.dart';
+﻿import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/navigation/app_navigator.dart';
@@ -103,7 +104,7 @@ class MyApp extends ConsumerWidget {
         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
         useMaterial3: true,
       ),
-      themeMode: ThemeMode.system,
+      themeMode: ThemeMode.dark,
       routerConfig: router,
     );
   }

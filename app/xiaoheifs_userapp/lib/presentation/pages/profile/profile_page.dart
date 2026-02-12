@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/utils/avatar_url.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_input.dart';
@@ -15,7 +16,6 @@ class ProfilePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authState = ref.watch(authProvider);
     final user = authState.user;
-    final isMobileLike = MediaQuery.of(context).size.width <= 1024;
 
     if (user == null) {
       return const Center(child: Text('请先登录'));
@@ -32,14 +32,8 @@ class ProfilePage extends ConsumerWidget {
     );
     final bioController = TextEditingController(
       text: _sanitizeProfileValue(user.bio?.toString()),
-    );    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && isMobileLike) {
-          context.go('/console/more');
-        }
-      },
-      child: Scaffold(
+    );
+    return Scaffold(
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -63,7 +57,6 @@ class ProfilePage extends ConsumerWidget {
           ],
         ),
       ),
-      ),
     );
   }
 
@@ -75,7 +68,9 @@ class ProfilePage extends ConsumerWidget {
     if (RegExp(r'[\u0080-\u009f]').hasMatch(value)) return '';
 
     final lowered = value.toLowerCase();
-    if (lowered.contains('鍙') || lowered.contains('閫€') || lowered.contains('鏆')) {
+    if (lowered.contains('鍙') ||
+        lowered.contains('閫€') ||
+        lowered.contains('鏆')) {
       return '';
     }
 
@@ -99,27 +94,32 @@ class ProfilePage extends ConsumerWidget {
   }
 
   Widget _buildUserInfoCard(dynamic user) {
-    final avatar = user.avatarUrl ?? user.avatar;
+    final avatarUrl = resolveUserAvatarUrl(
+      baseUrl: ApiClient.instance.dio.options.baseUrl,
+      qq: user?.qq?.toString(),
+      avatarUrl: user?.avatarUrl?.toString(),
+      avatar: user?.avatar?.toString(),
+    );
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Row(
           children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundColor: AppColors.primaryLight,
-              backgroundImage: avatar != null && avatar.toString().isNotEmpty
-                  ? NetworkImage(avatar.toString())
-                  : null,
-              child: Text(
-                (user.username ?? 'U')[0].toUpperCase(),
-                style: const TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+            if (avatarUrl.isNotEmpty)
+              CircleAvatar(radius: 40, backgroundImage: NetworkImage(avatarUrl))
+            else
+              CircleAvatar(
+                radius: 40,
+                backgroundColor: AppColors.primaryLight,
+                child: Text(
+                  (user.username ?? 'U')[0].toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
-            ),
             const SizedBox(width: 16),
             Expanded(
               child: Column(
@@ -135,10 +135,7 @@ class ProfilePage extends ConsumerWidget {
                   const SizedBox(height: 4),
                   Text(
                     user.email ?? '',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.gray500,
-                    ),
+                    style: TextStyle(fontSize: 14, color: AppColors.gray500),
                   ),
                 ],
               ),
@@ -206,15 +203,15 @@ class ProfilePage extends ConsumerWidget {
                     'bio': bioController.text.trim(),
                   });
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('保存成功')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('保存成功')));
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('保存失败: $e')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text('保存失败: $e')));
                   }
                 }
               },
@@ -225,4 +222,3 @@ class ProfilePage extends ConsumerWidget {
     );
   }
 }
-

@@ -46,6 +46,7 @@ class _OrdersListPageState extends ConsumerState<OrdersListPage> {
           limit: _pageSize,
           offset: (_page - 1) * _pageSize,
           force: force,
+          silent: force,
         );
   }
 
@@ -54,9 +55,9 @@ class _OrdersListPageState extends ConsumerState<OrdersListPage> {
     final orderListState = ref.watch(orderListProvider);
 
     return Scaffold(
-      body: orderListState.loading
+      body: orderListState.loading && orderListState.items.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : orderListState.error != null
+          : orderListState.error != null && orderListState.items.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -71,7 +72,13 @@ class _OrdersListPageState extends ConsumerState<OrdersListPage> {
                   message: AppStrings.noOrders,
                   icon: Icons.receipt_long_outlined,
                 )
-              : _buildOrderList(context, ref, orderListState.items, orderListState.total),
+              : _buildOrderList(
+                  context,
+                  ref,
+                  orderListState.items,
+                  orderListState.total,
+                  isRefreshing: orderListState.loading,
+                ),
     );
   }
 
@@ -80,9 +87,11 @@ class _OrdersListPageState extends ConsumerState<OrdersListPage> {
     WidgetRef ref,
     List<Map<String, dynamic>> orders,
     int total,
+    {bool isRefreshing = false}
   ) {
     return Column(
       children: [
+        if (isRefreshing) const LinearProgressIndicator(minHeight: 2),
         Expanded(
           child: RefreshIndicator(
             onRefresh: () => _fetch(force: true),

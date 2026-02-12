@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_strings.dart';
@@ -29,7 +29,10 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
   void initState() {
     super.initState();
     Future.microtask(() => _fetch());
-    _refreshSub = ref.listenManual<RefreshEvent?>(pageRefreshProvider, (_, next) {
+    _refreshSub = ref.listenManual<RefreshEvent?>(pageRefreshProvider, (
+      _,
+      next,
+    ) {
       if (next?.route == '/console/tickets') {
         _fetch(force: true);
       }
@@ -43,7 +46,9 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
   }
 
   Future<void> _fetch({bool force = false}) async {
-    await ref.read(ticketListProvider.notifier).fetchTickets(
+    await ref
+        .read(ticketListProvider.notifier)
+        .fetchTickets(
           limit: _pageSize,
           offset: (_page - 1) * _pageSize,
           force: force,
@@ -53,24 +58,20 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
   @override
   Widget build(BuildContext context) {
     final ticketListState = ref.watch(ticketListProvider);
-    final isMobileLike = MediaQuery.of(context).size.width <= 1024;
-
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && isMobileLike) {
-          context.go('/console/more');
-        }
-      },
-      child: Scaffold(
+    return Scaffold(
       body: ticketListState.loading
           ? const Center(child: CircularProgressIndicator())
           : ticketListState.items.isEmpty
-              ? const EmptyState(
-                  message: AppStrings.noTickets,
-                  icon: Icons.support_agent_outlined,
-                )
-              : _buildTicketList(context, ref, ticketListState.items, ticketListState.total),
+          ? const EmptyState(
+              message: AppStrings.noTickets,
+              icon: Icons.support_agent_outlined,
+            )
+          : _buildTicketList(
+              context,
+              ref,
+              ticketListState.items,
+              ticketListState.total,
+            ),
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: _paginationFabOffset, right: 8),
         child: FloatingActionButton(
@@ -79,8 +80,7 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-        floatingActionButtonAnimator: FloatingActionButtonAnimator.scaling,
-      ),
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.scaling,
     );
   }
 
@@ -102,7 +102,8 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
                 final ticket = tickets[index];
                 final id = ticket['id'] ?? ticket['ID'];
                 final subject = ticket['subject'] ?? ticket['Subject'] ?? '';
-                final createdAt = ticket['created_at'] ?? ticket['CreatedAt'] ?? '';
+                final createdAt =
+                    ticket['created_at'] ?? ticket['CreatedAt'] ?? '';
                 return Card(
                   margin: const EdgeInsets.only(bottom: 16),
                   child: ListTile(
@@ -207,41 +208,46 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
                 final subject = subjectController.text.trim();
                 final content = contentController.text.trim();
                 if (subject.isEmpty || content.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请填写完整内容')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('请填写完整内容')));
                   return;
                 }
                 try {
                   final resources = selectedIds
-                      .map((id) => {
-                            'resource_type': 'vps',
-                            'resource_id': id,
-                            'resource_name': vpsList
-                                    .firstWhere(
-                                      (item) => (item['id'] ?? item['ID']) == id,
-                                      orElse: () => {},
-                                    )['name']
-                                    ?.toString() ??
-                                'VPS-$id',
-                          })
+                      .map(
+                        (id) => {
+                          'resource_type': 'vps',
+                          'resource_id': id,
+                          'resource_name':
+                              vpsList
+                                  .firstWhere(
+                                    (item) => (item['id'] ?? item['ID']) == id,
+                                    orElse: () => {},
+                                  )['name']
+                                  ?.toString() ??
+                              'VPS-$id',
+                        },
+                      )
                       .toList();
-                  await ref.read(ticketListProvider.notifier).createTicket(
+                  await ref
+                      .read(ticketListProvider.notifier)
+                      .createTicket(
                         subject: subject,
                         content: content,
                         resources: resources,
                       );
                   if (context.mounted) {
                     Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('工单创建成功')),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('工单创建成功')));
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.toString())),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(e.toString())));
                   }
                 }
               },
@@ -278,7 +284,8 @@ class _MultiSelectChipsState extends State<_MultiSelectChips> {
       if (_keyword.isEmpty) return true;
       final name = item['name'] ?? item['Name'] ?? '';
       final region = item['region'] ?? item['Region'] ?? '';
-      final text = '${name.toString().toLowerCase()} ${region.toString().toLowerCase()}';
+      final text =
+          '${name.toString().toLowerCase()} ${region.toString().toLowerCase()}';
       return text.contains(_keyword.toLowerCase());
     }).toList();
 
@@ -325,4 +332,3 @@ class _MultiSelectChipsState extends State<_MultiSelectChips> {
     );
   }
 }
-

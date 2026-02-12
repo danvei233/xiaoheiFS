@@ -658,10 +658,12 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
     required String suffix,
   }) {
     final min = (rule[minKey] as num?)?.toDouble() ?? 0;
-    final max = (rule[maxKey] as num?)?.toDouble() ?? 0;
+    final max = (rule[maxKey] as num?)?.toDouble();
     final step = (rule[stepKey] as num?)?.toDouble() ?? 1;
     final unitPrice = _asDouble(rule[unitKey]);
-    final divisions = (max > min && step > 0) ? ((max - min) / step).round() : null;
+    // If max is null, use default based on the addon type
+    final effectiveMax = (max != null && max > 0) ? max : _getDefaultMax(maxKey);
+    final divisions = (effectiveMax > min && step > 0) ? ((effectiveMax - min) / step).round() : null;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -687,12 +689,12 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
             ],
           ),
           Slider(
-            value: value.toDouble().clamp(min, max),
+            value: value.toDouble().clamp(min, effectiveMax),
             min: min,
-            max: max,
+            max: effectiveMax,
             divisions: divisions,
             label: '$value$suffix',
-            onChanged: max <= 0 ? null : (v) => onChanged(v.round()),
+            onChanged: (v) => onChanged(v.round()),
           ),
         ],
       ),
@@ -951,18 +953,33 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
       'unit_disk': group['unit_disk'] ?? 0,
       'unit_bw': group['unit_bw'] ?? 0,
       'add_core_min': group['add_core_min'] ?? 0,
-      'add_core_max': group['add_core_max'] ?? 64,
+      'add_core_max': group['add_core_max'],
       'add_core_step': group['add_core_step'] ?? 1,
       'add_mem_min': group['add_mem_min'] ?? 0,
-      'add_mem_max': group['add_mem_max'] ?? 256,
+      'add_mem_max': group['add_mem_max'],
       'add_mem_step': group['add_mem_step'] ?? 1,
       'add_disk_min': group['add_disk_min'] ?? 0,
-      'add_disk_max': group['add_disk_max'] ?? 2000,
+      'add_disk_max': group['add_disk_max'],
       'add_disk_step': group['add_disk_step'] ?? 10,
       'add_bw_min': group['add_bw_min'] ?? 0,
-      'add_bw_max': group['add_bw_max'] ?? 1000,
+      'add_bw_max': group['add_bw_max'],
       'add_bw_step': group['add_bw_step'] ?? 10,
     };
+  }
+
+  double _getDefaultMax(String maxKey) {
+    switch (maxKey) {
+      case 'add_core_max':
+        return 64;
+      case 'add_mem_max':
+        return 256;
+      case 'add_disk_max':
+        return 2000;
+      case 'add_bw_max':
+        return 300;
+      default:
+        return 256;
+    }
   }
 
   String? _capacityLabel(Map<String, dynamic> item) {
