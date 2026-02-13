@@ -195,7 +195,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { Badge, Space, Tag, message } from "ant-design-vue";
 import { useRoute } from "vue-router";
 import { useAdminAuthStore } from "@/stores/adminAuth";
@@ -237,14 +237,14 @@ let refreshTimer: number | null = null;
 let refreshInFlight = false;
 
 const logForm = reactive({
-  source: "file:logs",
+  source: "",
   keyword: "",
   lines: 300,
   follow: true
 });
 
 const sourceOptions = [
-  { label: "文件日志（logs）", value: "file:logs" },
+  { label: "文件日志（按系统设置）", value: "" },
   { label: "Linux Journal(system)", value: "journal:system" },
   { label: "Linux Journal(pveproxy)", value: "journal:pveproxy" },
   { label: "Windows 系统关键日志", value: "eventlog:System:important" },
@@ -255,6 +255,25 @@ const sourceOptions = [
 ];
 
 const snapshot = computed(() => probe.value?.snapshot || {});
+const tryParseJSON = (raw: unknown) => {
+  if (typeof raw !== "string") return raw;
+  const text = raw.trim();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+};
+const normalizeProbePayload = (raw: any) => {
+  if (!raw || typeof raw !== "object") return null;
+  const out = { ...raw };
+  const parsedSnapshot = tryParseJSON(out.snapshot) ?? tryParseJSON(out.last_snapshot_json);
+  if (parsedSnapshot && typeof parsedSnapshot === "object") {
+    out.snapshot = parsedSnapshot;
+  }
+  return out;
+};
 const formatDate = (v?: string) => (v ? new Date(v).toLocaleString("zh-CN") : "-");
 const formatDateShort = (v?: string) => (v ? new Date(v).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-");
 const fromNow = (v?: string) => {
@@ -333,8 +352,11 @@ const refreshAll = async (forceSnapshot = false) => {
       getAdminProbeDetail(id.value, { _t: ts, refresh: forceSnapshot ? 1 : 0 }),
       getAdminProbeSla(id.value, { days: 7, _t: ts })
     ]);
-    probe.value = detailRes.data?.probe || null;
+    probe.value = normalizeProbePayload(detailRes.data?.probe || null);
     sla.value = slaRes.data?.sla || null;
+    if (forceSnapshot && detailRes.data?.online === false) {
+      message.warning("探针离线，手动刷新无法触发新快照");
+    }
     lastRefreshAt.value = new Date().toISOString();
     refreshError.value = "";
   } catch (e: any) {
@@ -446,6 +468,15 @@ onMounted(() => {
     refreshAll(false);
   }, 5000);
 });
+
+watch(
+  () => autoScroll.value,
+  async (enabled) => {
+    if (!enabled) return;
+    await nextTick();
+    scrollLogToBottom();
+  }
+);
 
 onBeforeUnmount(() => {
   stopLog();
@@ -592,6 +623,7 @@ onBeforeUnmount(() => {
 }
 
 .log-line {
+  color: #e2e8f0;
   padding: 2px 0;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
 }

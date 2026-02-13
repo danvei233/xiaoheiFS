@@ -25,6 +25,7 @@ func main() {
 	if cfg.ServerURL == "" {
 		log.Fatalf("server_url is empty")
 	}
+	log.Printf("pingbot starting config=%s server=%s probe_id=%d", *cfgPath, cfg.ServerURL, cfg.ProbeID)
 
 	svc := service.New(*cfgPath, cfg)
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -24,30 +24,42 @@ type ResizePricingPolicy struct {
 }
 
 type ResizeQuote struct {
-	ChargeAmount    int64
-	RefundAmount    int64
-	RefundToWallet  bool
-	TargetPackageID int64
-	TargetCPU       int
-	TargetMemGB     int
-	TargetDiskGB    int
-	TargetBWMbps    int
-	TargetMonthly   int64
-	CurrentMonthly  int64
+	ChargeAmount     int64
+	RefundAmount     int64
+	RefundToWallet   bool
+	CurrentPackageID int64
+	CurrentCPU       int
+	CurrentMemGB     int
+	CurrentDiskGB    int
+	CurrentBWMbps    int
+	TargetPackageID  int64
+	TargetCPU        int
+	TargetMemGB      int
+	TargetDiskGB     int
+	TargetBWMbps     int
+	TargetMonthly    int64
+	CurrentMonthly   int64
 }
 
 func (q ResizeQuote) ToPayload(vpsID int64, spec CartSpec) map[string]any {
 	payload := map[string]any{
-		"vps_id":            vpsID,
-		"spec":              spec,
-		"target_package_id": q.TargetPackageID,
-		"target_cpu":        q.TargetCPU,
-		"target_mem_gb":     q.TargetMemGB,
-		"target_disk_gb":    q.TargetDiskGB,
-		"target_bw_mbps":    q.TargetBWMbps,
-		"charge_amount":     q.ChargeAmount,
-		"refund_amount":     q.RefundAmount,
-		"refund_to_wallet":  q.RefundToWallet,
+		"vps_id":             vpsID,
+		"spec":               spec,
+		"current_package_id": q.CurrentPackageID,
+		"current_cpu":        q.CurrentCPU,
+		"current_mem_gb":     q.CurrentMemGB,
+		"current_disk_gb":    q.CurrentDiskGB,
+		"current_bw_mbps":    q.CurrentBWMbps,
+		"target_package_id":  q.TargetPackageID,
+		"target_cpu":         q.TargetCPU,
+		"target_mem_gb":      q.TargetMemGB,
+		"target_disk_gb":     q.TargetDiskGB,
+		"target_bw_mbps":     q.TargetBWMbps,
+		"current_monthly":    q.CurrentMonthly,
+		"target_monthly":     q.TargetMonthly,
+		"charge_amount":      q.ChargeAmount,
+		"refund_amount":      q.RefundAmount,
+		"refund_to_wallet":   q.RefundToWallet,
 	}
 	return payload
 }
@@ -91,8 +103,8 @@ func (s *OrderService) quoteResize(ctx context.Context, inst domain.VPSInstance,
 			return ResizeQuote{}, CartSpec{}, ErrInvalidInput
 		}
 		targetPkg = nextPkg
-		quote.TargetPackageID = nextPkg.ID
 	}
+	quote.TargetPackageID = targetPkg.ID
 
 	targetSpec := currentSpec
 	if resetAddons {
@@ -125,6 +137,11 @@ func (s *OrderService) quoteResize(ctx context.Context, inst domain.VPSInstance,
 	currentMem := currentPkg.MemoryGB + currentSpec.AddMemGB
 	currentDisk := currentPkg.DiskGB + currentSpec.AddDiskGB
 	currentBW := currentPkg.BandwidthMB + currentSpec.AddBWMbps
+	quote.CurrentPackageID = currentPkg.ID
+	quote.CurrentCPU = currentCPU
+	quote.CurrentMemGB = currentMem
+	quote.CurrentDiskGB = currentDisk
+	quote.CurrentBWMbps = currentBW
 	if quote.TargetDiskGB < currentDisk {
 		return ResizeQuote{}, CartSpec{}, ErrInvalidInput
 	}

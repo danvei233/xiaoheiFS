@@ -58,19 +58,32 @@ class _OrdersListPageState extends ConsumerState<OrdersListPage> {
       body: orderListState.loading && orderListState.items.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : orderListState.error != null && orderListState.items.isEmpty
-              ? Center(
-                  child: Padding(
+              ? RefreshIndicator(
+                  onRefresh: () => _fetch(force: true),
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(24),
-                    child: Text(
-                      '加载订单失败：${orderListState.error}',
-                      style: const TextStyle(color: AppColors.danger),
-                    ),
+                    children: [
+                      Text(
+                        '加载订单失败：${orderListState.error}',
+                        style: const TextStyle(color: AppColors.danger),
+                      ),
+                    ],
                   ),
                 )
           : orderListState.items.isEmpty
-              ? const EmptyState(
-                  message: AppStrings.noOrders,
-                  icon: Icons.receipt_long_outlined,
+              ? RefreshIndicator(
+                  onRefresh: () => _fetch(force: true),
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(24),
+                    children: const [
+                      EmptyState(
+                        message: AppStrings.noOrders,
+                        icon: Icons.receipt_long_outlined,
+                      ),
+                    ],
+                  ),
                 )
               : _buildOrderList(
                   context,

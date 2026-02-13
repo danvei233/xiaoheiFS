@@ -781,7 +781,7 @@ type probeNodeRow struct {
 	TagsJSON         string     `gorm:"column:tags_json;not null;default:'[]'"`
 	LastHeartbeatAt  *time.Time `gorm:"column:last_heartbeat_at;index:idx_probe_nodes_heartbeat"`
 	LastSnapshotAt   *time.Time `gorm:"column:last_snapshot_at"`
-	LastSnapshotJSON string     `gorm:"column:last_snapshot_json;not null;default:'{}'"`
+	LastSnapshotJSON string     `gorm:"type:longtext;column:last_snapshot_json;not null"`
 	CreatedAt        time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt        time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
 }

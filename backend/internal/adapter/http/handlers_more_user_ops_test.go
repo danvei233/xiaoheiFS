@@ -52,11 +52,20 @@ func TestHandlers_UserOpsMore(t *testing.T) {
 		t.Fatalf("create refresh item: %v", err)
 	}
 	items, _ := env.Repo.ListOrderItems(context.Background(), orderRefresh.ID)
+	altImage := domain.SystemImage{ImageID: 2, Name: "Debian", Type: "linux", Enabled: true}
+	if err := env.Repo.CreateSystemImage(context.Background(), &altImage); err != nil {
+		t.Fatalf("create alt image: %v", err)
+	}
+	if err := env.Repo.SetLineSystemImages(context.Background(), seed.PlanGroup.LineID, []int64{seed.SystemImage.ID, altImage.ID}); err != nil {
+		t.Fatalf("set line images: %v", err)
+	}
 	inst := domain.VPSInstance{
 		UserID:               user.ID,
 		OrderItemID:          items[0].ID,
 		AutomationInstanceID: "123",
 		Name:                 "vm-refresh",
+		PackageID:            seed.Package.ID,
+		SystemID:             seed.SystemImage.ID,
 		Status:               domain.VPSStatusRunning,
 		SpecJSON:             "{}",
 		ExpireAt:             ptrTime(time.Now().Add(24 * time.Hour)),
@@ -95,6 +104,20 @@ func TestHandlers_UserOpsMore(t *testing.T) {
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/shutdown", nil, token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("vps shutdown: %d", rec.Code)
+	}
+	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/reset-os", map[string]any{
+		"template_id": altImage.ID,
+		"password":    "Pass123!",
+	}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("vps reset-os: %d", rec.Code)
+	}
+	updatedInst, err := env.Repo.GetInstance(context.Background(), inst.ID)
+	if err != nil {
+		t.Fatalf("get updated vps: %v", err)
+	}
+	if updatedInst.SystemID != altImage.ID {
+		t.Fatalf("expected system_id updated to %d, got %d", altImage.ID, updatedInst.SystemID)
 	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/emergency-renew", nil, token)
 	if rec.Code != http.StatusOK {

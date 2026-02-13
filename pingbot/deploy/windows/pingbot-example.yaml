@@ -3,4 +3,5 @@ enroll_token: ""
 probe_id: 0
 probe_secret: ""
 hostname_alias: ""
+log_file_source: "file:logs"
 tls_insecure_skip_verify: false

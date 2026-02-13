@@ -1,4 +1,5 @@
-﻿
+
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -118,6 +119,7 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
     final selectedSystem = _safeFirstWhere(_systemImages, (s) => s['id'] == _systemId);
 
     final addonRule = _buildAddonRule(selectedPlanGroup);
+    _scheduleAddonNormalize(addonRule);
     final basePrice = _asDouble(selectedPackage['monthly_price']);
     final addonPrice = _computeAddonPrice(selectedPlanGroup);
     final cycleMultiplier = _cycleMultiplier(selectedCycle, _cycleQty);
@@ -657,13 +659,19 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
     required ValueChanged<int> onChanged,
     required String suffix,
   }) {
-    final min = (rule[minKey] as num?)?.toDouble() ?? 0;
-    final max = (rule[maxKey] as num?)?.toDouble();
-    final step = (rule[stepKey] as num?)?.toDouble() ?? 1;
+    final addon = _resolveAddonRule(rule[minKey], rule[maxKey], rule[stepKey], _getDefaultMax(maxKey));
+    final disabled = addon['disabled'] == true;
+    final min = _asDouble(addon['min']);
+    final max = _asDouble(addon['max']);
+    final step = _asDouble(addon['step']);
     final unitPrice = _asDouble(rule[unitKey]);
-    // If max is null, use default based on the addon type
-    final effectiveMax = (max != null && max > 0) ? max : _getDefaultMax(maxKey);
-    final divisions = (effectiveMax > min && step > 0) ? ((effectiveMax - min) / step).round() : null;
+    final divisions = (!disabled && max > min && step > 0) ? ((max - min) / step).round() : null;
+    final normalizedValue = disabled
+        ? 0
+        : _clampAddonValue(
+            value,
+            addon,
+          );
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -679,9 +687,11 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
             children: [
               Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
               const Spacer(),
-              if (value > 0)
+              if (disabled)
+                const Text('已禁用', style: TextStyle(color: AppColors.gray500, fontSize: 12))
+              else if (normalizedValue > 0)
                 Text(
-                  '+$value$suffix · +¥${(value * unitPrice).toStringAsFixed(2)}/月',
+                  '+$normalizedValue$suffix · +¥${(normalizedValue * unitPrice).toStringAsFixed(2)}/月',
                   style: const TextStyle(color: AppColors.success, fontSize: 12),
                 )
               else
@@ -689,12 +699,16 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
             ],
           ),
           Slider(
-            value: value.toDouble().clamp(min, effectiveMax),
+            value: normalizedValue.toDouble().clamp(min, max),
             min: min,
-            max: effectiveMax,
+            max: max,
             divisions: divisions,
-            label: '$value$suffix',
-            onChanged: (v) => onChanged(v.round()),
+            label: '$normalizedValue$suffix',
+            onChanged: disabled
+                ? null
+                : (v) => onChanged(
+                      _clampAddonValue(v.round(), addon),
+                    ),
           ),
         ],
       ),
@@ -967,6 +981,69 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
     };
   }
 
+  Map<String, dynamic> _resolveAddonRule(
+    dynamic minRaw,
+    dynamic maxRaw,
+    dynamic stepRaw,
+    double fallbackMax,
+  ) {
+    final min = _asDouble(minRaw);
+    final max = _asDouble(maxRaw);
+    final step = math.max(1, _asDouble(stepRaw == null ? 1 : stepRaw)).toDouble();
+    if (min == -1 || max == -1) {
+      return {'disabled': true, 'min': 0.0, 'max': 0.0, 'step': 1.0};
+    }
+    final effectiveMin = min > 0 ? min : 0.0;
+    final effectiveMax = max > 0 ? max : fallbackMax;
+    return {
+      'disabled': false,
+      'min': effectiveMin,
+      'max': math.max(effectiveMin, effectiveMax).toDouble(),
+      'step': step,
+    };
+  }
+
+  int _clampAddonValue(int value, Map<String, dynamic> rule) {
+    if (rule['disabled'] == true) return 0;
+    final step = math.max(1, _asDouble(rule['step'] == null ? 1 : rule['step'])).toDouble();
+    final min = _asDouble(rule['min']);
+    final max = math.max(min, _asDouble(rule['max'] ?? min));
+    var next = value.toDouble();
+    next = math.max(min, math.min(max, next));
+    next = min + ((next - min) / step).round() * step;
+    if (next > max) next = max;
+    if (next < min) next = min;
+    return next.round();
+  }
+
+  void _scheduleAddonNormalize(Map<String, dynamic> rule) {
+    final coreRule =
+        _resolveAddonRule(rule['add_core_min'], rule['add_core_max'], rule['add_core_step'], _getDefaultMax('add_core_max'));
+    final memRule =
+        _resolveAddonRule(rule['add_mem_min'], rule['add_mem_max'], rule['add_mem_step'], _getDefaultMax('add_mem_max'));
+    final diskRule =
+        _resolveAddonRule(rule['add_disk_min'], rule['add_disk_max'], rule['add_disk_step'], _getDefaultMax('add_disk_max'));
+    final bwRule =
+        _resolveAddonRule(rule['add_bw_min'], rule['add_bw_max'], rule['add_bw_step'], _getDefaultMax('add_bw_max'));
+
+    final nextCores = _clampAddonValue(_addCores, coreRule);
+    final nextMem = _clampAddonValue(_addMem, memRule);
+    final nextDisk = _clampAddonValue(_addDisk, diskRule);
+    final nextBw = _clampAddonValue(_addBw, bwRule);
+    if (nextCores == _addCores && nextMem == _addMem && nextDisk == _addDisk && nextBw == _addBw) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _addCores = nextCores;
+        _addMem = nextMem;
+        _addDisk = nextDisk;
+        _addBw = nextBw;
+      });
+    });
+  }
+
   double _getDefaultMax(String maxKey) {
     switch (maxKey) {
       case 'add_core_max':
@@ -976,7 +1053,7 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
       case 'add_disk_max':
         return 2000;
       case 'add_bw_max':
-        return 300;
+        return 1000;
       default:
         return 256;
     }
@@ -1171,3 +1248,4 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
     }
   }
 }
+

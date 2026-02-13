@@ -29,6 +29,7 @@ type probeLogStream struct {
 	expiresAt time.Time
 	closed    bool
 	subs      map[chan ProbeLogMessage]struct{}
+	backlog   []ProbeLogMessage
 }
 
 type ProbeHub struct {
@@ -36,6 +37,11 @@ type ProbeHub struct {
 	conns    map[int64]*probeConnState
 	sessions map[string]*probeLogStream
 }
+
+const (
+	probeLogChannelBuffer = 256
+	probeLogBacklogLimit  = 256
+)
 
 func NewProbeHub() *ProbeHub {
 	h := &ProbeHub{
@@ -86,6 +92,7 @@ func (h *ProbeHub) OpenLogSession(sessionID string, probeID int64, ttl time.Dura
 		probeID:   probeID,
 		expiresAt: time.Now().Add(ttl),
 		subs:      make(map[chan ProbeLogMessage]struct{}),
+		backlog:   make([]ProbeLogMessage, 0, probeLogBacklogLimit),
 	}
 }
 
@@ -98,14 +105,31 @@ func (h *ProbeHub) HasLogSession(sessionID string) bool {
 
 func (h *ProbeHub) SubscribeLogSession(sessionID string) (chan ProbeLogMessage, func(), error) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	session := h.sessions[sessionID]
-	if session == nil || session.closed {
+	if session == nil {
+		h.mu.Unlock()
 		return nil, nil, ErrProbeLogSessionClosed
 	}
-	ch := make(chan ProbeLogMessage, 128)
-	session.subs[ch] = struct{}{}
-	session.expiresAt = time.Now().Add(10 * time.Minute)
+	ch := make(chan ProbeLogMessage, probeLogChannelBuffer)
+	backlog := append([]ProbeLogMessage(nil), session.backlog...)
+	closed := session.closed
+	if !closed {
+		session.subs[ch] = struct{}{}
+		session.expiresAt = time.Now().Add(10 * time.Minute)
+	}
+	h.mu.Unlock()
+
+	for _, msg := range backlog {
+		select {
+		case ch <- msg:
+		default:
+		}
+	}
+	if closed {
+		close(ch)
+		return ch, func() {}, nil
+	}
+
 	cancel := func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
@@ -113,8 +137,10 @@ func (h *ProbeHub) SubscribeLogSession(sessionID string) (chan ProbeLogMessage, 
 		if s == nil {
 			return
 		}
-		delete(s.subs, ch)
-		close(ch)
+		if _, ok := s.subs[ch]; ok {
+			delete(s.subs, ch)
+			close(ch)
+		}
 	}
 	return ch, cancel, nil
 }
@@ -138,17 +164,21 @@ func (h *ProbeHub) PublishLogEnd(sessionID, requestID string) {
 }
 
 func (h *ProbeHub) publishLog(sessionID string, msg ProbeLogMessage) {
-	h.mu.RLock()
+	h.mu.Lock()
 	session := h.sessions[sessionID]
 	if session == nil || session.closed {
-		h.mu.RUnlock()
+		h.mu.Unlock()
 		return
+	}
+	session.backlog = append(session.backlog, msg)
+	if len(session.backlog) > probeLogBacklogLimit {
+		session.backlog = append([]ProbeLogMessage(nil), session.backlog[len(session.backlog)-probeLogBacklogLimit:]...)
 	}
 	subs := make([]chan ProbeLogMessage, 0, len(session.subs))
 	for ch := range session.subs {
 		subs = append(subs, ch)
 	}
-	h.mu.RUnlock()
+	h.mu.Unlock()
 
 	for _, ch := range subs {
 		select {
@@ -170,7 +200,6 @@ func (h *ProbeHub) CloseLogSession(sessionID string) {
 		close(ch)
 	}
 	session.subs = map[chan ProbeLogMessage]struct{}{}
-	delete(h.sessions, sessionID)
 }
 
 func (h *ProbeHub) gcLoop() {
@@ -180,7 +209,7 @@ func (h *ProbeHub) gcLoop() {
 		now := time.Now()
 		h.mu.Lock()
 		for sid, session := range h.sessions {
-			if session.closed || now.After(session.expiresAt) {
+			if now.After(session.expiresAt) {
 				for ch := range session.subs {
 					close(ch)
 				}

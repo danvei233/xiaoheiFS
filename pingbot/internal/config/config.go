@@ -14,6 +14,7 @@ type Config struct {
 	ProbeID               int64  `yaml:"probe_id"`
 	ProbeSecret           string `yaml:"probe_secret"`
 	HostnameAlias         string `yaml:"hostname_alias"`
+	LogFileSource         string `yaml:"log_file_source"`
 	TLSInsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify"`
 }
 
@@ -27,11 +28,13 @@ func Load(path string) (Config, error) {
 		return Config{}, err
 	}
 	cfg.ServerURL = strings.TrimRight(strings.TrimSpace(cfg.ServerURL), "/")
+	cfg.LogFileSource = normalizeLogFileSource(cfg.LogFileSource)
 	return cfg, nil
 }
 
 func Save(path string, cfg Config) error {
 	cfg.ServerURL = strings.TrimRight(strings.TrimSpace(cfg.ServerURL), "/")
+	cfg.LogFileSource = normalizeLogFileSource(cfg.LogFileSource)
 	b, err := yaml.Marshal(cfg)
 	if err != nil {
 		return err
@@ -40,4 +43,15 @@ func Save(path string, cfg Config) error {
 		return err
 	}
 	return os.WriteFile(path, b, 0o600)
+}
+
+func normalizeLogFileSource(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "file:logs"
+	}
+	if strings.HasPrefix(strings.ToLower(value), "file:") {
+		return value
+	}
+	return "file:" + value
 }

@@ -494,7 +494,16 @@
               </template>
               <template v-if="column.key === 'action'">
                 <a-tag v-if="Number(record?.sys) === 2" color="blue">系统</a-tag>
-                <a-button v-else type="link" size="small" danger @click="removePortMapping(record)">删除</a-button>
+                <a-button
+                  v-else
+                  type="link"
+                  size="small"
+                  danger
+                  :disabled="isProtectedPortMapping(record)"
+                  @click="removePortMapping(record)"
+                >
+                  删除
+                </a-button>
               </template>
             </template>
           </a-table>
@@ -528,6 +537,9 @@
             :pagination="false"
           >
             <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'state_label'">
+                <a-badge :status="record.state_badge || 'default'" :text="record.state_label || '未知'" />
+              </template>
               <template v-if="column.key === 'action'">
                 <a-button type="link" size="small" @click="restoreSnapshot(record)">恢复</a-button>
                 <a-button type="link" size="small" danger @click="deleteSnapshot(record)">删除</a-button>
@@ -564,6 +576,9 @@
             :pagination="false"
           >
             <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'state_label'">
+                <a-badge :status="record.state_badge || 'default'" :text="record.state_label || '未知'" />
+              </template>
               <template v-if="column.key === 'action'">
                 <a-button type="link" size="small" @click="restoreBackup(record)">恢复</a-button>
                 <a-button type="link" size="small" danger @click="deleteBackup(record)">删除</a-button>
@@ -932,6 +947,7 @@ import {
   startVps,
   shutdownVps,
   requestVpsRefund,
+  listSystemImages,
   resetVpsOS,
   resetVpsOsPassword,
   getVpsSnapshots,
@@ -1009,6 +1025,7 @@ const refundOpen = ref(false);
 const refundReason = ref("");
 const reinstallOpen = ref(false);
 const reinstalling = ref(false);
+const reinstallImages = ref([]);
 const reinstallForm = reactive({
   template_id: null,
   password: ""
@@ -1344,7 +1361,7 @@ const billingCycles = computed(() =>
 );
 
 const systemImageOptions = computed(() =>
-  catalog.systemImages
+  reinstallImages.value
     .map((item) => ({
       id: item.image_id ?? item.ImageID ?? null,
       name: item.name ?? item.Name ?? "",
@@ -1662,18 +1679,20 @@ const backupColumns = [
   { title: "操作", key: "action", width: 150 }
 ];
 
-const snapshotStateLabel = (state) => {
+const snapshotBackupStateMeta = (state) => {
   switch (Number(state)) {
     case 1:
-      return "创建中";
+      return { label: "创建中", badge: "processing" };
     case 2:
-      return "可用";
+      return { label: "创建成功", badge: "success" };
     case 3:
-      return "恢复中";
+      return { label: "创建失败", badge: "error" };
     case 4:
-      return "失败";
+      return { label: "恢复中", badge: "processing" };
+    case 5:
+      return { label: "删除中", badge: "warning" };
     default:
-      return "未知";
+      return { label: "未知", badge: "default" };
   }
 };
 
@@ -1698,6 +1717,13 @@ const normalizePortMapping = (item) => ({
   raw: item
 });
 
+const isProtectedPortMapping = (record) => {
+  const rawName = String(record?.name ?? "").trim();
+  if (!rawName) return false;
+  const normalizedName = rawName.toLowerCase();
+  return normalizedName === "ssh" || rawName === "远程桌面";
+};
+
 const formatPortExternal = (record) => {
   const host = record?.api_url || "";
   const port = record?.sport || "";
@@ -1710,11 +1736,13 @@ const formatPortExternal = (record) => {
 const normalizeSnapshotItem = (item) => {
   const id = item.id ?? item.ID ?? item.snapshot_id ?? item.snapshotId ?? item.sid ?? item.SID ?? item.virtuals_id ?? item.virtualsId;
   const state = item.state ?? item.State ?? 0;
+  const stateMeta = snapshotBackupStateMeta(state);
   return {
     id,
     name: item.name ?? item.Name ?? (id ? `snapshot-${id}` : "snapshot"),
     state,
-    state_label: snapshotStateLabel(state),
+    state_label: stateMeta.label,
+    state_badge: stateMeta.badge,
     created_at: item.created_at ?? item.create_time ?? item.createdAt ?? item.createTime ?? "",
     raw: item
   };
@@ -1723,11 +1751,13 @@ const normalizeSnapshotItem = (item) => {
 const normalizeBackupItem = (item) => {
   const id = item.id ?? item.ID ?? item.backup_id ?? item.backupId ?? item.bid ?? item.BID ?? item.virtuals_id ?? item.virtualsId;
   const state = item.state ?? item.State ?? 0;
+  const stateMeta = snapshotBackupStateMeta(state);
   return {
     id,
     name: item.name ?? item.Name ?? (id ? `backup-${id}` : "backup"),
     state,
-    state_label: snapshotStateLabel(state),
+    state_label: stateMeta.label,
+    state_badge: stateMeta.badge,
     created_at: item.created_at ?? item.create_time ?? item.createdAt ?? item.createTime ?? "",
     raw: item
   };
@@ -2131,13 +2161,39 @@ const submitResetOsPassword = async () => {
 };
 
 const openReinstall = () => {
-  if (!systemImageOptions.value.length) {
-    message.error("镜像缺少 image_id，无法重装");
-    return;
-  }
-  reinstallForm.template_id = systemImageOptions.value[0]?.id || null;
-  reinstallForm.password = access.value.os_password || "";
-  reinstallOpen.value = true;
+  const open = async () => {
+    let lineId = Number(detail.value?.line_id || 0);
+    if (!lineId) {
+      const packageId = Number(detail.value?.package_id || 0);
+      if (packageId) {
+        const pkg = catalog.packages.find((item) => Number(item.id || 0) === packageId);
+        const planGroupId = Number(pkg?.plan_group_id || 0);
+        if (planGroupId) {
+          const plan = catalog.planGroups.find((item) => Number(item.id || 0) === planGroupId);
+          lineId = Number(plan?.line_id || 0);
+        }
+      }
+    }
+
+    try {
+      const params = lineId > 0 ? { line_id: lineId } : undefined;
+      const res = await listSystemImages(params);
+      reinstallImages.value = res?.data?.items || [];
+    } catch (err) {
+      message.error(err?.response?.data?.error || err?.response?.data?.message || "获取镜像失败");
+      return;
+    }
+
+    if (!systemImageOptions.value.length) {
+      message.error("当前线路暂无可用镜像");
+      return;
+    }
+    reinstallForm.template_id = systemImageOptions.value[0]?.id || null;
+    reinstallForm.password = access.value.os_password || "";
+    reinstallOpen.value = true;
+  };
+
+  open();
 };
 
 const generateReinstallPassword = () => {

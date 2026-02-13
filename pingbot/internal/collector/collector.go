@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,25 +16,61 @@ import (
 	gnet "github.com/shirou/gopsutil/v3/net"
 )
 
-func Snapshot(ctx context.Context, hostnameAlias string) map[string]any {
-	info, _ := host.InfoWithContext(ctx)
-	cpuInfo, _ := cpu.InfoWithContext(ctx)
-	cpuCores, _ := cpu.CountsWithContext(ctx, true)
-	cpuUsage, _ := cpu.PercentWithContext(ctx, 200*time.Millisecond, false)
-	vm, _ := mem.VirtualMemoryWithContext(ctx)
-	partitions, _ := disk.PartitionsWithContext(ctx, false)
-	conns, _ := gnet.ConnectionsWithContext(ctx, "inet")
+func Snapshot(ctx context.Context, hostnameAlias string) (map[string]any, []string) {
+	warnings := make([]string, 0)
 
-	hostName := info.Hostname
+	info, err := host.InfoWithContext(ctx)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("host info failed: %v", err))
+	}
+	cpuInfo, err := cpu.InfoWithContext(ctx)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("cpu info failed: %v", err))
+	}
+	cpuCores, err := cpu.CountsWithContext(ctx, true)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("cpu core count failed: %v", err))
+	}
+	cpuUsage, err := cpu.PercentWithContext(ctx, 200*time.Millisecond, false)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("cpu usage failed: %v", err))
+	}
+	vm, err := mem.VirtualMemoryWithContext(ctx)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("memory usage failed: %v", err))
+	}
+	partitions, err := disk.PartitionsWithContext(ctx, false)
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("disk partitions failed: %v", err))
+	}
+	conns, err := gnet.ConnectionsWithContext(ctx, "inet")
+	if err != nil {
+		warnings = append(warnings, fmt.Sprintf("network connections failed: %v", err))
+	}
+
+	hostName := ""
+	if info != nil {
+		hostName = info.Hostname
+	}
 	if hostnameAlias != "" {
 		hostName = hostnameAlias
 	}
+	systemOS := ""
+	systemPlatform := ""
+	systemKernel := ""
+	systemUptime := uint64(0)
+	if info != nil {
+		systemOS = info.OS
+		systemPlatform = info.Platform
+		systemKernel = info.KernelVersion
+		systemUptime = info.Uptime
+	}
 	system := map[string]any{
 		"hostname": hostName,
-		"os":       info.OS,
-		"platform": info.Platform,
-		"kernel":   info.KernelVersion,
-		"uptime":   info.Uptime,
+		"os":       systemOS,
+		"platform": systemPlatform,
+		"kernel":   systemKernel,
+		"uptime":   systemUptime,
 	}
 	cpuMap := map[string]any{
 		"model":         "",
@@ -46,15 +83,24 @@ func Snapshot(ctx context.Context, hostnameAlias string) map[string]any {
 	if len(cpuUsage) > 0 {
 		cpuMap["usage_percent"] = cpuUsage[0]
 	}
+	memTotal := uint64(0)
+	memUsed := uint64(0)
+	memUsagePercent := 0.0
+	if vm != nil {
+		memTotal = vm.Total
+		memUsed = vm.Used
+		memUsagePercent = vm.UsedPercent
+	}
 	memMap := map[string]any{
-		"total":         vm.Total,
-		"used":          vm.Used,
-		"usage_percent": vm.UsedPercent,
+		"total":         memTotal,
+		"used":          memUsed,
+		"usage_percent": memUsagePercent,
 	}
 	disks := make([]map[string]any, 0, len(partitions))
 	for _, p := range partitions {
 		u, err := disk.UsageWithContext(ctx, p.Mountpoint)
 		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("disk usage failed mount=%s err=%v", p.Mountpoint, err))
 			continue
 		}
 		disks = append(disks, map[string]any{
@@ -88,7 +134,7 @@ func Snapshot(ctx context.Context, hostnameAlias string) map[string]any {
 		"memory": memMap,
 		"disks":  disks,
 		"ports":  ports,
-	}
+	}, warnings
 }
 
 func DefaultConfigPath() string {

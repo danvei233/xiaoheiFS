@@ -328,8 +328,14 @@ type PushPayload struct {
 	Data  map[string]string
 }
 
+type PushConfig struct {
+	ProjectID          string
+	ServiceAccountJSON string
+	LegacyServerKey    string
+}
+
 type PushSender interface {
-	Send(ctx context.Context, serverKey string, tokens []string, payload PushPayload) error
+	Send(ctx context.Context, config PushConfig, tokens []string, payload PushPayload) error
 }
 
 type ServerStatus struct {

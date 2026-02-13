@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/input_limits.dart';
 import '../../providers/ticket_provider.dart';
 import '../../providers/vps_provider.dart';
 import '../../providers/refresh_provider.dart';
@@ -59,12 +60,21 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
   Widget build(BuildContext context) {
     final ticketListState = ref.watch(ticketListProvider);
     return Scaffold(
-      body: ticketListState.loading
+      body: ticketListState.loading && ticketListState.items.isEmpty
           ? const Center(child: CircularProgressIndicator())
           : ticketListState.items.isEmpty
-          ? const EmptyState(
-              message: AppStrings.noTickets,
-              icon: Icons.support_agent_outlined,
+          ? RefreshIndicator(
+              onRefresh: () => _fetch(force: true),
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(24),
+                children: const [
+                  EmptyState(
+                    message: AppStrings.noTickets,
+                    icon: Icons.support_agent_outlined,
+                  ),
+                ],
+              ),
             )
           : _buildTicketList(
               context,
@@ -161,6 +171,7 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
               children: [
                 TextField(
                   controller: subjectController,
+                  maxLength: InputLimits.ticketSubject,
                   decoration: const InputDecoration(
                     labelText: AppStrings.ticketTitle,
                   ),
@@ -171,6 +182,7 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
                   decoration: const InputDecoration(
                     labelText: AppStrings.ticketContent,
                   ),
+                  maxLength: InputLimits.ticketContent,
                   maxLines: 4,
                 ),
                 const SizedBox(height: 16),
@@ -213,20 +225,38 @@ class _TicketsListPageState extends ConsumerState<TicketsListPage> {
                   ).showSnackBar(const SnackBar(content: Text('请填写完整内容')));
                   return;
                 }
+                if (runeLength(subject) > InputLimits.ticketSubject) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('工单标题长度不能超过 240 个字符')));
+                  return;
+                }
+                if (runeLength(content) > InputLimits.ticketContent) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('工单内容长度不能超过 10000 个字符')));
+                  return;
+                }
                 try {
                   final resources = selectedIds
                       .map(
-                        (id) => {
-                          'resource_type': 'vps',
-                          'resource_id': id,
-                          'resource_name':
+                        (id) {
+                          final rawName =
                               vpsList
                                   .firstWhere(
                                     (item) => (item['id'] ?? item['ID']) == id,
                                     orElse: () => {},
                                   )['name']
                                   ?.toString() ??
-                              'VPS-$id',
+                              'VPS-$id';
+                          final resourceName = runeLength(rawName) > InputLimits.resourceName
+                              ? String.fromCharCodes(rawName.runes.take(InputLimits.resourceName))
+                              : rawName;
+                          return {
+                          'resource_type': 'vps',
+                          'resource_id': id,
+                          'resource_name': resourceName,
+                        };
                         },
                       )
                       .toList();

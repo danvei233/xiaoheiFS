@@ -1681,6 +1681,47 @@ func (h *Handler) VPSResetOS(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
 		return
 	}
+	if templateID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+		return
+	}
+	var matchedSystemID int64
+	// Validate template against instance line to prevent cross-line image reinstall.
+	lineID := inst.LineID
+	if lineID <= 0 && inst.PackageID > 0 {
+		if pkg, pkgErr := h.catalogSvc.GetPackage(c, inst.PackageID); pkgErr == nil && pkg.PlanGroupID > 0 {
+			if plan, planErr := h.catalogSvc.GetPlanGroup(c, pkg.PlanGroupID); planErr == nil {
+				lineID = plan.LineID
+			}
+		}
+	}
+	if lineID > 0 {
+		allowedImages, listErr := h.catalogSvc.ListSystemImages(c, lineID)
+		if listErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "list error"})
+			return
+		}
+		allowed := false
+		for _, img := range allowedImages {
+			if !img.Enabled {
+				continue
+			}
+			if img.ImageID == templateID || img.ID == templateID {
+				allowed = true
+				matchedSystemID = img.ID
+				break
+			}
+		}
+		if !allowed {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
+			return
+		}
+	}
+	if matchedSystemID == 0 {
+		if img, imgErr := h.catalogSvc.GetSystemImage(c, templateID); imgErr == nil && img.ID > 0 {
+			matchedSystemID = img.ID
+		}
+	}
 	if err := h.vpsSvc.ResetOS(c, inst, templateID, strings.TrimSpace(password)); err != nil {
 		if err == usecase.ErrInvalidInput {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid input"})
@@ -1688,6 +1729,12 @@ func (h *Handler) VPSResetOS(c *gin.Context) {
 		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	if matchedSystemID > 0 && h.vpsRepo != nil {
+		if latest, getErr := h.vpsRepo.GetInstance(c, inst.ID); getErr == nil {
+			latest.SystemID = matchedSystemID
+			_ = h.vpsRepo.UpdateInstanceLocal(c, latest)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

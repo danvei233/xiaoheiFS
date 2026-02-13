@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/input_limits.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/avatar_url.dart';
 import '../../providers/auth_provider.dart';
@@ -164,6 +166,7 @@ class ProfilePage extends ConsumerWidget {
               label: AppStrings.email,
               hint: '请输入邮箱',
               controller: emailController,
+              maxLength: InputLimits.email,
               keyboardType: TextInputType.emailAddress,
               prefixIcon: const Icon(Icons.email_outlined),
             ),
@@ -172,6 +175,7 @@ class ProfilePage extends ConsumerWidget {
               label: AppStrings.phone,
               hint: '请输入手机号',
               controller: phoneController,
+              maxLength: InputLimits.phone,
               keyboardType: TextInputType.phone,
               prefixIcon: const Icon(Icons.phone_outlined),
             ),
@@ -180,7 +184,9 @@ class ProfilePage extends ConsumerWidget {
               label: AppStrings.qq,
               hint: '请输入QQ号',
               controller: qqController,
+              maxLength: InputLimits.qq,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               prefixIcon: const Icon(Icons.chat_bubble_outline),
             ),
             const SizedBox(height: 16),
@@ -188,6 +194,7 @@ class ProfilePage extends ConsumerWidget {
               label: AppStrings.bio,
               hint: '请输入个人简介',
               controller: bioController,
+              maxLength: InputLimits.bio,
               maxLines: 3,
               prefixIcon: const Icon(Icons.edit_note),
             ),
@@ -195,12 +202,40 @@ class ProfilePage extends ConsumerWidget {
             AppButton(
               text: AppStrings.save,
               onPressed: () async {
+                final email = emailController.text.trim();
+                final phone = phoneController.text.trim();
+                final qq = qqController.text.trim();
+                final bio = bioController.text.trim();
+                if (runeLength(email) > InputLimits.email) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('邮箱长度不能超过 120 个字符')));
+                  return;
+                }
+                if (runeLength(phone) > InputLimits.phone) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('手机号长度不能超过 32 个字符')));
+                  return;
+                }
+                if (runeLength(qq) > InputLimits.qq) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('QQ 长度不能超过 20 个字符')));
+                  return;
+                }
+                if (runeLength(bio) > InputLimits.bio) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('个人简介长度不能超过 500 个字符')));
+                  return;
+                }
                 try {
                   await ref.read(authProvider.notifier).updateUserInfo({
-                    'email': emailController.text.trim(),
-                    'phone': phoneController.text.trim(),
-                    'qq': qqController.text.trim(),
-                    'bio': bioController.text.trim(),
+                    'email': email,
+                    'phone': phone,
+                    'qq': qq,
+                    'bio': bio,
                   });
                   if (context.mounted) {
                     ScaffoldMessenger.of(

@@ -108,6 +108,7 @@ const router = createRouter({
         { path: "settings/apikey", name: "admin-settings-apikey", component: () => import("@/pages/admin/settings/ApiKey.vue") },
         { path: "settings/webhook", name: "admin-settings-webhook", component: () => import("@/pages/admin/settings/Webhook.vue") },
         { path: "settings/payments", name: "admin-settings-payments", component: () => import("@/pages/admin/settings/Payments.vue") },
+        { path: "settings/fcm", name: "admin-settings-fcm", component: () => import("@/pages/admin/settings/Fcm.vue") },
         { path: "settings/pricing", name: "admin-settings-pricing", component: () => import("@/pages/admin/settings/Pricing.vue") },
         { path: "settings/lifecycle", name: "admin-settings-lifecycle", component: () => import("@/pages/admin/settings/Lifecycle.vue") },
         {
@@ -140,6 +141,25 @@ const router = createRouter({
 });
 
 router.beforeEach(async (to) => {
+  if (to.path.startsWith("/console") && typeof to.hash === "string" && to.hash.includes("impersonate_token=")) {
+    const auth = useAuthStore();
+    const hashParams = new URLSearchParams(to.hash.replace(/^#/, ""));
+    const impersonateToken = hashParams.get("impersonate_token") || "";
+    if (impersonateToken) {
+      auth.token = impersonateToken;
+      auth.profile = null;
+      localStorage.setItem("user_token", impersonateToken);
+    }
+    hashParams.delete("impersonate_token");
+    const restHash = hashParams.toString();
+    return {
+      path: to.path,
+      query: to.query,
+      hash: restHash ? `#${restHash}` : "",
+      replace: true
+    };
+  }
+
   const install = useInstallStore();
   if (!install.loaded) {
     await install.fetchStatus();

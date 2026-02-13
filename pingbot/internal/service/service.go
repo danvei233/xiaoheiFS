@@ -82,6 +82,7 @@ func (s *Service) Run(ctx context.Context) error {
 
 func (s *Service) ensureEnrollment() error {
 	if s.cfg.ProbeID > 0 && strings.TrimSpace(s.cfg.ProbeSecret) != "" {
+		log.Printf("credential loaded probe_id=%d", s.cfg.ProbeID)
 		return nil
 	}
 	if strings.TrimSpace(s.cfg.EnrollToken) == "" {
@@ -112,6 +113,7 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 	if err != nil {
 		return err
 	}
+	log.Printf("dial ws url=%s", wsURL)
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 15 * time.Second,
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: s.cfg.TLSInsecureSkipVerify},
@@ -123,6 +125,7 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 		return err
 	}
 	defer conn.Close()
+	log.Printf("ws connected probe_id=%d", s.cfg.ProbeID)
 
 	sendMu := sync.Mutex{}
 	send := func(env Envelope) error {
@@ -138,24 +141,43 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 			"os_type": runtime.GOOS,
 		},
 	})
+	log.Printf("hello sent os=%s", runtime.GOOS)
 
 	hbTicker := time.NewTicker(time.Duration(runtimeCfg.HeartbeatIntervalSec) * time.Second)
 	defer hbTicker.Stop()
 	ssTicker := time.NewTicker(time.Duration(runtimeCfg.SnapshotIntervalSec) * time.Second)
 	defer ssTicker.Stop()
+	statusTicker := time.NewTicker(30 * time.Second)
+	defer statusTicker.Stop()
 	cfgCh := make(chan client.RuntimeConfig, 1)
 
 	errCh := make(chan error, 1)
-	sendSnapshot := func() {
-		snapshot := collector.Snapshot(context.Background(), s.cfg.HostnameAlias)
-		_ = send(Envelope{
+	sendSnapshot := func(trigger string) {
+		snapshot, warnings := collector.Snapshot(context.Background(), s.cfg.HostnameAlias)
+		if len(warnings) > 0 {
+			log.Printf("snapshot warnings trigger=%s details=%s", trigger, strings.Join(warnings, " | "))
+		}
+		log.Printf(
+			"snapshot collected trigger=%s host=%s cpu=%.1f%% mem=%.1f%% disks=%d ports=%d",
+			trigger,
+			readSnapshotHost(snapshot),
+			readSnapshotPercent(snapshot, "cpu", "usage_percent"),
+			readSnapshotPercent(snapshot, "memory", "usage_percent"),
+			readSnapshotSliceLen(snapshot, "disks"),
+			readSnapshotSliceLen(snapshot, "ports"),
+		)
+		if err := send(Envelope{
 			Type: "snapshot",
 			Payload: map[string]any{
 				"at":       time.Now().Format(time.RFC3339),
 				"os_type":  runtime.GOOS,
 				"snapshot": snapshot,
 			},
-		})
+		}); err != nil {
+			log.Printf("snapshot send failed: %v", err)
+			return
+		}
+		log.Printf("snapshot sent trigger=%s", trigger)
 	}
 
 	go func() {
@@ -173,6 +195,12 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 					Config client.RuntimeConfig `json:"config"`
 				}
 				_ = json.Unmarshal(raw, &p)
+				log.Printf(
+					"runtime config received heartbeat=%ds snapshot=%ds log_chunk=%d",
+					p.Config.HeartbeatIntervalSec,
+					p.Config.SnapshotIntervalSec,
+					p.Config.LogChunkMaxBytes,
+				)
 				select {
 				case cfgCh <- p.Config:
 				default:
@@ -180,25 +208,30 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 			case "ping":
 				_ = send(Envelope{Type: "pong", RequestID: msg.RequestID})
 			case "request_log":
+				log.Printf("request_log received request_id=%s", strings.TrimSpace(msg.RequestID))
 				go s.handleLogRequest(send, msg, runtimeCfg.LogChunkMaxBytes)
 			case "request_snapshot":
-				sendSnapshot()
+				log.Printf("request_snapshot received request_id=%s", strings.TrimSpace(msg.RequestID))
+				sendSnapshot("request_snapshot:" + strings.TrimSpace(msg.RequestID))
 			case "port_check_request":
-				sendSnapshot()
+				log.Printf("port_check_request received request_id=%s", strings.TrimSpace(msg.RequestID))
+				sendSnapshot("port_check_request:" + strings.TrimSpace(msg.RequestID))
 			}
 		}
 	}()
 
 	sendHeartbeat := func() {
-		_ = send(Envelope{
+		if err := send(Envelope{
 			Type: "heartbeat",
 			Payload: map[string]any{
 				"at": time.Now().Format(time.RFC3339),
 			},
-		})
+		}); err != nil {
+			log.Printf("heartbeat send failed: %v", err)
+		}
 	}
 	sendHeartbeat()
-	sendSnapshot()
+	sendSnapshot("startup")
 
 	for {
 		select {
@@ -231,7 +264,14 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 		case <-hbTicker.C:
 			sendHeartbeat()
 		case <-ssTicker.C:
-			sendSnapshot()
+			sendSnapshot("ticker")
+		case <-statusTicker.C:
+			log.Printf(
+				"running probe_id=%d heartbeat=%ds snapshot=%ds",
+				s.cfg.ProbeID,
+				runtimeCfg.HeartbeatIntervalSec,
+				runtimeCfg.SnapshotIntervalSec,
+			)
 		}
 	}
 }
@@ -246,48 +286,106 @@ func (s *Service) handleLogRequest(send func(Envelope) error, msg Envelope, maxC
 		Lines     int    `json:"lines"`
 	}
 	_ = json.Unmarshal(raw, &payload)
+	resolvedSource := s.resolveLogSource(payload.Source)
+	log.Printf(
+		"log request session=%s source=%s lines=%d follow=%v keyword=%q",
+		strings.TrimSpace(payload.SessionID),
+		strings.TrimSpace(resolvedSource),
+		payload.Lines,
+		payload.Follow,
+		strings.TrimSpace(payload.Keyword),
+	)
 	if payload.Lines <= 0 {
 		payload.Lines = 300
 	}
 	if maxChunk <= 0 {
 		maxChunk = 16384
 	}
+	emittedLines := 0
+	var sendErr error
 
 	emit := func(line string) bool {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			return true
 		}
+		emittedLines++
 		for _, chunk := range splitChunk(line, maxChunk) {
-			_ = send(Envelope{
+			if err := send(Envelope{
 				Type:      "log_chunk",
 				RequestID: msg.RequestID,
 				Payload: map[string]any{
 					"session_id": payload.SessionID,
 					"chunk":      chunk,
 				},
-			})
+			}); err != nil {
+				sendErr = err
+				log.Printf("log chunk send failed session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), err)
+				return false
+			}
 		}
 		return true
 	}
 
-	if err := logreader.Stream(payload.Source, payload.Keyword, payload.Lines, payload.Follow, emit); err != nil {
-		_ = send(Envelope{
+	if err := logreader.Stream(resolvedSource, payload.Keyword, payload.Lines, payload.Follow, emit); err != nil {
+		log.Printf("log stream failed session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), err)
+		if serr := send(Envelope{
 			Type:      "log_chunk",
 			RequestID: msg.RequestID,
 			Payload: map[string]any{
 				"session_id": payload.SessionID,
 				"chunk":      "[error] " + err.Error(),
 			},
-		})
+		}); serr != nil {
+			log.Printf("log error chunk send failed session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), serr)
+		}
+	} else if sendErr != nil {
+		log.Printf("log stream interrupted by send failure session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), sendErr)
+	} else if emittedLines == 0 {
+		hint := fmt.Sprintf(
+			"[info] no log lines emitted source=%s lines=%d follow=%v keyword=%q",
+			strings.TrimSpace(resolvedSource),
+			payload.Lines,
+			payload.Follow,
+			strings.TrimSpace(payload.Keyword),
+		)
+		log.Printf("log stream empty session=%s %s", strings.TrimSpace(payload.SessionID), hint)
+		if serr := send(Envelope{
+			Type:      "log_chunk",
+			RequestID: msg.RequestID,
+			Payload: map[string]any{
+				"session_id": payload.SessionID,
+				"chunk":      hint,
+			},
+		}); serr != nil {
+			log.Printf("log empty hint send failed session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), serr)
+		}
 	}
-	_ = send(Envelope{
+	log.Printf("log stream done session=%s source=%s emitted_lines=%d", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), emittedLines)
+	if err := send(Envelope{
 		Type:      "log_end",
 		RequestID: msg.RequestID,
 		Payload: map[string]any{
 			"session_id": payload.SessionID,
 		},
-	})
+	}); err != nil {
+		log.Printf("log end send failed session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), err)
+	}
+}
+
+func (s *Service) resolveLogSource(requestSource string) string {
+	source := strings.TrimSpace(requestSource)
+	if source == "" || strings.HasPrefix(strings.ToLower(source), "file:") {
+		cfgSource := strings.TrimSpace(s.cfg.LogFileSource)
+		if cfgSource == "" {
+			return "file:logs"
+		}
+		if strings.HasPrefix(strings.ToLower(cfgSource), "file:") {
+			return cfgSource
+		}
+		return "file:" + cfgSource
+	}
+	return source
 }
 
 func splitChunk(s string, max int) []string {
@@ -338,4 +436,47 @@ func minDuration(a, b time.Duration) time.Duration {
 		return a
 	}
 	return b
+}
+
+func readSnapshotHost(snapshot map[string]any) string {
+	system, ok := snapshot["system"].(map[string]any)
+	if !ok {
+		return "-"
+	}
+	host := strings.TrimSpace(fmt.Sprintf("%v", system["hostname"]))
+	if host == "" {
+		return "-"
+	}
+	return host
+}
+
+func readSnapshotPercent(snapshot map[string]any, section, key string) float64 {
+	m, ok := snapshot[section].(map[string]any)
+	if !ok {
+		return 0
+	}
+	switch v := m[key].(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	default:
+		return 0
+	}
+}
+
+func readSnapshotSliceLen(snapshot map[string]any, key string) int {
+	items, ok := snapshot[key].([]map[string]any)
+	if ok {
+		return len(items)
+	}
+	raw, ok := snapshot[key].([]any)
+	if ok {
+		return len(raw)
+	}
+	return 0
 }

@@ -2,6 +2,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/input_limits.dart';
 import '../../providers/ticket_provider.dart';
 
 class TicketDetailPage extends ConsumerStatefulWidget {
@@ -119,6 +120,7 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
               child: TextField(
                 controller: _messageController,
                 enabled: !isClosed,
+                maxLength: InputLimits.ticketContent,
                 decoration: InputDecoration(
                   hintText: isClosed ? '工单已关闭，无法回复' : '输入回复内容',
                   border: OutlineInputBorder(),
@@ -143,6 +145,14 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
     if (status == 'closed') return;
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
+    if (runeLength(text) > InputLimits.ticketContent) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('回复内容长度不能超过 10000 个字符')),
+        );
+      }
+      return;
+    }
     try {
       await ref.read(ticketDetailProvider.notifier).addMessage(widget.id, text);
       if (mounted) {

@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/input_limits.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/money_formatter.dart';
 import '../../providers/catalog_provider.dart';
@@ -23,6 +24,7 @@ class OrderDetailPage extends ConsumerStatefulWidget {
 }
 
 class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
+  static final RegExp _moneyPattern = RegExp(r'^\d+(\.\d{1,2})?$');
   List<Map<String, dynamic>> _paymentProviders = [];
   Timer? _pollingTimer;
   bool _autoNavigated = false;
@@ -677,6 +679,17 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     List<Map<String, dynamic>> schemaFields = [];
     String instructions = '';
 
+    int? schemaFieldLimit(String key) {
+      final lower = key.toLowerCase();
+      if (lower == 'method') return InputLimits.paymentMethod;
+      if (lower == 'note') return InputLimits.paymentNote;
+      if (lower == 'approval' || lower.contains('approval') || lower.contains('reason')) {
+        return InputLimits.approval;
+      }
+      if (lower == 'screenshot_url') return InputLimits.screenshotUrl;
+      return null;
+    }
+
     void setProviderFields(String? key) {
       method = key;
       final provider = _findProvider(key);
@@ -745,6 +758,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                 const SizedBox(height: 12),
                 TextField(
                   controller: noteController,
+                  maxLength: InputLimits.paymentNote,
                   decoration: const InputDecoration(labelText: '备注'),
                 ),
                 if (schemaFields.isNotEmpty) const SizedBox(height: 12),
@@ -788,6 +802,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   final controller = fieldControllers[fieldKey] ??
                       TextEditingController(text: extraValues[fieldKey]?.toString() ?? '');
                   fieldControllers[fieldKey] = controller;
+                  final maxLength = schemaFieldLimit(fieldKey);
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TextField(
@@ -797,6 +812,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                           : TextInputType.text,
                       obscureText: fieldType == 'password',
                       maxLines: fieldType == 'textarea' ? 3 : 1,
+                      maxLength: maxLength,
                       decoration: InputDecoration(
                         labelText: isRequired ? '$fieldLabel *' : fieldLabel,
                         hintText: fieldPlaceholder,
@@ -815,22 +831,44 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             ),
             TextButton(
               onPressed: () async {
-                final amount = double.tryParse(amountController.text.trim()) ?? 0;
                 if (method == null || method!.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('请选择支付方式')),
                   );
                   return;
                 }
+                final amountText = amountController.text.trim();
+                if (!_moneyPattern.hasMatch(amountText)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('金额格式不正确，最多保留2位小数')),
+                  );
+                  return;
+                }
+                final amount = double.parse(amountText);
                 if (amount <= 0) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('请输入有效金额')),
                   );
                   return;
                 }
+                final note = noteController.text.trim();
+                if (runeLength(note) > InputLimits.paymentNote) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('备注长度不能超过 500 个字符')),
+                  );
+                  return;
+                }
                 for (final field in schemaFields) {
+                  final key = field['key']?.toString() ?? '';
+                  final limit = schemaFieldLimit(key);
+                  final val = extraValues[key];
+                  if (limit != null && val is String && runeLength(val.trim()) > limit) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('${field['label'] ?? key}长度不能超过 $limit 个字符')),
+                    );
+                    return;
+                  }
                   if (field['required'] == true) {
-                    final key = field['key']?.toString() ?? '';
                     final val = extraValues[key];
                     if (val == null || (val is String && val.trim().isEmpty)) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -847,8 +885,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                           {
                             'method': method,
                             'amount': amount,
-                            if (noteController.text.trim().isNotEmpty)
-                              'note': noteController.text.trim(),
+                            if (note.isNotEmpty) 'note': note,
                           },
                           idempotencyKey: 'pay-${DateTime.now().millisecondsSinceEpoch}',
                         );

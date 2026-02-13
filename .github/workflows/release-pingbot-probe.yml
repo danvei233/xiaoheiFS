@@ -1,0 +1,141 @@
+name: Build Pingbot Probe
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.2.3)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            goos: linux
+            goarch: amd64
+            archive_ext: tar.gz
+          - target: linux-arm64
+            goos: linux
+            goarch: arm64
+            archive_ext: tar.gz
+          - target: windows-amd64
+            goos: windows
+            goarch: amd64
+            archive_ext: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: pingbot/go.mod
+          cache-dependency-path: pingbot/go.sum
+
+      - name: Build and package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG='${{ steps.tag.outputs.value }}'
+          TARGET='${{ matrix.target }}'
+          GOOS='${{ matrix.goos }}'
+          GOARCH='${{ matrix.goarch }}'
+          ARCHIVE_EXT='${{ matrix.archive_ext }}'
+
+          mkdir -p dist pkg
+          PKG_DIR="pkg/pingbot-${TAG}-${TARGET}"
+          mkdir -p "$PKG_DIR"
+
+          pushd pingbot >/dev/null
+          export CGO_ENABLED=0
+          export GOOS
+          export GOARCH
+
+          if [[ "$GOOS" == "windows" ]]; then
+            go build -trimpath -ldflags="-s -w" -o "../$PKG_DIR/pingbot.exe" ./cmd/pingbot
+          else
+            go build -trimpath -ldflags="-s -w" -o "../$PKG_DIR/pingbot" ./cmd/pingbot
+          fi
+          popd >/dev/null
+
+          cp pingbot/deploy/windows/pingbot-example.yaml "$PKG_DIR/config.example.yaml"
+
+          if [[ "$GOOS" == "linux" ]]; then
+            mkdir -p "$PKG_DIR/systemd"
+            cp pingbot/deploy/systemd/pingbot.service "$PKG_DIR/systemd/"
+            cp pingbot/deploy/systemd/install.sh "$PKG_DIR/systemd/"
+            cp pingbot/deploy/systemd/uninstall.sh "$PKG_DIR/systemd/"
+            chmod +x "$PKG_DIR/pingbot" "$PKG_DIR/systemd/install.sh" "$PKG_DIR/systemd/uninstall.sh"
+
+            OUT="dist/pingbot-${TAG}-${TARGET}.${ARCHIVE_EXT}"
+            tar -C pkg -czf "$OUT" "$(basename "$PKG_DIR")"
+          else
+            cp pingbot/deploy/windows/install-nssm.ps1 "$PKG_DIR/"
+            cp pingbot/deploy/windows/uninstall-nssm.ps1 "$PKG_DIR/"
+
+            OUT="dist/pingbot-${TAG}-${TARGET}.${ARCHIVE_EXT}"
+            (
+              cd pkg
+              zip -r "../$OUT" "$(basename "$PKG_DIR")"
+            )
+          fi
+
+          HASH="$(sha256sum "$OUT" | cut -d' ' -f1)"
+          echo "${HASH}  $(basename "$OUT")" > "${OUT}.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pingbot-${{ matrix.target }}
+          path: |
+            dist/pingbot-${{ steps.tag.outputs.value }}-${{ matrix.target }}.${{ matrix.archive_ext }}
+            dist/pingbot-${{ steps.tag.outputs.value }}-${{ matrix.target }}.${{ matrix.archive_ext }}.sha256
+
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.value }}
+        shell: bash
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "Pingbot probe release $TAG" \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.value }}
+        shell: bash
+        run: |
+          gh release upload "$TAG" \
+            "dist/pingbot-${TAG}-${{ matrix.target }}.${{ matrix.archive_ext }}" \
+            "dist/pingbot-${TAG}-${{ matrix.target }}.${{ matrix.archive_ext }}.sha256" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"

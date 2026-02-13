@@ -74,12 +74,17 @@ func (s *PushService) NotifyAdminsNewOrder(ctx context.Context, order domain.Ord
 	if enabled.ValueJSON != "" && strings.ToLower(enabled.ValueJSON) != "true" {
 		return nil
 	}
-	keySetting, err := s.settings.GetSetting(ctx, "fcm_server_key")
-	if err != nil {
-		return nil
+	cfg := PushConfig{}
+	if projectSetting, err := s.settings.GetSetting(ctx, "fcm_project_id"); err == nil {
+		cfg.ProjectID = strings.TrimSpace(projectSetting.ValueJSON)
 	}
-	serverKey := strings.TrimSpace(keySetting.ValueJSON)
-	if serverKey == "" {
+	if saSetting, err := s.settings.GetSetting(ctx, "fcm_service_account_json"); err == nil {
+		cfg.ServiceAccountJSON = strings.TrimSpace(saSetting.ValueJSON)
+	}
+	if keySetting, err := s.settings.GetSetting(ctx, "fcm_server_key"); err == nil {
+		cfg.LegacyServerKey = strings.TrimSpace(keySetting.ValueJSON)
+	}
+	if (cfg.ProjectID == "" || cfg.ServiceAccountJSON == "") && cfg.LegacyServerKey == "" {
 		return nil
 	}
 
@@ -151,5 +156,5 @@ func (s *PushService) NotifyAdminsNewOrder(ctx context.Context, order domain.Ord
 			"currency": currency,
 		},
 	}
-	return s.sender.Send(ctx, serverKey, uniqueTokens, payload)
+	return s.sender.Send(ctx, cfg, uniqueTokens, payload)
 }

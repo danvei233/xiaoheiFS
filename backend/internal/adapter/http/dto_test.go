@@ -304,3 +304,31 @@ func TestDTO_ServerStatus_CompatFields(t *testing.T) {
 		t.Fatalf("expected disk_usage_percent in json")
 	}
 }
+
+func TestOrderItemDTO_ResizeSpecAmountsConvertedToYuan(t *testing.T) {
+	item := domain.OrderItem{
+		ID:      1,
+		OrderID: 2,
+		Action:  "resize",
+		SpecJSON: `{
+			"current_monthly": 1500,
+			"target_monthly": 2000,
+			"charge_amount": 500,
+			"refund_amount": 0
+		}`,
+	}
+	dto := toOrderItemDTO(item)
+	var spec map[string]any
+	if err := json.Unmarshal(dto.Spec, &spec); err != nil {
+		t.Fatalf("unmarshal spec: %v", err)
+	}
+	if spec["current_monthly"] != 15.0 {
+		t.Fatalf("expected current_monthly 15.0, got %v", spec["current_monthly"])
+	}
+	if spec["target_monthly"] != 20.0 {
+		t.Fatalf("expected target_monthly 20.0, got %v", spec["target_monthly"])
+	}
+	if spec["charge_amount"] != 5.0 {
+		t.Fatalf("expected charge_amount 5.0, got %v", spec["charge_amount"])
+	}
+}

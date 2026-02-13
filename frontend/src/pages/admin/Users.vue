@@ -174,6 +174,8 @@
 <script setup>
 import { reactive, ref } from "vue";
 import { UserOutlined } from "@ant-design/icons-vue";
+import { useRouter } from "vue-router";
+import { useAuthStore } from "@/stores/auth";
 import FilterBar from "@/components/FilterBar.vue";
 import ProTable from "@/components/ProTable.vue";
 import StatusTag from "@/components/StatusTag.vue";
@@ -193,6 +195,9 @@ import {
 } from "@/services/admin";
 import { message } from "ant-design-vue";
 import { INPUT_LIMITS } from "@/constants/inputLimits";
+
+const router = useRouter();
+const auth = useAuthStore();
 
 const filters = reactive({ keyword: "", status: undefined, range: [] });
 const statusOptions = [
@@ -454,8 +459,11 @@ const loginAsUser = async (record) => {
       message.error("未获取到用户令牌");
       return;
     }
+    auth.token = token;
+    auth.profile = res.data?.user || null;
     localStorage.setItem("user_token", token);
-    window.open("/console", "_blank");
+    message.success("已切换到该用户");
+    await router.push({ name: "console-dashboard" });
   } catch (e) {
     message.error(e.response?.data?.error || "模拟登录失败");
   }

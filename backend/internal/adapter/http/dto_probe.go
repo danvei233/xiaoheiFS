@@ -89,7 +89,16 @@ func toProbeStatusEventDTO(ev domain.ProbeStatusEvent) ProbeStatusEventDTO {
 
 func toProbeSnapshotDTO(raw string) ProbeSnapshotDTO {
 	payload := map[string]any{}
-	_ = json.Unmarshal([]byte(raw), &payload)
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil || len(payload) == 0 {
+		// Backward compatibility: tolerate snapshots that were stored as a JSON string.
+		var nested string
+		if err2 := json.Unmarshal([]byte(raw), &nested); err2 == nil {
+			nested = strings.TrimSpace(nested)
+			if nested != "" {
+				_ = json.Unmarshal([]byte(nested), &payload)
+			}
+		}
+	}
 	out := ProbeSnapshotDTO{
 		System: mapStringAny(payload["system"]),
 		CPU:    mapStringAny(payload["cpu"]),

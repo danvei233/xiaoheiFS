@@ -18,6 +18,43 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    (function () {
+      function parseHashParams() {
+        if (!window.location.hash || window.location.hash.length <= 1) return {};
+        var query = window.location.hash.substring(1);
+        var result = {};
+        query.split('&').forEach(function (part) {
+          if (!part) return;
+          var idx = part.indexOf('=');
+          var key = idx >= 0 ? part.substring(0, idx) : part;
+          var value = idx >= 0 ? part.substring(idx + 1) : '';
+          if (!key) return;
+          try {
+            result[decodeURIComponent(key)] = decodeURIComponent(value);
+          } catch (_) {
+            result[key] = value;
+          }
+        });
+        return result;
+      }
+
+      var hashParams = parseHashParams();
+      var token = hashParams.impersonate_token || '';
+      if (!token) return;
+
+      try {
+        localStorage.setItem('user_token', token);
+        localStorage.setItem('access_token', token);
+        localStorage.setItem('flutter.user_token', token);
+        localStorage.setItem('flutter.access_token', token);
+      } catch (_) {}
+
+      var cleanUrl =
+        window.location.origin + window.location.pathname + window.location.search;
+      window.history.replaceState({}, document.title, cleanUrl);
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -36,6 +36,10 @@ class VpsDetailPage extends ConsumerStatefulWidget {
 
 class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     with SingleTickerProviderStateMixin {
+  static const int _maxPasswordLength = 128;
+  static const int _maxPortMappingNameLength = 100;
+  static const int _maxRefundReasonLength = 500;
+
   late final TabController _tabController;
   ProviderSubscription<RefreshEvent?>? _refreshSub;
   Timer? _portCandidateTimer;
@@ -255,19 +259,18 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                 icon: const Icon(Icons.api_outlined, size: 18),
                 label: const Text('控制面板'),
               ),
+              OutlinedButton.icon(
+                style: outlineButtonStyle,
+                onPressed: () => _openRenewDialog(context),
+                icon: const Icon(Icons.sync, size: 18),
+                label: const Text('续费'),
+              ),
               if (emergencyRenewEligible)
                 ElevatedButton.icon(
                   style: dangerButtonStyle,
                   onPressed: () => _submitEmergencyRenew(),
                   icon: const Icon(Icons.sync, size: 18),
                   label: const Text('紧急续费'),
-                )
-              else
-                OutlinedButton.icon(
-                  style: outlineButtonStyle,
-                  onPressed: () => _openRenewDialog(context),
-                  icon: const Icon(Icons.sync, size: 18),
-                  label: const Text('续费'),
                 ),
               OutlinedButton.icon(
                 style: outlineButtonStyle,
@@ -444,7 +447,13 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     );
   }
 
-  Widget _buildCard({required String title, required IconData icon, required Widget child}) {
+  Widget _buildCard({
+    required String title,
+    required IconData icon,
+    required Widget child,
+    String? unit,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -458,6 +467,26 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                 Icon(icon, color: AppColors.primary, size: 18),
                 const SizedBox(width: 8),
                 Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                if (unit != null && unit.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: colorScheme.outlineVariant.withValues(alpha: 0.75),
+                      ),
+                    ),
+                    child: Text(
+                      unit,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
@@ -706,19 +735,18 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
           spacing: 12,
           runSpacing: 8,
           children: [
+            ElevatedButton.icon(
+              style: primaryButtonStyle,
+              onPressed: () => _openRenewDialog(context),
+              icon: const Icon(Icons.sync),
+              label: const Text('续费'),
+            ),
             if (emergencyEligible)
               ElevatedButton.icon(
                 style: dangerButtonStyle,
                 onPressed: () => _submitEmergencyRenew(),
                 icon: const Icon(Icons.sync),
                 label: const Text('紧急续费'),
-              )
-            else
-              ElevatedButton.icon(
-                style: primaryButtonStyle,
-                onPressed: () => _openRenewDialog(context),
-                icon: const Icon(Icons.sync),
-                label: const Text('续费'),
               ),
             if (resizeEnabled)
               OutlinedButton.icon(
@@ -848,11 +876,13 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                     child: _buildCard(
                       title: 'CPU',
                       icon: Icons.show_chart,
+                      unit: '%',
                       child: LineChart(
                         values: monitor.cpu.values,
                         labels: monitor.cpu.labels,
                         lineColor: AppColors.primary,
                         height: 160,
+                        enablePointSelection: true,
                       ),
                     ),
                   ),
@@ -861,11 +891,13 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                     child: _buildCard(
                       title: 'IO',
                       icon: Icons.cloud_upload,
+                      unit: 'KBps',
                       child: LineChart(
                         values: monitor.trafficOut.values,
                         labels: monitor.trafficOut.labels,
                         lineColor: AppColors.warning,
                         height: 160,
+                        enablePointSelection: true,
                       ),
                     ),
                   ),
@@ -874,11 +906,13 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                     child: _buildCard(
                       title: '网络',
                       icon: Icons.cloud_download,
+                      unit: 'KBps',
                       child: LineChart(
                         values: monitor.trafficIn.values,
                         labels: monitor.trafficIn.labels,
                         lineColor: AppColors.success,
                         height: 160,
+                        enablePointSelection: true,
                       ),
                     ),
                   ),
@@ -887,11 +921,13 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                     child: _buildCard(
                       title: '内存',
                       icon: Icons.memory,
+                      unit: '%',
                       child: LineChart(
                         values: monitor.memory.values,
                         labels: monitor.memory.labels,
                         lineColor: AppColors.info,
                         height: 160,
+                        enablePointSelection: true,
                       ),
                     ),
                   ),
@@ -936,40 +972,47 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       body: firewallAsync.when(
       data: (items) {
         final rules = items.map(_normalizeFirewallRule).toList();
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-          children: [
-            if (rules.isEmpty)
-              const EmptyState(message: AppStrings.noData, icon: Icons.security),
-            ...rules.map((rule) {
-              return Card(
-                child: ListTile(
-                  title: Text(
-                    '${rule['direction'] == '' ? '-' : rule['direction']} '
-                    '${rule['protocol'] == '' ? '-' : rule['protocol']} '
-                    '${rule['method'] == '' ? '-' : rule['method']} 端口: '
-                    '${rule['port'] == '' ? '-' : rule['port']}',
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(vpsFirewallProvider(widget.id));
+            await ref.read(vpsFirewallProvider(widget.id).future);
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            children: [
+              if (rules.isEmpty)
+                const EmptyState(message: AppStrings.noData, icon: Icons.security),
+              ...rules.map((rule) {
+                return Card(
+                  child: ListTile(
+                    title: Text(
+                      '${rule['direction'] == '' ? '-' : rule['direction']} '
+                      '${rule['protocol'] == '' ? '-' : rule['protocol']} '
+                      '${rule['method'] == '' ? '-' : rule['method']} 端口: '
+                      '${rule['port'] == '' ? '-' : rule['port']}',
+                    ),
+                    subtitle: Text('IP: ${rule['ip'] == '' ? '-' : rule['ip']}'),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete, color: Colors.red),
+                      onPressed: rule['id'] == null
+                          ? null
+                          : () async {
+                              await _operate(
+                                context,
+                                () => ref
+                                    .read(vpsRepositoryProvider)
+                                    .deleteFirewallRule(widget.id, int.parse('${rule['id']}')),
+                                '已删除',
+                              );
+                              ref.invalidate(vpsFirewallProvider(widget.id));
+                            },
+                    ),
                   ),
-                  subtitle: Text('IP: ${rule['ip'] == '' ? '-' : rule['ip']}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: rule['id'] == null
-                        ? null
-                        : () async {
-                            await _operate(
-                              context,
-                              () => ref
-                                  .read(vpsRepositoryProvider)
-                                  .deleteFirewallRule(widget.id, int.parse('${rule['id']}')),
-                              '已删除',
-                            );
-                            ref.invalidate(vpsFirewallProvider(widget.id));
-                          },
-                  ),
-                ),
-              );
-            }),
-          ],
+                );
+              }),
+            ],
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -985,42 +1028,49 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       body: portsAsync.when(
       data: (items) {
         final ports = items.map(_normalizePortMapping).toList();
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-          children: [
-            if (ports.isEmpty)
-              const EmptyState(message: AppStrings.noData, icon: Icons.swap_horiz),
-            ...ports.map((item) {
-              final external = _formatPortExternal(item);
-              final rawName = (item['name'] ?? '').toString().trim();
-              final nameLower = rawName.toLowerCase();
-              final protectedNames = {'ssh', '远程桌面', 'rdp', 'remote desktop'};
-              final isProtected = protectedNames.contains(nameLower) || protectedNames.contains(rawName);
-              return Card(
-                child: ListTile(
-                  title: Text('${item['name'] == '' ? '-' : item['name']}'),
-                  subtitle: Text(
-                    '外部地址: $external -> 目标端口: ${item['dport'] == '' ? '-' : item['dport']}',
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(vpsPortsProvider(widget.id));
+            await ref.read(vpsPortsProvider(widget.id).future);
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            children: [
+              if (ports.isEmpty)
+                const EmptyState(message: AppStrings.noData, icon: Icons.swap_horiz),
+              ...ports.map((item) {
+                final external = _formatPortExternal(item);
+                final rawName = (item['name'] ?? '').toString().trim();
+                final nameLower = rawName.toLowerCase();
+                final protectedNames = {'ssh', '远程桌面', 'rdp', 'remote desktop'};
+                final isProtected = protectedNames.contains(nameLower) || protectedNames.contains(rawName);
+                return Card(
+                  child: ListTile(
+                    title: Text('${item['name'] == '' ? '-' : item['name']}'),
+                    subtitle: Text(
+                      '外部地址: $external -> 目标端口: ${item['dport'] == '' ? '-' : item['dport']}',
+                    ),
+                    trailing: IconButton(
+                      icon: Icon(Icons.delete, color: isProtected ? AppColors.gray500 : Colors.red),
+                      onPressed: item['id'] == null || isProtected
+                          ? null
+                          : () async {
+                              await _operate(
+                                context,
+                                () => ref
+                                    .read(vpsRepositoryProvider)
+                                    .deletePortMapping(widget.id, int.parse('${item['id']}')),
+                                '已删除',
+                              );
+                              ref.invalidate(vpsPortsProvider(widget.id));
+                            },
+                    ),
                   ),
-                  trailing: IconButton(
-                    icon: Icon(Icons.delete, color: isProtected ? AppColors.gray500 : Colors.red),
-                    onPressed: item['id'] == null || isProtected
-                        ? null
-                        : () async {
-                            await _operate(
-                              context,
-                              () => ref
-                                  .read(vpsRepositoryProvider)
-                                  .deletePortMapping(widget.id, int.parse('${item['id']}')),
-                              '已删除',
-                            );
-                            ref.invalidate(vpsPortsProvider(widget.id));
-                          },
-                  ),
-                ),
-              );
-            }),
-          ],
+                );
+              }),
+            ],
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -1036,54 +1086,63 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       body: snapshotAsync.when(
       data: (items) {
         final snapshots = items.map(_normalizeSnapshotItem).toList();
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-          children: [
-            if (snapshots.isEmpty)
-              const EmptyState(message: AppStrings.noData, icon: Icons.camera_alt),
-            ...snapshots.map((item) {
-              return Card(
-                child: ListTile(
-                  title: Text('${item['name'] == '' ? '-' : item['name']}'),
-                  subtitle: Text('创建时间: ${DateFormatter.formatIso(item['created_at'])}'),
-                  trailing: Wrap(
-                    spacing: 8,
-                    children: [
-                      TextButton(
-                        onPressed: item['id'] == null
-                            ? null
-                            : () async {
-                                await _operate(
-                                  context,
-                                  () => ref
-                                      .read(vpsRepositoryProvider)
-                                      .restoreSnapshot(widget.id, int.parse('${item['id']}')),
-                                  '已提交恢复',
-                                );
-                              },
-                        child: const Text('恢复'),
-                      ),
-                      TextButton(
-                        onPressed: item['id'] == null
-                            ? null
-                            : () async {
-                                await _operate(
-                                  context,
-                                  () => ref
-                                      .read(vpsRepositoryProvider)
-                                      .deleteSnapshot(widget.id, int.parse('${item['id']}')),
-                                  '已删除',
-                                );
-                                ref.invalidate(vpsSnapshotsProvider(widget.id));
-                              },
-                        child: const Text('删除', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(vpsSnapshotsProvider(widget.id));
+            await ref.read(vpsSnapshotsProvider(widget.id).future);
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            children: [
+              if (snapshots.isEmpty)
+                const EmptyState(message: AppStrings.noData, icon: Icons.camera_alt),
+              ...snapshots.map((item) {
+                return Card(
+                  child: ListTile(
+                    title: Text('${item['name'] == '' ? '-' : item['name']}'),
+                    subtitle: Text(
+                      '状态: ${item['state_label'] ?? '未知'}\n创建时间: ${DateFormatter.formatIso(item['created_at'])}',
+                    ),
+                    trailing: Wrap(
+                      spacing: 8,
+                      children: [
+                        TextButton(
+                          onPressed: item['id'] == null
+                              ? null
+                              : () async {
+                                  await _operate(
+                                    context,
+                                    () => ref
+                                        .read(vpsRepositoryProvider)
+                                        .restoreSnapshot(widget.id, int.parse('${item['id']}')),
+                                    '已提交恢复',
+                                  );
+                                },
+                          child: const Text('恢复'),
+                        ),
+                        TextButton(
+                          onPressed: item['id'] == null
+                              ? null
+                              : () async {
+                                  await _operate(
+                                    context,
+                                    () => ref
+                                        .read(vpsRepositoryProvider)
+                                        .deleteSnapshot(widget.id, int.parse('${item['id']}')),
+                                    '已删除',
+                                  );
+                                  ref.invalidate(vpsSnapshotsProvider(widget.id));
+                                },
+                          child: const Text('删除', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            }),
-          ],
+                );
+              }),
+            ],
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -1106,54 +1165,63 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       body: backupAsync.when(
       data: (items) {
         final backups = items.map(_normalizeBackupItem).toList();
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-          children: [
-            if (backups.isEmpty)
-              const EmptyState(message: AppStrings.noData, icon: Icons.cloud),
-            ...backups.map((item) {
-              return Card(
-                child: ListTile(
-                  title: Text('${item['name'] == '' ? '-' : item['name']}'),
-                  subtitle: Text('创建时间: ${DateFormatter.formatIso(item['created_at'])}'),
-                  trailing: Wrap(
-                    spacing: 8,
-                    children: [
-                      TextButton(
-                        onPressed: item['id'] == null
-                            ? null
-                            : () async {
-                                await _operate(
-                                  context,
-                                  () => ref
-                                      .read(vpsRepositoryProvider)
-                                      .restoreBackup(widget.id, int.parse('${item['id']}')),
-                                  '已提交恢复',
-                                );
-                              },
-                        child: const Text('恢复'),
-                      ),
-                      TextButton(
-                        onPressed: item['id'] == null
-                            ? null
-                            : () async {
-                                await _operate(
-                                  context,
-                                  () => ref
-                                      .read(vpsRepositoryProvider)
-                                      .deleteBackup(widget.id, int.parse('${item['id']}')),
-                                  '已删除',
-                                );
-                                ref.invalidate(vpsBackupsProvider(widget.id));
-                              },
-                        child: const Text('删除', style: TextStyle(color: Colors.red)),
-                      ),
-                    ],
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(vpsBackupsProvider(widget.id));
+            await ref.read(vpsBackupsProvider(widget.id).future);
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            children: [
+              if (backups.isEmpty)
+                const EmptyState(message: AppStrings.noData, icon: Icons.cloud),
+              ...backups.map((item) {
+                return Card(
+                  child: ListTile(
+                    title: Text('${item['name'] == '' ? '-' : item['name']}'),
+                    subtitle: Text(
+                      '状态: ${item['state_label'] ?? '未知'}\n创建时间: ${DateFormatter.formatIso(item['created_at'])}',
+                    ),
+                    trailing: Wrap(
+                      spacing: 8,
+                      children: [
+                        TextButton(
+                          onPressed: item['id'] == null
+                              ? null
+                              : () async {
+                                  await _operate(
+                                    context,
+                                    () => ref
+                                        .read(vpsRepositoryProvider)
+                                        .restoreBackup(widget.id, int.parse('${item['id']}')),
+                                    '已提交恢复',
+                                  );
+                                },
+                          child: const Text('恢复'),
+                        ),
+                        TextButton(
+                          onPressed: item['id'] == null
+                              ? null
+                              : () async {
+                                  await _operate(
+                                    context,
+                                    () => ref
+                                        .read(vpsRepositoryProvider)
+                                        .deleteBackup(widget.id, int.parse('${item['id']}')),
+                                    '已删除',
+                                  );
+                                  ref.invalidate(vpsBackupsProvider(widget.id));
+                                },
+                          child: const Text('删除', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              );
-            }),
-          ],
+                );
+              }),
+            ],
+          ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -1455,24 +1523,51 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
         item['SID'] ??
         item['virtuals_id'] ??
         item['virtualsId'];
+    final state = item['state'] ?? item['State'] ?? 0;
+    final stateMeta = _snapshotBackupStateMeta(state);
     return {
       'id': id,
       'name': _sanitizeValue(item['name'] ?? item['Name']) != ''
           ? _sanitizeValue(item['name'] ?? item['Name'])
           : (id != null ? 'snapshot-$id' : 'snapshot'),
+      'state': state,
+      'state_label': stateMeta['label'],
+      'state_badge': stateMeta['badge'],
       'created_at': _sanitizeValue(item['created_at'] ?? item['create_time'] ?? item['createdAt'] ?? item['createTime']),
     };
   }
 
   Map<String, dynamic> _normalizeBackupItem(Map<String, dynamic> item) {
     final id = item['id'] ?? item['ID'] ?? item['backup_id'] ?? item['backupId'] ?? item['bid'] ?? item['BID'];
+    final state = item['state'] ?? item['State'] ?? 0;
+    final stateMeta = _snapshotBackupStateMeta(state);
     return {
       'id': id,
       'name': _sanitizeValue(item['name'] ?? item['Name']) != ''
           ? _sanitizeValue(item['name'] ?? item['Name'])
           : (id != null ? 'backup-$id' : 'backup'),
+      'state': state,
+      'state_label': stateMeta['label'],
+      'state_badge': stateMeta['badge'],
       'created_at': _sanitizeValue(item['created_at'] ?? item['create_time'] ?? item['createdAt'] ?? item['createTime']),
     };
+  }
+
+  Map<String, String> _snapshotBackupStateMeta(dynamic state) {
+    switch (_toInt(state)) {
+      case 1:
+        return {'label': '创建中', 'badge': 'processing'};
+      case 2:
+        return {'label': '创建成功', 'badge': 'success'};
+      case 3:
+        return {'label': '创建失败', 'badge': 'error'};
+      case 4:
+        return {'label': '恢复中', 'badge': 'processing'};
+      case 5:
+        return {'label': '删除中', 'badge': 'warning'};
+      default:
+        return {'label': '未知', 'badge': 'default'};
+    }
   }
 
   String _sanitizeValue(dynamic value) {
@@ -1633,6 +1728,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
             children: [
               TextField(
                 controller: nameController,
+                maxLength: _maxPortMappingNameLength,
                 decoration: const InputDecoration(labelText: '名称'),
               ),
               TextField(
@@ -1675,6 +1771,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                 ),
               TextField(
                 controller: dportController,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: const InputDecoration(labelText: '目标端口'),
               ),
             ],
@@ -1683,17 +1781,47 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
             TextButton(onPressed: () => Navigator.pop(context), child: const Text(AppStrings.cancel)),
             TextButton(
               onPressed: () async {
-                if (dportController.text.trim().isEmpty) {
+                final name = nameController.text.trim();
+                if (name.length > _maxPortMappingNameLength) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('名称长度不能超过 100 个字符')));
+                  return;
+                }
+                final sportText = sportController.text.trim();
+                if (sportText.isEmpty || !RegExp(r'^\d+$').hasMatch(sportText)) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('外部端口必须是数字')));
+                  return;
+                }
+                final dportText = dportController.text.trim();
+                if (dportText.isEmpty) {
                   ScaffoldMessenger.of(context)
                       .showSnackBar(const SnackBar(content: Text('请输入目标端口')));
+                  return;
+                }
+                if (!RegExp(r'^\d+$').hasMatch(dportText)) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('目标端口必须是数字')));
+                  return;
+                }
+                final sport = int.parse(sportText);
+                final dport = int.parse(dportText);
+                if (sport < 1 || sport > 65535) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('外部端口必须在 1-65535 之间')));
+                  return;
+                }
+                if (dport < 1 || dport > 65535) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('目标端口必须在 1-65535 之间')));
                   return;
                 }
                 await _operate(
                   context,
                   () => ref.read(vpsRepositoryProvider).addPortMapping(widget.id, {
-                    'name': nameController.text.trim(),
-                    'sport': sportController.text.trim(),
-                    'dport': int.tryParse(dportController.text.trim()) ?? dportController.text.trim(),
+                    'name': name,
+                    'sport': sport,
+                    'dport': dport,
                   }),
                   '已添加',
                 );
@@ -1735,15 +1863,27 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
             TextField(
               controller: qtyController,
               keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(labelText: '数量'),
             ),
           ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text(AppStrings.cancel)),
-          TextButton(
-            onPressed: () async {
-              final qty = int.tryParse(qtyController.text.trim()) ?? 1;
+            TextButton(
+              onPressed: () async {
+              final qtyText = qtyController.text.trim();
+              if (qtyText.isEmpty || !RegExp(r'^\d+$').hasMatch(qtyText)) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('数量必须是数字')));
+                return;
+              }
+              final qty = int.parse(qtyText);
+              if (qty <= 0) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('数量必须大于 0')));
+                return;
+              }
               final cycle = cycles.firstWhere((e) => e['id'] == cycleId, orElse: () => {});
               final months = (cycle['months'] ?? 1) * qty;
               try {
@@ -1783,95 +1923,335 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
 
   Future<void> _openResizeDialog(BuildContext context) async {
     final catalog = ref.read(catalogProvider);
-    final packages = catalog.packages;
     final detail = ref.read(vpsDetailProvider).detail ?? {};
-    final currentPackageId = detail['package_id'];
-    final currentPackage = packages.firstWhere(
-      (p) => p['id'] == currentPackageId,
-      orElse: () => {},
+    final specObj = _resolveSpec(detail);
+    final specMap = _parseJson(detail['spec']);
+    final currentDiskGb = specObj.diskGb;
+    final currentPackageId = _toInt(detail['package_id'] ?? detail['packageId'] ?? detail['PackageID']);
+    final currentPackage = catalog.packages.firstWhere(
+      (p) => _toInt(p['id']) == currentPackageId,
+      orElse: () => <String, dynamic>{},
     );
-    final planGroupId = currentPackage['plan_group_id'] ?? currentPackage['PlanGroupID'];
-    final packageOptions = packages
-        .where((p) => (p['plan_group_id'] ?? p['PlanGroupID']) == planGroupId)
+    final planGroupId = _toInt(currentPackage['plan_group_id'] ?? currentPackage['planGroupId'] ?? currentPackage['PlanGroupID']);
+    final planGroup = catalog.planGroups.firstWhere(
+      (g) => _toInt(g['id']) == planGroupId,
+      orElse: () => <String, dynamic>{},
+    );
+    final packageOptions = catalog.packages
+        .where((p) => _toInt(p['plan_group_id'] ?? p['planGroupId'] ?? p['PlanGroupID']) == planGroupId)
         .where((p) => p['active'] != false && p['visible'] != false)
-        .toList();
+        .toList()
+      ..sort((a, b) => _toDouble(a['monthly_price']).compareTo(_toDouble(b['monthly_price'])));
+    if (currentPackage.isNotEmpty && !packageOptions.any((p) => _toInt(p['id']) == currentPackageId)) {
+      packageOptions.insert(0, currentPackage);
+    }
+    if (packageOptions.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无可用套餐')));
+      }
+      return;
+    }
 
-    int? targetPackageId;
+    Map<String, int> pkgSpec(Map<String, dynamic>? p) => {
+          'cpu': _toInt(p?['cores'] ?? p?['cpu'] ?? p?['CPU'] ?? p?['Cores']),
+          'memory_gb': _toInt(p?['memory_gb'] ?? p?['mem_gb'] ?? p?['MemoryGB']),
+          'disk_gb': _toInt(p?['disk_gb'] ?? p?['DiskGB']),
+          'bandwidth_mbps': _toInt(p?['bandwidth_mbps'] ?? p?['bandwidth'] ?? p?['BandwidthMB']),
+        };
+    String pkgLabel(Map<String, dynamic> p) {
+      final s = pkgSpec(p);
+      return '${p['name'] ?? '-'}（${s['cpu']}核 ${s['memory_gb']}GB ${s['disk_gb']}GB ${s['bandwidth_mbps']}Mbps）';
+    }
+    Map<String, dynamic>? findPkg(int? id) {
+      if (id == null || id <= 0) return null;
+      final hit = packageOptions.firstWhere((p) => _toInt(p['id']) == id, orElse: () => <String, dynamic>{});
+      return hit.isEmpty ? null : hit;
+    }
+    Map<String, dynamic> normRule(dynamic minRaw, dynamic maxRaw, dynamic stepRaw, int fallbackMax) {
+      final min = _toInt(minRaw);
+      final max = _toInt(maxRaw);
+      final step = math.max(1, _toInt(stepRaw == null ? 1 : stepRaw));
+      if (min == -1 || max == -1) return {'disabled': true, 'min': 0, 'max': 0, 'step': 1};
+      final effectiveMin = min > 0 ? min : 0;
+      final effectiveMax = max > 0 ? max : fallbackMax;
+      return {'disabled': false, 'min': effectiveMin, 'max': math.max(effectiveMin, effectiveMax), 'step': step};
+    }
+    Map<String, Map<String, dynamic>> addonRule(Map<String, dynamic>? targetPkg) {
+      final core = normRule(planGroup['add_core_min'], planGroup['add_core_max'], planGroup['add_core_step'], 64);
+      final mem = normRule(planGroup['add_mem_min'], planGroup['add_mem_max'], planGroup['add_mem_step'], 256);
+      final bw = normRule(planGroup['add_bw_min'], planGroup['add_bw_max'], planGroup['add_bw_step'], 1000);
+      final diskBase = normRule(planGroup['add_disk_min'], planGroup['add_disk_max'], planGroup['add_disk_step'], 2000);
+      var diskMin = _toInt(diskBase['min']);
+      var impossible = false;
+      if (diskBase['disabled'] != true && targetPkg != null) {
+        final required = math.max(0, currentDiskGb - _toInt(targetPkg['disk_gb'] ?? targetPkg['DiskGB']));
+        diskMin = math.max(diskMin, required);
+      } else if (diskBase['disabled'] == true && targetPkg != null) {
+        impossible = _toInt(targetPkg['disk_gb'] ?? targetPkg['DiskGB']) < currentDiskGb;
+      }
+      final disk = <String, dynamic>{
+        'disabled': diskBase['disabled'] == true,
+        'min': diskBase['disabled'] == true ? 0 : diskMin,
+        'max': _toInt(diskBase['max']),
+        'step': _toInt(diskBase['step']),
+        'impossible': impossible,
+      };
+      if (disk['disabled'] != true && _toInt(disk['min']) > _toInt(disk['max'])) {
+        disk['impossible'] = true;
+        disk['max'] = disk['min'];
+      }
+      return {'add_cores': core, 'add_mem_gb': mem, 'add_disk_gb': disk, 'add_bw_mbps': bw};
+    }
+    bool pkgDisabled(Map<String, dynamic>? pkg) => pkg == null || addonRule(pkg)['add_disk_gb']?['impossible'] == true;
+    final fallbackSpec = {'cpu': specObj.cpu, 'memory_gb': specObj.memoryGb, 'disk_gb': specObj.diskGb, 'bandwidth_mbps': specObj.bandwidthMbps};
+    final fromPkg = pkgSpec(currentPackage);
+    final specForCompare = fromPkg.values.any((v) => v > 0) ? fromPkg : fallbackSpec;
+    bool samePkg(Map<String, dynamic>? pkg) {
+      if (pkg == null) return false;
+      if (_toInt(pkg['id']) == _toInt(currentPackage['id'])) return true;
+      final a = pkg['product_id'] ?? pkg['ProductID'];
+      final b = currentPackage['product_id'] ?? currentPackage['ProductID'];
+      if (a != null && b != null && a.toString() == b.toString()) return true;
+      final s = pkgSpec(pkg);
+      return s['cpu'] == specForCompare['cpu'] &&
+          s['memory_gb'] == specForCompare['memory_gb'] &&
+          s['disk_gb'] == specForCompare['disk_gb'] &&
+          s['bandwidth_mbps'] == specForCompare['bandwidth_mbps'];
+    }
+
+    int? targetPackageId = packageOptions.any((p) => _toInt(p['id']) == currentPackageId)
+        ? currentPackageId
+        : _toInt(packageOptions.first['id']);
     bool resetAddons = false;
-    final addCoresController = TextEditingController(text: '0');
-    final addMemController = TextEditingController(text: '0');
-    final addDiskController = TextEditingController(text: '0');
-    final addBwController = TextEditingController(text: '0');
     String scheduleMode = 'now';
     final scheduledAtController = TextEditingController();
+    final addCoresController = TextEditingController(text: _toInt(specMap['add_cores'] ?? specMap['AddCores']).toString());
+    final addMemController = TextEditingController(text: _toInt(specMap['add_mem_gb'] ?? specMap['AddMemGB']).toString());
+    final addDiskController = TextEditingController(text: _toInt(specMap['add_disk_gb'] ?? specMap['AddDiskGB']).toString());
+    final addBwController = TextEditingController(text: _toInt(specMap['add_bw_mbps'] ?? specMap['AddBWMbps']).toString());
+    final currentAddons = {
+      'add_cores': _toInt(specMap['add_cores'] ?? specMap['AddCores']),
+      'add_mem_gb': _toInt(specMap['add_mem_gb'] ?? specMap['AddMemGB']),
+      'add_disk_gb': _toInt(specMap['add_disk_gb'] ?? specMap['AddDiskGB']),
+      'add_bw_mbps': _toInt(specMap['add_bw_mbps'] ?? specMap['AddBWMbps']),
+    };
     Map<String, dynamic>? quote;
+    String? quoteError;
+    bool quoteLoading = false;
+    int? readStrict(
+      TextEditingController c,
+      String label,
+      Map<String, dynamic> rule, {
+      required bool showError,
+    }) {
+      final text = c.text.trim();
+      if (text.isEmpty || !RegExp(r'^\d+$').hasMatch(text)) {
+        if (showError && mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('$label 必须是数字')));
+        }
+        return null;
+      }
+      final value = int.parse(text);
+      final min = _toInt(rule['min']);
+      final max = _toInt(rule['max']);
+      final step = math.max(1, _toInt(rule['step']));
+      if (value < min || value > max) {
+        if (showError && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$label 必须在 $min-$max 之间')),
+          );
+        }
+        return null;
+      }
+      if ((value - min) % step != 0) {
+        if (showError && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$label 必须按步长 $step 递增')),
+          );
+        }
+        return null;
+      }
+      return value;
+    }
 
-    Future<void> fetchQuote(StateSetter setModalState) async {
-      if (targetPackageId == null) return;
-      final payload = {
+    Map<String, int>? readAddonSpec(
+      Map<String, Map<String, dynamic>> r, {
+      required bool showError,
+    }) {
+      final cores = readStrict(addCoresController, '追加 CPU 核心', r['add_cores']!, showError: showError);
+      if (cores == null) return null;
+      final mem = readStrict(addMemController, '追加内存', r['add_mem_gb']!, showError: showError);
+      if (mem == null) return null;
+      final disk = readStrict(addDiskController, '追加磁盘', r['add_disk_gb']!, showError: showError);
+      if (disk == null) return null;
+      final bw = readStrict(addBwController, '追加带宽', r['add_bw_mbps']!, showError: showError);
+      if (bw == null) return null;
+      return {
+        'add_cores': cores,
+        'add_mem_gb': mem,
+        'add_disk_gb': disk,
+        'add_bw_mbps': bw,
+      };
+    }
+
+    void resetMin(Map<String, Map<String, dynamic>> r) {
+      addCoresController.text = _toInt(r['add_cores']?['min']).toString();
+      addMemController.text = _toInt(r['add_mem_gb']?['min']).toString();
+      addDiskController.text = _toInt(r['add_disk_gb']?['min']).toString();
+      addBwController.text = _toInt(r['add_bw_mbps']?['min']).toString();
+    }
+    Map<String, int> minAddonSpec(Map<String, Map<String, dynamic>> r) => {
+      'add_cores': _toInt(r['add_cores']?['min']),
+      'add_mem_gb': _toInt(r['add_mem_gb']?['min']),
+      'add_disk_gb': _toInt(r['add_disk_gb']?['min']),
+      'add_bw_mbps': _toInt(r['add_bw_mbps']?['min']),
+    };
+    bool sameTarget(Map<String, int>? addonSpec) {
+      final p = findPkg(targetPackageId);
+      final sameAddons = addonSpec == null
+          ? true
+          : addonSpec['add_cores'] == currentAddons['add_cores'] &&
+              addonSpec['add_mem_gb'] == currentAddons['add_mem_gb'] &&
+              addonSpec['add_disk_gb'] == currentAddons['add_disk_gb'] &&
+              addonSpec['add_bw_mbps'] == currentAddons['add_bw_mbps'];
+      return p != null && samePkg(p) && sameAddons;
+    }
+    Map<String, dynamic> payload(
+      Map<String, Map<String, dynamic>> r, {
+      Map<String, int>? addonSpec,
+    }) {
+      final minSpec = {
+        'add_cores': _toInt(r['add_cores']?['min']),
+        'add_mem_gb': _toInt(r['add_mem_gb']?['min']),
+        'add_disk_gb': _toInt(r['add_disk_gb']?['min']),
+        'add_bw_mbps': _toInt(r['add_bw_mbps']?['min']),
+      };
+      final data = <String, dynamic>{
         'target_package_id': targetPackageId,
         'reset_addons': resetAddons,
-        'spec': {
-          'add_cores': resetAddons ? 0 : int.tryParse(addCoresController.text.trim()) ?? 0,
-          'add_mem_gb': resetAddons ? 0 : int.tryParse(addMemController.text.trim()) ?? 0,
-          'add_disk_gb': resetAddons ? 0 : int.tryParse(addDiskController.text.trim()) ?? 0,
-          'add_bw_mbps': resetAddons ? 0 : int.tryParse(addBwController.text.trim()) ?? 0,
-        },
+        'spec': resetAddons ? minSpec : addonSpec,
       };
-      final res = await ref.read(vpsRepositoryProvider).quoteResize(widget.id, payload);
-      setModalState(() {
-        quote = res['quote'] is Map<String, dynamic> ? res['quote'] : res;
-      });
+      if (scheduleMode == 'scheduled' && scheduledAtController.text.trim().isNotEmpty) {
+        data['scheduled_at'] = scheduledAtController.text.trim();
+      }
+      return data;
+    }
+    Future<void> fetchQuote(StateSetter setModalState) async {
+      final target = findPkg(targetPackageId);
+      final rules = addonRule(target);
+      if (target == null || pkgDisabled(target)) {
+        setModalState(() { quote = null; quoteError = '目标套餐无法满足当前磁盘容量'; });
+        return;
+      }
+      final addonSpec = resetAddons ? minAddonSpec(rules) : readAddonSpec(rules, showError: false);
+      if (addonSpec == null) {
+        setModalState(() {
+          quote = null;
+          quoteError = '附加项必须是合法数字并满足范围/步长要求';
+        });
+        return;
+      }
+      if (sameTarget(addonSpec)) {
+        setModalState(() { quote = null; quoteError = null; });
+        return;
+      }
+      setModalState(() { quoteLoading = true; quoteError = null; });
+      try {
+        final res = await ref
+            .read(vpsRepositoryProvider)
+            .quoteResize(widget.id, payload(rules, addonSpec: addonSpec));
+        setModalState(() { quote = res['quote'] is Map<String, dynamic> ? res['quote'] : res; });
+      } on DioException catch (e) {
+        final status = e.response?.statusCode;
+        setModalState(() { quote = null; quoteError = status == 409 ? '已有进行中的升降配任务/订单' : _extractErrorMessage(e); });
+      } catch (e) {
+        setModalState(() { quote = null; quoteError = _extractErrorMessage(e); });
+      } finally {
+        setModalState(() => quoteLoading = false);
+      }
     }
 
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => AlertDialog(
+        builder: (context, setModalState) {
+          final rules = addonRule(findPkg(targetPackageId));
+          String helper(Map<String, dynamic> r) {
+            if (r['disabled'] == true) return '当前线路不支持该附加项调整';
+            return '范围 ${_toInt(r['min'])}-${_toInt(r['max'])}，步长 ${_toInt(r['step'])}';
+          }
+          return AlertDialog(
           title: const Text('升降配'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                TextFormField(
+                  initialValue: '${pkgLabel(currentPackage)} /月费 ${MoneyFormatter.format(_toDouble(currentPackage['monthly_price']))}',
+                  decoration: const InputDecoration(labelText: '当前套餐'),
+                  enabled: false,
+                ),
                 DropdownButtonFormField<int>(
                   value: targetPackageId,
                   decoration: const InputDecoration(labelText: '目标套餐'),
+                  selectedItemBuilder: (ctx) => packageOptions
+                      .map((e) => Text(pkgLabel(e), overflow: TextOverflow.ellipsis))
+                      .toList(),
                   items: packageOptions
                       .map((e) => DropdownMenuItem<int>(
-                            value: e['id'] as int?,
-                            child: Text(e['name']?.toString() ?? '套餐'),
+                            value: _toInt(e['id']),
+                            enabled: !pkgDisabled(e),
+                            child: Text('${pkgLabel(e)} /月费 ${MoneyFormatter.format(_toDouble(e['monthly_price']))}'),
                           ))
                       .toList(),
-                  onChanged: (value) => setModalState(() => targetPackageId = value),
+                  onChanged: (value) => setModalState(() {
+                    targetPackageId = value;
+                    resetAddons = false;
+                    scheduleMode = 'now';
+                    scheduledAtController.clear();
+                    quote = null;
+                    quoteError = null;
+                    resetMin(addonRule(findPkg(targetPackageId)));
+                  }),
                 ),
                 SwitchListTile(
                   title: const Text('重置附加项'),
                   value: resetAddons,
-                  onChanged: (v) => setModalState(() => resetAddons = v),
+                  onChanged: (v) => setModalState(() {
+                    resetAddons = v;
+                    if (v) resetMin(rules);
+                    quote = null;
+                    quoteError = null;
+                  }),
                 ),
                 TextField(
                   controller: addCoresController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '追加 CPU 核心'),
-                  enabled: !resetAddons,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: '追加 CPU 核心', helperText: helper(rules['add_cores']!)),
+                  enabled: !resetAddons && rules['add_cores']?['disabled'] != true,
                 ),
                 TextField(
                   controller: addMemController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '追加内存(GB)'),
-                  enabled: !resetAddons,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: '追加内存(GB)', helperText: helper(rules['add_mem_gb']!)),
+                  enabled: !resetAddons && rules['add_mem_gb']?['disabled'] != true,
                 ),
                 TextField(
                   controller: addDiskController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '追加磁盘(GB)'),
-                  enabled: !resetAddons,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: '追加磁盘(GB)', helperText: helper(rules['add_disk_gb']!)),
+                  enabled: !resetAddons && rules['add_disk_gb']?['disabled'] != true,
                 ),
                 TextField(
                   controller: addBwController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '追加带宽(Mbps)'),
-                  enabled: !resetAddons,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: InputDecoration(labelText: '追加带宽(Mbps)', helperText: helper(rules['add_bw_mbps']!)),
+                  enabled: !resetAddons && rules['add_bw_mbps']?['disabled'] != true,
                 ),
                 DropdownButtonFormField<String>(
                   value: scheduleMode,
@@ -1888,8 +2268,11 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                     decoration: const InputDecoration(labelText: '执行时间 (YYYY-MM-DD HH:mm:ss)'),
                   ),
                 const SizedBox(height: 8),
+                if (quoteLoading) const LinearProgressIndicator(minHeight: 2),
                 if (quote != null)
                   Text('本周期需支付: ${MoneyFormatter.format(_toDouble(quote?['charge_amount'] ?? quote?['chargeAmount']))}'),
+                if (quoteError != null && quoteError!.isNotEmpty)
+                  Text(quoteError!, style: const TextStyle(color: AppColors.danger)),
               ],
             ),
           ),
@@ -1903,28 +2286,39 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                       .showSnackBar(const SnackBar(content: Text('请选择目标套餐')));
                   return;
                 }
-                final payload = {
-                  'target_package_id': targetPackageId,
-                  'reset_addons': resetAddons,
-                  'spec': {
-                    'add_cores': resetAddons ? 0 : int.tryParse(addCoresController.text.trim()) ?? 0,
-                    'add_mem_gb': resetAddons ? 0 : int.tryParse(addMemController.text.trim()) ?? 0,
-                    'add_disk_gb': resetAddons ? 0 : int.tryParse(addDiskController.text.trim()) ?? 0,
-                    'add_bw_mbps': resetAddons ? 0 : int.tryParse(addBwController.text.trim()) ?? 0,
-                  },
-                };
-                if (scheduleMode == 'scheduled' && scheduledAtController.text.trim().isNotEmpty) {
-                  payload['scheduled_at'] = scheduledAtController.text.trim();
+                final targetPkg = findPkg(targetPackageId);
+                if (targetPkg == null || pkgDisabled(targetPkg)) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('目标套餐无法满足当前磁盘容量，无法切换')));
+                  return;
+                }
+                final submitRules = addonRule(targetPkg);
+                final addonSpec = resetAddons
+                    ? minAddonSpec(submitRules)
+                    : readAddonSpec(submitRules, showError: true);
+                if (addonSpec == null) return;
+                if (sameTarget(addonSpec)) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('不能选择当前套餐')));
+                  return;
+                }
+                if (scheduleMode == 'scheduled' && scheduledAtController.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('请选择执行时间')));
+                  return;
                 }
                 try {
-                  final res = await ref.read(vpsRepositoryProvider).createResizeOrder(widget.id, payload);
+                  final res = await ref
+                      .read(vpsRepositoryProvider)
+                      .createResizeOrder(widget.id, payload(submitRules, addonSpec: addonSpec));
                   if (context.mounted) Navigator.pop(context);
                   final orderId = res['order']?['id'] ?? res['order_id'] ?? res['orderId'] ?? res['id'];
                   if (orderId != null) {
                     context.go('/console/orders/$orderId');
                   } else if (context.mounted) {
+                    final success = scheduleMode == 'scheduled' ? '已生成升降配订单，将在指定时间执行' : '已生成升降配订单';
                     ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('已生成升降配订单')));
+                        .showSnackBar(SnackBar(content: Text(success)));
                   }
                 } on DioException catch (e) {
                   if (e.response?.statusCode == 409) {
@@ -1939,22 +2333,75 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                     );
                     return;
                   }
-                  rethrow;
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(SnackBar(content: Text(_extractErrorMessage(e))));
+                  }
                 }
               },
               child: const Text(AppStrings.confirm),
             ),
           ],
-        ),
+        );
+        },
       ),
     );
   }
   Future<void> _openReinstallDialog(BuildContext context) async {
+    final detail = ref.read(vpsDetailProvider).detail ?? {};
     final catalog = ref.read(catalogProvider);
-    final images = catalog.systemImages;
-    int? templateId = images.isNotEmpty ? images.first['id'] as int? : null;
+    var lineId = _toInt(detail['line_id'] ?? detail['lineId'] ?? detail['LineID']);
+    if (lineId <= 0) {
+      final packageId = _toInt(detail['package_id'] ?? detail['packageId'] ?? detail['PackageID']);
+      if (packageId > 0) {
+        final currentPackage = catalog.packages.firstWhere(
+          (item) => _toInt(item['id']) == packageId,
+          orElse: () => <String, dynamic>{},
+        );
+        final planGroupId = _toInt(
+          currentPackage['plan_group_id'] ??
+              currentPackage['planGroupId'] ??
+              currentPackage['PlanGroupID'],
+        );
+        if (planGroupId > 0) {
+          final planGroup = catalog.planGroups.firstWhere(
+            (item) => _toInt(item['id']) == planGroupId,
+            orElse: () => <String, dynamic>{},
+          );
+          lineId = _toInt(planGroup['line_id'] ?? planGroup['lineId'] ?? planGroup['LineID']);
+        }
+      }
+    }
+
+    List<Map<String, dynamic>> images;
+    try {
+      images = await ref
+          .read(catalogRepositoryProvider)
+          .listSystemImages(lineId: lineId > 0 ? lineId : null);
+    } catch (e) {
+      if (!context.mounted) return;
+      final message = _extractErrorMessage(e);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+
+    final options = images
+        .map((item) => {
+              'templateId': _toInt(item['image_id'] ?? item['ImageID'] ?? item['templateid']),
+              'name': (item['name'] ?? item['Name'] ?? '镜像').toString(),
+            })
+        .where((item) => (item['templateId'] as int) > 0)
+        .toList();
+    if (options.isEmpty) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('当前线路暂无可用镜像')));
+      return;
+    }
+
+    int? templateId = options.first['templateId'] as int?;
     final passwordController = TextEditingController();
 
+    if (!context.mounted) return;
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1965,9 +2412,9 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
             DropdownButtonFormField<int>(
               value: templateId,
               decoration: const InputDecoration(labelText: '系统镜像'),
-              items: images
+              items: options
                   .map((e) => DropdownMenuItem<int>(
-                        value: e['id'] as int?,
+                        value: e['templateId'] as int?,
                         child: Text(e['name']?.toString() ?? '镜像'),
                       ))
                   .toList(),
@@ -1975,6 +2422,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
             ),
             TextField(
               controller: passwordController,
+              maxLength: _maxPasswordLength,
               decoration: const InputDecoration(labelText: '重装密码'),
               obscureText: true,
             ),
@@ -1989,10 +2437,14 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                     .showSnackBar(const SnackBar(content: Text('请选择镜像')));
                 return;
               }
+              if (passwordController.text.trim().length > _maxPasswordLength) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('重装密码长度不能超过 128 个字符')));
+                return;
+              }
               await _operate(
                 context,
                 () => ref.read(vpsRepositoryProvider).resetOs(widget.id, {
-                  'host_id': widget.id,
                   'template_id': templateId,
                   'password': passwordController.text.trim(),
                 }),
@@ -2017,6 +2469,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
         title: const Text('重置密码'),
         content: TextField(
           controller: passwordController,
+          maxLength: _maxPasswordLength,
           decoration: const InputDecoration(labelText: '新密码'),
           obscureText: true,
         ),
@@ -2058,19 +2511,26 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
         title: const Text('退款申请'),
         content: TextField(
           controller: reasonController,
+          maxLength: _maxRefundReasonLength,
           decoration: const InputDecoration(labelText: '退款原因'),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text(AppStrings.cancel)),
           TextButton(
             onPressed: () async {
-              if (reasonController.text.trim().isEmpty) {
+              final reason = reasonController.text.trim();
+              if (reason.isEmpty) {
                 ScaffoldMessenger.of(context)
                     .showSnackBar(const SnackBar(content: Text('请填写退款原因')));
                 return;
               }
+              if (reason.length > _maxRefundReasonLength) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(const SnackBar(content: Text('退款原因长度不能超过 500 个字符')));
+                return;
+              }
               final res = await ref.read(vpsRepositoryProvider).requestRefund(widget.id, {
-                'reason': reasonController.text.trim(),
+                'reason': reason,
               });
               final orderId = res['order']?['id'] ?? res['order_id'] ?? res['orderId'];
               if (context.mounted) {
@@ -2089,6 +2549,29 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
   }
 
   Future<void> _submitEmergencyRenew() async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('确认紧急续费'),
+            content: const Text(
+              '此功能将自动为您续费一段时间，以保证业务运行状态，正常状况请点击续费按钮而非本按钮。'
+              '此功能仅限管理员无法联系时的紧急情况使用。您一个周期内只有一次点击机会！',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text(AppStrings.cancel),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('确认紧急续费'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !context.mounted) return;
+
     await _operate(
       context,
       () => ref.read(vpsRepositoryProvider).emergencyRenew(widget.id),
@@ -2152,8 +2635,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
   }
 
   String? _validateOsPassword(String value) {
-    if (value.length < 8 || value.length > 20) {
-      return '系统密码长度需为 8-20 位';
+    if (value.length < 8 || value.length > _maxPasswordLength) {
+      return '系统密码长度需为 8-$_maxPasswordLength 位';
     }
     final hasLower = RegExp(r'[a-z]').hasMatch(value);
     final hasUpper = RegExp(r'[A-Z]').hasMatch(value);

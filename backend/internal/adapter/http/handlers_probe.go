@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -169,7 +170,9 @@ func (h *Handler) ProbeWS(c *gin.Context) {
 				snapshotRaw = "{}"
 			}
 			at := parseTimeOrNow(payload.At)
-			_ = h.probeSvc.HandleSnapshot(c, probeID, at, snapshotRaw, payload.OSType)
+			if err := h.probeSvc.HandleSnapshot(c, probeID, at, snapshotRaw, payload.OSType); err != nil {
+				log.Printf("probe snapshot save failed probe_id=%d bytes=%d err=%v", probeID, len(snapshotRaw), err)
+			}
 		case "log_chunk":
 			var payload struct {
 				SessionID string `json:"session_id"`
@@ -406,7 +409,8 @@ func (h *Handler) AdminProbeLogSessionCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	session, err := h.probeSvc.CreateLogSession(c, probeID, getUserID(c), payload.Source)
+	source := h.resolveProbeLogSource(c, payload.Source)
+	session, err := h.probeSvc.CreateLogSession(c, probeID, getUserID(c), source)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -420,7 +424,7 @@ func (h *Handler) AdminProbeLogSessionCreate(c *gin.Context) {
 		"request_id": reqID,
 		"payload": map[string]any{
 			"session_id": sid,
-			"source":     payload.Source,
+			"source":     source,
 			"keyword":    payload.Keyword,
 			"follow":     payload.Follow,
 			"lines":      payload.Lines,
@@ -556,6 +560,34 @@ func (h *Handler) probeRuntimeConfig(ctx context.Context) map[string]any {
 		"snapshot_interval_sec":  h.probeIntSetting(ctx, "probe_snapshot_interval_sec", 60),
 		"log_chunk_max_bytes":    h.probeIntSetting(ctx, "probe_log_chunk_max_bytes", 16384),
 	}
+}
+
+func (h *Handler) resolveProbeLogSource(ctx context.Context, source string) string {
+	source = strings.TrimSpace(source)
+	lower := strings.ToLower(source)
+	if source == "" || strings.HasPrefix(lower, "file:") {
+		return h.probeFileLogSource(ctx)
+	}
+	return source
+}
+
+func (h *Handler) probeFileLogSource(ctx context.Context) string {
+	const fallback = "file:logs"
+	if h.settings == nil {
+		return fallback
+	}
+	item, err := h.settings.GetSetting(ctx, "probe_log_file_source")
+	if err != nil {
+		return fallback
+	}
+	value := strings.TrimSpace(item.ValueJSON)
+	if value == "" {
+		return fallback
+	}
+	if strings.HasPrefix(strings.ToLower(value), "file:") {
+		return value
+	}
+	return "file:" + value
 }
 
 func (h *Handler) probeIntSetting(ctx context.Context, key string, def int) int {

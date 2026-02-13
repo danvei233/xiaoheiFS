@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/constants/input_limits.dart';
 import '../../../core/utils/money_formatter.dart';
 import '../../providers/wallet_provider.dart';
 
 /// 钱包页面
 class BillingPage extends ConsumerWidget {
   const BillingPage({super.key});
+
+  static final RegExp _moneyPattern = RegExp(r'^\d+(\.\d{1,2})?$');
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -186,6 +189,7 @@ class BillingPage extends ConsumerWidget {
             const SizedBox(height: 12),
             TextField(
               controller: noteController,
+              maxLength: InputLimits.paymentNote,
               decoration: const InputDecoration(labelText: '备注'),
             ),
           ],
@@ -197,17 +201,31 @@ class BillingPage extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
-              final amount = double.tryParse(amountController.text.trim()) ?? 0;
+              final amountText = amountController.text.trim();
+              if (!_moneyPattern.hasMatch(amountText)) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('金额格式不正确，最多保留2位小数')));
+                return;
+              }
+              final amount = double.parse(amountText);
               if (amount <= 0) {
                 ScaffoldMessenger.of(
                   context,
                 ).showSnackBar(const SnackBar(content: Text('请输入有效金额')));
                 return;
               }
+              final note = noteController.text.trim();
+              if (runeLength(note) > InputLimits.paymentNote) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('备注长度不能超过 500 个字符')));
+                return;
+              }
               try {
                 await ref.read(walletProvider.notifier).recharge({
                   'amount': amount,
-                  'note': noteController.text.trim(),
+                  'note': note,
                 });
                 if (context.mounted) {
                   Navigator.pop(context);
@@ -259,6 +277,7 @@ class BillingPage extends ConsumerWidget {
             const SizedBox(height: 12),
             TextField(
               controller: noteController,
+              maxLength: InputLimits.paymentNote,
               decoration: const InputDecoration(labelText: '备注'),
             ),
           ],
@@ -270,7 +289,14 @@ class BillingPage extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () async {
-              final amount = double.tryParse(amountController.text.trim()) ?? 0;
+              final amountText = amountController.text.trim();
+              if (!_moneyPattern.hasMatch(amountText)) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('金额格式不正确，最多保留2位小数')));
+                return;
+              }
+              final amount = double.parse(amountText);
               if (amount <= 0) {
                 ScaffoldMessenger.of(
                   context,
@@ -283,10 +309,17 @@ class BillingPage extends ConsumerWidget {
                 ).showSnackBar(const SnackBar(content: Text('提现金额不能大于余额')));
                 return;
               }
+              final note = noteController.text.trim();
+              if (runeLength(note) > InputLimits.paymentNote) {
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('备注长度不能超过 500 个字符')));
+                return;
+              }
               try {
                 await ref.read(walletProvider.notifier).withdraw({
                   'amount': amount,
-                  'note': noteController.text.trim(),
+                  'note': note,
                   'meta': {'channel': 'manual'},
                 });
                 if (context.mounted) {

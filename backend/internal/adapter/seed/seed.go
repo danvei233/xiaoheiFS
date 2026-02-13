@@ -342,6 +342,7 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"probe_sla_window_days":              "7",
 		"probe_log_session_ttl_sec":          "600",
 		"probe_log_chunk_max_bytes":          "16384",
+		"probe_log_file_source":              "file:logs",
 	}
 
 	rows := make([]settingSeedRow, 0, len(settings))

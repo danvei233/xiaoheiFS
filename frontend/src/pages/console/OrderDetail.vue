@@ -83,7 +83,12 @@
                 <template v-if="column.key === 'specText'">
                   <div class="spec-cell">
                     <ApiOutlined class="spec-icon" />
-                    <span>{{ record.specText }}</span>
+                    <div class="spec-content">
+                      <div class="spec-main">{{ record.specText }}</div>
+                      <div v-if="record.specDetail?.length" class="spec-detail">
+                        <div v-for="(line, idx) in record.specDetail" :key="idx" class="spec-line">{{ line }}</div>
+                      </div>
+                    </div>
                   </div>
                 </template>
                 <template v-else-if="column.key === 'amount'">
@@ -424,8 +429,10 @@ const orderItems = computed(() =>
     id: row.id ?? row.ID,
     package_id: row.package_id ?? row.PackageID,
     system_id: row.system_id ?? row.SystemID,
+    action: row.action ?? row.Action,
     spec: row.spec ?? row.Spec,
     specText: formatSpec(row.spec ?? row.Spec, row),
+    specDetail: formatSpecDetail(row.spec ?? row.Spec, row),
     qty: row.qty ?? row.Qty,
     amount: row.amount ?? row.Amount,
     status: row.status ?? row.Status,
@@ -469,6 +476,25 @@ const findPackage = (packageId) => {
 
 const formatSpec = (spec, row) => {
   const payload = typeof spec === "string" ? tryParseJson(spec) : spec || {};
+  const action = String(row?.action ?? row?.Action ?? "");
+  if (action === "resize") {
+    const currentCpu = toNum(payload?.current_cpu);
+    const currentMem = toNum(payload?.current_mem_gb);
+    const currentDisk = toNum(payload?.current_disk_gb);
+    const currentBw = toNum(payload?.current_bw_mbps);
+    const targetCpu = toNum(payload?.target_cpu);
+    const targetMem = toNum(payload?.target_mem_gb);
+    const targetDisk = toNum(payload?.target_disk_gb);
+    const targetBw = toNum(payload?.target_bw_mbps);
+    if (targetCpu || targetMem || targetDisk || targetBw || currentCpu || currentMem || currentDisk || currentBw) {
+      const summary = [];
+      summary.push(`CPU ${fmtPair(currentCpu, targetCpu)}`);
+      summary.push(`内存 ${fmtPair(currentMem, targetMem)}G`);
+      summary.push(`磁盘 ${fmtPair(currentDisk, targetDisk)}G`);
+      summary.push(`带宽 ${fmtPair(currentBw, targetBw)}M`);
+      return summary.join(" / ");
+    }
+  }
   const pkg = findPackage(row?.package_id ?? row?.PackageID);
   const baseCores = Number(pkg?.cores ?? 0);
   const baseMem = Number(pkg?.memory_gb ?? 0);
@@ -494,6 +520,79 @@ const formatSpec = (spec, row) => {
     parts.push(`时长 ${duration} 个月`);
   }
   return parts.length ? parts.join(" / ") : "-";
+};
+
+const formatSpecDetail = (spec, row) => {
+  const payload = typeof spec === "string" ? tryParseJson(spec) : spec || {};
+  const action = String(row?.action ?? row?.Action ?? "");
+  if (action !== "resize") return [];
+
+  const currentCpu = toNum(payload?.current_cpu);
+  const currentMem = toNum(payload?.current_mem_gb);
+  const currentDisk = toNum(payload?.current_disk_gb);
+  const currentBw = toNum(payload?.current_bw_mbps);
+  const targetCpu = toNum(payload?.target_cpu);
+  const targetMem = toNum(payload?.target_mem_gb);
+  const targetDisk = toNum(payload?.target_disk_gb);
+  const targetBw = toNum(payload?.target_bw_mbps);
+  const currentPkg = toNum(payload?.current_package_id);
+  const targetPkg = toNum(payload?.target_package_id);
+  const currentMonthly = Number(payload?.current_monthly || 0);
+  const targetMonthly = Number(payload?.target_monthly || 0);
+  const chargeAmount = Number(payload?.charge_amount || 0);
+  const refundAmount = Number(payload?.refund_amount || 0);
+  const refundToWallet = !!payload?.refund_to_wallet;
+
+  const lines = [];
+  lines.push(
+    `原配置：CPU ${showNum(currentCpu)}核 / 内存 ${showNum(currentMem)}G / 磁盘 ${showNum(currentDisk)}G / 带宽 ${showNum(currentBw)}M` +
+      (currentPkg ? ` / 套餐ID ${currentPkg}` : "")
+  );
+  lines.push(
+    `新配置：CPU ${showNum(targetCpu)}核 / 内存 ${showNum(targetMem)}G / 磁盘 ${showNum(targetDisk)}G / 带宽 ${showNum(targetBw)}M` +
+      (targetPkg ? ` / 套餐ID ${targetPkg}` : "")
+  );
+
+  const changes = [];
+  pushDelta(changes, "CPU", currentCpu, targetCpu, "核");
+  pushDelta(changes, "内存", currentMem, targetMem, "G");
+  pushDelta(changes, "磁盘", currentDisk, targetDisk, "G");
+  pushDelta(changes, "带宽", currentBw, targetBw, "M");
+  if (currentMonthly || targetMonthly) {
+    changes.push(`月费 ${fmtMoney(currentMonthly)} -> ${fmtMoney(targetMonthly)}`);
+  }
+  if (chargeAmount > 0) {
+    changes.push(`补差价 ${fmtMoney(chargeAmount)}`);
+  } else if (refundAmount > 0) {
+    changes.push(`退款 ${fmtMoney(refundAmount)}${refundToWallet ? "（退回钱包）" : ""}`);
+  }
+  lines.push(`变动说明：${changes.length ? changes.join("，") : "无配置变化"}`);
+  return lines;
+};
+
+const toNum = (val) => {
+  const n = Number(val);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const showNum = (val) => (Number.isFinite(Number(val)) ? Number(val) : 0);
+
+const fmtPair = (from, to) => {
+  if (!from && !to) return "-";
+  return `${showNum(from)} -> ${showNum(to)}`;
+};
+
+const fmtMoney = (val) => `¥${Number(val || 0).toFixed(2)}`;
+
+const pushDelta = (out, label, from, to, unit) => {
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return;
+  const diff = to - from;
+  if (diff === 0) {
+    out.push(`${label} 无变化`);
+    return;
+  }
+  const sign = diff > 0 ? "+" : "";
+  out.push(`${label} ${sign}${diff}${unit}`);
 };
 
 const tryParseJson = (text) => {
@@ -1271,13 +1370,36 @@ const getPaymentStatusColor = (status) => {
 
 .spec-cell {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
 }
 
 .spec-icon {
   font-size: 14px;
   color: var(--primary);
+  margin-top: 2px;
+}
+
+.spec-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.spec-main {
+  color: var(--text-primary);
+}
+
+.spec-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.spec-line {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .amount-cell {

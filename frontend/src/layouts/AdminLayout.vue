@@ -267,6 +267,7 @@ const menuTree = [
         children: [
           { key: "/admin/settings/email", label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
           { key: "/admin/settings/payments", label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
+          { key: "/admin/settings/fcm", label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] },
           { key: "/admin/settings/pricing", label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },
           { key: "/admin/settings/lifecycle", label: "Lifecycle", icon: ClockCircleOutlined, requireAny: ["settings.view"] },
           { key: "/admin/settings/plugins", label: "插件管理", icon: ToolOutlined, requireAny: ["plugin.list"] },

@@ -4,6 +4,10 @@
 class DateFormatter {
   DateFormatter._();
 
+  static DateTime _toDisplayTime(DateTime dateTime) {
+    return dateTime.isUtc ? dateTime.toLocal() : dateTime;
+  }
+
   /// 常用日期格式
   static const String formatFull = 'yyyy-MM-dd HH:mm:ss';
   static const String formatDate = 'yyyy-MM-dd';
@@ -15,7 +19,7 @@ class DateFormatter {
   /// 格式化日期时间
   static String format(DateTime? dateTime, [String pattern = formatFull]) {
     if (dateTime == null) return '-';
-    return DateFormat(pattern).format(dateTime);
+    return DateFormat(pattern).format(_toDisplayTime(dateTime));
   }
 
   /// 格式化时间戳（秒）
@@ -37,7 +41,7 @@ class DateFormatter {
     if (isoString == null || isoString.isEmpty) return '-';
     try {
       final dateTime = DateTime.parse(isoString);
-      return DateFormat(pattern).format(dateTime);
+      return DateFormat(pattern).format(_toDisplayTime(dateTime));
     } catch (e) {
       return isoString;
     }
@@ -72,12 +76,12 @@ class DateFormatter {
     if (value == null) return null;
 
     if (value is DateTime) {
-      return value;
+      return _toDisplayTime(value);
     }
 
     if (value is String) {
       try {
-        return DateTime.parse(value);
+        return _toDisplayTime(DateTime.parse(value));
       } catch (e) {
         return null;
       }

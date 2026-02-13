@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"xiaoheiplay/internal/domain"
@@ -521,7 +523,7 @@ func toOrderItemDTO(item domain.OrderItem) OrderItemDTO {
 		OrderID:              item.OrderID,
 		PackageID:            item.PackageID,
 		SystemID:             item.SystemID,
-		Spec:                 parseRawJSON(item.SpecJSON),
+		Spec:                 normalizeOrderItemSpec(item.Action, item.SpecJSON),
 		Qty:                  item.Qty,
 		Amount:               centsToFloat(item.Amount),
 		Status:               string(item.Status),
@@ -985,6 +987,62 @@ func parseRawJSON(payload string) json.RawMessage {
 	}
 	encoded, _ := json.Marshal(payload)
 	return encoded
+}
+
+func normalizeOrderItemSpec(action, specJSON string) json.RawMessage {
+	raw := parseRawJSON(specJSON)
+	if len(raw) == 0 {
+		return raw
+	}
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action != "resize" && action != "refund" {
+		return raw
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return raw
+	}
+
+	changed := false
+	for _, key := range []string{"current_monthly", "target_monthly", "charge_amount", "refund_amount"} {
+		value, ok := payload[key]
+		if !ok {
+			continue
+		}
+		cents, ok := parseAnyInt64(value)
+		if !ok {
+			continue
+		}
+		payload[key] = centsToFloat(cents)
+		changed = true
+	}
+	if !changed {
+		return raw
+	}
+	normalized, err := json.Marshal(payload)
+	if err != nil {
+		return raw
+	}
+	return normalized
+}
+
+func parseAnyInt64(value any) (int64, bool) {
+	switch v := value.(type) {
+	case int:
+		return int64(v), true
+	case int64:
+		return v, true
+	case int32:
+		return int64(v), true
+	case float64:
+		return int64(v), true
+	case string:
+		n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+		return n, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func parseMapJSON(payload string) map[string]any {

@@ -1,6 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../../core/config/api_config.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
@@ -27,6 +28,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _obscurePassword = true;
   bool _showAdvanced = false;
   String? _errorMessage;
+  String _appVersionLabel = 'V1.2.0';
   late final ProviderSubscription<AuthState> _authSubscription;
 
   @override
@@ -46,6 +48,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         _apiUrlController.text = apiUrl;
       }
     });
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() {
+        _appVersionLabel = 'V${info.version}';
+      });
+    } catch (_) {
+      // Keep fallback version label.
+    }
   }
 
   @override
@@ -220,7 +235,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   const SizedBox(height: 24),
                   Center(
                     child: Text(
-                      '${AppStrings.appName} v1.0.0',
+                      '${AppStrings.appName} $_appVersionLabel',
                       style: TextStyle(fontSize: 12, color: AppColors.gray400),
                     ),
                   ),
@@ -304,3 +319,4 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     );
   }
 }
+
