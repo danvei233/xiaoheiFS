@@ -195,6 +195,7 @@ const menuTree = [
       { key: "/admin/orders", label: "订单审核", icon: ShoppingCartOutlined, requireAny: ["order.list"] },
       { key: "/admin/wallet/orders", label: "钱包订单", icon: WalletOutlined, requireAny: ["wallet_order.list"] },
       { key: "/admin/vps", label: "VPS 管理", icon: CloudServerOutlined, requireAny: ["vps.list"] },
+      { key: "/admin/probes", label: "探针监控", icon: ApiOutlined, requireAny: ["probe.list"] },
       {
         key: "/admin/catalog",
         label: "售卖配置",
@@ -327,6 +328,7 @@ const selectedKey = computed(() => {
   if (route.path.startsWith("/admin/settings")) return route.path;
   if (route.path.startsWith("/admin/cms")) return route.path;
   if (route.path.startsWith("/admin/tickets")) return "/admin/tickets";
+  if (route.path.startsWith("/admin/probes")) return "/admin/probes";
   if (route.path.startsWith("/admin/audit")) return "/admin/audit";
   if (route.path.startsWith("/admin/debug")) return "/admin/debug";
   if (route.path.startsWith("/admin/console")) return "/admin/console";

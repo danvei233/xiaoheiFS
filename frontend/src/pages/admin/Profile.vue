@@ -142,6 +142,7 @@
           <a-input
             v-model:value.trim="profileForm.email"
             placeholder="请输入邮箱地址"
+            :maxlength="INPUT_LIMITS.EMAIL"
           >
             <template #prefix>
               <MailOutlined />
@@ -156,6 +157,7 @@
           <a-input
             v-model:value.trim="profileForm.qq"
             placeholder="请输入QQ号码"
+            :maxlength="INPUT_LIMITS.QQ"
           >
             <template #prefix>
               <QqOutlined />
@@ -187,6 +189,7 @@
           <a-input-password
             v-model:value="passwordForm.old_password"
             placeholder="请输入当前密码"
+            :maxlength="INPUT_LIMITS.PASSWORD"
           >
             <template #prefix>
               <KeyOutlined />
@@ -204,6 +207,7 @@
           <a-input-password
             v-model:value="passwordForm.new_password"
             placeholder="请输入新密码（至少6位）"
+            :maxlength="INPUT_LIMITS.PASSWORD"
           >
             <template #prefix>
               <LockOutlined />
@@ -222,6 +226,7 @@
           <a-input-password
             v-model:value="passwordForm.confirm_password"
             placeholder="请再次输入新密码"
+            :maxlength="INPUT_LIMITS.PASSWORD"
           >
             <template #prefix>
               <SafetyOutlined />
@@ -256,6 +261,7 @@ import {
   SafetyCertificateOutlined,
   CheckCircleOutlined
 } from "@ant-design/icons-vue";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const profile = ref({});
 const permissionGroups = ref([]);

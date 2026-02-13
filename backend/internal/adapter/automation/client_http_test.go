@@ -268,6 +268,82 @@ func TestClient_ListLines_LineIDFallback(t *testing.T) {
 	}
 }
 
+func TestClient_ListImages_FilterByLineConfig(t *testing.T) {
+	mux := http.NewServeMux()
+	writeOK := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 1,
+			"msg":  "ok",
+			"data": data,
+		})
+	}
+
+	mux.HandleFunc("/index.php/api/cloud/mirror_image", func(w http.ResponseWriter, r *http.Request) {
+		// upstream may ignore line_id and return all images
+		writeOK(w, []map[string]any{
+			{"id": 10, "name": "img-10", "type": "linux"},
+			{"id": 11, "name": "img-11", "type": "linux"},
+			{"id": 12, "name": "img-12", "type": "windows"},
+		})
+	})
+	mux.HandleFunc("/index.php/api/cloud/line", func(w http.ResponseWriter, r *http.Request) {
+		writeOK(w, []map[string]any{
+			{"id": 3, "line_name": "L3", "image_ids": "10,12", "state": 1},
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := NewClient(server.URL+"/index.php/api/cloud", "secret", time.Second)
+	items, err := client.ListImages(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("list images by line config: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 images, got %d", len(items))
+	}
+	if items[0].ImageID != 10 || items[1].ImageID != 12 {
+		t.Fatalf("unexpected image ids: %#v", items)
+	}
+}
+
+func TestClient_ListImages_EmptyLineConfig(t *testing.T) {
+	mux := http.NewServeMux()
+	writeOK := func(w http.ResponseWriter, data any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code": 1,
+			"msg":  "ok",
+			"data": data,
+		})
+	}
+
+	mux.HandleFunc("/index.php/api/cloud/mirror_image", func(w http.ResponseWriter, r *http.Request) {
+		writeOK(w, []map[string]any{
+			{"id": 10, "name": "img-10", "type": "linux"},
+		})
+	})
+	mux.HandleFunc("/index.php/api/cloud/line", func(w http.ResponseWriter, r *http.Request) {
+		writeOK(w, []map[string]any{
+			{"id": 3, "line_name": "L3", "image_ids": []int{}, "state": 1},
+		})
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	client := NewClient(server.URL+"/index.php/api/cloud", "secret", time.Second)
+	items, err := client.ListImages(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("list images empty line config: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected empty images, got %#v", items)
+	}
+}
+
 func TestClient_ListAreas_DeriveFromLines(t *testing.T) {
 	mux := http.NewServeMux()
 	writeOK := func(w http.ResponseWriter, data any) {

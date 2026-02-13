@@ -95,6 +95,8 @@ type Handler struct {
 	pluginMgr     *plugins.Manager
 	pluginPayMeth usecase.PluginPaymentMethodRepository
 	taskSvc       *usecase.ScheduledTaskService
+	probeSvc      *usecase.ProbeService
+	probeHub      *usecase.ProbeHub
 }
 
 type authSettings struct {
@@ -282,6 +284,11 @@ func (h *Handler) SetPluginManager(mgr *plugins.Manager) {
 
 func (h *Handler) SetPluginPaymentMethodRepo(repo usecase.PluginPaymentMethodRepository) {
 	h.pluginPayMeth = repo
+}
+
+func (h *Handler) SetProbeService(svc *usecase.ProbeService, hub *usecase.ProbeHub) {
+	h.probeSvc = svc
+	h.probeHub = hub
 }
 
 func (h *Handler) Captcha(c *gin.Context) {
@@ -1880,6 +1887,7 @@ func (h *Handler) VPSFirewallRules(c *gin.Context) {
 			Method    string `json:"method"`
 			Port      string `json:"port"`
 			IP        string `json:"ip"`
+			Priority  *int   `json:"priority"`
 		}
 		if err := c.ShouldBindJSON(&payload); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
@@ -1891,6 +1899,9 @@ func (h *Handler) VPSFirewallRules(c *gin.Context) {
 			Method:    strings.TrimSpace(payload.Method),
 			Port:      strings.TrimSpace(payload.Port),
 			IP:        strings.TrimSpace(payload.IP),
+		}
+		if payload.Priority != nil {
+			req.Priority = *payload.Priority
 		}
 		if req.Direction == "" || req.Protocol == "" || req.Method == "" || req.Port == "" || req.IP == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
@@ -3687,10 +3698,15 @@ func (h *Handler) AdminOrderDelete(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err := h.adminSvc.DeleteOrder(c, getUserID(c), id); err != nil {
 		status := http.StatusBadRequest
+		msg := err.Error()
 		if err == usecase.ErrNotFound {
 			status = http.StatusNotFound
 		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		if err == usecase.ErrConflict {
+			status = http.StatusConflict
+			msg = "approved order cannot be deleted"
+		}
+		c.JSON(status, gin.H{"error": msg})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -3843,6 +3859,7 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 		UserID               int64          `json:"user_id"`
 		OrderItemID          int64          `json:"order_item_id"`
 		AutomationInstanceID string         `json:"automation_instance_id"`
+		GoodsTypeID          int64          `json:"goods_type_id"`
 		Name                 string         `json:"name"`
 		Region               string         `json:"region"`
 		RegionID             int64          `json:"region_id"`
@@ -3872,6 +3889,9 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 	}
 	if payload.PackageID > 0 && h.catalogSvc != nil {
 		if pkg, err := h.catalogSvc.GetPackage(c, payload.PackageID); err == nil {
+			if payload.GoodsTypeID == 0 {
+				payload.GoodsTypeID = pkg.GoodsTypeID
+			}
 			if payload.PackageName == "" {
 				payload.PackageName = pkg.Name
 			}
@@ -3906,6 +3926,9 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 	if payload.Region == "" && payload.RegionID > 0 && h.catalogSvc != nil {
 		if region, err := h.catalogSvc.GetRegion(c, payload.RegionID); err == nil {
 			payload.Region = region.Name
+			if payload.GoodsTypeID == 0 {
+				payload.GoodsTypeID = region.GoodsTypeID
+			}
 		}
 	}
 	var expireAt *time.Time
@@ -3935,6 +3958,7 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 		UserID:               payload.UserID,
 		OrderItemID:          payload.OrderItemID,
 		AutomationInstanceID: payload.AutomationInstanceID,
+		GoodsTypeID:          payload.GoodsTypeID,
 		Name:                 payload.Name,
 		Region:               payload.Region,
 		RegionID:             payload.RegionID,
@@ -6170,6 +6194,11 @@ func (h *Handler) AdminProfile(c *gin.Context) {
 	dto := toUserDTO(user)
 	// Fetch user permissions
 	if h.permissionSvc != nil {
+		if isPrimary, err := h.permissionSvc.IsPrimaryAdmin(c, userID); err == nil && isPrimary {
+			dto.Permissions = []string{"*"}
+			c.JSON(http.StatusOK, dto)
+			return
+		}
 		perms, err := h.permissionSvc.GetUserPermissions(c, userID)
 		if err == nil {
 			dto.Permissions = perms

@@ -106,7 +106,7 @@
     >
       <a-form layout="vertical">
         <a-form-item label="拒绝原因">
-          <a-textarea v-model:value="rejectReason" placeholder="请输入拒绝原因" :rows="3" />
+          <a-textarea v-model:value="rejectReason" placeholder="请输入拒绝原因" :rows="3" :maxlength="INPUT_LIMITS.REVIEW_REASON" show-count />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -119,6 +119,7 @@ import { message } from "ant-design-vue";
 import { ReloadOutlined } from "@ant-design/icons-vue";
 import ProTable from "@/components/ProTable.vue";
 import { listAdminWalletOrders, approveAdminWalletOrder, rejectAdminWalletOrder } from "@/services/admin";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const loading = ref(false);
 const rejecting = ref(false);
@@ -249,6 +250,10 @@ const handleReject = (record: any) => {
 const confirmReject = async () => {
   rejecting.value = true;
   try {
+    if (String(rejectReason.value || "").length > INPUT_LIMITS.REVIEW_REASON) {
+      message.error(`拒绝原因长度不能超过 ${INPUT_LIMITS.REVIEW_REASON} 个字符`);
+      return;
+    }
     await rejectAdminWalletOrder(currentOrder.value.id, { reason: rejectReason.value });
     message.success("操作成功");
     rejectModalVisible.value = false;

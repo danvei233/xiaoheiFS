@@ -1139,68 +1139,35 @@ func (r *GormRepo) GetOrderItem(ctx context.Context, id int64) (domain.OrderItem
 }
 
 func (r *GormRepo) HasPendingRenewOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
-	if vpsID <= 0 {
-		return false, nil
-	}
-	var rows []orderItemRow
-	if err := r.gdb.WithContext(ctx).
-		Joins("JOIN orders o ON o.id = order_items.order_id").
-		Where("o.user_id = ? AND order_items.action = ? AND o.status IN ?",
-			userID, "renew", []string{string(domain.OrderStatusPendingPayment), string(domain.OrderStatusPendingReview)}).
-		Order("order_items.id DESC").
-		Limit(20).
-		Select("order_items.spec_json").
-		Find(&rows).Error; err != nil {
-		return false, err
-	}
-	for _, row := range rows {
-		var payload struct {
-			VPSID int64 `json:"vps_id"`
-		}
-		if err := json.Unmarshal([]byte(row.SpecJSON), &payload); err == nil && payload.VPSID == vpsID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return r.hasExclusiveVPSOrderInProgress(ctx, userID, vpsID)
 }
 
 func (r *GormRepo) HasPendingResizeOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
-	if vpsID <= 0 {
-		return false, nil
-	}
-	var rows []orderItemRow
-	if err := r.gdb.WithContext(ctx).
-		Joins("JOIN orders o ON o.id = order_items.order_id").
-		Where("o.user_id = ? AND order_items.action = ? AND o.status IN ?",
-			userID, "resize", []string{string(domain.OrderStatusPendingPayment), string(domain.OrderStatusPendingReview)}).
-		Order("order_items.id DESC").
-		Limit(20).
-		Select("order_items.spec_json").
-		Find(&rows).Error; err != nil {
-		return false, err
-	}
-	for _, row := range rows {
-		var payload struct {
-			VPSID int64 `json:"vps_id"`
-		}
-		if err := json.Unmarshal([]byte(row.SpecJSON), &payload); err == nil && payload.VPSID == vpsID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return r.hasExclusiveVPSOrderInProgress(ctx, userID, vpsID)
 }
 
 func (r *GormRepo) HasPendingRefundOrder(ctx context.Context, userID, vpsID int64) (bool, error) {
+	return r.hasExclusiveVPSOrderInProgress(ctx, userID, vpsID)
+}
+
+func (r *GormRepo) hasExclusiveVPSOrderInProgress(ctx context.Context, userID, vpsID int64) (bool, error) {
 	if vpsID <= 0 {
 		return false, nil
 	}
+	progressStatuses := []string{
+		string(domain.OrderStatusPendingPayment),
+		string(domain.OrderStatusPendingReview),
+		string(domain.OrderStatusApproved),
+		string(domain.OrderStatusProvisioning),
+	}
+	actions := []string{"renew", "emergency_renew", "resize", "refund"}
 	var rows []orderItemRow
 	if err := r.gdb.WithContext(ctx).
 		Joins("JOIN orders o ON o.id = order_items.order_id").
-		Where("o.user_id = ? AND order_items.action = ? AND o.status IN ?",
-			userID, "refund", []string{string(domain.OrderStatusPendingPayment), string(domain.OrderStatusPendingReview)}).
+		Where("o.user_id = ? AND order_items.action IN ? AND o.status IN ?",
+			userID, actions, progressStatuses).
 		Order("order_items.id DESC").
-		Limit(20).
+		Limit(50).
 		Select("order_items.spec_json").
 		Find(&rows).Error; err != nil {
 		return false, err
@@ -4412,4 +4379,8 @@ var (
 	_ usecase.PushTokenRepository          = (*GormRepo)(nil)
 	_ usecase.WalletRepository             = (*GormRepo)(nil)
 	_ usecase.WalletOrderRepository        = (*GormRepo)(nil)
+	_ usecase.ProbeNodeRepository          = (*GormRepo)(nil)
+	_ usecase.ProbeEnrollTokenRepository   = (*GormRepo)(nil)
+	_ usecase.ProbeStatusEventRepository   = (*GormRepo)(nil)
+	_ usecase.ProbeLogSessionRepository    = (*GormRepo)(nil)
 )

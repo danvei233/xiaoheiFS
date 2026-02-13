@@ -49,16 +49,16 @@
     <a-modal v-model:open="formOpen" :title="isEdit ? '编辑管理员' : '创建管理员'" @ok="handleSubmit">
       <a-form ref="formRef" :model="form" :rules="formRules" layout="vertical">
         <a-form-item label="用户名" name="username">
-          <a-input v-model:value="form.username" placeholder="请输入用户名" />
+          <a-input v-model:value="form.username" placeholder="请输入用户名" :maxlength="INPUT_LIMITS.USERNAME" />
         </a-form-item>
         <a-form-item label="邮箱" name="email">
-          <a-input v-model:value="form.email" placeholder="请输入邮箱" />
+          <a-input v-model:value="form.email" placeholder="请输入邮箱" :maxlength="INPUT_LIMITS.EMAIL" />
         </a-form-item>
         <a-form-item label="QQ" name="qq">
-          <a-input v-model:value="form.qq" placeholder="请输入QQ号" />
+          <a-input v-model:value="form.qq" placeholder="请输入QQ号" :maxlength="INPUT_LIMITS.QQ" />
         </a-form-item>
         <a-form-item v-if="!isEdit" label="密码" name="password">
-          <a-input-password v-model:value="form.password" placeholder="请输入密码" />
+          <a-input-password v-model:value="form.password" placeholder="请输入密码" :maxlength="INPUT_LIMITS.PASSWORD" />
         </a-form-item>
         <a-form-item label="权限组" name="permission_group_id">
           <a-select v-model:value="form.permission_group_id" placeholder="请选择权限组">
@@ -78,6 +78,7 @@ import ProTable from "@/components/ProTable.vue";
 import { listAdmins, createAdmin, updateAdmin, updateAdminStatus, listPermissionGroups } from "@/services/admin";
 import { useAdminAuthStore } from "@/stores/adminAuth";
 import { message, Modal } from "ant-design-vue";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const adminAuth = useAdminAuthStore();
 const currentAdminId = ref(adminAuth.user?.id);
@@ -246,6 +247,22 @@ const handleSubmit = async () => {
   }
 
   try {
+    if (String(form.username || "").length > INPUT_LIMITS.USERNAME) {
+      message.error(`用户名长度不能超过 ${INPUT_LIMITS.USERNAME} 个字符`);
+      return;
+    }
+    if (String(form.email || "").length > INPUT_LIMITS.EMAIL) {
+      message.error(`邮箱长度不能超过 ${INPUT_LIMITS.EMAIL} 个字符`);
+      return;
+    }
+    if (String(form.qq || "").length > INPUT_LIMITS.QQ) {
+      message.error(`QQ 长度不能超过 ${INPUT_LIMITS.QQ} 个字符`);
+      return;
+    }
+    if (!isEdit.value && String(form.password || "").length > INPUT_LIMITS.PASSWORD) {
+      message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
+      return;
+    }
     const payload = {
       username: form.username,
       email: form.email,

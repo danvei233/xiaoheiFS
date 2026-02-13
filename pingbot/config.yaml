@@ -1,0 +1,6 @@
+server_url: http://localhost:8080
+enroll_token: ""
+probe_id: 1
+probe_secret: psk_hUZ9CF5GWu1pw9RzysRCUam3nDK7H7J3QkwKWph45kDn8bAJ
+hostname_alias: ""
+tls_insecure_skip_verify: false

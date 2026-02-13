@@ -95,7 +95,7 @@
                   v-model:value="replyContent"
                   placeholder="请输入您的回复内容..."
                   :rows="5"
-                  :max-length="2000"
+                  :max-length="INPUT_LIMITS.TICKET_CONTENT"
                   show-count
                   size="large"
                   class="reply-textarea"
@@ -251,6 +251,7 @@ import {
 } from "@ant-design/icons-vue";
 import { getTicketDetail, addTicketMessage, closeTicket } from "@/services/user";
 import { useAuthStore } from "@/stores/auth";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const route = useRoute();
 const router = useRouter();
@@ -329,6 +330,10 @@ const fetchData = async () => {
 const handleReply = async () => {
   if (!replyContent.value.trim()) {
     message.error("请输入回复内容");
+    return;
+  }
+  if (String(replyContent.value || "").length > INPUT_LIMITS.TICKET_CONTENT) {
+    message.error(`回复长度不能超过 ${INPUT_LIMITS.TICKET_CONTENT} 个字符`);
     return;
   }
 

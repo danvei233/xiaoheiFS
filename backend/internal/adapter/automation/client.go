@@ -43,9 +43,11 @@ func (c *Client) WithLogger(fn func(context.Context, HTTPLogEntry)) *Client {
 }
 
 type apiResponse struct {
-	Code int             `json:"code"`
-	Msg  string          `json:"msg"`
-	Data json.RawMessage `json:"data"`
+	Code   int             `json:"code"`
+	Msg    string          `json:"msg"`
+	Data   json.RawMessage `json:"data"`
+	Status any             `json:"status"`
+	Other  json.RawMessage `json:"other"`
 }
 
 type findPortResponse struct {
@@ -85,15 +87,16 @@ type hostListItem struct {
 }
 
 type lineItem struct {
-	ID          int64  `json:"id"`
-	LineID      int64  `json:"line_id"`
-	ThirdLineID int64  `json:"third_line_id"`
-	LineName    string `json:"line_name"`
-	Name        string `json:"name"`
-	Remark      string `json:"remark"`
-	LineAPI     string `json:"line_api"`
-	AreaID      int64  `json:"area_id"`
-	State       int    `json:"state"`
+	ID          int64     `json:"id"`
+	LineID      int64     `json:"line_id"`
+	ThirdLineID int64     `json:"third_line_id"`
+	LineName    string    `json:"line_name"`
+	Name        string    `json:"name"`
+	Remark      string    `json:"remark"`
+	LineAPI     string    `json:"line_api"`
+	AreaID      int64     `json:"area_id"`
+	State       int       `json:"state"`
+	ImageIDs    int64List `json:"image_ids"`
 }
 
 type imageItem struct {
@@ -509,6 +512,9 @@ func (c *Client) AddFirewallRule(ctx context.Context, req usecase.AutomationFire
 	if req.IP != "" {
 		form.Set("ip", req.IP)
 	}
+	if req.Priority > 0 {
+		form.Set("priority", strconv.Itoa(req.Priority))
+	}
 	endpoint := c.baseURL + "/security_acl_add"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
@@ -726,7 +732,120 @@ func (c *Client) ListImages(ctx context.Context, lineID int64) ([]usecase.Automa
 	for _, item := range items {
 		out = append(out, usecase.AutomationImage{ImageID: item.ID, Name: item.Name, Type: item.Type})
 	}
-	return out, nil
+	if lineID <= 0 {
+		return out, nil
+	}
+	allowedImageIDs, foundLine, err := c.getLineImageIDs(ctx, lineID)
+	if err != nil {
+		return nil, err
+	}
+	if !foundLine {
+		return nil, fmt.Errorf("automation line not found: %d", lineID)
+	}
+	allowed := make(map[int64]struct{}, len(allowedImageIDs))
+	for _, id := range allowedImageIDs {
+		if id > 0 {
+			allowed[id] = struct{}{}
+		}
+	}
+	if len(allowed) == 0 {
+		return []usecase.AutomationImage{}, nil
+	}
+	filtered := make([]usecase.AutomationImage, 0, len(out))
+	for _, img := range out {
+		if _, ok := allowed[img.ImageID]; ok {
+			filtered = append(filtered, img)
+		}
+	}
+	return filtered, nil
+}
+
+func (c *Client) getLineImageIDs(ctx context.Context, lineID int64) ([]int64, bool, error) {
+	endpoint := c.baseURL + "/line"
+	resp, err := c.doRequest(ctx, http.MethodGet, endpoint, nil, "")
+	if err != nil {
+		return nil, false, err
+	}
+	if resp.Code != 1 {
+		return nil, false, fmt.Errorf("automation error: %s", resp.Msg)
+	}
+	var items []lineItem
+	if err := json.Unmarshal(resp.Data, &items); err != nil {
+		return nil, false, err
+	}
+	for _, item := range items {
+		id := item.ID
+		if id <= 0 {
+			id = item.LineID
+		}
+		if id <= 0 {
+			id = item.ThirdLineID
+		}
+		if id == lineID {
+			return item.ImageIDs, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
+type int64List []int64
+
+func (l *int64List) UnmarshalJSON(data []byte) error {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" || trimmed == "null" {
+		*l = nil
+		return nil
+	}
+	if strings.HasPrefix(trimmed, "\"") && strings.HasSuffix(trimmed, "\"") {
+		raw, err := strconv.Unquote(trimmed)
+		if err != nil {
+			return err
+		}
+		parts := strings.Split(raw, ",")
+		out := make([]int64, 0, len(parts))
+		for _, part := range parts {
+			val := strings.TrimSpace(part)
+			if val == "" {
+				continue
+			}
+			n, err := strconv.ParseInt(val, 10, 64)
+			if err != nil {
+				return err
+			}
+			out = append(out, n)
+		}
+		*l = out
+		return nil
+	}
+	if strings.HasPrefix(trimmed, "[") {
+		var arr []any
+		if err := json.Unmarshal(data, &arr); err != nil {
+			return err
+		}
+		out := make([]int64, 0, len(arr))
+		for _, item := range arr {
+			switch v := item.(type) {
+			case float64:
+				out = append(out, int64(v))
+			case string:
+				n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+				if err != nil {
+					return err
+				}
+				out = append(out, n)
+			default:
+				return fmt.Errorf("unsupported image_ids item type %T", item)
+			}
+		}
+		*l = out
+		return nil
+	}
+	n, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil {
+		return err
+	}
+	*l = []int64{n}
+	return nil
 }
 
 func (c *Client) ListAreas(ctx context.Context) ([]usecase.AutomationArea, error) {
@@ -1021,8 +1140,70 @@ func (c *Client) doRequest(ctx context.Context, method, endpoint string, body io
 		c.emitLog(ctx, method, endpoint, req.Header, string(reqBody), resp, b, time.Since(start), err)
 		return apiResponse{}, fmt.Errorf("decode response: %w", err)
 	}
+	parsed = normalizeAPIResponse(parsed)
 	c.emitLog(ctx, method, endpoint, req.Header, string(reqBody), resp, b, time.Since(start), nil)
 	return parsed, nil
+}
+
+func normalizeAPIResponse(resp apiResponse) apiResponse {
+	if resp.Code != 0 {
+		return resp
+	}
+	if isSuccessStatus(resp.Status) {
+		resp.Code = 1
+	} else if hasStatusField(resp.Status) {
+		resp.Code = 0
+	}
+	if len(resp.Data) == 0 && len(resp.Other) > 0 {
+		resp.Data = resp.Other
+	}
+	if strings.TrimSpace(resp.Msg) == "" && len(resp.Other) > 0 {
+		var other map[string]any
+		if json.Unmarshal(resp.Other, &other) == nil {
+			if msg, ok := other["msg"].(string); ok && strings.TrimSpace(msg) != "" {
+				resp.Msg = msg
+			}
+		}
+	}
+	return resp
+}
+
+func hasStatusField(status any) bool {
+	if status == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(fmt.Sprint(status))) {
+	case "":
+		return false
+	default:
+		return true
+	}
+}
+
+func isSuccessStatus(status any) bool {
+	if status == nil {
+		return false
+	}
+	switch v := status.(type) {
+	case bool:
+		return v
+	case float64:
+		return int(v) == 1 || int(v) == 200
+	case float32:
+		return int(v) == 1 || int(v) == 200
+	case int:
+		return v == 1 || v == 200
+	case int32:
+		return v == 1 || v == 200
+	case int64:
+		return v == 1 || v == 200
+	case json.Number:
+		i, _ := v.Int64()
+		return i == 1 || i == 200
+	default:
+		s := strings.ToLower(strings.TrimSpace(fmt.Sprint(status)))
+		return s == "1" || s == "200" || s == "ok" || s == "success" || s == "succeeded"
+	}
 }
 
 func toInt64(v any) int64 {

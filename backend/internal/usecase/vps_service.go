@@ -83,9 +83,6 @@ func (s *VPSService) RefreshStatus(ctx context.Context, inst domain.VPSInstance)
 	if err := s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State); err != nil {
 		return domain.VPSInstance{}, err
 	}
-	if info.ExpireAt != nil {
-		_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, *info.ExpireAt)
-	}
 	if info.RemoteIP != "" || info.PanelPassword != "" || info.VNCPassword != "" {
 		_ = s.vps.UpdateInstanceAccessInfo(ctx, inst.ID, mergeAccessInfo(inst.AccessInfoJSON, info))
 	}
@@ -206,6 +203,11 @@ func (s *VPSService) ResetOS(ctx context.Context, inst domain.VPSInstance, templ
 	if password == "" {
 		return ErrInvalidInput
 	}
+	validatedPassword, validateErr := trimAndValidateRequired(password, maxLenPassword)
+	if validateErr != nil {
+		return ErrInvalidInput
+	}
+	password = validatedPassword
 	cli, err := s.client(ctx, inst.GoodsTypeID)
 	if err != nil {
 		return err
@@ -235,6 +237,11 @@ func (s *VPSService) ResetOSPassword(ctx context.Context, inst domain.VPSInstanc
 	if password == "" {
 		return ErrInvalidInput
 	}
+	validatedPassword, validateErr := trimAndValidateRequired(password, maxLenPassword)
+	if validateErr != nil {
+		return ErrInvalidInput
+	}
+	password = validatedPassword
 	cli, err := s.client(ctx, inst.GoodsTypeID)
 	if err != nil {
 		return err
@@ -401,6 +408,13 @@ func (s *VPSService) AddPortMapping(ctx context.Context, inst domain.VPSInstance
 	if hostID == 0 {
 		return ErrInvalidInput
 	}
+	if req.Name != "" {
+		name, err := trimAndValidateOptional(req.Name, maxLenPortMappingName)
+		if err != nil {
+			return ErrInvalidInput
+		}
+		req.Name = name
+	}
 	req.HostID = hostID
 	cli, err := s.client(ctx, inst.GoodsTypeID)
 	if err != nil {
@@ -558,6 +572,42 @@ func (s *VPSService) AutoDeleteExpired(ctx context.Context) error {
 			continue
 		}
 		_ = s.vps.DeleteInstance(ctx, inst.ID)
+	}
+	return nil
+}
+
+func (s *VPSService) AutoLockExpired(ctx context.Context) error {
+	if s.vps == nil || s.automation == nil {
+		return nil
+	}
+	now := time.Now()
+	items, err := s.vps.ListInstancesExpiring(ctx, now)
+	if err != nil {
+		return err
+	}
+	for _, inst := range items {
+		if inst.ExpireAt == nil || inst.ExpireAt.After(now) {
+			continue
+		}
+		if inst.Status == domain.VPSStatusLocked || inst.Status == domain.VPSStatusExpiredLocked {
+			continue
+		}
+		if inst.AdminStatus != "" && inst.AdminStatus != domain.VPSAdminStatusNormal {
+			continue
+		}
+		hostID := parseHostID(inst.AutomationInstanceID)
+		if hostID == 0 {
+			continue
+		}
+		cli, err := s.client(ctx, inst.GoodsTypeID)
+		if err != nil {
+			continue
+		}
+		if err := cli.LockHost(ctx, hostID); err != nil {
+			continue
+		}
+		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusExpiredLocked, 10)
+		_ = s.vps.UpdateInstanceAdminStatus(ctx, inst.ID, domain.VPSAdminStatusLocked)
 	}
 	return nil
 }

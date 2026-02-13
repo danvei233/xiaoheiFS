@@ -91,9 +91,6 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 		currency = "CNY"
 	}
 	var total int64
-	for _, item := range items {
-		total += item.Amount
-	}
 	orderNo := fmt.Sprintf("ORD-%d-%d", userID, time.Now().Unix())
 	order := domain.Order{
 		UserID:         userID,
@@ -110,25 +107,30 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 		if err != nil {
 			return domain.Order{}, nil, err
 		}
-		unitAmount := item.Amount
-		remainder := int64(0)
-		if item.Qty > 0 {
-			unitAmount = item.Amount / int64(item.Qty)
-			remainder = item.Amount % int64(item.Qty)
+		spec := parseCartSpecJSON(item.SpecJSON)
+		if err := normalizeCartSpec(&spec); err != nil {
+			return domain.Order{}, nil, err
 		}
-		durationMonths := parseDurationMonths(item.SpecJSON)
-		for i := 0; i < item.Qty; i++ {
-			amount := unitAmount
-			if int64(i) < remainder {
-				amount++
-			}
+		unitAmount, months, err := s.priceForPackage(ctx, item.PackageID, spec)
+		if err != nil {
+			return domain.Order{}, nil, err
+		}
+		spec.DurationMonths = months
+		durationMonths := months
+		specJSON := mustJSON(spec)
+		qty := item.Qty
+		if qty <= 0 {
+			qty = 1
+		}
+		total += unitAmount * int64(qty)
+		for i := 0; i < qty; i++ {
 			orderItems = append(orderItems, domain.OrderItem{
 				OrderID:        order.ID,
 				PackageID:      item.PackageID,
 				SystemID:       item.SystemID,
-				SpecJSON:       item.SpecJSON,
+				SpecJSON:       specJSON,
 				Qty:            1,
-				Amount:         amount,
+				Amount:         unitAmount,
 				Status:         domain.OrderItemStatusPendingPayment,
 				GoodsTypeID:    pkg.GoodsTypeID,
 				Action:         "create",
@@ -136,6 +138,7 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 			})
 		}
 	}
+	order.TotalAmount = total
 
 	type orderFromCartAtomicCreator interface {
 		CreateOrderFromCartAtomic(ctx context.Context, order domain.Order, items []domain.OrderItem) (domain.Order, []domain.OrderItem, error)
@@ -273,6 +276,23 @@ func (s *OrderService) SubmitPayment(ctx context.Context, userID int64, orderID 
 	if s.payments == nil {
 		return domain.OrderPayment{}, ErrInvalidInput
 	}
+	var err error
+	input.Method, err = trimAndValidateRequired(input.Method, maxLenPaymentMethod)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	input.TradeNo, err = trimAndValidateOptional(input.TradeNo, maxLenPaymentTradeNo)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	input.Note, err = trimAndValidateOptional(input.Note, maxLenPaymentNote)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	input.ScreenshotURL, err = trimAndValidateOptional(input.ScreenshotURL, maxLenPaymentImageURL)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
 	order, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
 		return domain.OrderPayment{}, err
@@ -390,6 +410,23 @@ func (s *OrderService) MarkPaid(ctx context.Context, adminID int64, orderID int6
 	if s.payments == nil {
 		return domain.OrderPayment{}, ErrInvalidInput
 	}
+	var err error
+	input.Method, err = trimAndValidateRequired(input.Method, maxLenPaymentMethod)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	input.TradeNo, err = trimAndValidateOptional(input.TradeNo, maxLenPaymentTradeNo)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	input.Note, err = trimAndValidateOptional(input.Note, maxLenPaymentNote)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	input.ScreenshotURL, err = trimAndValidateOptional(input.ScreenshotURL, maxLenPaymentImageURL)
+	if err != nil {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
 	order, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
 		return domain.OrderPayment{}, err
@@ -491,9 +528,6 @@ func (s *OrderService) RefreshOrder(ctx context.Context, userID int64, orderID i
 		}
 		status := MapAutomationState(info.State)
 		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State)
-		if info.ExpireAt != nil {
-			_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, *info.ExpireAt)
-		}
 		if info.RemoteIP != "" || info.PanelPassword != "" || info.VNCPassword != "" {
 			_ = s.vps.UpdateInstanceAccessInfo(ctx, inst.ID, mustJSON(map[string]any{
 				"remote_ip":      info.RemoteIP,
@@ -645,6 +679,28 @@ func (s *OrderService) RetryProvision(orderID int64) error {
 	if err != nil {
 		return err
 	}
+	if order.Status == domain.OrderStatusFailed && s.items != nil {
+		items, err := s.items.ListOrderItems(ctx, order.ID)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			switch item.Action {
+			case "renew", "emergency_renew", "resize", "refund":
+				vpsID := parseOrderItemVPSID(item.SpecJSON)
+				if vpsID <= 0 {
+					continue
+				}
+				conflict, err := s.items.HasPendingRenewOrder(ctx, order.UserID, vpsID)
+				if err != nil {
+					return err
+				}
+				if conflict {
+					return ErrConflict
+				}
+			}
+		}
+	}
 	switch order.Status {
 	case domain.OrderStatusApproved, domain.OrderStatusProvisioning, domain.OrderStatusFailed:
 		go s.provisionOrder(orderID)
@@ -655,6 +711,10 @@ func (s *OrderService) RetryProvision(orderID int64) error {
 }
 
 func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID int64, reason string) error {
+	normalizedReason, err := trimAndValidateOptional(reason, maxLenReviewReason)
+	if err != nil {
+		return ErrInvalidInput
+	}
 	order, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
 		return err
@@ -665,7 +725,7 @@ func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID i
 		return ErrConflict
 	}
 	order.Status = domain.OrderStatusRejected
-	order.RejectedReason = reason
+	order.RejectedReason = normalizedReason
 	order.PendingReason = ""
 	if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
 		return err
@@ -677,16 +737,16 @@ func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID i
 	if s.payments != nil {
 		pays, _ := s.payments.ListPaymentsByOrder(ctx, order.ID)
 		for _, pay := range pays {
-			_ = s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusRejected, &adminID, reason)
+			_ = s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusRejected, &adminID, normalizedReason)
 		}
 	}
 	if s.audit != nil {
-		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "order.reject", TargetType: "order", TargetID: fmt.Sprintf("%d", order.ID), DetailJSON: mustJSON(map[string]any{"reason": reason})})
+		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "order.reject", TargetType: "order", TargetID: fmt.Sprintf("%d", order.ID), DetailJSON: mustJSON(map[string]any{"reason": normalizedReason})})
 	}
 	if s.events != nil {
-		_, _ = s.events.Publish(ctx, order.ID, "order.rejected", map[string]any{"status": domain.OrderStatusRejected, "reason": reason})
+		_, _ = s.events.Publish(ctx, order.ID, "order.rejected", map[string]any{"status": domain.OrderStatusRejected, "reason": normalizedReason})
 	}
-	s.notifyOrderDecision(ctx, order.UserID, order.OrderNo, "order_rejected", "Order Rejected: {{.order.no}}", reason)
+	s.notifyOrderDecision(ctx, order.UserID, order.OrderNo, "order_rejected", "Order Rejected: {{.order.no}}", normalizedReason)
 	return nil
 }
 
@@ -1103,6 +1163,9 @@ func (s *OrderService) handleResize(ctx context.Context, item domain.OrderItem) 
 	mem := payload.TargetMemGB
 	disk := payload.TargetDiskGB
 	bw := payload.TargetBWMbps
+	if disk > 0 && inst.DiskGB > 0 && disk < inst.DiskGB {
+		return ErrInvalidInput
+	}
 	req := AutomationElasticUpdateRequest{HostID: hostID}
 	if cpu > 0 {
 		req.CPU = &cpu
@@ -1163,9 +1226,6 @@ func (s *OrderService) handleResize(ctx context.Context, item domain.OrderItem) 
 	if info, err := cli.GetHostInfo(ctx, hostID); err == nil {
 		status := MapAutomationState(info.State)
 		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State)
-		if info.ExpireAt != nil {
-			_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, *info.ExpireAt)
-		}
 		if info.RemoteIP != "" || info.PanelPassword != "" || info.VNCPassword != "" || info.OSPassword != "" {
 			_ = s.vps.UpdateInstanceAccessInfo(ctx, inst.ID, mergeAccessInfo(inst.AccessInfoJSON, info))
 		}
@@ -1820,6 +1880,19 @@ func parseDurationMonths(specJSON string) int {
 	return 1
 }
 
+func parseOrderItemVPSID(specJSON string) int64 {
+	if strings.TrimSpace(specJSON) == "" {
+		return 0
+	}
+	var payload struct {
+		VPSID int64 `json:"vps_id"`
+	}
+	if err := json.Unmarshal([]byte(specJSON), &payload); err != nil {
+		return 0
+	}
+	return payload.VPSID
+}
+
 func randomPass(n int) string {
 	letters := []rune("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%")
 	out := make([]rune, n)
@@ -1846,7 +1919,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 		if pending, err := s.items.HasPendingRenewOrder(ctx, userID, vpsID); err != nil {
 			return domain.Order{}, err
 		} else if pending {
-			return domain.Order{}, fmt.Errorf("已有待处理续费订单，请先处理或撤销: %w", ErrConflict)
+			return domain.Order{}, fmt.Errorf("该实例已有待审批或执行中的互斥订单: %w", ErrConflict)
 		}
 	}
 	months := durationMonths
@@ -1902,6 +1975,11 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 }
 
 func (s *OrderService) CreateEmergencyRenewOrder(ctx context.Context, userID int64, vpsID int64) (domain.Order, error) {
+	if s.realname != nil {
+		if err := s.realname.RequireAction(ctx, userID, "renew_vps"); err != nil {
+			return domain.Order{}, err
+		}
+	}
 	if s.settings == nil {
 		return domain.Order{}, ErrInvalidInput
 	}
@@ -1993,11 +2071,6 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 		} else if pending {
 			return domain.Order{}, ResizeQuote{}, ErrResizeInProgress
 		}
-		if pending, err := s.items.HasPendingRefundOrder(ctx, userID, vpsID); err != nil {
-			return domain.Order{}, ResizeQuote{}, err
-		} else if pending {
-			return domain.Order{}, ResizeQuote{}, ErrConflict
-		}
 	}
 	if s.resizeTasks != nil {
 		if pending, err := s.resizeTasks.HasPendingResizeTask(ctx, vpsID); err != nil {
@@ -2005,6 +2078,9 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 		} else if pending {
 			return domain.Order{}, ResizeQuote{}, ErrResizeInProgress
 		}
+	}
+	if inst.ExpireAt != nil && !inst.ExpireAt.After(time.Now()) {
+		return domain.Order{}, ResizeQuote{}, ErrForbidden
 	}
 	quote, targetSpec, err := s.quoteResize(ctx, inst, spec, targetPackageID, resetAddons)
 	if err != nil {
@@ -2065,6 +2141,10 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	if userID == 0 || vpsID == 0 {
 		return domain.Order{}, 0, ErrInvalidInput
 	}
+	reason, err := trimAndValidateRequired(reason, maxLenRefundReason)
+	if err != nil {
+		return domain.Order{}, 0, ErrInvalidInput
+	}
 	if s.vps == nil || s.items == nil || s.orders == nil || s.wallets == nil {
 		return domain.Order{}, 0, ErrInvalidInput
 	}
@@ -2074,11 +2154,6 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	}
 	if inst.UserID != userID {
 		return domain.Order{}, 0, ErrForbidden
-	}
-	if pending, err := s.items.HasPendingRefundOrder(ctx, userID, vpsID); err != nil {
-		return domain.Order{}, 0, err
-	} else if pending {
-		return domain.Order{}, 0, ErrConflict
 	}
 	if pending, err := s.items.HasPendingResizeOrder(ctx, userID, vpsID); err != nil {
 		return domain.Order{}, 0, err
@@ -2189,11 +2264,6 @@ func (s *OrderService) QuoteResizeOrder(ctx context.Context, userID int64, vpsID
 		} else if pending {
 			return ResizeQuote{}, CartSpec{}, ErrResizeInProgress
 		}
-		if pending, err := s.items.HasPendingRefundOrder(ctx, userID, vpsID); err != nil {
-			return ResizeQuote{}, CartSpec{}, err
-		} else if pending {
-			return ResizeQuote{}, CartSpec{}, ErrConflict
-		}
 	}
 	if s.resizeTasks != nil {
 		if pending, err := s.resizeTasks.HasPendingResizeTask(ctx, vpsID); err != nil {
@@ -2201,6 +2271,9 @@ func (s *OrderService) QuoteResizeOrder(ctx context.Context, userID int64, vpsID
 		} else if pending {
 			return ResizeQuote{}, CartSpec{}, ErrResizeInProgress
 		}
+	}
+	if inst.ExpireAt != nil && !inst.ExpireAt.After(time.Now()) {
+		return ResizeQuote{}, CartSpec{}, ErrForbidden
 	}
 	return s.quoteResize(ctx, inst, spec, targetPackageID, resetAddons)
 }

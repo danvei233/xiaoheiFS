@@ -61,6 +61,13 @@ func TestAdminService_UserOrderAndSettingsOps(t *testing.T) {
 	if err := svc.DeleteOrder(ctx, admin.ID, order.ID); err != nil {
 		t.Fatalf("delete order: %v", err)
 	}
+	approvedOrder := domain.Order{UserID: user.ID, OrderNo: "ORD-OPS-2", Status: domain.OrderStatusApproved, TotalAmount: 100, Currency: "CNY"}
+	if err := repo.CreateOrder(ctx, &approvedOrder); err != nil {
+		t.Fatalf("create approved order: %v", err)
+	}
+	if err := svc.DeleteOrder(ctx, admin.ID, approvedOrder.ID); err != usecase.ErrConflict {
+		t.Fatalf("delete approved order should conflict: %v", err)
+	}
 
 	raw, apiKey, err := svc.CreateAPIKey(ctx, admin.ID, "api1", nil, []string{"order.view"})
 	if err != nil || apiKey.ID == 0 || raw == "" {

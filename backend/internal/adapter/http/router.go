@@ -52,6 +52,9 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 		public.GET("/cms/blocks", handler.CMSBlocksPublic)
 		public.GET("/cms/posts", handler.CMSPostsPublic)
 		public.GET("/cms/posts/:slug", handler.CMSPostDetailPublic)
+		public.POST("/probe/enroll", handler.ProbeEnroll)
+		public.POST("/probe/auth/token", handler.ProbeAuthToken)
+		public.GET("/probe/ws", handler.ProbeWS)
 	}
 
 	user := r.Group("/api/v1")
@@ -309,6 +312,15 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 		admin.POST("/dashboard/overview", handler.AdminDashboardOverview)
 		admin.POST("/dashboard/revenue", handler.AdminDashboardRevenue)
 		admin.GET("/dashboard/vps-status", handler.AdminDashboardVPSStatus)
+		admin.GET("/probes", handler.AdminProbes)
+		admin.POST("/probes", handler.AdminProbeCreate)
+		admin.GET("/probes/:id", handler.AdminProbeDetail)
+		admin.PATCH("/probes/:id", handler.AdminProbeUpdate)
+		admin.POST("/probes/:id/enroll-token/reset", handler.AdminProbeResetEnrollToken)
+		admin.GET("/probes/:id/sla", handler.AdminProbeSLA)
+		admin.POST("/probes/:id/port-check", handler.AdminProbePortCheck)
+		admin.POST("/probes/:id/log-sessions", handler.AdminProbeLogSessionCreate)
+		admin.GET("/probes/:id/log-sessions/:sid/stream", handler.AdminProbeLogSessionStream)
 	}
 
 	public.POST("/auth/forgot-password", handler.AdminForgotPassword)

@@ -173,6 +173,60 @@ func (s *AdminVPSService) Create(ctx context.Context, adminID int64, input Admin
 			})
 		}
 	}
+	if !input.Provision && input.GoodsTypeID > 0 && strings.TrimSpace(input.Name) != "" && strings.TrimSpace(input.AutomationInstanceID) == "" && s.automation != nil {
+		cli, err := s.automation.ClientForGoodsType(ctx, input.GoodsTypeID)
+		if err == nil {
+			if hosts, listErr := cli.ListHostSimple(ctx, input.Name); listErr == nil {
+				hostID := int64(0)
+				for _, host := range hosts {
+					if strings.EqualFold(strings.TrimSpace(host.HostName), strings.TrimSpace(input.Name)) {
+						hostID = host.ID
+						break
+					}
+				}
+				if hostID == 0 && len(hosts) > 0 {
+					hostID = hosts[0].ID
+				}
+				if hostID > 0 {
+					input.AutomationInstanceID = fmt.Sprintf("%d", hostID)
+					if info, infoErr := cli.GetHostInfo(ctx, hostID); infoErr == nil {
+						input.Status = MapAutomationState(info.State)
+						input.AutomationState = info.State
+						if info.HostName != "" {
+							input.Name = info.HostName
+						}
+						if info.ExpireAt != nil {
+							input.ExpireAt = info.ExpireAt
+						}
+						if input.CPU <= 0 {
+							input.CPU = info.CPU
+						}
+						if input.MemoryGB <= 0 {
+							input.MemoryGB = info.MemoryGB
+						}
+						if input.DiskGB <= 0 {
+							input.DiskGB = info.DiskGB
+						}
+						if input.BandwidthMB <= 0 {
+							input.BandwidthMB = info.Bandwidth
+						}
+						if input.AccessInfoJSON == "" {
+							input.AccessInfoJSON = mustJSON(map[string]any{
+								"remote_ip":      info.RemoteIP,
+								"panel_password": info.PanelPassword,
+								"vnc_password":   info.VNCPassword,
+								"os_password":    info.OSPassword,
+							})
+						}
+					}
+				}
+			}
+		}
+	}
+	status = input.Status
+	if status == "" {
+		status = domain.VPSStatusUnknown
+	}
 	inst := domain.VPSInstance{
 		UserID:               input.UserID,
 		OrderItemID:          input.OrderItemID,
@@ -227,9 +281,6 @@ func (s *AdminVPSService) Refresh(ctx context.Context, adminID int64, vpsID int6
 	}
 	status := MapAutomationState(info.State)
 	_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State)
-	if info.ExpireAt != nil {
-		_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, *info.ExpireAt)
-	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "vps.refresh", TargetType: "vps", TargetID: fmt.Sprintf("%d", inst.ID), DetailJSON: "{}"})
 	}

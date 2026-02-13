@@ -26,6 +26,9 @@ import type {
   Region,
   RobotConfig,
   ServerStatus,
+  ProbeNode,
+  ProbeSLA,
+  ProbeLogSession,
   SMTPConfig,
   SettingItem,
   SystemImage,
@@ -74,6 +77,7 @@ export const updateAdminScheduledTask = (key: string, payload: Record<string, un
   http.patch(`/admin/api/v1/scheduled-tasks/${key}`, payload);
 
 export const listAdminVps = (params?: Record<string, unknown>) => http.get<ApiList<VPSInstance>>("/admin/api/v1/vps", { params });
+export const createAdminVps = (payload: Record<string, unknown>) => http.post<VPSInstance>("/admin/api/v1/vps", payload);
 export const getAdminVpsDetail = (id: number | string) => http.get<VPSInstance>(`/admin/api/v1/vps/${id}`);
 export const lockAdminVps = (id: number | string) => http.post(`/admin/api/v1/vps/${id}/lock`);
 export const unlockAdminVps = (id: number | string) => http.post(`/admin/api/v1/vps/${id}/unlock`);
@@ -217,6 +221,24 @@ export const getAdminDashboardRevenue = (params?: Record<string, unknown>) =>
   http.post<DashboardRevenue>("/admin/api/v1/dashboard/revenue", null, { params });
 export const getAdminDashboardVpsStatus = () => http.get<DashboardStatus>("/admin/api/v1/dashboard/vps-status");
 export const getServerStatus = () => http.get<ServerStatus>("/admin/api/v1/server/status");
+
+// Probes
+export const listAdminProbes = (params?: Record<string, unknown>) =>
+  http.get<ApiList<ProbeNode>>("/admin/api/v1/probes", { params });
+export const createAdminProbe = (payload: Record<string, unknown>) =>
+  http.post<{ probe?: ProbeNode; enroll_token?: string }>("/admin/api/v1/probes", payload);
+export const getAdminProbeDetail = (id: number | string, params?: Record<string, unknown>) =>
+  http.get<{ probe?: ProbeNode; online?: boolean }>(`/admin/api/v1/probes/${id}`, { params });
+export const updateAdminProbe = (id: number | string, payload: Record<string, unknown>) =>
+  http.patch(`/admin/api/v1/probes/${id}`, payload);
+export const resetAdminProbeEnrollToken = (id: number | string) =>
+  http.post<{ enroll_token?: string }>(`/admin/api/v1/probes/${id}/enroll-token/reset`);
+export const getAdminProbeSla = (id: number | string, params?: Record<string, unknown>) =>
+  http.get<{ sla?: ProbeSLA }>(`/admin/api/v1/probes/${id}/sla`, { params });
+export const adminProbePortCheck = (id: number | string, payload?: Record<string, unknown>) =>
+  http.post<{ ok?: boolean; request_id?: string }>(`/admin/api/v1/probes/${id}/port-check`, payload || {});
+export const createAdminProbeLogSession = (id: number | string, payload: Record<string, unknown>) =>
+  http.post<{ session_id?: string; stream_path?: string; log_session?: ProbeLogSession }>(`/admin/api/v1/probes/${id}/log-sessions`, payload);
 
 // 管理员管理
 export const listAdmins = (params?: Record<string, unknown>) => http.get<ApiList<AdminUser>>("/admin/api/v1/admins", { params });

@@ -34,7 +34,7 @@ func (s *RealNameService) GetConfig(ctx context.Context) (bool, string, []string
 	}
 	if setting, err := s.settings.GetSetting(ctx, "realname_block_actions"); err == nil && strings.TrimSpace(setting.ValueJSON) != "" {
 		var list []string
-		if err := json.Unmarshal([]byte(setting.ValueJSON), &list); err == nil && len(list) > 0 {
+		if err := json.Unmarshal([]byte(setting.ValueJSON), &list); err == nil {
 			actions = list
 		}
 	}

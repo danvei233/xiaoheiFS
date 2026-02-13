@@ -158,7 +158,7 @@
                   <a-menu-item v-if="emergencyRenewEligible(record)" key="urgent-renew" @click="submitEmergencyRenew(record)">
                     紧急续费
                   </a-menu-item>
-                  <a-menu-item key="resize" @click="openResize(record)">升降配</a-menu-item>
+                  <a-menu-item key="resize" :disabled="isExpired(record)" @click="openResize(record)">升降配</a-menu-item>
                   <a-menu-item key="refresh" @click="refresh(record)">刷新状态</a-menu-item>
                   <a-menu-divider />
                   <a-menu-item key="refund" danger @click="openRefund(record)">申请退款</a-menu-item>
@@ -279,7 +279,7 @@
       </a-form>
     </a-modal>
 
-    <a-modal v-model:open="resizeOpen" title="升降配 VPS" :width="560" @ok="submitResize" :confirm-loading="resizing">
+    <a-modal v-model:open="resizeOpen" title="升降配 VPS" :width="560" @ok="submitResize" :confirm-loading="resizing" :ok-button-props="{ disabled: isExpired(activeRecord) }">
       <a-form layout="vertical">
         <a-form-item label="目标套餐">
           <a-select v-model:value="resizeForm.target_package_id" placeholder="选择套餐" size="large" :disabled="!resizeEnabled">
@@ -300,6 +300,13 @@
           type="warning"
           show-icon
           message="升降配功能已关闭"
+          style="margin-bottom: 12px"
+        />
+        <a-alert
+          v-if="isExpired(activeRecord)"
+          type="warning"
+          show-icon
+          message="已到期实例不支持升降配"
           style="margin-bottom: 12px"
         />
         <a-form-item label="执行时间">
@@ -397,7 +404,7 @@
             v-model:value="refundReason"
             :rows="4"
             placeholder="请详细说明退款原因..."
-            :maxlength="500"
+            :maxlength="INPUT_LIMITS.REFUND_REASON"
             show-count
           />
         </a-form-item>
@@ -441,6 +448,7 @@ import {
   startVps,
   requestVpsRefund
 } from "@/services/user";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 import { message, Modal } from "ant-design-vue";
 import dayjs from "dayjs";
 import {
@@ -483,6 +491,7 @@ const statusOptions = [
   { label: "运行中", value: "running" },
   { label: "已关机", value: "stopped" },
   { label: "锁定", value: "locked" },
+  { label: "已到期", value: "expired_locked" },
   { label: "开通中", value: "provisioning" },
   { label: "重装系统中", value: "reinstalling" },
   { label: "重装系统失败", value: "reinstall_failed" },
@@ -494,6 +503,7 @@ const statusTabs = [
   { label: "运行中", value: "running" },
   { label: "已关机", value: "stopped" },
   { label: "锁定", value: "locked" },
+  { label: "已到期", value: "expired_locked" },
   { label: "重装中", value: "reinstalling" }
 ];
 
@@ -575,6 +585,19 @@ const statusFromAutomation = (state) => {
   }
 };
 
+const isExpired = (row) => {
+  const expireAt = row?.expire_at ?? row?.ExpireAt;
+  if (!expireAt) return false;
+  const expire = new Date(expireAt).getTime();
+  if (Number.isNaN(expire)) return false;
+  return expire <= Date.now();
+};
+
+const shouldShowExpiredLocked = (row, status) => {
+  if (!isExpired(row)) return false;
+  return status === "locked" || status === "expired_locked";
+};
+
 const dataSource = computed(() => {
   let items = store.items.map((row) => {
     const access = parseJson(row.access_info ?? row.AccessInfo ?? row.access_info_json ?? row.AccessInfoJSON);
@@ -583,10 +606,11 @@ const dataSource = computed(() => {
     const line = row.line ?? row.Line ?? row.line_name ?? row.LineName ?? access.line ?? "";
     const rawStatus = row.status ?? row.Status ?? "";
     const rawAutomationState = row.automation_state ?? row.AutomationState ?? null;
-    const resolvedStatus =
+    const baseStatus =
       rawAutomationState !== null && rawAutomationState !== undefined
         ? statusFromAutomation(rawAutomationState)
         : rawStatus;
+    const resolvedStatus = shouldShowExpiredLocked(row, baseStatus) ? "expired_locked" : baseStatus;
       return {
         id: row.id ?? row.ID,
         name: row.name ?? row.Name,
@@ -962,6 +986,10 @@ const submitEmergencyRenew = (record) => {
 };
 
 const openResize = (record) => {
+  if (isExpired(record)) {
+    message.warning("已到期实例不支持升降配");
+    return;
+  }
   activeRecord.value = record;
   resizeForm.add_cores = currentAddons.value.add_cores;
   resizeForm.add_mem_gb = currentAddons.value.add_mem_gb;
@@ -1062,6 +1090,10 @@ const scheduleResizeQuote = () => {
 
 const submitResize = async () => {
   if (!activeRecord.value) return;
+  if (isExpired(activeRecord.value)) {
+    message.warning("已到期实例不支持升降配");
+    return;
+  }
   if (!resizeEnabled.value) {
     message.error("升降配功能已关闭");
     return;
@@ -1123,6 +1155,10 @@ const openRefund = (record) => {
 const submitRefund = async () => {
   if (!refundReason.value.trim()) {
     message.warning("请填写退款原因");
+    return;
+  }
+  if (String(refundReason.value || "").length > INPUT_LIMITS.REFUND_REASON) {
+    message.warning(`退款原因长度不能超过 ${INPUT_LIMITS.REFUND_REASON} 个字符`);
     return;
   }
   refunding.value = true;

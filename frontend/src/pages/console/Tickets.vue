@@ -127,6 +127,8 @@
             v-model:value="form.subject"
             placeholder="简要描述您的问题"
             size="large"
+            :maxlength="INPUT_LIMITS.TICKET_SUBJECT"
+            show-count
           />
         </a-form-item>
 
@@ -135,6 +137,8 @@
             v-model:value="form.content"
             placeholder="详细描述您的问题"
             :rows="5"
+            :maxlength="INPUT_LIMITS.TICKET_CONTENT"
+            show-count
           />
         </a-form-item>
 
@@ -187,6 +191,7 @@ import {
   EyeOutlined
 } from "@ant-design/icons-vue";
 import { listTickets, createTicket, listVps } from "@/services/user";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const router = useRouter();
 const formRef = ref();
@@ -313,6 +318,14 @@ const handleCreate = async () => {
 
   creating.value = true;
   try {
+    if (String(form.value.subject || "").length > INPUT_LIMITS.TICKET_SUBJECT) {
+      message.error(`工单标题长度不能超过 ${INPUT_LIMITS.TICKET_SUBJECT} 个字符`);
+      return;
+    }
+    if (String(form.value.content || "").length > INPUT_LIMITS.TICKET_CONTENT) {
+      message.error(`工单内容长度不能超过 ${INPUT_LIMITS.TICKET_CONTENT} 个字符`);
+      return;
+    }
     const payload: any = {
       subject: form.value.subject,
       content: form.value.content

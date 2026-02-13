@@ -395,6 +395,58 @@ export interface ServerStatus {
   status?: string;
 }
 
+export interface ProbeSnapshot {
+  system?: Record<string, unknown>;
+  cpu?: Record<string, unknown>;
+  memory?: Record<string, unknown>;
+  disks?: Record<string, unknown>[];
+  ports?: Record<string, unknown>[];
+  raw?: Record<string, unknown>;
+}
+
+export interface ProbeNode {
+  id?: number;
+  name?: string;
+  agent_id?: string;
+  status?: string;
+  os_type?: string;
+  tags?: string[];
+  last_heartbeat_at?: string;
+  last_snapshot_at?: string;
+  snapshot?: ProbeSnapshot;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProbeStatusEvent {
+  id?: number;
+  probe_id?: number;
+  status?: string;
+  at?: string;
+  reason?: string;
+  created_at?: string;
+}
+
+export interface ProbeSLA {
+  window_from?: string;
+  window_to?: string;
+  total_seconds?: number;
+  online_seconds?: number;
+  uptime_percent?: number;
+  events?: ProbeStatusEvent[];
+}
+
+export interface ProbeLogSession {
+  id?: number;
+  probe_id?: number;
+  operator_id?: number;
+  source?: string;
+  status?: string;
+  started_at?: string;
+  ended_at?: string;
+  created_at?: string;
+}
+
 export interface VPSInstance {
   id?: number;
   user_id?: number;

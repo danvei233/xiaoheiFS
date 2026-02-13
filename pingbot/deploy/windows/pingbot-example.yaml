@@ -1,0 +1,6 @@
+server_url: "https://example.com"
+enroll_token: ""
+probe_id: 0
+probe_secret: ""
+hostname_alias: ""
+tls_insecure_skip_verify: false

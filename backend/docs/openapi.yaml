@@ -1319,6 +1319,181 @@ components:
             $ref: '#/components/schemas/TicketResource'
 
 paths:
+  /api/cloud/state_host:
+    get:
+      summary: Cloud API - Get real-time VM state
+      description: Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+      parameters:
+        - name: host_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: 1 success, 0 failure
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    minItems: 2
+                    maxItems: 2
+                    items:
+                      oneOf:
+                        - type: integer
+                        - type: string
+                    description: "[state_code, state_label], e.g. [2, '运行中']"
+  /api/cloud/snapshot_list:
+    get:
+      summary: Cloud API - List snapshots
+      description: Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+      parameters:
+        - name: host_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: 1 success, 0 failure
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        virtuals_id:
+                          type: integer
+                        name:
+                          type: string
+                        state:
+                          type: integer
+                          description: Snapshot state in cloud_snapshot_vps.state
+                        created_at:
+                          type: string
+  /api/cloud/backups_list:
+    get:
+      summary: Cloud API - List backups
+      description: Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+      parameters:
+        - name: host_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: 1 success, 0 failure
+                  msg:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        virtuals_id:
+                          type: integer
+                        name:
+                          type: string
+                        state:
+                          type: integer
+                          description: Backup state in cloud_backup_vps.state
+                        created_at:
+                          type: string
+  /api/cloud/security_acl_add:
+    post:
+      summary: Cloud API - Add firewall ACL
+      description: |
+        Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+        The server accepts either `hostid` or `host_id`, and also accepts aliases:
+        `start_port` -> `port`, `start_ip` -> `ip`, `orientation` -> `direction`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hostid:
+                  type: integer
+                  description: Preferred VM id
+                host_id:
+                  type: integer
+                  description: Alias of hostid
+                direction:
+                  type: string
+                  description: in|out (also supports ingress/egress/1/2)
+                protocol:
+                  type: string
+                  description: TCP|UDP|ICMP|ANY
+                method:
+                  type: string
+                  description: accept|drop (also supports allow/deny/reject)
+                port:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                  description: -1 means ANY
+                ip:
+                  type: string
+                  description: 0.0.0.0 means ANY
+                priority:
+                  type: integer
+                  description: Optional, default 100
+                start_port:
+                  oneOf:
+                    - type: integer
+                    - type: string
+                start_ip:
+                  type: string
+                orientation:
+                  type: string
+                tactics:
+                  type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    description: 1 success, 0 failure
+                  msg:
+                    type: string
+                  data:
+                    type: object
   /api/v1/captcha:
     get:
       summary: Get captcha

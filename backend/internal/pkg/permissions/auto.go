@@ -44,6 +44,7 @@ var moduleMapping = map[string]moduleMeta{
 	"tickets":          {Display: "工单管理", SortOrder: 25},
 	"goods_type":       {Display: "Goods Type", SortOrder: 6},
 	"plugin":           {Display: "Plugin", SortOrder: 26},
+	"probe":            {Display: "探针监控", SortOrder: 27},
 }
 
 var actionFriendlyName = map[string]string{
@@ -265,6 +266,8 @@ func moduleFromSegments(segments []string) string {
 			return strings.ReplaceAll(segments[1], "-", "_")
 		}
 		return "integration"
+	case "probes":
+		return "probe"
 	default:
 		return strings.ReplaceAll(segments[0], "-", "_")
 	}

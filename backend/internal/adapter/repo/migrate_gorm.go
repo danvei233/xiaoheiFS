@@ -54,6 +54,10 @@ func migrateGorm(db *gorm.DB) error {
 		&realnameVerificationRow{},
 		&pluginInstallationRow{},
 		&pluginPaymentMethodRow{},
+		&probeNodeRow{},
+		&probeEnrollTokenRow{},
+		&probeStatusEventRow{},
+		&probeLogSessionRow{},
 	}
 	if err := db.AutoMigrate(models...); err != nil {
 		return err
@@ -142,14 +146,14 @@ type userRow struct {
 	ID                int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	Username          string    `gorm:"size:191;column:username;not null;uniqueIndex"`
 	Email             string    `gorm:"size:191;column:email;not null;uniqueIndex"`
-	QQ                string    `gorm:"column:qq"`
+	QQ                string    `gorm:"size:32;column:qq"`
 	PasswordHash      string    `gorm:"column:password_hash;not null"`
 	Role              string    `gorm:"column:role;not null"`
 	Status            string    `gorm:"column:status;not null"`
-	Avatar            string    `gorm:"column:avatar"`
-	Phone             string    `gorm:"column:phone"`
-	Bio               string    `gorm:"column:bio"`
-	Intro             string    `gorm:"column:intro"`
+	Avatar            string    `gorm:"size:1024;column:avatar"`
+	Phone             string    `gorm:"size:32;column:phone"`
+	Bio               string    `gorm:"size:512;column:bio"`
+	Intro             string    `gorm:"size:1024;column:intro"`
 	PermissionGroupID *int64    `gorm:"column:permission_group_id"`
 	CreatedAt         time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt         time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
@@ -303,10 +307,10 @@ type orderRow struct {
 	TotalAmount    int64      `gorm:"column:total_amount;not null"`
 	Currency       string     `gorm:"column:currency;not null"`
 	IdempotencyKey *string    `gorm:"size:191;column:idempotency_key;uniqueIndex:idx_orders_idem"`
-	PendingReason  string     `gorm:"column:pending_reason"`
+	PendingReason  string     `gorm:"size:1000;column:pending_reason"`
 	ApprovedBy     *int64     `gorm:"column:approved_by"`
 	ApprovedAt     *time.Time `gorm:"column:approved_at"`
-	RejectedReason string     `gorm:"column:rejected_reason"`
+	RejectedReason string     `gorm:"size:1000;column:rejected_reason"`
 	CreatedAt      time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt      time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
@@ -338,7 +342,7 @@ type vpsInstanceRow struct {
 	OrderItemID          int64      `gorm:"column:order_item_id;not null;index"`
 	AutomationInstanceID string     `gorm:"column:automation_instance_id;not null"`
 	GoodsTypeID          int64      `gorm:"column:goods_type_id;not null;default:0;index"`
-	Name                 string     `gorm:"column:name;not null"`
+	Name                 string     `gorm:"size:128;column:name;not null"`
 	Region               string     `gorm:"column:region"`
 	RegionID             int64      `gorm:"column:region_id;not null;default:0"`
 	LineID               int64      `gorm:"column:line_id;not null;default:0"`
@@ -426,16 +430,16 @@ type orderPaymentRow struct {
 	ID             int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	OrderID        int64     `gorm:"column:order_id;not null;index;uniqueIndex:idx_order_payments_idem"`
 	UserID         int64     `gorm:"column:user_id;not null"`
-	Method         string    `gorm:"column:method;not null"`
+	Method         string    `gorm:"size:64;column:method;not null"`
 	Amount         int64     `gorm:"column:amount;not null"`
 	Currency       string    `gorm:"column:currency;not null"`
 	TradeNo        string    `gorm:"size:191;column:trade_no;not null;uniqueIndex:idx_order_payments_trade_no"`
-	Note           *string   `gorm:"column:note"`
-	ScreenshotURL  *string   `gorm:"column:screenshot_url"`
+	Note           *string   `gorm:"size:1000;column:note"`
+	ScreenshotURL  *string   `gorm:"size:1024;column:screenshot_url"`
 	Status         string    `gorm:"column:status;not null"`
 	IdempotencyKey *string   `gorm:"size:191;column:idempotency_key;uniqueIndex:idx_order_payments_idem"`
 	ReviewedBy     *int64    `gorm:"column:reviewed_by"`
-	ReviewReason   string    `gorm:"column:review_reason"`
+	ReviewReason   string    `gorm:"size:1000;column:review_reason"`
 	CreatedAt      time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt      time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
@@ -614,7 +618,7 @@ func (uploadRow) TableName() string { return "uploads" }
 type ticketRow struct {
 	ID            int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID        int64      `gorm:"column:user_id;not null;index"`
-	Subject       string     `gorm:"column:subject;not null"`
+	Subject       string     `gorm:"size:240;column:subject;not null"`
 	Status        string     `gorm:"size:191;column:status;not null;default:open;index"`
 	LastReplyAt   *time.Time `gorm:"column:last_reply_at"`
 	LastReplyBy   *int64     `gorm:"column:last_reply_by"`
@@ -632,8 +636,8 @@ type ticketMessageRow struct {
 	SenderID   int64     `gorm:"column:sender_id;not null"`
 	SenderRole string    `gorm:"column:sender_role;not null"`
 	SenderName string    `gorm:"column:sender_name"`
-	SenderQQ   string    `gorm:"column:sender_qq"`
-	Content    string    `gorm:"column:content;not null"`
+	SenderQQ   string    `gorm:"size:32;column:sender_qq"`
+	Content    string    `gorm:"size:10000;column:content;not null"`
 	CreatedAt  time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 }
 
@@ -644,7 +648,7 @@ type ticketResourceRow struct {
 	TicketID     int64     `gorm:"column:ticket_id;not null;index"`
 	ResourceType string    `gorm:"column:resource_type;not null"`
 	ResourceID   int64     `gorm:"column:resource_id;not null;default:0"`
-	ResourceName string    `gorm:"column:resource_name;not null;default:''"`
+	ResourceName string    `gorm:"size:128;column:resource_name;not null;default:''"`
 	CreatedAt    time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 }
 
@@ -679,10 +683,10 @@ type walletOrderRow struct {
 	Amount       int64     `gorm:"column:amount;not null"`
 	Currency     string    `gorm:"column:currency;not null;default:CNY"`
 	Status       string    `gorm:"column:status;not null"`
-	Note         string    `gorm:"column:note;not null;default:''"`
+	Note         string    `gorm:"size:1000;column:note;not null;default:''"`
 	MetaJSON     string    `gorm:"column:meta_json;not null;default:''"`
 	ReviewedBy   *int64    `gorm:"column:reviewed_by"`
-	ReviewReason string    `gorm:"column:review_reason"`
+	ReviewReason string    `gorm:"size:1000;column:review_reason"`
 	CreatedAt    time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
@@ -766,3 +770,55 @@ type pluginPaymentMethodRow struct {
 }
 
 func (pluginPaymentMethodRow) TableName() string { return "plugin_payment_methods" }
+
+type probeNodeRow struct {
+	ID               int64      `gorm:"primaryKey;autoIncrement;column:id"`
+	Name             string     `gorm:"column:name;not null"`
+	AgentID          string     `gorm:"size:191;column:agent_id;not null;uniqueIndex"`
+	SecretHash       string     `gorm:"size:191;column:secret_hash;not null"`
+	Status           string     `gorm:"size:32;column:status;not null;default:offline;index:idx_probe_nodes_status"`
+	OSType           string     `gorm:"size:32;column:os_type;not null;default:''"`
+	TagsJSON         string     `gorm:"column:tags_json;not null;default:'[]'"`
+	LastHeartbeatAt  *time.Time `gorm:"column:last_heartbeat_at;index:idx_probe_nodes_heartbeat"`
+	LastSnapshotAt   *time.Time `gorm:"column:last_snapshot_at"`
+	LastSnapshotJSON string     `gorm:"column:last_snapshot_json;not null;default:'{}'"`
+	CreatedAt        time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt        time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
+}
+
+func (probeNodeRow) TableName() string { return "probe_nodes" }
+
+type probeEnrollTokenRow struct {
+	ID        int64      `gorm:"primaryKey;autoIncrement;column:id"`
+	ProbeID   int64      `gorm:"column:probe_id;not null;index:idx_probe_enroll_tokens_probe"`
+	TokenHash string     `gorm:"size:191;column:token_hash;not null;uniqueIndex"`
+	ExpiresAt time.Time  `gorm:"column:expires_at;not null;index:idx_probe_enroll_tokens_expires"`
+	UsedAt    *time.Time `gorm:"column:used_at"`
+	CreatedAt time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (probeEnrollTokenRow) TableName() string { return "probe_enroll_tokens" }
+
+type probeStatusEventRow struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	ProbeID   int64     `gorm:"column:probe_id;not null;index:idx_probe_status_events_probe_at,priority:1"`
+	Status    string    `gorm:"size:32;column:status;not null"`
+	At        time.Time `gorm:"column:at;not null;index:idx_probe_status_events_probe_at,priority:2"`
+	Reason    string    `gorm:"column:reason;not null;default:''"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (probeStatusEventRow) TableName() string { return "probe_status_events" }
+
+type probeLogSessionRow struct {
+	ID         int64      `gorm:"primaryKey;autoIncrement;column:id"`
+	ProbeID    int64      `gorm:"column:probe_id;not null;index:idx_probe_log_sessions_probe"`
+	OperatorID int64      `gorm:"column:operator_id;not null;default:0"`
+	Source     string     `gorm:"column:source;not null;default:''"`
+	Status     string     `gorm:"size:32;column:status;not null;default:running"`
+	StartedAt  time.Time  `gorm:"column:started_at;not null"`
+	EndedAt    *time.Time `gorm:"column:ended_at"`
+	CreatedAt  time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (probeLogSessionRow) TableName() string { return "probe_log_sessions" }

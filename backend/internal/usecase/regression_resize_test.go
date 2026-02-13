@@ -447,11 +447,6 @@ func TestResizeProrationCharge(t *testing.T) {
 			months: 1,
 		},
 		{
-			name:   "remaining zero",
-			expire: ptrTime(time.Now().Add(-1 * time.Hour)),
-			months: 1,
-		},
-		{
 			name:   "just started",
 			expire: ptrTime(time.Now().AddDate(0, 1, 0)),
 			months: 1,
@@ -494,6 +489,57 @@ func TestResizeProrationCharge(t *testing.T) {
 		if quote.ChargeAmount != expected {
 			t.Fatalf("%s: expected charge %d, got %d", tc.name, expected, quote.ChargeAmount)
 		}
+	}
+}
+
+func TestResizeOrder_RejectsExpiredVPS(t *testing.T) {
+	plan := domain.PlanGroup{ID: 10, RegionID: 1}
+	current := domain.Package{ID: 1, PlanGroupID: plan.ID, ProductID: 11, Name: "A", Cores: 2, MemoryGB: 4, DiskGB: 40, BandwidthMB: 100, Monthly: 10000}
+	target := domain.Package{ID: 2, PlanGroupID: plan.ID, ProductID: 22, Name: "B", Cores: 4, MemoryGB: 8, DiskGB: 80, BandwidthMB: 200, Monthly: 20000}
+	catalog := &fakeResizeCatalogRepo{
+		packages: map[int64]domain.Package{current.ID: current, target.ID: target},
+		plans:    map[int64]domain.PlanGroup{plan.ID: plan},
+	}
+	now := time.Now()
+	inst := domain.VPSInstance{
+		ID:        1,
+		UserID:    2,
+		PackageID: current.ID,
+		CreatedAt: now.AddDate(0, -1, 0),
+		ExpireAt:  ptrTime(now.Add(-1 * time.Hour)),
+	}
+	svc := newResizeOrderService(inst, catalog, &fakeResizeSettingsRepo{}, &fakeResizeOrderRepo{}, &fakeResizeOrderItemRepo{}, &fakeResizeTaskRepo{})
+	if _, _, err := svc.CreateResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false, nil); err != usecase.ErrForbidden {
+		t.Fatalf("expected forbidden for expired instance, got %v", err)
+	}
+	if _, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false); err != usecase.ErrForbidden {
+		t.Fatalf("expected quote forbidden for expired instance, got %v", err)
+	}
+}
+
+func TestResizeOrder_RejectsDiskDecrease(t *testing.T) {
+	plan := domain.PlanGroup{ID: 10, RegionID: 1}
+	current := domain.Package{ID: 1, PlanGroupID: plan.ID, ProductID: 11, Name: "A", Cores: 2, MemoryGB: 4, DiskGB: 40, BandwidthMB: 100, Monthly: 10000}
+	target := domain.Package{ID: 2, PlanGroupID: plan.ID, ProductID: 22, Name: "B", Cores: 4, MemoryGB: 8, DiskGB: 20, BandwidthMB: 200, Monthly: 20000}
+	catalog := &fakeResizeCatalogRepo{
+		packages: map[int64]domain.Package{current.ID: current, target.ID: target},
+		plans:    map[int64]domain.PlanGroup{plan.ID: plan},
+	}
+	inst := domain.VPSInstance{
+		ID:        1,
+		UserID:    2,
+		PackageID: current.ID,
+		SpecJSON:  "{}",
+		CreatedAt: time.Now().AddDate(0, -1, 0),
+		ExpireAt:  ptrTime(time.Now().AddDate(0, 1, 0)),
+	}
+	svc := newResizeOrderService(inst, catalog, &fakeResizeSettingsRepo{}, &fakeResizeOrderRepo{}, &fakeResizeOrderItemRepo{}, &fakeResizeTaskRepo{})
+
+	if _, _, err := svc.CreateResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false, nil); err != usecase.ErrInvalidInput {
+		t.Fatalf("expected invalid input for disk decrease, got %v", err)
+	}
+	if _, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false); err != usecase.ErrInvalidInput {
+		t.Fatalf("expected quote invalid input for disk decrease, got %v", err)
 	}
 }
 

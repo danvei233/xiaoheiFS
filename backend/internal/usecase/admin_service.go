@@ -36,19 +36,55 @@ func (s *AdminService) GetUser(ctx context.Context, id int64) (domain.User, erro
 }
 
 func (s *AdminService) CreateUser(ctx context.Context, adminID int64, user domain.User, password string) (domain.User, error) {
-	if user.Username == "" || user.Email == "" || password == "" {
+	username, err := trimAndValidateRequired(user.Username, maxLenUsername)
+	if err != nil {
 		return domain.User{}, ErrInvalidInput
 	}
-	if _, err := s.users.GetUserByUsernameOrEmail(ctx, user.Username); err == nil {
+	email, err := trimAndValidateRequired(user.Email, maxLenEmail)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	password, err = trimAndValidateRequired(password, maxLenPassword)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	qq, err := trimAndValidateOptional(user.QQ, maxLenQQ)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	phone, err := trimAndValidateOptional(user.Phone, maxLenPhone)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	bio, err := trimAndValidateOptional(user.Bio, maxLenBio)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	intro, err := trimAndValidateOptional(user.Intro, maxLenIntro)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	avatar, err := trimAndValidateOptional(user.Avatar, maxLenAvatarURL)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	if _, err := s.users.GetUserByUsernameOrEmail(ctx, username); err == nil {
 		return domain.User{}, ErrConflict
 	}
-	if _, err := s.users.GetUserByUsernameOrEmail(ctx, user.Email); err == nil {
+	if _, err := s.users.GetUserByUsernameOrEmail(ctx, email); err == nil {
 		return domain.User{}, ErrConflict
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return domain.User{}, err
 	}
+	user.Username = username
+	user.Email = email
+	user.QQ = qq
+	user.Phone = phone
+	user.Bio = bio
+	user.Intro = intro
+	user.Avatar = avatar
 	user.PasswordHash = string(hash)
 	if user.Role == "" {
 		user.Role = domain.UserRoleUser
@@ -69,6 +105,41 @@ func (s *AdminService) UpdateUser(ctx context.Context, adminID int64, user domai
 	if user.ID == 0 {
 		return ErrInvalidInput
 	}
+	username, err := trimAndValidateRequired(user.Username, maxLenUsername)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	email, err := trimAndValidateRequired(user.Email, maxLenEmail)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	qq, err := trimAndValidateOptional(user.QQ, maxLenQQ)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	phone, err := trimAndValidateOptional(user.Phone, maxLenPhone)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	bio, err := trimAndValidateOptional(user.Bio, maxLenBio)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	intro, err := trimAndValidateOptional(user.Intro, maxLenIntro)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	avatar, err := trimAndValidateOptional(user.Avatar, maxLenAvatarURL)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	user.Username = username
+	user.Email = email
+	user.QQ = qq
+	user.Phone = phone
+	user.Bio = bio
+	user.Intro = intro
+	user.Avatar = avatar
 	if err := s.users.UpdateUser(ctx, user); err != nil {
 		return err
 	}
@@ -79,7 +150,8 @@ func (s *AdminService) UpdateUser(ctx context.Context, adminID int64, user domai
 }
 
 func (s *AdminService) ResetUserPassword(ctx context.Context, adminID int64, userID int64, password string) error {
-	if userID == 0 || password == "" {
+	password, err := trimAndValidateRequired(password, maxLenPassword)
+	if userID == 0 || err != nil {
 		return ErrInvalidInput
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -106,6 +178,9 @@ func (s *AdminService) DeleteOrder(ctx context.Context, adminID int64, orderID i
 	order, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
 		return err
+	}
+	if order.Status == domain.OrderStatusApproved {
+		return ErrConflict
 	}
 	if err := s.orders.DeleteOrder(ctx, orderID); err != nil {
 		return err
@@ -263,7 +338,20 @@ func (s *AdminService) ListAdmins(ctx context.Context, status string, limit, off
 }
 
 func (s *AdminService) CreateAdmin(ctx context.Context, adminID int64, username, email, qq, password string, permissionGroupID *int64) (domain.User, error) {
-	if username == "" || email == "" || password == "" {
+	username, err := trimAndValidateRequired(username, maxLenUsername)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	email, err = trimAndValidateRequired(email, maxLenEmail)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	qq, err = trimAndValidateOptional(qq, maxLenQQ)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	password, err = trimAndValidateRequired(password, maxLenPassword)
+	if err != nil {
 		return domain.User{}, ErrInvalidInput
 	}
 	if _, err := s.users.GetUserByUsernameOrEmail(ctx, username); err == nil {
@@ -295,7 +383,20 @@ func (s *AdminService) CreateAdmin(ctx context.Context, adminID int64, username,
 }
 
 func (s *AdminService) UpdateAdmin(ctx context.Context, adminID int64, userID int64, username, email, qq string, permissionGroupID *int64) error {
-	if userID == 0 || username == "" || email == "" {
+	if userID == 0 {
+		return ErrInvalidInput
+	}
+	var err error
+	username, err = trimAndValidateRequired(username, maxLenUsername)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	email, err = trimAndValidateRequired(email, maxLenEmail)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	qq, err = trimAndValidateOptional(qq, maxLenQQ)
+	if err != nil {
 		return ErrInvalidInput
 	}
 	existing, err := s.users.GetUserByID(ctx, userID)
@@ -375,6 +476,20 @@ func (s *AdminService) UpdateProfile(ctx context.Context, userID int64, email, q
 	if userID == 0 {
 		return ErrInvalidInput
 	}
+	if email != "" {
+		var err error
+		email, err = trimAndValidateRequired(email, maxLenEmail)
+		if err != nil {
+			return ErrInvalidInput
+		}
+	}
+	if qq != "" {
+		var err error
+		qq, err = trimAndValidateOptional(qq, maxLenQQ)
+		if err != nil {
+			return ErrInvalidInput
+		}
+	}
 	user, err := s.users.GetUserByID(ctx, userID)
 	if err != nil {
 		return err
@@ -395,7 +510,9 @@ func (s *AdminService) UpdateProfile(ctx context.Context, userID int64, email, q
 }
 
 func (s *AdminService) ChangePassword(ctx context.Context, userID int64, oldPassword, newPassword string) error {
-	if userID == 0 || oldPassword == "" || newPassword == "" {
+	oldPassword, oldErr := trimAndValidateRequired(oldPassword, maxLenPassword)
+	newPassword, newErr := trimAndValidateRequired(newPassword, maxLenPassword)
+	if userID == 0 || oldErr != nil || newErr != nil {
 		return ErrInvalidInput
 	}
 	user, err := s.users.GetUserByID(ctx, userID)

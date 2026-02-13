@@ -42,13 +42,13 @@
             <template #icon><ApiOutlined /></template>
             控制面板
           </a-button>
+          <a-button @click="openRenew">
+            <template #icon><SyncOutlined /></template>
+            续费
+          </a-button>
           <a-button v-if="emergencyRenewEligible" @click="submitEmergencyRenew" danger>
             <template #icon><SyncOutlined /></template>
             紧急续费
-          </a-button>
-          <a-button v-else @click="openRenew">
-            <template #icon><SyncOutlined /></template>
-            续费
           </a-button>
           <a-button @click="openVnc">
             <template #icon><CodeOutlined /></template>
@@ -262,15 +262,15 @@
               <a-divider style="margin: 16px 0;" />
 
               <div class="action-buttons">
+                <a-button type="primary" size="large" @click="openRenew">
+                  <SyncOutlined />
+                  续费
+                </a-button>
                 <a-button v-if="emergencyRenewEligible" type="primary" size="large" danger @click="submitEmergencyRenew">
                   <SyncOutlined />
                   紧急续费
                 </a-button>
-                <a-button v-else type="primary" size="large" @click="openRenew">
-                  <SyncOutlined />
-                  续费
-                </a-button>
-              <a-button size="large" @click="openResize" v-if="resizeEnabled">
+              <a-button size="large" @click="openResize" v-if="resizeEnabled" :disabled="isExpired">
                 <VerticalAlignTopOutlined />
                 升降配
               </a-button>
@@ -621,8 +621,8 @@
 
         <a-form-item label="目标套餐">
           <a-select v-model:value="resizeForm.target_package_id" placeholder="选择套餐" :disabled="!resizeEnabled" @change="onPackageChange">
-              <a-select-option v-for="pkg in packageOptions" :key="pkg.id" :value="pkg.id">
-                {{ pkg.name }} (￥{{ Number(pkg.monthly_price || 0).toFixed(2) }}/月)
+              <a-select-option v-for="pkg in packageOptions" :key="pkg.id" :value="pkg.id" :disabled="isResizePackageDisabled(pkg)">
+                {{ formatResizePackageLabel(pkg) }} (￥{{ Number(pkg.monthly_price || 0).toFixed(2) }}/月)
               </a-select-option>
             </a-select>
         </a-form-item>
@@ -631,7 +631,7 @@
 
         <a-form-item>
           <a-checkbox v-model:checked="resizeForm.reset_addons" @change="onResetAddonsChange">
-            重置所有附加项为0
+            重置所有附加项到下限
           </a-checkbox>
         </a-form-item>
 
@@ -643,7 +643,7 @@
                 :min="addonMin.add_cores"
                 :max="addonMax.add_cores"
                 :step="addonStep.add_cores"
-                :disabled="resizeForm.reset_addons"
+                :disabled="resizeForm.reset_addons || addonDisabled.add_cores"
                 style="width: 100%"
               >
                 <template #addonAfter>核</template>
@@ -657,7 +657,7 @@
                 :min="addonMin.add_mem_gb"
                 :max="addonMax.add_mem_gb"
                 :step="addonStep.add_mem_gb"
-                :disabled="resizeForm.reset_addons"
+                :disabled="resizeForm.reset_addons || addonDisabled.add_mem_gb"
                 style="width: 100%"
               >
                 <template #addonAfter>GB</template>
@@ -674,7 +674,7 @@
                 :min="addonMin.add_disk_gb"
                 :max="addonMax.add_disk_gb"
                 :step="addonStep.add_disk_gb"
-                :disabled="resizeForm.reset_addons"
+                :disabled="resizeForm.reset_addons || addonDisabled.add_disk_gb"
                 style="width: 100%"
               >
                 <template #addonAfter>GB</template>
@@ -688,7 +688,7 @@
                 :min="addonMin.add_bw_mbps"
                 :max="addonMax.add_bw_mbps"
                 :step="addonStep.add_bw_mbps"
-                :disabled="resizeForm.reset_addons"
+                :disabled="resizeForm.reset_addons || addonDisabled.add_bw_mbps"
                 style="width: 100%"
               >
                 <template #addonAfter>Mbps</template>
@@ -737,7 +737,7 @@
         />
 
         <a-form-item>
-          <a-button type="primary" block @click="submitResize" :loading="resizing" :disabled="!resizeEnabled || isSameTargetSelection || !resizeForm.target_package_id">
+          <a-button type="primary" block @click="submitResize" :loading="resizing" :disabled="!resizeEnabled || isExpired || isSameTargetSelection || !resizeForm.target_package_id">
             提交升降配
           </a-button>
         </a-form-item>
@@ -773,6 +773,7 @@
               v-model:value="reinstallForm.password"
               placeholder="请输入新系统密码"
               style="flex: 1"
+              :maxlength="INPUT_LIMITS.PASSWORD"
             />
             <a-button :icon="h(ReloadOutlined)" @click="generateReinstallPassword">随机</a-button>
           </a-space>
@@ -795,6 +796,7 @@
               v-model:value="resetOsPasswordForm.password"
               placeholder="请输入新面板密码"
               style="flex: 1"
+              :maxlength="INPUT_LIMITS.PASSWORD"
             />
             <a-button :icon="h(ReloadOutlined)" @click="generateOsPassword">随机</a-button>
           </a-space>
@@ -835,6 +837,9 @@
         <a-form-item label="IP 地址" required>
           <a-input v-model:value="firewallForm.ip" placeholder="0.0.0.0" />
         </a-form-item>
+        <a-form-item label="优先级">
+          <a-input-number v-model:value="firewallForm.priority" :min="1" :max="65535" style="width: 100%" />
+        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -847,7 +852,7 @@
     >
       <a-form layout="vertical">
         <a-form-item label="名称">
-          <a-input v-model:value="portForm.name" placeholder="可选" />
+          <a-input v-model:value="portForm.name" placeholder="可选" :maxlength="INPUT_LIMITS.PORT_MAPPING_NAME" />
         </a-form-item>
         <a-form-item label="外部端口">
           <a-input
@@ -900,7 +905,7 @@
             v-model:value="refundReason"
             rows="4"
             placeholder="请详细描述退款原因，有助于我们改进服务"
-            :maxlength="500"
+            :maxlength="INPUT_LIMITS.REFUND_REASON"
             show-count
           />
         </a-form-item>
@@ -916,6 +921,7 @@ import { useVpsStore } from "@/stores/vps";
 import { useCatalogStore } from "@/stores/catalog";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 import {
   createVpsRenewOrder,
   emergencyRenewVps,
@@ -1021,7 +1027,8 @@ const firewallForm = reactive({
   protocol: "tcp",
   method: "allowed",
   port: "",
-  ip: ""
+  ip: "",
+  priority: 100
 });
 
 const portMappings = ref([]);
@@ -1165,6 +1172,81 @@ const packageOptions = computed(() => {
 });
 
 const resizeEnabled = computed(() => site.settings?.resize_enabled !== false);
+const currentDiskGB = computed(() => Number(specObj.value.disk_gb || 0));
+
+const getResizeTargetPackage = () => {
+  if (!resizeForm.target_package_id) return currentPackage.value;
+  return packageOptions.value.find((pkg) => String(pkg.id) === String(resizeForm.target_package_id)) || currentPackage.value;
+};
+
+const formatResizePackageLabel = (pkg) => {
+  const cpu = Number(pkg?.cores ?? pkg?.cpu ?? pkg?.CPU ?? pkg?.Cores ?? 0);
+  const mem = Number(pkg?.memory_gb ?? pkg?.mem_gb ?? pkg?.MemoryGB ?? 0);
+  return `${pkg?.name || "-"}（${cpu}核${mem}G）`;
+};
+
+const normalizeAddonRule = (minRaw, maxRaw, stepRaw, fallbackMax) => {
+  const min = Number(minRaw ?? 0);
+  const max = Number(maxRaw ?? 0);
+  const step = Math.max(1, Number(stepRaw ?? 1));
+  if (min === -1 || max === -1) {
+    return { disabled: true, min: 0, max: 0, step: 1 };
+  }
+  const effectiveMin = min > 0 ? min : 0;
+  const effectiveMax = max > 0 ? max : fallbackMax;
+  return {
+    disabled: false,
+    min: effectiveMin,
+    max: Math.max(effectiveMin, effectiveMax),
+    step
+  };
+};
+
+const buildResizeAddonRule = (targetPkg) => {
+  const group = currentPlanGroup.value || {};
+  const coreRule = normalizeAddonRule(group.add_core_min, group.add_core_max, group.add_core_step, 64);
+  const memRule = normalizeAddonRule(group.add_mem_min, group.add_mem_max, group.add_mem_step, 256);
+  const bwRule = normalizeAddonRule(group.add_bw_min, group.add_bw_max, group.add_bw_step, 1000);
+  const diskRuleBase = normalizeAddonRule(group.add_disk_min, group.add_disk_max, group.add_disk_step, 2000);
+
+  let diskMin = diskRuleBase.min;
+  let diskImpossible = false;
+  if (!diskRuleBase.disabled && targetPkg) {
+    const pkgDisk = Number(targetPkg.disk_gb ?? targetPkg.DiskGB ?? 0);
+    const required = Math.max(0, currentDiskGB.value - pkgDisk);
+    diskMin = Math.max(diskMin, required);
+  } else if (diskRuleBase.disabled && targetPkg) {
+    const pkgDisk = Number(targetPkg.disk_gb ?? targetPkg.DiskGB ?? 0);
+    if (pkgDisk < currentDiskGB.value) {
+      diskImpossible = true;
+    }
+  }
+  const diskRule = {
+    disabled: diskRuleBase.disabled,
+    min: diskRuleBase.disabled ? 0 : diskMin,
+    max: diskRuleBase.max,
+    step: diskRuleBase.step,
+    impossible: diskImpossible
+  };
+  if (!diskRule.disabled && diskRule.min > diskRule.max) {
+    diskRule.impossible = true;
+    diskRule.max = diskRule.min;
+  }
+  return {
+    add_cores: coreRule,
+    add_mem_gb: memRule,
+    add_disk_gb: diskRule,
+    add_bw_mbps: bwRule
+  };
+};
+
+const resizeAddonRule = computed(() => buildResizeAddonRule(getResizeTargetPackage()));
+
+const isResizePackageDisabled = (pkg) => {
+  if (!pkg) return true;
+  const rule = buildResizeAddonRule(pkg);
+  return rule.add_disk_gb.impossible;
+};
 
 const normalizePackageSpec = (pkg) => ({
   cpu: Number(pkg?.cores ?? pkg?.cpu ?? pkg?.CPU ?? pkg?.Cores ?? 0),
@@ -1224,31 +1306,36 @@ const resizeQuoteAmount = computed(() => {
 });
 
 const addonMin = computed(() => ({
-  add_cores: 0,
-  add_mem_gb: 0,
-  add_disk_gb: 0,
-  add_bw_mbps: 0
+  add_cores: resizeAddonRule.value.add_cores.min,
+  add_mem_gb: resizeAddonRule.value.add_mem_gb.min,
+  add_disk_gb: resizeAddonRule.value.add_disk_gb.min,
+  add_bw_mbps: resizeAddonRule.value.add_bw_mbps.min
 }));
 
 const addonMax = computed(() => {
-  const group = currentPlanGroup.value || {};
   return {
-    add_cores: group.add_core_max ?? 64,
-    add_mem_gb: group.add_mem_max ?? 256,
-    add_disk_gb: group.add_disk_max ?? 2000,
-    add_bw_mbps: group.add_bw_max ?? 1000
+    add_cores: resizeAddonRule.value.add_cores.max,
+    add_mem_gb: resizeAddonRule.value.add_mem_gb.max,
+    add_disk_gb: resizeAddonRule.value.add_disk_gb.max,
+    add_bw_mbps: resizeAddonRule.value.add_bw_mbps.max
   };
 });
 
 const addonStep = computed(() => {
-  const group = currentPlanGroup.value || {};
   return {
-    add_cores: group.add_core_step ?? 1,
-    add_mem_gb: group.add_mem_step ?? 1,
-    add_disk_gb: group.add_disk_step ?? 10,
-    add_bw_mbps: group.add_bw_step ?? 10
+    add_cores: resizeAddonRule.value.add_cores.step,
+    add_mem_gb: resizeAddonRule.value.add_mem_gb.step,
+    add_disk_gb: resizeAddonRule.value.add_disk_gb.step,
+    add_bw_mbps: resizeAddonRule.value.add_bw_mbps.step
   };
 });
+
+const addonDisabled = computed(() => ({
+  add_cores: resizeAddonRule.value.add_cores.disabled,
+  add_mem_gb: resizeAddonRule.value.add_mem_gb.disabled,
+  add_disk_gb: resizeAddonRule.value.add_disk_gb.disabled,
+  add_bw_mbps: resizeAddonRule.value.add_bw_mbps.disabled
+}));
 
 const billingCycles = computed(() =>
   catalog.billingCycles.length
@@ -1336,6 +1423,13 @@ const isExpiringSoon = computed(() => {
   return days <= 7 && days >= 0;
 });
 
+const isExpired = computed(() => {
+  if (!detail.value?.expire_at) return false;
+  const expire = dayjs(detail.value.expire_at);
+  if (!expire.isValid()) return false;
+  return !expire.isAfter(dayjs());
+});
+
 const emergencyRenewPolicy = computed(() => {
   const settings = site.settings || {};
   const enabledValue = settings.emergency_renew_enabled;
@@ -1395,6 +1489,7 @@ const statusMap = {
   reinstalling: { text: "重装中", class: "reinstalling" },
   reinstall_failed: { text: "重装失败", class: "error" },
   locked: { text: "锁定", class: "locked" },
+  expired_locked: { text: "已到期", class: "locked" },
   deleting: { text: "删除中", class: "pending" },
   failed: { text: "创建失败", class: "error" }
 };
@@ -1426,10 +1521,11 @@ const statusFromAutomation = (state) => {
 const resolvedStatus = computed(() => {
   const raw = detail.value?.status?.toLowerCase() || "";
   const autoState = detail.value?.automation_state;
-  if (autoState !== null && autoState !== undefined) {
-    return statusFromAutomation(autoState);
+  const baseStatus = autoState !== null && autoState !== undefined ? statusFromAutomation(autoState) : raw;
+  if (isExpired.value && (baseStatus === "locked" || baseStatus === "expired_locked")) {
+    return "expired_locked";
   }
-  return raw;
+  return baseStatus;
 });
 
 const statusClass = computed(() => {
@@ -1554,15 +1650,32 @@ const portColumns = [
 
 const snapshotColumns = [
   { title: "名称", dataIndex: "name", key: "name" },
+  { title: "状态", dataIndex: "state_label", key: "state_label", width: 120 },
   { title: "创建时间", dataIndex: "created_at", key: "created_at" },
   { title: "操作", key: "action", width: 150 }
 ];
 
 const backupColumns = [
   { title: "名称", dataIndex: "name", key: "name" },
+  { title: "状态", dataIndex: "state_label", key: "state_label", width: 120 },
   { title: "创建时间", dataIndex: "created_at", key: "created_at" },
   { title: "操作", key: "action", width: 150 }
 ];
+
+const snapshotStateLabel = (state) => {
+  switch (Number(state)) {
+    case 1:
+      return "创建中";
+    case 2:
+      return "可用";
+    case 3:
+      return "恢复中";
+    case 4:
+      return "失败";
+    default:
+      return "未知";
+  }
+};
 
 const normalizeFirewallRule = (item) => ({
   id: item.id ?? item.ID ?? item.rule_id ?? item.RuleID ?? item.firewall_id ?? item.FirewallID,
@@ -1571,6 +1684,7 @@ const normalizeFirewallRule = (item) => ({
   port: item.port ?? item.Port ?? item.start_port ?? item.StartPort ?? "",
   ip: item.ip ?? item.IP ?? item.start_ip ?? item.StartIP ?? "",
   method: item.method ?? item.Method ?? "",
+  priority: item.priority ?? item.Priority ?? 0,
   raw: item
 });
 
@@ -1595,9 +1709,12 @@ const formatPortExternal = (record) => {
 
 const normalizeSnapshotItem = (item) => {
   const id = item.id ?? item.ID ?? item.snapshot_id ?? item.snapshotId ?? item.sid ?? item.SID ?? item.virtuals_id ?? item.virtualsId;
+  const state = item.state ?? item.State ?? 0;
   return {
     id,
     name: item.name ?? item.Name ?? (id ? `snapshot-${id}` : "snapshot"),
+    state,
+    state_label: snapshotStateLabel(state),
     created_at: item.created_at ?? item.create_time ?? item.createdAt ?? item.createTime ?? "",
     raw: item
   };
@@ -1605,9 +1722,12 @@ const normalizeSnapshotItem = (item) => {
 
 const normalizeBackupItem = (item) => {
   const id = item.id ?? item.ID ?? item.backup_id ?? item.backupId ?? item.bid ?? item.BID ?? item.virtuals_id ?? item.virtualsId;
+  const state = item.state ?? item.State ?? 0;
   return {
     id,
     name: item.name ?? item.Name ?? (id ? `backup-${id}` : "backup"),
+    state,
+    state_label: snapshotStateLabel(state),
     created_at: item.created_at ?? item.create_time ?? item.createdAt ?? item.createTime ?? "",
     raw: item
   };
@@ -1711,6 +1831,7 @@ const openFirewallModal = () => {
   firewallForm.method = "allowed";
   firewallForm.port = "";
   firewallForm.ip = "0.0.0.0";
+  firewallForm.priority = 100;
   firewallOpen.value = true;
 };
 
@@ -1764,6 +1885,10 @@ const openPortModal = () => {
 const submitPortMapping = async () => {
   if (!portForm.dport) {
     message.error("请输入目标端口");
+    return;
+  }
+  if (String(portForm.name || "").length > INPUT_LIMITS.PORT_MAPPING_NAME) {
+    message.error(`端口映射名称长度不能超过 ${INPUT_LIMITS.PORT_MAPPING_NAME} 个字符`);
     return;
   }
   portLoading.value = true;
@@ -1981,6 +2106,10 @@ const submitResetOsPassword = async () => {
     message.error("请输入新面板密码");
     return;
   }
+  if (String(resetOsPasswordForm.password || "").length > INPUT_LIMITS.PASSWORD) {
+    message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
+    return;
+  }
   resetOsPasswordLoading.value = true;
   try {
     await resetVpsOsPassword(id, { password: resetOsPasswordForm.password });
@@ -2036,6 +2165,10 @@ const submitReinstall = async () => {
   }
   if (!reinstallForm.password) {
     message.error("请输入新系统密码");
+    return;
+  }
+  if (String(reinstallForm.password || "").length > INPUT_LIMITS.PASSWORD) {
+    message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
     return;
   }
   reinstalling.value = true;
@@ -2105,6 +2238,10 @@ const submitRenew = async () => {
 };
 
 const openResize = () => {
+  if (isExpired.value) {
+    message.warning("已到期实例不支持升降配");
+    return;
+  }
   resizeForm.add_cores = currentAddons.value.add_cores;
   resizeForm.add_mem_gb = currentAddons.value.add_mem_gb;
   resizeForm.add_disk_gb = currentAddons.value.add_disk_gb;
@@ -2113,6 +2250,7 @@ const openResize = () => {
   resizeForm.reset_addons = false;
   resizeForm.schedule_mode = "now";
   resizeForm.scheduled_at = null;
+  normalizeResizeAddons();
   resizeQuote.value = null;
   resizeQuoteError.value = "";
   resizeOpen.value = true;
@@ -2127,9 +2265,42 @@ const closeResize = () => {
   resizeOpen.value = false;
 };
 
+const clampAddonValue = (value, min, max, step) => {
+  const safeStep = Math.max(1, Number(step || 1));
+  const safeMin = Number(min || 0);
+  const safeMax = Math.max(safeMin, Number(max || safeMin));
+  let next = Number(value || 0);
+  if (!Number.isFinite(next)) next = safeMin;
+  next = Math.max(safeMin, Math.min(safeMax, next));
+  next = safeMin + Math.round((next - safeMin) / safeStep) * safeStep;
+  if (next > safeMax) next = safeMax;
+  if (next < safeMin) next = safeMin;
+  return next;
+};
+
+const resetResizeAddonsToMin = () => {
+  resizeForm.add_cores = addonMin.value.add_cores;
+  resizeForm.add_mem_gb = addonMin.value.add_mem_gb;
+  resizeForm.add_disk_gb = addonMin.value.add_disk_gb;
+  resizeForm.add_bw_mbps = addonMin.value.add_bw_mbps;
+};
+
+const normalizeResizeAddons = () => {
+  resizeForm.add_cores = clampAddonValue(resizeForm.add_cores, addonMin.value.add_cores, addonMax.value.add_cores, addonStep.value.add_cores);
+  resizeForm.add_mem_gb = clampAddonValue(resizeForm.add_mem_gb, addonMin.value.add_mem_gb, addonMax.value.add_mem_gb, addonStep.value.add_mem_gb);
+  resizeForm.add_disk_gb = clampAddonValue(resizeForm.add_disk_gb, addonMin.value.add_disk_gb, addonMax.value.add_disk_gb, addonStep.value.add_disk_gb);
+  resizeForm.add_bw_mbps = clampAddonValue(resizeForm.add_bw_mbps, addonMin.value.add_bw_mbps, addonMax.value.add_bw_mbps, addonStep.value.add_bw_mbps);
+};
+
 const buildResizeQuotePayload = () => {
+  const minSpec = {
+    add_cores: addonMin.value.add_cores,
+    add_mem_gb: addonMin.value.add_mem_gb,
+    add_disk_gb: addonMin.value.add_disk_gb,
+    add_bw_mbps: addonMin.value.add_bw_mbps
+  };
   const spec = resizeForm.reset_addons
-    ? { add_cores: 0, add_mem_gb: 0, add_disk_gb: 0, add_bw_mbps: 0 }
+    ? minSpec
     : {
         add_cores: resizeForm.add_cores,
         add_mem_gb: resizeForm.add_mem_gb,
@@ -2144,11 +2315,8 @@ const buildResizeQuotePayload = () => {
 };
 
 const onPackageChange = () => {
-  // 套餐改变时重置附加项为默认值
-  resizeForm.add_cores = 0;
-  resizeForm.add_mem_gb = 0;
-  resizeForm.add_disk_gb = 0;
-  resizeForm.add_bw_mbps = 0;
+  // 套餐改变后立即重置到新下限，避免出现非法缩容配置。
+  resetResizeAddonsToMin();
   resizeForm.reset_addons = false;
   resizeForm.schedule_mode = "now";
   resizeForm.scheduled_at = null;
@@ -2156,11 +2324,7 @@ const onPackageChange = () => {
 
 const onResetAddonsChange = (e) => {
   if (e.target.checked) {
-    // 选中重置时，将所有附加项设为0
-    resizeForm.add_cores = 0;
-    resizeForm.add_mem_gb = 0;
-    resizeForm.add_disk_gb = 0;
-    resizeForm.add_bw_mbps = 0;
+    resetResizeAddonsToMin();
   }
 };
 
@@ -2206,6 +2370,12 @@ const fetchResizeQuote = async () => {
     resizeQuoteError.value = "";
     return;
   }
+  const targetPkg = packageOptions.value.find((pkg) => String(pkg.id) === String(resizeForm.target_package_id));
+  if (isResizePackageDisabled(targetPkg)) {
+    resizeQuote.value = null;
+    resizeQuoteError.value = "目标套餐无法满足当前磁盘容量";
+    return;
+  }
   resizeQuoteLoading.value = true;
   resizeQuoteError.value = "";
   try {
@@ -2236,12 +2406,21 @@ const scheduleResizeQuote = () => {
 };
 
 const submitResize = async () => {
+  if (isExpired.value) {
+    message.warning("已到期实例不支持升降配");
+    return;
+  }
   if (!resizeEnabled.value) {
     message.error("升降配功能已关闭");
     return;
   }
   if (!resizeForm.target_package_id) {
     message.warning("请选择目标套餐");
+    return;
+  }
+  const targetPkg = packageOptions.value.find((pkg) => String(pkg.id) === String(resizeForm.target_package_id));
+  if (isResizePackageDisabled(targetPkg)) {
+    message.warning("目标套餐无法满足当前磁盘容量，无法切换");
     return;
   }
   if (isSameTargetSelection.value) {
@@ -2298,6 +2477,27 @@ const submitResize = async () => {
 
 watch(
   () => [
+    addonMin.value.add_cores,
+    addonMin.value.add_mem_gb,
+    addonMin.value.add_disk_gb,
+    addonMin.value.add_bw_mbps,
+    addonMax.value.add_cores,
+    addonMax.value.add_mem_gb,
+    addonMax.value.add_disk_gb,
+    addonMax.value.add_bw_mbps,
+    addonStep.value.add_cores,
+    addonStep.value.add_mem_gb,
+    addonStep.value.add_disk_gb,
+    addonStep.value.add_bw_mbps
+  ],
+  () => {
+    if (!resizeOpen.value) return;
+    normalizeResizeAddons();
+  }
+);
+
+watch(
+  () => [
     resizeForm.target_package_id,
     resizeForm.add_cores,
     resizeForm.add_mem_gb,
@@ -2346,6 +2546,10 @@ const openRefund = () => {
 const submitRefund = async () => {
   if (!refundReason.value.trim()) {
     message.error("请填写退款原因");
+    return;
+  }
+  if (String(refundReason.value || "").length > INPUT_LIMITS.REFUND_REASON) {
+    message.error(`退款原因长度不能超过 ${INPUT_LIMITS.REFUND_REASON} 个字符`);
     return;
   }
   try {

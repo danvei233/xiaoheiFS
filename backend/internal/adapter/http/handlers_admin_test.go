@@ -61,6 +61,14 @@ func TestHandlers_AdminRoutesSmoke(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("admin order delete code: %d", rec.Code)
 	}
+	approved := domain.Order{UserID: user.ID, OrderNo: "ORD-DEL-APPROVED", Status: domain.OrderStatusApproved, TotalAmount: 1000, Currency: "CNY"}
+	if err := env.Repo.CreateOrder(context.Background(), &approved); err != nil {
+		t.Fatalf("create approved order: %v", err)
+	}
+	rec = testutil.DoJSON(t, env.Router, http.MethodDelete, "/admin/api/v1/orders/"+testutil.Itoa(approved.ID), nil, adminToken)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("approved order delete should be 409, got %d", rec.Code)
+	}
 
 	perm := domain.Permission{Code: "order.view", Name: "Order View", Category: "order"}
 	if err := env.Repo.UpsertPermission(context.Background(), &perm); err != nil {

@@ -148,17 +148,19 @@
                       <div class="addon-item">
                         <div class="addon-header">
                           <span class="addon-title">CPU 核心</span>
-                          <span class="addon-value" v-if="form.add_cores > 0">
+                          <span class="addon-value-placeholder" v-if="addonMeta.core.disabled">已禁用</span>
+                          <span class="addon-value" v-else-if="form.add_cores > 0">
                             +{{ form.add_cores }}核 · +¥{{ (form.add_cores * (selectedPlanGroup?.unit_core || 0)).toFixed(2) }}/月
                           </span>
                           <span class="addon-value-placeholder" v-else>不添加</span>
                         </div>
                         <a-slider
                           v-model:value="form.add_cores"
-                          :min="addonRule.add_core_min"
-                          :max="addonRule.add_core_max"
-                          :step="addonRule.add_core_step"
-                          :marks="{ 0: '0', [addonRule.add_core_max]: addonRule.add_core_max + '' }"
+                          :min="addonMeta.core.min"
+                          :max="addonMeta.core.max"
+                          :step="addonMeta.core.step"
+                          :marks="buildSliderMarks(addonMeta.core.min, addonMeta.core.max, '')"
+                          :disabled="addonMeta.core.disabled"
                           :tooltip-formatter="(val) => val + '核'"
                         />
                       </div>
@@ -168,17 +170,19 @@
                       <div class="addon-item">
                         <div class="addon-header">
                           <span class="addon-title">内存</span>
-                          <span class="addon-value" v-if="form.add_mem_gb > 0">
+                          <span class="addon-value-placeholder" v-if="addonMeta.mem.disabled">已禁用</span>
+                          <span class="addon-value" v-else-if="form.add_mem_gb > 0">
                             +{{ form.add_mem_gb }}GB · +¥{{ (form.add_mem_gb * (selectedPlanGroup?.unit_mem || 0)).toFixed(2) }}/月
                           </span>
                           <span class="addon-value-placeholder" v-else>不添加</span>
                         </div>
                         <a-slider
                           v-model:value="form.add_mem_gb"
-                          :min="addonRule.add_mem_min"
-                          :max="addonRule.add_mem_max"
-                          :step="addonRule.add_mem_step"
-                          :marks="{ 0: '0', [addonRule.add_mem_max]: addonRule.add_mem_max + 'G' }"
+                          :min="addonMeta.mem.min"
+                          :max="addonMeta.mem.max"
+                          :step="addonMeta.mem.step"
+                          :marks="buildSliderMarks(addonMeta.mem.min, addonMeta.mem.max, 'G')"
+                          :disabled="addonMeta.mem.disabled"
                           :tooltip-formatter="(val) => val + 'G'"
                         />
                       </div>
@@ -188,17 +192,19 @@
                       <div class="addon-item">
                         <div class="addon-header">
                           <span class="addon-title">磁盘空间</span>
-                          <span class="addon-value" v-if="form.add_disk_gb > 0">
+                          <span class="addon-value-placeholder" v-if="addonMeta.disk.disabled">已禁用</span>
+                          <span class="addon-value" v-else-if="form.add_disk_gb > 0">
                             +{{ form.add_disk_gb }}GB · +¥{{ (form.add_disk_gb * (selectedPlanGroup?.unit_disk || 0)).toFixed(2) }}/月
                           </span>
                           <span class="addon-value-placeholder" v-else>不添加</span>
                         </div>
                         <a-slider
                           v-model:value="form.add_disk_gb"
-                          :min="addonRule.add_disk_min"
-                          :max="addonRule.add_disk_max"
-                          :step="addonRule.add_disk_step"
-                          :marks="{ 0: '0', [addonRule.add_disk_max]: addonRule.add_disk_max + 'G' }"
+                          :min="addonMeta.disk.min"
+                          :max="addonMeta.disk.max"
+                          :step="addonMeta.disk.step"
+                          :marks="buildSliderMarks(addonMeta.disk.min, addonMeta.disk.max, 'G')"
+                          :disabled="addonMeta.disk.disabled"
                           :tooltip-formatter="(val) => val + 'G'"
                         />
                       </div>
@@ -208,17 +214,19 @@
                       <div class="addon-item">
                         <div class="addon-header">
                           <span class="addon-title">带宽</span>
-                          <span class="addon-value" v-if="form.add_bw_mbps > 0">
+                          <span class="addon-value-placeholder" v-if="addonMeta.bw.disabled">已禁用</span>
+                          <span class="addon-value" v-else-if="form.add_bw_mbps > 0">
                             +{{ form.add_bw_mbps }}Mbps · +¥{{ (form.add_bw_mbps * (selectedPlanGroup?.unit_bw || 0)).toFixed(2) }}/月
                           </span>
                           <span class="addon-value-placeholder" v-else>不添加</span>
                         </div>
                         <a-slider
                           v-model:value="form.add_bw_mbps"
-                          :min="addonRule.add_bw_min"
-                          :max="addonRule.add_bw_max"
-                          :step="addonRule.add_bw_step"
-                          :marks="{ 0: '0', [addonRule.add_bw_max]: addonRule.add_bw_max + 'M' }"
+                          :min="addonMeta.bw.min"
+                          :max="addonMeta.bw.max"
+                          :step="addonMeta.bw.step"
+                          :marks="buildSliderMarks(addonMeta.bw.min, addonMeta.bw.max, 'M')"
+                          :disabled="addonMeta.bw.disabled"
                           :tooltip-formatter="(val) => val + 'Mbps'"
                         />
                       </div>
@@ -392,9 +400,7 @@ const packages = computed(() => {
 });
 
 const billingCycles = computed(() =>
-  catalog.billingCycles.length
-    ? catalog.billingCycles.filter((cycle) => cycle.active !== false)
-    : [{ id: 1, name: "按月", months: 1, multiplier: 1 }]
+  catalog.billingCycles.filter((cycle) => cycle.active !== false)
 );
 
 const selectedRegion = computed(() => regions.value.find((r) => r.id === form.regionId));
@@ -403,20 +409,51 @@ const selectedPackage = computed(() => packages.value.find((p) => p.id === form.
 const selectedSystem = computed(() => systemImages.value.find((s) => s.id === form.systemId));
 const selectedCycle = computed(() => billingCycles.value.find((c) => c.id === form.billingCycleId));
 
-const addonRule = computed(() => ({
-  add_core_min: selectedPlanGroup.value?.add_core_min ?? 0,
-  add_core_max: selectedPlanGroup.value?.add_core_max ?? 64,
-  add_core_step: selectedPlanGroup.value?.add_core_step ?? 1,
-  add_mem_min: selectedPlanGroup.value?.add_mem_min ?? 0,
-  add_mem_max: selectedPlanGroup.value?.add_mem_max ?? 256,
-  add_mem_step: selectedPlanGroup.value?.add_mem_step ?? 1,
-  add_disk_min: selectedPlanGroup.value?.add_disk_min ?? 0,
-  add_disk_max: selectedPlanGroup.value?.add_disk_max ?? 2000,
-  add_disk_step: selectedPlanGroup.value?.add_disk_step ?? 10,
-  add_bw_min: selectedPlanGroup.value?.add_bw_min ?? 0,
-  add_bw_max: selectedPlanGroup.value?.add_bw_max ?? 1000,
-  add_bw_step: selectedPlanGroup.value?.add_bw_step ?? 10
-}));
+const resolveAddonRule = (minRaw, maxRaw, stepRaw, fallbackMax) => {
+  const min = Number(minRaw ?? 0);
+  const max = Number(maxRaw ?? 0);
+  const step = Math.max(1, Number(stepRaw ?? 1));
+  if (min === -1 || max === -1) {
+    return { disabled: true, min: 0, max: 0, step: 1 };
+  }
+  const effectiveMin = min > 0 ? min : 0;
+  const effectiveMax = max > 0 ? max : fallbackMax;
+  return {
+    disabled: false,
+    min: effectiveMin,
+    max: Math.max(effectiveMin, effectiveMax),
+    step
+  };
+};
+
+const clampAddonValue = (value, rule) => {
+  if (rule.disabled) return 0;
+  const step = Math.max(1, Number(rule.step || 1));
+  const min = Number(rule.min || 0);
+  const max = Math.max(min, Number(rule.max || min));
+  let next = Number(value || 0);
+  if (!Number.isFinite(next)) next = min;
+  next = Math.max(min, Math.min(max, next));
+  next = min + Math.round((next - min) / step) * step;
+  if (next > max) next = max;
+  if (next < min) next = min;
+  return next;
+};
+
+const buildSliderMarks = (min, max, suffix = "") => {
+  if (max <= min) return { [min]: `${min}${suffix}` };
+  return { [min]: `${min}${suffix}`, [max]: `${max}${suffix}` };
+};
+
+const addonMeta = computed(() => {
+  const group = selectedPlanGroup.value || {};
+  return {
+    core: resolveAddonRule(group.add_core_min, group.add_core_max, group.add_core_step, 64),
+    mem: resolveAddonRule(group.add_mem_min, group.add_mem_max, group.add_mem_step, 256),
+    disk: resolveAddonRule(group.add_disk_min, group.add_disk_max, group.add_disk_step, 2000),
+    bw: resolveAddonRule(group.add_bw_min, group.add_bw_max, group.add_bw_step, 1000)
+  };
+});
 
 const basePrice = computed(() => Number(selectedPackage.value?.monthly_price || 0));
 const addonPrice = computed(() => {
@@ -503,6 +540,17 @@ watch(() => form.planGroupId, () => {
   form.systemId = null;
 });
 
+watch(
+  addonMeta,
+  (meta) => {
+    form.add_cores = clampAddonValue(form.add_cores, meta.core);
+    form.add_mem_gb = clampAddonValue(form.add_mem_gb, meta.mem);
+    form.add_disk_gb = clampAddonValue(form.add_disk_gb, meta.disk);
+    form.add_bw_mbps = clampAddonValue(form.add_bw_mbps, meta.bw);
+  },
+  { immediate: true, deep: true }
+);
+
 watch(() => form.packageId, () => {
   form.systemId = null;
 });
@@ -576,10 +624,29 @@ watch(() => systemImages.value, (list) => {
 }, { deep: true });
 
 watch(() => billingCycles.value.length, () => {
+  if (!billingCycles.value.length) {
+    form.billingCycleId = null;
+    return;
+  }
   if (!form.billingCycleId && billingCycles.value.length) {
     form.billingCycleId = billingCycles.value[0].id;
   }
 }, { immediate: true });
+
+const buildOrderSpecPayload = () => {
+  const spec = {
+    add_cores: form.add_cores,
+    add_mem_gb: form.add_mem_gb,
+    add_disk_gb: form.add_disk_gb,
+    add_bw_mbps: form.add_bw_mbps,
+    cycle_qty: form.cycleQty,
+    duration_months: Number(selectedCycle.value?.months || 1) * Number(form.cycleQty || 1)
+  };
+  if (form.billingCycleId) {
+    spec.billing_cycle_id = form.billingCycleId;
+  }
+  return spec;
+};
 
 const addToCart = async () => {
   if (!canCheckout.value) {
@@ -589,15 +656,7 @@ const addToCart = async () => {
   await cart.addItem({
     package_id: form.packageId,
     system_id: form.systemId,
-    spec: {
-      add_cores: form.add_cores,
-      add_mem_gb: form.add_mem_gb,
-      add_disk_gb: form.add_disk_gb,
-      add_bw_mbps: form.add_bw_mbps,
-      billing_cycle_id: form.billingCycleId,
-      cycle_qty: form.cycleQty,
-      duration_months: Number(selectedCycle.value?.months || 1) * Number(form.cycleQty || 1)
-    },
+    spec: buildOrderSpecPayload(),
     qty: form.qty
   });
   message.success("已加入购物车");
@@ -614,15 +673,7 @@ const createOrderNow = async () => {
         {
           package_id: form.packageId,
           system_id: form.systemId,
-          spec: {
-            add_cores: form.add_cores,
-            add_mem_gb: form.add_mem_gb,
-            add_disk_gb: form.add_disk_gb,
-            add_bw_mbps: form.add_bw_mbps,
-            billing_cycle_id: form.billingCycleId,
-            cycle_qty: form.cycleQty,
-            duration_months: Number(selectedCycle.value?.months || 1) * Number(form.cycleQty || 1)
-          },
+          spec: buildOrderSpecPayload(),
           qty: form.qty
         }
       ]

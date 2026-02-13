@@ -24,17 +24,17 @@
             name="username"
             :rules="[{ required: isRequired('username'), message: '请输入用户名' }]"
           >
-            <a-input v-model:value="form.username" />
+            <a-input v-model:value="form.username" :maxlength="INPUT_LIMITS.USERNAME" />
           </a-form-item>
           <a-form-item
             label="邮箱"
             name="email"
             :rules="[{ required: isRequired('email'), message: '请输入邮箱' }]"
           >
-            <a-input v-model:value="form.email" />
+            <a-input v-model:value="form.email" :maxlength="INPUT_LIMITS.EMAIL" />
           </a-form-item>
           <a-form-item v-if="showField('qq')" label="QQ" name="qq" :rules="[{ required: isRequired('qq'), message: '请输入QQ' }]">
-            <a-input v-model:value="form.qq" />
+            <a-input v-model:value="form.qq" :maxlength="INPUT_LIMITS.QQ" />
           </a-form-item>
           <a-form-item
             v-if="showField('phone') || settings.register_verify_type === 'sms'"
@@ -42,14 +42,14 @@
             name="phone"
             :rules="[{ required: isRequired('phone') || settings.register_verify_type === 'sms', message: '请输入手机号' }]"
           >
-            <a-input v-model:value="form.phone" />
+            <a-input v-model:value="form.phone" :maxlength="INPUT_LIMITS.PHONE" />
           </a-form-item>
           <a-form-item
             label="密码"
             name="password"
             :rules="[{ required: isRequired('password'), message: '请输入密码' }]"
           >
-            <a-input-password v-model:value="form.password" />
+            <a-input-password v-model:value="form.password" :maxlength="INPUT_LIMITS.PASSWORD" />
           </a-form-item>
           <a-form-item
             v-if="settings.register_captcha_enabled"
@@ -94,6 +94,7 @@ import { message } from "ant-design-vue";
 import { getCaptcha, userRegister, getAuthSettings, requestRegisterCode } from "@/services/user";
 import { useRouter } from "vue-router";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const router = useRouter();
 const loading = ref(false);
@@ -184,6 +185,26 @@ const onSubmit = async () => {
   try {
     if (!settings.register_enabled) {
       message.warning("当前已关闭注册");
+      return;
+    }
+    if (String(form.username || "").length > INPUT_LIMITS.USERNAME) {
+      message.error(`用户名长度不能超过 ${INPUT_LIMITS.USERNAME} 个字符`);
+      return;
+    }
+    if (String(form.email || "").length > INPUT_LIMITS.EMAIL) {
+      message.error(`邮箱长度不能超过 ${INPUT_LIMITS.EMAIL} 个字符`);
+      return;
+    }
+    if (String(form.qq || "").length > INPUT_LIMITS.QQ) {
+      message.error(`QQ 长度不能超过 ${INPUT_LIMITS.QQ} 个字符`);
+      return;
+    }
+    if (String(form.phone || "").length > INPUT_LIMITS.PHONE) {
+      message.error(`手机号长度不能超过 ${INPUT_LIMITS.PHONE} 个字符`);
+      return;
+    }
+    if (String(form.password || "").length > INPUT_LIMITS.PASSWORD) {
+      message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
       return;
     }
     await userRegister({

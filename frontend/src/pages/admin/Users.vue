@@ -50,34 +50,34 @@
     <a-modal v-model:open="createOpen" title="创建用户" @ok="create">
       <a-form layout="vertical">
         <a-form-item label="用户名">
-          <a-input v-model:value="createForm.username" />
+          <a-input v-model:value="createForm.username" :maxlength="INPUT_LIMITS.USERNAME" />
         </a-form-item>
         <a-form-item label="邮箱">
-          <a-input v-model:value="createForm.email" />
+          <a-input v-model:value="createForm.email" :maxlength="INPUT_LIMITS.EMAIL" />
         </a-form-item>
         <a-form-item label="密码">
-          <a-input-password v-model:value="createForm.password" />
+          <a-input-password v-model:value="createForm.password" :maxlength="INPUT_LIMITS.PASSWORD" />
         </a-form-item>
       </a-form>
     </a-modal>
 
     <a-modal v-model:open="resetOpen" title="重置密码" @ok="submitReset">
-      <a-input-password v-model:value="resetPassword" placeholder="输入新密码" />
+      <a-input-password v-model:value="resetPassword" placeholder="输入新密码" :maxlength="INPUT_LIMITS.PASSWORD" />
     </a-modal>
 
     <a-modal v-model:open="editOpen" title="编辑用户" @ok="submitEdit">
       <a-form layout="vertical">
         <a-form-item label="用户名">
-          <a-input v-model:value="editForm.username" />
+          <a-input v-model:value="editForm.username" :maxlength="INPUT_LIMITS.USERNAME" />
         </a-form-item>
         <a-form-item label="邮箱">
-          <a-input v-model:value="editForm.email" />
+          <a-input v-model:value="editForm.email" :maxlength="INPUT_LIMITS.EMAIL" />
         </a-form-item>
         <a-form-item label="QQ">
-          <a-input v-model:value="editForm.qq" />
+          <a-input v-model:value="editForm.qq" :maxlength="INPUT_LIMITS.QQ" />
         </a-form-item>
         <a-form-item label="头像 URL">
-          <a-input v-model:value="editForm.avatar" placeholder="可选" />
+          <a-input v-model:value="editForm.avatar" placeholder="可选" :maxlength="INPUT_LIMITS.URL" />
         </a-form-item>
         <a-form-item label="状态">
           <a-select v-model:value="editForm.status">
@@ -93,7 +93,7 @@
               <a-select-option value="verified">已通过</a-select-option>
               <a-select-option value="failed">未通过</a-select-option>
             </a-select>
-            <a-input v-model:value="realnameReason" placeholder="审核备注（可选）" style="width: 220px" />
+            <a-input v-model:value="realnameReason" placeholder="审核备注（可选）" style="width: 220px" :maxlength="INPUT_LIMITS.REVIEW_REASON" />
             <a-button
               type="primary"
               :loading="realnameUpdating"
@@ -131,6 +131,7 @@
           v-model:value="realnameReason"
           placeholder="审核备注（可选）"
           style="width: 260px"
+          :maxlength="INPUT_LIMITS.REVIEW_REASON"
         />
         <a-button type="primary" :loading="realnameUpdating" :disabled="!realnameRecord" @click="submitRealnameStatus(detail?.id)">
           更新实名状态
@@ -191,6 +192,7 @@ import {
   listAdminWalletTransactions
 } from "@/services/admin";
 import { message } from "ant-design-vue";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const filters = reactive({ keyword: "", status: undefined, range: [] });
 const statusOptions = [
@@ -351,6 +353,18 @@ const openCreate = () => {
 };
 
 const create = async () => {
+  if (String(createForm.username || "").length > INPUT_LIMITS.USERNAME) {
+    message.error(`用户名长度不能超过 ${INPUT_LIMITS.USERNAME} 个字符`);
+    return;
+  }
+  if (String(createForm.email || "").length > INPUT_LIMITS.EMAIL) {
+    message.error(`邮箱长度不能超过 ${INPUT_LIMITS.EMAIL} 个字符`);
+    return;
+  }
+  if (String(createForm.password || "").length > INPUT_LIMITS.PASSWORD) {
+    message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
+    return;
+  }
   await createAdminUser({ ...createForm });
   message.success("用户已创建");
   createOpen.value = false;
@@ -365,6 +379,10 @@ const openReset = (record) => {
 
 const submitReset = async () => {
   if (!activeRecord.value) return;
+  if (String(resetPassword.value || "").length > INPUT_LIMITS.PASSWORD) {
+    message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
+    return;
+  }
   await resetUserPassword(activeRecord.value.id, { password: resetPassword.value });
   message.success("已重置密码");
   resetOpen.value = false;
@@ -448,6 +466,10 @@ const submitRealnameStatus = async (userId) => {
   if (!targetId) return;
   realnameUpdating.value = true;
   try {
+    if (String(realnameReason.value || "").length > INPUT_LIMITS.REVIEW_REASON) {
+      message.error(`审核备注长度不能超过 ${INPUT_LIMITS.REVIEW_REASON} 个字符`);
+      return;
+    }
     await updateAdminUserRealNameStatus(targetId, {
       status: realnameStatus.value,
       reason: realnameReason.value
@@ -463,6 +485,22 @@ const submitRealnameStatus = async (userId) => {
 
 const submitEdit = async () => {
   if (!editForm.id) return;
+  if (String(editForm.username || "").length > INPUT_LIMITS.USERNAME) {
+    message.error(`用户名长度不能超过 ${INPUT_LIMITS.USERNAME} 个字符`);
+    return;
+  }
+  if (String(editForm.email || "").length > INPUT_LIMITS.EMAIL) {
+    message.error(`邮箱长度不能超过 ${INPUT_LIMITS.EMAIL} 个字符`);
+    return;
+  }
+  if (String(editForm.qq || "").length > INPUT_LIMITS.QQ) {
+    message.error(`QQ 长度不能超过 ${INPUT_LIMITS.QQ} 个字符`);
+    return;
+  }
+  if (String(editForm.avatar || "").length > INPUT_LIMITS.URL) {
+    message.error(`头像 URL 长度不能超过 ${INPUT_LIMITS.URL} 个字符`);
+    return;
+  }
   await updateAdminUser(editForm.id, {
     username: editForm.username,
     email: editForm.email,

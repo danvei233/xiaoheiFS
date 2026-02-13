@@ -177,6 +177,7 @@
             v-model:value="form.username"
             placeholder="请输入用户名"
             size="large"
+            :maxlength="INPUT_LIMITS.USERNAME"
           >
             <template #prefix>
               <UserOutlined />
@@ -188,6 +189,7 @@
             v-model:value="form.email"
             placeholder="请输入邮箱地址"
             size="large"
+            :maxlength="INPUT_LIMITS.EMAIL"
           >
             <template #prefix>
               <MailOutlined />
@@ -199,6 +201,7 @@
             v-model:value="form.qq"
             placeholder="请输入QQ号码"
             size="large"
+            :maxlength="INPUT_LIMITS.QQ"
           >
             <template #prefix>
               <QqOutlined />
@@ -206,7 +209,7 @@
           </a-input>
         </a-form-item>
         <a-form-item label="手机号" name="phone">
-          <a-input v-model:value="form.phone" placeholder="请输入手机号" size="large">
+          <a-input v-model:value="form.phone" placeholder="请输入手机号" size="large" :maxlength="INPUT_LIMITS.PHONE">
             <template #prefix>
               <PhoneOutlined />
             </template>
@@ -221,6 +224,7 @@
             v-model:value="form.password"
             placeholder="留空表示不修改密码"
             size="large"
+            :maxlength="INPUT_LIMITS.PASSWORD"
           >
             <template #prefix>
               <LockOutlined />
@@ -232,6 +236,7 @@
             v-model:value="form.confirmPassword"
             placeholder="请再次输入新密码"
             size="large"
+            :maxlength="INPUT_LIMITS.PASSWORD"
           >
             <template #prefix>
               <LockOutlined />
@@ -269,6 +274,7 @@ import { useAuthStore } from "@/stores/auth";
 import { getWallet, getRealNameStatus } from "@/services/user";
 import { normalizeWallet } from "@/utils/wallet";
 import { message } from "ant-design-vue";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const formatTime = (value) => {
   if (!value) return "-";
@@ -294,10 +300,11 @@ const form = reactive({
 const rules = {
   username: [
     { required: true, message: "请输入用户名", trigger: "blur" },
-    { min: 2, max: 20, message: "用户名长度应为2-20个字符", trigger: "blur" }
+    { min: 2, max: INPUT_LIMITS.USERNAME, message: `用户名长度应为2-${INPUT_LIMITS.USERNAME}个字符`, trigger: "blur" }
   ],
   email: [
-    { type: "email", message: "请输入有效的邮箱地址", trigger: "blur" }
+    { type: "email", message: "请输入有效的邮箱地址", trigger: "blur" },
+    { max: INPUT_LIMITS.EMAIL, message: `邮箱长度不能超过${INPUT_LIMITS.EMAIL}个字符`, trigger: "blur" }
   ],
   phone: [
     {

@@ -67,6 +67,7 @@ func TestVPSService_RefreshStatus(t *testing.T) {
 		SystemID:             1,
 		Status:               domain.VPSStatusUnknown,
 		SpecJSON:             "{}",
+		ExpireAt:             ptrTime(time.Now().Add(72 * time.Hour)),
 	}
 	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
 		t.Fatalf("create vps: %v", err)
@@ -81,6 +82,17 @@ func TestVPSService_RefreshStatus(t *testing.T) {
 	svc := usecase.NewVPSService(repo, autoResolver, repo)
 	if _, err := svc.RefreshStatus(context.Background(), inst); err != nil {
 		t.Fatalf("refresh: %v", err)
+	}
+	updated, err := repo.GetInstance(context.Background(), inst.ID)
+	if err != nil {
+		t.Fatalf("get updated instance: %v", err)
+	}
+	if updated.ExpireAt == nil {
+		t.Fatalf("expected local expire_at preserved")
+	}
+	// Refresh should not sync expire_at from automation.
+	if !updated.ExpireAt.Equal(*inst.ExpireAt) {
+		t.Fatalf("expected expire_at unchanged, got %v want %v", updated.ExpireAt, inst.ExpireAt)
 	}
 }
 

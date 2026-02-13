@@ -128,7 +128,10 @@ func main() {
 	paymentSvc := usecase.NewPaymentService(repoSQLite, repoSQLite, repoSQLite, paymentRegistry, repoSQLite, orderSvc, eventBus)
 	statusSvc := usecase.NewServerStatusService(system.NewProvider())
 	taskSvc := usecase.NewScheduledTaskService(repoSQLite, vpsSvc, orderSvc, notifySvc, repoSQLite)
+	probeHub := usecase.NewProbeHub()
+	probeSvc := usecase.NewProbeService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	go taskSvc.Start(context.Background())
+	go probeSvc.StartOfflineWatcher(context.Background())
 
 	pluginDir := getSettingValue(repoSQLite, "payment_plugin_dir")
 	if pluginDir == "" {
@@ -143,6 +146,7 @@ func main() {
 	handler.SetPushService(pushSvc)
 	handler.SetPluginManager(pluginMgr)
 	handler.SetPluginPaymentMethodRepo(repoSQLite)
+	handler.SetProbeService(probeSvc, probeHub)
 	middleware := http.NewMiddleware(cfg.JWTSecret, apiKeySvc, permissionSvc)
 	server := http.NewServer(handler, middleware)
 

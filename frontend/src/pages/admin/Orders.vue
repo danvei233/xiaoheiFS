@@ -166,14 +166,14 @@
         <a-space style="margin-top: 12px">
           <a-button type="primary" :disabled="isReviewLocked(detail?.order)" @click="approve(detail?.order)">通过</a-button>
           <a-button danger :disabled="isReviewLocked(detail?.order)" @click="reject(detail?.order)">驳回</a-button>
-          <a-button @click="retry(detail?.order)">重试开通</a-button>
+          <a-button :disabled="!canRetry(detail?.order)" @click="retry(detail?.order)">重试开通</a-button>
           <a-button v-if="canDelete" danger @click="removeOrder(detail?.order)">删除订单</a-button>
         </a-space>
       </template>
     </a-drawer>
 
     <a-modal v-model:open="rejectOpen" title="驳回订单" @ok="submitReject">
-      <a-textarea v-model:value="rejectReason" rows="3" placeholder="请输入驳回原因" />
+      <a-textarea v-model:value="rejectReason" rows="3" placeholder="请输入驳回原因" :maxlength="INPUT_LIMITS.REVIEW_REASON" show-count />
     </a-modal>
   </div>
 </template>
@@ -197,6 +197,7 @@ import {
 } from "@ant-design/icons-vue";
 import dayjs from "dayjs";
 import { useAdminAuthStore } from "@/stores/adminAuth";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const filters = reactive({
   keyword: "",
@@ -314,6 +315,10 @@ const reject = (record) => {
 
 const submitReject = async () => {
   if (!rejectTarget.value?.id) return;
+  if (String(rejectReason.value || "").length > INPUT_LIMITS.REVIEW_REASON) {
+    message.error(`驳回原因长度不能超过 ${INPUT_LIMITS.REVIEW_REASON} 个字符`);
+    return;
+  }
   await rejectAdminOrder(rejectTarget.value.id, { reason: rejectReason.value || "manual" });
   message.success("已驳回");
   rejectOpen.value = false;
@@ -327,6 +332,12 @@ const retry = async (record) => {
   message.success("已触发重试");
   fetchData();
   loadDetail(record.id);
+};
+
+const canRetry = (record) => {
+  const raw = record?.status ?? record?.Status ?? "";
+  const status = String(raw).trim().toLowerCase();
+  return ["approved", "provisioning", "failed"].includes(status);
 };
 
 const removeOrder = (record) => {

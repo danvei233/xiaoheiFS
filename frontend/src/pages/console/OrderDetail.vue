@@ -259,13 +259,13 @@
             <a-input-number v-model:value="formModel.amount" :min="0" :precision="2" style="width: 100%" size="large" :prefix="h(DollarOutlined)" />
           </a-form-item>
           <a-form-item label="交易号">
-            <a-input v-model:value="formModel.trade_no" placeholder="请输入交易号" size="large" />
+            <a-input v-model:value="formModel.trade_no" placeholder="请输入交易号" size="large" :maxlength="INPUT_LIMITS.PAYMENT_TRADE_NO" />
           </a-form-item>
           <a-form-item label="截图 URL">
-            <a-input v-model:value="formModel.screenshot_url" placeholder="请输入付款截图链接" size="large" />
+            <a-input v-model:value="formModel.screenshot_url" placeholder="请输入付款截图链接" size="large" :maxlength="INPUT_LIMITS.URL" />
           </a-form-item>
           <a-form-item label="备注">
-            <a-textarea v-model:value="formModel.note" :rows="3" placeholder="请输入备注信息" />
+            <a-textarea v-model:value="formModel.note" :rows="3" placeholder="请输入备注信息" :maxlength="INPUT_LIMITS.PAYMENT_NOTE" show-count />
           </a-form-item>
           <a-button type="primary" html-type="submit" :loading="paying" size="large" block class="submit-btn">
             <CheckOutlined />
@@ -364,6 +364,7 @@ import { useCatalogStore } from "@/stores/catalog";
 import { useAuthStore } from "@/stores/auth";
 import { submitOrderPayment, listPaymentProviders, createOrderPayment, cancelOrder, listVps } from "@/services/user";
 import { message, Modal } from "ant-design-vue";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 import OrderStatusBadge from "@/components/OrderStatusBadge.vue";
 import { createSseConnection } from "@/services/sse";
 import QRCode from "qrcode";
@@ -725,6 +726,22 @@ const submitPayment = async () => {
 
   if (!formModel.method) {
     message.warning("请选择付款方式");
+    return;
+  }
+  if (String(formModel.method || "").length > INPUT_LIMITS.PAYMENT_METHOD) {
+    message.error(`付款方式长度不能超过 ${INPUT_LIMITS.PAYMENT_METHOD} 个字符`);
+    return;
+  }
+  if (String(formModel.trade_no || "").length > INPUT_LIMITS.PAYMENT_TRADE_NO) {
+    message.error(`交易号长度不能超过 ${INPUT_LIMITS.PAYMENT_TRADE_NO} 个字符`);
+    return;
+  }
+  if (String(formModel.screenshot_url || "").length > INPUT_LIMITS.URL) {
+    message.error(`截图链接长度不能超过 ${INPUT_LIMITS.URL} 个字符`);
+    return;
+  }
+  if (String(formModel.note || "").length > INPUT_LIMITS.PAYMENT_NOTE) {
+    message.error(`备注长度不能超过 ${INPUT_LIMITS.PAYMENT_NOTE} 个字符`);
     return;
   }
   paying.value = true;

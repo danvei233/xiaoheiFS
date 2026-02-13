@@ -55,9 +55,13 @@
 
     <a-modal v-model:open="formOpen" title="系统镜像" @ok="submit">
       <a-form layout="vertical">
-        <a-form-item label="镜像 ID"><a-input v-model:value="form.image_id" /></a-form-item>
+        <a-form-item label="镜像 ID">
+          <a-input-number v-model:value="form.image_id" :min="1" :precision="0" style="width: 100%" />
+        </a-form-item>
         <a-form-item label="名称"><a-input v-model:value="form.name" /></a-form-item>
-        <a-form-item label="类型"><a-input v-model:value="form.type" /></a-form-item>
+        <a-form-item label="类型">
+          <a-select v-model:value="form.type" :options="imageTypeOptions" placeholder="请选择镜像类型" />
+        </a-form-item>
         <a-form-item label="启用"><a-switch v-model:checked="form.enabled" /></a-form-item>
       </a-form>
     </a-modal>
@@ -67,7 +71,7 @@
         <a-form-item label="线路">
           <a-select v-model:value="configLineId" placeholder="选择线路">
             <a-select-option v-for="line in lines" :key="line.id" :value="line.id">
-              {{ `${line.name} (${line.line_id ?? line.id})` }}
+              {{ `${line.name} (${lineImageCountByLineId(line.id)})` }}
             </a-select-option>
           </a-select>
         </a-form-item>
@@ -87,7 +91,7 @@
         <a-form-item label="线路">
           <a-select v-model:value="syncLineId" placeholder="选择线路">
             <a-select-option v-for="line in lines" :key="line.id" :value="line.id">
-              {{ `${line.name} (${line.line_id ?? line.id})` }}
+              {{ `${line.name} (${lineImageCountByLineId(line.id)})` }}
             </a-select-option>
           </a-select>
         </a-form-item>
@@ -135,11 +139,16 @@ const rowSelection = computed(() => ({
 }));
 
 const formOpen = ref(false);
-const form = reactive({ id: null, image_id: "", name: "", type: "", enabled: true });
+const form = reactive({ id: null, image_id: null, name: "", type: "linux", enabled: true });
 const configOpen = ref(false);
 const configLineId = ref(null);
 const configImageIds = ref([]);
 const allImages = ref([]);
+const lineImageCountMap = ref({});
+const imageTypeOptions = [
+  { label: "Linux", value: "linux" },
+  { label: "Windows", value: "windows" }
+];
 
 const imageOptions = computed(() =>
   allImages.value.map((img) => ({
@@ -172,6 +181,12 @@ const typeTagColor = (value) => {
   if (isWindowsType(value)) return "blue";
   if (isLinuxType(value)) return "green";
   return "default";
+};
+
+const lineImageCountByLineId = (lineId) => {
+  const id = Number(lineId);
+  if (!Number.isFinite(id) || id <= 0) return 0;
+  return Number(lineImageCountMap.value[id] || 0);
 };
 
 const fetchData = async () => {
@@ -210,20 +225,43 @@ const submitSync = async () => {
 };
 
 const openCreate = () => {
-  Object.assign(form, { id: null, image_id: "", name: "", type: "", enabled: true });
+  Object.assign(form, { id: null, image_id: null, name: "", type: "linux", enabled: true });
   formOpen.value = true;
 };
 
 const openEdit = (record) => {
-  Object.assign(form, record);
+  Object.assign(form, {
+    id: record.id ?? null,
+    image_id: Number(record.image_id ?? 0) || null,
+    name: record.name ?? "",
+    type: String(record.type || "").toLowerCase() || "linux",
+    enabled: !!record.enabled
+  });
   formOpen.value = true;
 };
 
 const submit = async () => {
+  const imageID = Number(form.image_id || 0);
+  if (!Number.isInteger(imageID) || imageID <= 0) {
+    message.error("镜像 ID 必须是正整数");
+    return;
+  }
+  const imageType = String(form.type || "").trim().toLowerCase();
+  if (!["linux", "windows"].includes(imageType)) {
+    message.error("请选择镜像类型");
+    return;
+  }
+  const payload = {
+    id: form.id,
+    image_id: imageID,
+    name: String(form.name || "").trim(),
+    type: imageType,
+    enabled: !!form.enabled
+  };
   if (form.id) {
-    await updateSystemImage(form.id, form);
+    await updateSystemImage(form.id, payload);
   } else {
-    await createSystemImage(form);
+    await createSystemImage(payload);
   }
   message.success("已保存镜像");
   formOpen.value = false;
@@ -283,6 +321,23 @@ const loadLineImages = async (lineId) => {
   configImageIds.value = (payload.items || []).map((row) => row.id ?? row.ID);
 };
 
+const loadLineImageCounts = async () => {
+  const map = {};
+  const tasks = (lines.value || []).map(async (line) => {
+    const localLineId = Number(line?.id || 0);
+    if (!Number.isFinite(localLineId) || localLineId <= 0) return;
+    const cloudLineId = getCloudLineId(localLineId);
+    if (!cloudLineId) {
+      map[localLineId] = 0;
+      return;
+    }
+    const res = await listSystemImages({ line_id: cloudLineId });
+    map[localLineId] = Array.isArray(res.data?.items) ? res.data.items.length : 0;
+  });
+  await Promise.all(tasks);
+  lineImageCountMap.value = map;
+};
+
 const submitLineConfig = async () => {
   if (!configLineId.value) {
     message.error("请选择线路");
@@ -290,6 +345,7 @@ const submitLineConfig = async () => {
   }
   await setLineSystemImages(configLineId.value, { image_ids: configImageIds.value });
   message.success("已保存线路镜像配置");
+  await loadLineImageCounts();
   configOpen.value = false;
 };
 
@@ -311,6 +367,7 @@ const loadLines = async () => {
     name: row.name ?? row.Name ?? row.line_name ?? row.LineName,
     line_id: row.line_id ?? row.LineID
   }));
+  await loadLineImageCounts();
 };
 
 const getCloudLineId = (lineId) => {

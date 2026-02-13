@@ -103,6 +103,24 @@ func TestRealNameService_Flow(t *testing.T) {
 	}
 }
 
+func TestRealNameService_EmptyBlockActionsDoesNotIntercept(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	user := testutil.CreateUser(t, repo, "rn-empty", "rn-empty@example.com", "pass")
+	reg := testutil.NewFakeRealNameRegistry()
+	svc := usecase.NewRealNameService(repo, reg, repo)
+
+	if err := svc.UpdateConfig(context.Background(), true, "fake", []string{}); err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+	_, _, actions := svc.GetConfig(context.Background())
+	if len(actions) != 0 {
+		t.Fatalf("expected empty block actions, got %v", actions)
+	}
+	if err := svc.RequireAction(context.Background(), user.ID, "purchase_vps"); err != nil {
+		t.Fatalf("unexpected intercept for empty block_actions: %v", err)
+	}
+}
+
 func TestReportService_OverviewAndSeries(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	user := testutil.CreateUser(t, repo, "report", "report@example.com", "pass")

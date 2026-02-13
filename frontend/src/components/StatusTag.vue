@@ -23,6 +23,7 @@ const defaultTextMap = {
   running: "运行中",
   stopped: "已关机",
   locked: "已锁定",
+  expired_locked: "已到期",
   normal: "正常",
   abuse: "Abuse",
   fraud: "Fraud",
@@ -34,7 +35,7 @@ const defaultTextMap = {
 const color = computed(() => {
   if (["active", "running", "approved", "success", "normal"].includes(props.status)) return "green";
   if (["pending_review", "pending", "pending_payment", "provisioning", "draft", "reinstalling", "deleting"].includes(props.status)) return "gold";
-  if (["failed", "rejected", "disabled", "locked", "canceled", "blocked", "abuse", "fraud", "reinstall_failed"].includes(props.status)) return "red";
+  if (["failed", "rejected", "disabled", "locked", "expired_locked", "canceled", "blocked", "abuse", "fraud", "reinstall_failed"].includes(props.status)) return "red";
   return "blue";
 });
 

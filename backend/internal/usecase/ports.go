@@ -370,6 +370,42 @@ type WalletOrderRepository interface {
 	UpdateWalletOrderStatus(ctx context.Context, id int64, status domain.WalletOrderStatus, reviewedBy *int64, reason string) error
 }
 
+type ProbeNodeFilter struct {
+	Keyword string
+	Status  string
+}
+
+type ProbeNodeRepository interface {
+	CreateProbeNode(ctx context.Context, node *domain.ProbeNode) error
+	GetProbeNode(ctx context.Context, id int64) (domain.ProbeNode, error)
+	GetProbeNodeByAgentID(ctx context.Context, agentID string) (domain.ProbeNode, error)
+	ListProbeNodes(ctx context.Context, filter ProbeNodeFilter, limit, offset int) ([]domain.ProbeNode, int, error)
+	UpdateProbeNode(ctx context.Context, node domain.ProbeNode) error
+	UpdateProbeNodeStatus(ctx context.Context, id int64, status domain.ProbeStatus, reason string, at time.Time) error
+	UpdateProbeNodeHeartbeat(ctx context.Context, id int64, at time.Time) error
+	UpdateProbeNodeSnapshot(ctx context.Context, id int64, at time.Time, snapshotJSON string, osType string) error
+}
+
+type ProbeEnrollTokenRepository interface {
+	CreateProbeEnrollToken(ctx context.Context, token *domain.ProbeEnrollToken) error
+	GetValidProbeEnrollTokenByHash(ctx context.Context, tokenHash string, now time.Time) (domain.ProbeEnrollToken, error)
+	MarkProbeEnrollTokenUsed(ctx context.Context, id int64, usedAt time.Time) error
+	DeleteProbeEnrollTokensByProbe(ctx context.Context, probeID int64) error
+}
+
+type ProbeStatusEventRepository interface {
+	CreateProbeStatusEvent(ctx context.Context, ev *domain.ProbeStatusEvent) error
+	ListProbeStatusEvents(ctx context.Context, probeID int64, from, to time.Time) ([]domain.ProbeStatusEvent, error)
+	GetLatestProbeStatusEventBefore(ctx context.Context, probeID int64, before time.Time) (domain.ProbeStatusEvent, error)
+	DeleteProbeStatusEventsBefore(ctx context.Context, before time.Time) error
+}
+
+type ProbeLogSessionRepository interface {
+	CreateProbeLogSession(ctx context.Context, session *domain.ProbeLogSession) error
+	GetProbeLogSession(ctx context.Context, id int64) (domain.ProbeLogSession, error)
+	UpdateProbeLogSession(ctx context.Context, session domain.ProbeLogSession) error
+}
+
 type PaymentCreateRequest struct {
 	OrderID   int64
 	OrderNo   string
@@ -593,6 +629,7 @@ type AutomationFirewallRuleCreate struct {
 	Method    string
 	Port      string
 	IP        string
+	Priority  int
 }
 
 type AutomationPortMappingCreate struct {

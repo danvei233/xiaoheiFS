@@ -4,7 +4,13 @@ package plugin.v1;
 
 option go_package = "xiaoheiplay/plugin/v1;pluginv1";
 
-message Empty {}
+message Empty {
+  // Unified operation response for optional business-level status.
+  // Backward compatible: old plugins can still return an empty message.
+  string status = 1;
+  string msg = 2;
+  string other = 3;
+}
 
 message StringList {
   repeated string values = 1;

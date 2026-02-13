@@ -125,6 +125,9 @@ func (s *OrderService) quoteResize(ctx context.Context, inst domain.VPSInstance,
 	currentMem := currentPkg.MemoryGB + currentSpec.AddMemGB
 	currentDisk := currentPkg.DiskGB + currentSpec.AddDiskGB
 	currentBW := currentPkg.BandwidthMB + currentSpec.AddBWMbps
+	if quote.TargetDiskGB < currentDisk {
+		return ResizeQuote{}, CartSpec{}, ErrInvalidInput
+	}
 	if currentCPU == quote.TargetCPU && currentMem == quote.TargetMemGB && currentDisk == quote.TargetDiskGB && currentBW == quote.TargetBWMbps {
 		return ResizeQuote{}, CartSpec{}, ErrResizeSamePlan
 	}

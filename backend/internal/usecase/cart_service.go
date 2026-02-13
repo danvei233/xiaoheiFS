@@ -180,6 +180,12 @@ func validateAddonSpec(spec CartSpec, plan domain.PlanGroup) error {
 }
 
 func validateAddonValue(value, min, max, step int) error {
+	if min == -1 || max == -1 {
+		if value != 0 {
+			return ErrInvalidInput
+		}
+		return nil
+	}
 	if value == 0 {
 		return nil
 	}

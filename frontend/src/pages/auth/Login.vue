@@ -6,11 +6,11 @@
 
       <a-form :model="form" layout="vertical" @finish="onSubmit">
         <a-form-item label="账号" name="username" :rules="[{ required: true, message: '请输入账号' }]">
-          <a-input v-model:value="form.username" placeholder="请输入用户名" size="large" />
+          <a-input v-model:value="form.username" placeholder="请输入用户名" size="large" :maxlength="INPUT_LIMITS.EMAIL" />
         </a-form-item>
 
         <a-form-item label="密码" name="password" :rules="[{ required: true, message: '请输入密码' }]">
-          <a-input-password v-model:value="form.password" placeholder="请输入密码" size="large" />
+          <a-input-password v-model:value="form.password" placeholder="请输入密码" size="large" :maxlength="INPUT_LIMITS.PASSWORD" />
         </a-form-item>
 
         <a-form-item
@@ -47,6 +47,7 @@ import { useRoute, useRouter } from "vue-router";
 import { message } from "ant-design-vue";
 import { useAuthStore } from "@/stores/auth";
 import { getAuthSettings, getCaptcha } from "@/services/user";
+import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const form = reactive({
   username: "",
@@ -86,6 +87,14 @@ const loadSettings = async () => {
 
 const onSubmit = async () => {
   try {
+    if (String(form.username || "").length > INPUT_LIMITS.EMAIL) {
+      message.error(`账号长度不能超过 ${INPUT_LIMITS.EMAIL} 个字符`);
+      return;
+    }
+    if (String(form.password || "").length > INPUT_LIMITS.PASSWORD) {
+      message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
+      return;
+    }
     const token = await auth.login({
       username: form.username,
       password: form.password,

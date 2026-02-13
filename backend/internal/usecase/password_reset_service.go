@@ -67,6 +67,10 @@ func (s *PasswordResetService) RequestReset(ctx context.Context, email string) e
 }
 
 func (s *PasswordResetService) ResetPassword(ctx context.Context, token string, newPassword string) error {
+	newPassword, err := trimAndValidateRequired(newPassword, maxLenPassword)
+	if err != nil {
+		return ErrInvalidInput
+	}
 	resetToken, err := s.tokens.GetPasswordResetToken(ctx, token)
 	if err != nil {
 		return ErrNotFound

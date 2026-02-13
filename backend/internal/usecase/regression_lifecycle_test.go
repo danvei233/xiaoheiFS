@@ -57,10 +57,19 @@ func (f *fakeLifecycleSettingsRepo) DeleteEmailTemplate(ctx context.Context, id 
 }
 
 type fakeLifecycleVPSRepo struct {
-	inst     domain.VPSInstance
-	updates  []time.Time
-	deletes  []int64
-	expiring []domain.VPSInstance
+	inst          domain.VPSInstance
+	updates       []time.Time
+	deletes       []int64
+	expiring      []domain.VPSInstance
+	statusUpdates []struct {
+		ID              int64
+		Status          domain.VPSStatus
+		AutomationState int
+	}
+	adminUpdates []struct {
+		ID     int64
+		Status domain.VPSAdminStatus
+	}
 }
 
 func (f *fakeLifecycleVPSRepo) CreateInstance(ctx context.Context, inst *domain.VPSInstance) error {
@@ -89,9 +98,18 @@ func (f *fakeLifecycleVPSRepo) DeleteInstance(ctx context.Context, id int64) err
 	return nil
 }
 func (f *fakeLifecycleVPSRepo) UpdateInstanceStatus(ctx context.Context, id int64, status domain.VPSStatus, automationState int) error {
+	f.statusUpdates = append(f.statusUpdates, struct {
+		ID              int64
+		Status          domain.VPSStatus
+		AutomationState int
+	}{ID: id, Status: status, AutomationState: automationState})
 	return nil
 }
 func (f *fakeLifecycleVPSRepo) UpdateInstanceAdminStatus(ctx context.Context, id int64, status domain.VPSAdminStatus) error {
+	f.adminUpdates = append(f.adminUpdates, struct {
+		ID     int64
+		Status domain.VPSAdminStatus
+	}{ID: id, Status: status})
 	return nil
 }
 func (f *fakeLifecycleVPSRepo) UpdateInstanceExpireAt(ctx context.Context, id int64, expireAt time.Time) error {
@@ -216,12 +234,51 @@ func (f *fakeLifecycleOrderItemRepo) HasPendingRefundOrder(ctx context.Context, 
 	return false, nil
 }
 
+type fakeLifecycleRealNameRepo struct {
+	latest domain.RealNameVerification
+	has    bool
+}
+
+func (f *fakeLifecycleRealNameRepo) CreateRealNameVerification(ctx context.Context, record *domain.RealNameVerification) error {
+	f.latest = *record
+	f.has = true
+	return nil
+}
+
+func (f *fakeLifecycleRealNameRepo) GetLatestRealNameVerification(ctx context.Context, userID int64) (domain.RealNameVerification, error) {
+	if !f.has || f.latest.UserID != userID {
+		return domain.RealNameVerification{}, ErrNotFound
+	}
+	return f.latest, nil
+}
+
+func (f *fakeLifecycleRealNameRepo) ListRealNameVerifications(ctx context.Context, userID *int64, limit, offset int) ([]domain.RealNameVerification, int, error) {
+	if !f.has {
+		return nil, 0, nil
+	}
+	if userID != nil && f.latest.UserID != *userID {
+		return nil, 0, nil
+	}
+	return []domain.RealNameVerification{f.latest}, 1, nil
+}
+
+func (f *fakeLifecycleRealNameRepo) UpdateRealNameStatus(ctx context.Context, id int64, status string, reason string, verifiedAt *time.Time) error {
+	if !f.has || f.latest.ID != id {
+		return ErrNotFound
+	}
+	f.latest.Status = status
+	f.latest.Reason = reason
+	f.latest.VerifiedAt = verifiedAt
+	return nil
+}
+
 type fakeLifecycleAutomationClient struct {
 	RenewCalls []struct {
 		HostID int64
 		Next   time.Time
 	}
 	DeleteCalls []int64
+	LockCalls   []int64
 }
 
 func (f *fakeLifecycleAutomationClient) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (AutomationClient, error) {
@@ -250,6 +307,7 @@ func (f *fakeLifecycleAutomationClient) RenewHost(ctx context.Context, hostID in
 	return nil
 }
 func (f *fakeLifecycleAutomationClient) LockHost(ctx context.Context, hostID int64) error {
+	f.LockCalls = append(f.LockCalls, hostID)
 	return nil
 }
 func (f *fakeLifecycleAutomationClient) UnlockHost(ctx context.Context, hostID int64) error {
@@ -448,6 +506,37 @@ func TestCreateEmergencyRenewOrder_ForbiddenOutsideWindow(t *testing.T) {
 	}
 }
 
+func TestCreateEmergencyRenewOrder_RequiresRealNameWhenRenewBlocked(t *testing.T) {
+	now := time.Now()
+	expire := now.Add(24 * time.Hour)
+	inst := domain.VPSInstance{
+		ID:                   4,
+		UserID:               9,
+		AutomationInstanceID: "1004",
+		ExpireAt:             &expire,
+		AdminStatus:          domain.VPSAdminStatusNormal,
+		Status:               domain.VPSStatusRunning,
+	}
+	settings := &fakeLifecycleSettingsRepo{
+		values: map[string]string{
+			"emergency_renew_enabled":        "true",
+			"emergency_renew_window_days":    "7",
+			"emergency_renew_days":           "1",
+			"emergency_renew_interval_hours": "24",
+			"realname_enabled":               "true",
+			"realname_provider":              "fake",
+			"realname_block_actions":         `["renew_vps"]`,
+		},
+	}
+	realnameSvc := NewRealNameService(&fakeLifecycleRealNameRepo{}, nil, settings)
+	vpsRepo := &fakeLifecycleVPSRepo{inst: inst}
+	svc := NewOrderService(&fakeLifecycleOrderRepo{}, &fakeLifecycleOrderItemRepo{}, nil, nil, nil, nil, vpsRepo, nil, nil, nil, &fakeLifecycleAutomationClient{}, nil, nil, nil, nil, settings, nil, nil, nil, nil, realnameSvc)
+
+	if _, err := svc.CreateEmergencyRenewOrder(context.Background(), inst.UserID, inst.ID); err != ErrRealNameRequired {
+		t.Fatalf("expected real name required, got %v", err)
+	}
+}
+
 func TestAutoDeleteExpired(t *testing.T) {
 	now := time.Now()
 	expired := now.Add(-48 * time.Hour)
@@ -474,5 +563,32 @@ func TestAutoDeleteExpired(t *testing.T) {
 	}
 	if len(vpsRepo.deletes) != 1 || vpsRepo.deletes[0] != 1 {
 		t.Fatalf("expected delete instance 1, got %+v", vpsRepo.deletes)
+	}
+}
+
+func TestAutoLockExpired(t *testing.T) {
+	now := time.Now()
+	expired := now.Add(-2 * time.Hour)
+	active := now.Add(24 * time.Hour)
+	vpsRepo := &fakeLifecycleVPSRepo{
+		expiring: []domain.VPSInstance{
+			{ID: 1, UserID: 1, GoodsTypeID: 1, AutomationInstanceID: "1001", ExpireAt: &expired, Status: domain.VPSStatusRunning, AdminStatus: domain.VPSAdminStatusNormal, Name: "expired-running"},
+			{ID: 2, UserID: 1, GoodsTypeID: 1, AutomationInstanceID: "1002", ExpireAt: &expired, Status: domain.VPSStatusLocked, AdminStatus: domain.VPSAdminStatusLocked, Name: "expired-locked"},
+			{ID: 3, UserID: 1, GoodsTypeID: 1, AutomationInstanceID: "1003", ExpireAt: &active, Status: domain.VPSStatusRunning, AdminStatus: domain.VPSAdminStatusNormal, Name: "active"},
+		},
+	}
+	automation := &fakeLifecycleAutomationClient{}
+	svc := NewVPSService(vpsRepo, automation, nil)
+	if err := svc.AutoLockExpired(context.Background()); err != nil {
+		t.Fatalf("auto lock: %v", err)
+	}
+	if len(automation.LockCalls) != 1 || automation.LockCalls[0] != 1001 {
+		t.Fatalf("expected lock host 1001, got %+v", automation.LockCalls)
+	}
+	if len(vpsRepo.statusUpdates) != 1 || vpsRepo.statusUpdates[0].Status != domain.VPSStatusExpiredLocked {
+		t.Fatalf("expected expired_locked update, got %+v", vpsRepo.statusUpdates)
+	}
+	if len(vpsRepo.adminUpdates) != 1 || vpsRepo.adminUpdates[0].Status != domain.VPSAdminStatusLocked {
+		t.Fatalf("expected admin locked update, got %+v", vpsRepo.adminUpdates)
 	}
 }

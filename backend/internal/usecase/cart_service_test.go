@@ -58,3 +58,24 @@ func TestCartService_InvalidSpec(t *testing.T) {
 		t.Fatalf("expected invalid input, got %v", err)
 	}
 }
+
+func TestCartService_AddonDisabledByMinusOne(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "u3", "u3@example.com", "pass")
+	svc := usecase.NewCartService(repo, repo, repo)
+
+	plan, err := repo.GetPlanGroup(context.Background(), seed.PlanGroup.ID)
+	if err != nil {
+		t.Fatalf("get plan: %v", err)
+	}
+	plan.AddCoreMin = -1
+	plan.AddCoreMax = 0
+	if err := repo.UpdatePlanGroup(context.Background(), plan); err != nil {
+		t.Fatalf("update plan: %v", err)
+	}
+
+	if _, err := svc.Add(context.Background(), user.ID, seed.Package.ID, seed.SystemImage.ID, usecase.CartSpec{AddCores: 1}, 1); err != usecase.ErrInvalidInput {
+		t.Fatalf("expected invalid input when addon disabled, got %v", err)
+	}
+}

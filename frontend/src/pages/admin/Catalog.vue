@@ -166,7 +166,7 @@
             <a-space>
               <a-select v-model:value="imageLineId" allow-clear placeholder="选择同步线路" style="width: 200px">
                 <a-select-option v-for="line in lines" :key="line.id" :value="line.id">
-                  {{ `${line.name} (${line.line_id ?? line.id})` }}
+                  {{ `${line.name} (${lineImageCountByLineId(line.id)})` }}
                 </a-select-option>
               </a-select>
               <span class="subtle">同步会更新线路可用镜像</span>
@@ -301,23 +301,24 @@
         </a-row>
         <a-divider />
         <div class="section-title">附加项范围</div>
+        <div class="subtle" style="margin-bottom: 8px">规则：-1 表示禁用该附加项，0 表示不限制上限/下限。</div>
         <a-row :gutter="12">
-          <a-col :span="8"><a-form-item label="CPU最小"><a-input-number v-model:value="lineForm.add_core_min" :min="0" style="width: 100%" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="CPU最小"><a-input-number v-model:value="lineForm.add_core_min" :min="-1" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="CPU最大"><a-input-number v-model:value="lineForm.add_core_max" :min="0" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="CPU步进"><a-input-number v-model:value="lineForm.add_core_step" :min="1" style="width: 100%" /></a-form-item></a-col>
         </a-row>
         <a-row :gutter="12">
-          <a-col :span="8"><a-form-item label="内存最小"><a-input-number v-model:value="lineForm.add_mem_min" :min="0" style="width: 100%" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="内存最小"><a-input-number v-model:value="lineForm.add_mem_min" :min="-1" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="内存最大"><a-input-number v-model:value="lineForm.add_mem_max" :min="0" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="内存步进"><a-input-number v-model:value="lineForm.add_mem_step" :min="1" style="width: 100%" /></a-form-item></a-col>
         </a-row>
         <a-row :gutter="12">
-          <a-col :span="8"><a-form-item label="磁盘最小"><a-input-number v-model:value="lineForm.add_disk_min" :min="0" style="width: 100%" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="磁盘最小"><a-input-number v-model:value="lineForm.add_disk_min" :min="-1" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="磁盘最大"><a-input-number v-model:value="lineForm.add_disk_max" :min="0" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="磁盘步进"><a-input-number v-model:value="lineForm.add_disk_step" :min="1" style="width: 100%" /></a-form-item></a-col>
         </a-row>
         <a-row :gutter="12">
-          <a-col :span="8"><a-form-item label="带宽最小"><a-input-number v-model:value="lineForm.add_bw_min" :min="0" style="width: 100%" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="带宽最小"><a-input-number v-model:value="lineForm.add_bw_min" :min="-1" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="带宽最大"><a-input-number v-model:value="lineForm.add_bw_max" :min="0" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="带宽步进"><a-input-number v-model:value="lineForm.add_bw_step" :min="1" style="width: 100%" /></a-form-item></a-col>
         </a-row>
@@ -360,6 +361,7 @@
           <a-col :span="12"><a-form-item label="磁盘(GB)"><a-input-number v-model:value="packageForm.disk_gb" :min="10" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="带宽(Mbps)"><a-input-number v-model:value="packageForm.bandwidth_mbps" :min="1" style="width: 100%" /></a-form-item></a-col>
         </a-row>
+        <div class="subtle" style="margin-top: -8px; margin-bottom: 8px">实践建议：套餐磁盘大小尽量统一，可降低升降配中的容量兼容问题。</div>
         <a-row :gutter="12">
           <a-col :span="12"><a-form-item label="CPU 型号"><a-input v-model:value="packageForm.cpu_model" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="端口数"><a-input-number v-model:value="packageForm.port_num" :min="0" style="width: 100%" /></a-form-item></a-col>
@@ -380,9 +382,13 @@
 
     <a-drawer v-model:open="imageOpen" title="系统镜像" width="420" @close="resetImage">
       <a-form layout="vertical">
-        <a-form-item label="镜像 ID"><a-input v-model:value="imageForm.image_id" /></a-form-item>
+        <a-form-item label="镜像 ID">
+          <a-input-number v-model:value="imageForm.image_id" :min="1" :precision="0" style="width: 100%" />
+        </a-form-item>
         <a-form-item label="名称"><a-input v-model:value="imageForm.name" /></a-form-item>
-        <a-form-item label="类型"><a-input v-model:value="imageForm.type" /></a-form-item>
+        <a-form-item label="类型">
+          <a-select v-model:value="imageForm.type" :options="IMAGE_TYPE_OPTIONS" placeholder="请选择镜像类型" />
+        </a-form-item>
         <a-form-item label="启用"><a-switch v-model:checked="imageForm.enabled" /></a-form-item>
         <a-space>
           <a-button type="primary" @click="submitImage">保存</a-button>
@@ -588,6 +594,7 @@ const selectedCycleKeys = ref([]);
 const packageLineId = ref(null);
 const imageLineId = ref(null);
 const lineScopedImages = ref([]);
+const lineImageCountMap = ref<Record<number, number>>({});
 const batchOpen = ref(false);
 const generatedPackages = ref([]);
 
@@ -678,16 +685,16 @@ const lineForm = reactive({
   unit_mem: 0,
   unit_disk: 0,
   unit_bw: 0,
-  add_core_min: 0,
+  add_core_min: -1,
   add_core_max: 0,
   add_core_step: 1,
-  add_mem_min: 0,
+  add_mem_min: -1,
   add_mem_max: 0,
   add_mem_step: 1,
-  add_disk_min: 0,
+  add_disk_min: -1,
   add_disk_max: 0,
   add_disk_step: 10,
-  add_bw_min: 0,
+  add_bw_min: -1,
   add_bw_max: 0,
   add_bw_step: 10,
   active: true,
@@ -710,8 +717,12 @@ const packageForm = reactive({
   visible: true,
   capacity_remaining: -1
 });
-const imageForm = reactive({ id: null, image_id: "", name: "", type: "", enabled: true });
+const imageForm = reactive({ id: null, image_id: null, name: "", type: "linux", enabled: true });
 const cycleForm = reactive({ id: null, name: "", months: 1, multiplier: 1, min_qty: 1, max_qty: 12, active: true });
+const IMAGE_TYPE_OPTIONS = [
+  { label: "Linux", value: "linux" },
+  { label: "Windows", value: "windows" }
+];
 
 const formatCapacity = (value) => {
   const num = Number(value);
@@ -755,6 +766,12 @@ const resolveCloudLineId = (value) => {
   const mapped = toPositiveInt(byLineId?.line_id);
   if (mapped) return mapped;
   return null;
+};
+
+const lineImageCountByLineId = (lineId) => {
+  const id = Number(lineId);
+  if (!Number.isFinite(id) || id <= 0) return 0;
+  return Number(lineImageCountMap.value[id] || 0);
 };
 
 const LINE_NUMERIC_FIELDS = new Set([
@@ -840,6 +857,23 @@ const loadScopedImages = async () => {
   }
   const res = await listSystemImages({ line_id: cloudLineId });
   lineScopedImages.value = (res.data?.items || []).map(mapSystemImageRow);
+};
+
+const loadLineImageCounts = async () => {
+  const map: Record<number, number> = {};
+  const tasks = (lines.value || []).map(async (line) => {
+    const localLineId = Number(line?.id || 0);
+    if (!Number.isFinite(localLineId) || localLineId <= 0) return;
+    const cloudLineId = resolveCloudLineId(localLineId);
+    if (!cloudLineId) {
+      map[localLineId] = 0;
+      return;
+    }
+    const res = await listSystemImages({ line_id: cloudLineId });
+    map[localLineId] = Array.isArray(res.data?.items) ? res.data.items.length : 0;
+  });
+  await Promise.all(tasks);
+  lineImageCountMap.value = map;
 };
 
 const regionColumns = [
@@ -985,6 +1019,7 @@ const load = async () => {
     min_qty: row.min_qty ?? row.MinQty,
     max_qty: row.max_qty ?? row.MaxQty
   }));
+  await loadLineImageCounts();
   await loadScopedImages();
 };
 
@@ -1219,16 +1254,16 @@ const resetLine = () =>
     unit_mem: 0,
     unit_disk: 0,
     unit_bw: 0,
-    add_core_min: 0,
+    add_core_min: -1,
     add_core_max: 0,
     add_core_step: 1,
-    add_mem_min: 0,
+    add_mem_min: -1,
     add_mem_max: 0,
     add_mem_step: 1,
-    add_disk_min: 0,
+    add_disk_min: -1,
     add_disk_max: 0,
     add_disk_step: 10,
-    add_bw_min: 0,
+    add_bw_min: -1,
     add_bw_max: 0,
     add_bw_step: 10,
     active: true,
@@ -1341,18 +1376,43 @@ const bulkRemovePackages = () => {
 };
 
 const openImage = (record) => {
-  if (record) Object.assign(imageForm, record);
+  if (record) {
+    Object.assign(imageForm, {
+      id: record.id ?? null,
+      image_id: Number(record.image_id ?? 0) || null,
+      name: record.name ?? "",
+      type: String(record.type || "").toLowerCase() || "linux",
+      enabled: !!record.enabled
+    });
+  }
   else resetImage();
   imageOpen.value = true;
 };
 
-const resetImage = () => Object.assign(imageForm, { id: null, image_id: "", name: "", type: "", enabled: true });
+const resetImage = () => Object.assign(imageForm, { id: null, image_id: null, name: "", type: "linux", enabled: true });
 
 const submitImage = async () => {
+  const imageID = Number(imageForm.image_id || 0);
+  if (!Number.isInteger(imageID) || imageID <= 0) {
+    message.error("镜像 ID 必须是正整数");
+    return;
+  }
+  const imageType = String(imageForm.type || "").trim().toLowerCase();
+  if (!["linux", "windows"].includes(imageType)) {
+    message.error("请选择镜像类型");
+    return;
+  }
+  const payload = {
+    id: imageForm.id,
+    image_id: imageID,
+    name: String(imageForm.name || "").trim(),
+    type: imageType,
+    enabled: !!imageForm.enabled
+  };
   if (imageForm.id) {
-    await updateSystemImage(imageForm.id, imageForm);
+    await updateSystemImage(imageForm.id, payload);
   } else {
-    await createSystemImage(imageForm);
+    await createSystemImage(payload);
   }
   message.success("已保存镜像");
   imageOpen.value = false;

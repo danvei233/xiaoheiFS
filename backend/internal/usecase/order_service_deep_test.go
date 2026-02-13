@@ -53,6 +53,36 @@ func TestOrderService_CreateOrderFromItemsInvalidBillingCycle(t *testing.T) {
 	}
 }
 
+func TestOrderService_CreateOrderFromCartValidatesAddonLimit(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "cartlimit", "cartlimit@example.com", "pass")
+
+	plan, err := repo.GetPlanGroup(context.Background(), seed.PlanGroup.ID)
+	if err != nil {
+		t.Fatalf("get plan: %v", err)
+	}
+	plan.AddCoreMax = 1
+	if err := repo.UpdatePlanGroup(context.Background(), plan); err != nil {
+		t.Fatalf("update plan: %v", err)
+	}
+	if err := repo.AddCartItem(context.Background(), &domain.CartItem{
+		UserID:    user.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		SpecJSON:  `{"add_cores":2}`,
+		Qty:       1,
+		Amount:    100,
+	}); err != nil {
+		t.Fatalf("add cart: %v", err)
+	}
+
+	svc := usecase.NewOrderService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	if _, _, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", ""); err != usecase.ErrInvalidInput {
+		t.Fatalf("expected invalid input, got %v", err)
+	}
+}
+
 func TestOrderService_SubmitPaymentConflicts(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	user := testutil.CreateUser(t, repo, "paybad", "paybad@example.com", "pass")
@@ -235,7 +265,7 @@ func TestOrderService_CreateResizeOrder_NegativeAmountAutoApproves(t *testing.T)
 		Name:              "lower-plan",
 		Cores:             1,
 		MemoryGB:          1,
-		DiskGB:            10,
+		DiskGB:            seed.Package.DiskGB,
 		BandwidthMB:       10,
 		PortNum:           1,
 		Monthly:           1,

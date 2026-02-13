@@ -20,6 +20,7 @@ use app\common\model\FirewallVps;
 use app\common\model\ForwardPortVps;
 use app\common\model\ServersIpv4Nat;
 use app\common\model\ServersIpv4Private;
+use app\common\util\BaseConst;
 
 /**
  * 首页接口
@@ -527,15 +528,54 @@ if ($search !== '') {
         $list = $snapshotHostModel->where(['host_id'=>$host_id])->select();//
         $data = [];
         foreach ($list as $k=>$v){
-            $data[] = ['id'=>$v['id'],'virtuals_id'=>$v['host_id'],'name'=>$v['name'],'created_at'=>$v['create_time']];
+            $data[] = [
+                'id'=>$v['id'],
+                'virtuals_id'=>$v['host_id'],
+                'name'=>$v['name'],
+                'state'=>(int)$v['state'],
+                'created_at'=>$v['create_time']
+            ];
         }
         $this->success_qz('succ',$data);
+    }
+
+    /**
+     * 快照/备份任务触发后，主动短轮询真实状态并回写主机状态。
+     * 说明：底层任务异步执行，这里做有限次数轮询，尽量在操作后及时同步状态。
+     */
+    protected function syncHostStateAfterSnapshotOrBackup($host_id, $retry = 8, $sleepSeconds = 1){
+        $hostModel = new HostVps();
+        $host = $hostModel->where(['id' => $host_id])->find();
+        if (empty($host)) {
+            return;
+        }
+
+        // 仅对可实时采集的运行/关机场景执行同步
+        if (!in_array((int)$host->state, [2, 3], true)) {
+            return;
+        }
+
+        $logic = new \app\common\service\Ecs();
+        for ($i = 0; $i < $retry; $i++) {
+            $result = $logic->getStateHost(['hostid' => $host_id]);
+            if (isset($result['code']) && (int)$result['code'] === 200 && isset($result['data']['state'])) {
+                $isRunning = strtolower((string)$result['data']['state']) === 'running';
+                $targetState = $isRunning ? 2 : 3;
+                $hostModel->where(['id' => $host_id])->update([
+                    'state' => $targetState,
+                    'update_time' => date('Y-m-d H:i:s'),
+                ]);
+                return;
+            }
+            sleep($sleepSeconds);
+        }
     }
 
     public function backups_add($host_id){
         $post = $this->request->param();
         $data = Ecs::createBackupHost(['hostid'=>$host_id]);
         if($data['code']==200){
+            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -547,6 +587,7 @@ if ($search !== '') {
         $backupVps = $backupVpsModel->find($id);
         $data = Ecs::removeBackupHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
+            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -558,6 +599,7 @@ if ($search !== '') {
         $backupVps = $backupVpsModel->find($id);
         $data = Ecs::restoreBackupHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
+            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -569,19 +611,20 @@ if ($search !== '') {
         $list = $backupVpsModel->where(['host_id'=>$host_id])->select();//
         $data = [];
         foreach ($list as $k=>$v){
-            $data[] = ['id'=>$v['id'],'virtuals_id'=>$v['host_id'],'name'=>$v['name'],'created_at'=>$v['create_time']];
+            $data[] = [
+                'id'=>$v['id'],
+                'virtuals_id'=>$v['host_id'],
+                'name'=>$v['name'],
+                'state'=>(int)$v['state'],
+                'created_at'=>$v['create_time']
+            ];
         }
         $this->success_qz('succ',$data);
     }
 
     public function mirror_image(){
         $image_model = new ServersImageConfig();
-        $line_id = (int)$this->request->param('line_id', 0);
-        if ($line_id > 0) {
-            $list = $image_model->where(['line_id' => $line_id])->select();
-        } else {
-            $list = $image_model->select();
-        }
+        $list = $image_model->select();
         $data = [];
         foreach ($list as $k=>$v){
             $data[] = [
@@ -648,6 +691,31 @@ if ($search !== '') {
         }
     }
 
+    //云主机实时运行状态
+    public function state_host($host_id){
+        $logic = new \app\common\service\Ecs();
+        $host = (new HostVps())->where(['id'=>$host_id])->find();
+        if(empty($host)){
+            $this->error_qz('云主机不存在');
+        }
+
+        if(!in_array((int)$host->state,[2,3],true)){
+            $label = isset(BaseConst::HOST_STATE[$host->state]) ? BaseConst::HOST_STATE[$host->state] : '';
+            $this->success_qz('succ',[(int)$host->state,$label]);
+        }
+
+        $data = $logic->getStateHost(['hostid'=>$host_id]);
+        if($data['code']!=200){
+            $msg = isset($data['msg']) ? $data['msg'] : '采集状态失败';
+            $this->error_qz($msg);
+        }
+
+        $isRunning = strtolower((string)$data['data']['state'])=='running';
+        $state = $isRunning?2:3;
+        $label = isset(BaseConst::HOST_STATE[$state]) ? BaseConst::HOST_STATE[$state] : '';
+        $this->success_qz('succ',[$state,$label]);
+    }
+
     public function reset_os($host_id,$template_id,$password){
         try{
             $hostModel = new HostVps();
@@ -678,6 +746,7 @@ if ($search !== '') {
     public function snapshot_add($host_id){
         $data = Ecs::createSnapshotHost(['hostid'=>$host_id]);
         if($data['code']==200){
+            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -689,6 +758,7 @@ if ($search !== '') {
         $snapshot = $snapshotHostModel->find($id);
         $data = Ecs::removeSnapshotHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
+            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -700,6 +770,7 @@ if ($search !== '') {
         $snapshot = $snapshotHostModel->find($id);
         $data = Ecs::restoreSnapshotHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
+            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -708,6 +779,68 @@ if ($search !== '') {
 
     public function security_acl_add(){
         $post = $this->request->param();
+
+        if(empty($post['hostid'])&&!empty($post['host_id'])){
+            $post['hostid'] = $post['host_id'];
+        }
+        if(!isset($post['port'])&&isset($post['start_port'])){
+            $post['port'] = $post['start_port'];
+        }
+        if(!isset($post['ip'])&&isset($post['start_ip'])){
+            $post['ip'] = $post['start_ip'];
+        }
+
+        if(!isset($post['direction'])&&isset($post['orientation'])){
+            $post['direction'] = $post['orientation'];
+        }
+        if(isset($post['direction'])){
+            $direction = strtolower((string)$post['direction']);
+            if(in_array($direction,['1','in','ingress'],true)){
+                $post['direction'] = 'in';
+            }elseif(in_array($direction,['2','out','egress'],true)){
+                $post['direction'] = 'out';
+            }
+        }
+
+        if(isset($post['protocol'])){
+            $protocol = strtoupper((string)$post['protocol']);
+            $post['protocol'] = in_array($protocol,['TCP','UDP','ICMP','ANY','ALL'],true) ? $protocol : 'ANY';
+            if($post['protocol']=='ALL'){
+                $post['protocol'] = 'ANY';
+            }
+        }else{
+            $post['protocol'] = 'ANY';
+        }
+
+        if(isset($post['method'])){
+            $method = strtolower((string)$post['method']);
+            if(in_array($method,['accept','allow'],true)){
+                $post['method'] = 'accept';
+            }elseif(in_array($method,['drop','deny','reject'],true)){
+                $post['method'] = 'drop';
+            }
+        }elseif(isset($post['tactics'])){
+            $post['method'] = ((string)$post['tactics']==='1') ? 'drop' : 'accept';
+        }else{
+            $post['method'] = 'accept';
+        }
+
+        if(!isset($post['port'])||$post['port']===''){
+            $post['port'] = -1;
+        }
+        if(!isset($post['ip'])||$post['ip']===''){
+            $post['ip'] = '0.0.0.0';
+        }
+
+        // 防止底层 Hyper-V 解析空字符串时报“输入字符串的格式不正确”
+        if(!isset($post['priority'])||$post['priority']===''){
+            $post['priority'] = 100;
+        }
+
+        if(empty($post['hostid'])||empty($post['direction'])||empty($post['method'])){
+            $this->error_qz('参数不完整，至少需要 hostid/host_id, direction, method');
+        }
+
         $data = Ecs::add_firewall_host($post);
         if($data['code']==200){
             $this->success_qz('succ',$data);

@@ -5,6 +5,7 @@
         <div class="page-title">VPS 管理</div>
         <div class="subtle">管理实例状态与生命周期</div>
       </div>
+      <a-button type="primary" @click="openCreateRecord">一键添加记录</a-button>
     </div>
 
     <FilterBar
@@ -51,6 +52,89 @@
         </template>
       </template>
     </ProTable>
+
+    <a-modal v-model:open="createOpen" title="一键添加记录" width="720px" @ok="submitCreateRecord" :confirm-loading="createLoading">
+      <a-form layout="vertical">
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="用户" required>
+              <a-select
+                v-model:value="createForm.user_id"
+                placeholder="选择用户"
+                show-search
+                option-filter-prop="label"
+              >
+                <a-select-option
+                  v-for="item in createUsers"
+                  :key="item.id"
+                  :value="item.id"
+                  :label="`${item.username || '用户'} (#${item.id}) ${item.email || ''}`"
+                >
+                  {{ item.username || `用户#${item.id}` }} (ID: {{ item.id }}) <span v-if="item.email">- {{ item.email }}</span>
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="机器名" required>
+              <a-input v-model:value="createForm.name" placeholder="必须与自动化系统机器名一致" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="商品类型" required>
+              <a-select v-model:value="createForm.goods_type_id" placeholder="选择商品类型" @change="onCreateGoodsTypeChange">
+                <a-select-option v-for="item in createGoodsTypes" :key="item.id" :value="item.id">
+                  {{ item.name || item.code || item.id }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="地区" required>
+              <a-select v-model:value="createForm.region_id" placeholder="选择地区" @change="onCreateRegionChange">
+                <a-select-option v-for="item in createRegions" :key="item.id" :value="item.id">
+                  {{ item.name || item.code || item.id }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="线路" required>
+              <a-select v-model:value="createForm.line_id" placeholder="选择线路" @change="onCreateLineChange">
+                <a-select-option v-for="item in createLines" :key="item.id" :value="item.id">
+                  {{ item.name || item.id }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="套餐" required>
+              <a-select v-model:value="createForm.package_id" placeholder="选择套餐" @change="onCreatePackageChange">
+                <a-select-option v-for="item in createPackages" :key="item.id" :value="item.id">
+                  {{ item.name || item.id }}
+                </a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="价格(月费)" required>
+              <a-input-number v-model:value="createForm.monthly_price" :min="0" :precision="2" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="到期时间" required>
+              <a-date-picker v-model:value="createForm.expire_at" show-time style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </a-form>
+    </a-modal>
 
     <a-modal v-model:open="statusOpen" title="设置实例状态" @ok="submitStatus">
       <a-form layout="vertical">
@@ -232,6 +316,12 @@ import StatusTag from "@/components/StatusTag.vue";
 import VpsStatusTag from "@/components/VpsStatusTag.vue";
 import {
   listAdminVps,
+  createAdminVps,
+  listAdminUsers,
+  listGoodsTypes,
+  listRegions,
+  listPlanGroups,
+  listPackages,
   lockAdminVps,
   unlockAdminVps,
   deleteAdminVps,
@@ -261,6 +351,24 @@ const statusTabs = [
 const loading = ref(false);
 const dataSource = ref([]);
 const pagination = reactive({ current: 1, pageSize: 20, total: 0, showSizeChanger: true });
+
+const createOpen = ref(false);
+const createLoading = ref(false);
+const createUsers = ref([]);
+const createGoodsTypes = ref([]);
+const createRegions = ref([]);
+const createLines = ref([]);
+const createPackages = ref([]);
+const createForm = reactive({
+  user_id: null,
+  name: "",
+  goods_type_id: null,
+  region_id: null,
+  line_id: null,
+  package_id: null,
+  monthly_price: 0,
+  expire_at: null
+});
 
 const statusOpen = ref(false);
 const renewOpen = ref(false);
@@ -304,6 +412,46 @@ const columns = [
   { title: "操作", key: "action" }
 ];
 
+const readItems = (res) => {
+  const data = res?.data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(res?.items)) return res.items;
+  return [];
+};
+
+const normalizeGoodsType = (row) => ({
+  id: Number(row?.id ?? row?.ID ?? 0) || 0,
+  name: row?.name ?? row?.Name ?? "",
+  code: row?.code ?? row?.Code ?? ""
+});
+
+const normalizeRegion = (row) => ({
+  id: Number(row?.id ?? row?.ID ?? 0) || 0,
+  goods_type_id: Number(row?.goods_type_id ?? row?.GoodsTypeID ?? 0) || 0,
+  name: row?.name ?? row?.Name ?? "",
+  code: row?.code ?? row?.Code ?? ""
+});
+
+const normalizeLine = (row) => ({
+  id: Number(row?.id ?? row?.ID ?? 0) || 0,
+  region_id: Number(row?.region_id ?? row?.RegionID ?? 0) || 0,
+  name: row?.name ?? row?.Name ?? ""
+});
+
+const normalizePackage = (row) => ({
+  id: Number(row?.id ?? row?.ID ?? 0) || 0,
+  plan_group_id: Number(row?.plan_group_id ?? row?.PlanGroupID ?? 0) || 0,
+  name: row?.name ?? row?.Name ?? "",
+  monthly_price: row?.monthly_price ?? row?.MonthlyPrice ?? 0
+});
+
+const normalizeUser = (row) => ({
+  id: Number(row?.id ?? row?.ID ?? 0) || 0,
+  username: row?.username ?? row?.Username ?? "",
+  email: row?.email ?? row?.Email ?? ""
+});
+
 const statusFromAutomation = (state) => {
   switch (Number(state)) {
     case 1:
@@ -328,13 +476,27 @@ const statusFromAutomation = (state) => {
   }
 };
 
+const isExpired = (row) => {
+  const expireAt = row?.expire_at ?? row?.ExpireAt;
+  if (!expireAt) return false;
+  const expire = new Date(expireAt).getTime();
+  if (Number.isNaN(expire)) return false;
+  return expire <= Date.now();
+};
+
+const shouldShowExpiredLocked = (row, status) => {
+  if (!isExpired(row)) return false;
+  return status === "locked" || status === "expired_locked";
+};
+
 const normalize = (row) => {
   const rawStatus = row.status ?? row.Status ?? "";
   const rawAutomationState = row.automation_state ?? row.AutomationState ?? null;
-  const resolvedStatus =
+  const baseStatus =
     rawAutomationState !== null && rawAutomationState !== undefined
       ? statusFromAutomation(rawAutomationState)
       : rawStatus;
+  const resolvedStatus = shouldShowExpiredLocked(row, baseStatus) ? "expired_locked" : baseStatus;
   return {
     id: row.id ?? row.ID,
     user_id: row.user_id ?? row.UserID,
@@ -358,6 +520,44 @@ const normalize = (row) => {
   };
 };
 
+const loadCreateUsers = async () => {
+  const res = await listAdminUsers({ limit: 200, offset: 0 });
+  createUsers.value = readItems(res).map(normalizeUser).filter((u) => u.id > 0);
+};
+
+const loadCreateGoodsTypes = async () => {
+  const res = await listGoodsTypes();
+  createGoodsTypes.value = readItems(res).map(normalizeGoodsType).filter((item) => item.id > 0);
+};
+
+const loadCreateRegions = async (goodsTypeId) => {
+  if (!goodsTypeId) {
+    createRegions.value = [];
+    return;
+  }
+  const res = await listRegions({ goods_type_id: goodsTypeId });
+  createRegions.value = readItems(res).map(normalizeRegion).filter((item) => item.id > 0);
+};
+
+const loadCreateLines = async (goodsTypeId, regionId) => {
+  if (!goodsTypeId) {
+    createLines.value = [];
+    return;
+  }
+  const res = await listPlanGroups({ goods_type_id: goodsTypeId });
+  const items = readItems(res).map(normalizeLine).filter((item) => item.id > 0);
+  createLines.value = regionId ? items.filter((it) => Number(it.region_id) === Number(regionId)) : items;
+};
+
+const loadCreatePackages = async (goodsTypeId, lineId) => {
+  if (!goodsTypeId || !lineId) {
+    createPackages.value = [];
+    return;
+  }
+  const res = await listPackages({ goods_type_id: goodsTypeId, plan_group_id: lineId });
+  createPackages.value = readItems(res).map(normalizePackage).filter((item) => item.id > 0);
+};
+
 const fetchData = async () => {
   loading.value = true;
   try {
@@ -374,6 +574,83 @@ const fetchData = async () => {
     pagination.total = payload.total || dataSource.value.length;
   } finally {
     loading.value = false;
+  }
+};
+
+const openCreateRecord = async () => {
+  createForm.user_id = null;
+  createForm.name = "";
+  createForm.goods_type_id = null;
+  createForm.region_id = null;
+  createForm.line_id = null;
+  createForm.package_id = null;
+  createForm.monthly_price = 0;
+  createForm.expire_at = null;
+  createRegions.value = [];
+  createLines.value = [];
+  createPackages.value = [];
+  await Promise.all([loadCreateUsers(), loadCreateGoodsTypes()]);
+  createOpen.value = true;
+};
+
+const onCreateGoodsTypeChange = async () => {
+  createForm.region_id = null;
+  createForm.line_id = null;
+  createForm.package_id = null;
+  createForm.monthly_price = 0;
+  createLines.value = [];
+  createPackages.value = [];
+  await loadCreateRegions(createForm.goods_type_id);
+  await loadCreateLines(createForm.goods_type_id, null);
+};
+
+const onCreateRegionChange = async () => {
+  createForm.line_id = null;
+  createForm.package_id = null;
+  createForm.monthly_price = 0;
+  createPackages.value = [];
+  await loadCreateLines(createForm.goods_type_id, createForm.region_id);
+};
+
+const onCreateLineChange = async () => {
+  createForm.package_id = null;
+  createForm.monthly_price = 0;
+  await loadCreatePackages(createForm.goods_type_id, createForm.line_id);
+};
+
+const onCreatePackageChange = () => {
+  const selected = createPackages.value.find((it) => Number(it.id) === Number(createForm.package_id));
+  if (selected && selected.monthly_price !== undefined && selected.monthly_price !== null) {
+    createForm.monthly_price = Number(selected.monthly_price || 0);
+  }
+};
+
+const submitCreateRecord = async () => {
+  if (!createForm.user_id || !createForm.name || !createForm.goods_type_id || !createForm.region_id || !createForm.line_id || !createForm.package_id || !createForm.expire_at) {
+    message.error("请完整填写必填项");
+    return;
+  }
+  const expireAt = createForm.expire_at?.toISOString ? createForm.expire_at.toISOString() : createForm.expire_at;
+  createLoading.value = true;
+  try {
+    await createAdminVps({
+      user_id: createForm.user_id,
+      name: createForm.name,
+      goods_type_id: createForm.goods_type_id,
+      region_id: createForm.region_id,
+      line_id: createForm.line_id,
+      package_id: createForm.package_id,
+      monthly_price: createForm.monthly_price,
+      expire_at: expireAt,
+      provision: false
+    });
+    createOpen.value = false;
+    message.success("记录添加成功");
+    fetchData();
+  } catch (error) {
+    message.error(error?.response?.data?.error || "添加记录失败");
+  } finally {
+    createLoading.value = false;
   }
 };
 

@@ -28,11 +28,9 @@
 
         <a-form-item label="限制的操作">
           <a-checkbox-group v-model:value="form.block_actions">
-            <a-checkbox value="create_order">创建订单</a-checkbox>
+            <a-checkbox value="purchase_vps">购买VPS</a-checkbox>
             <a-checkbox value="renew_vps">续费VPS</a-checkbox>
             <a-checkbox value="resize_vps">扩容VPS</a-checkbox>
-            <a-checkbox value="wallet_recharge">钱包充值</a-checkbox>
-            <a-checkbox value="wallet_withdraw">钱包提现</a-checkbox>
           </a-checkbox-group>
           <div class="form-tip">选择需要实名认证后才能进行的操作</div>
         </a-form-item>

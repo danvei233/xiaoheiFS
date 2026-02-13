@@ -1,0 +1,16 @@
+[Unit]
+Description=Pingbot Probe Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/pingbot
+ExecStart=/opt/pingbot/pingbot -config /etc/pingbot/config.yaml
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

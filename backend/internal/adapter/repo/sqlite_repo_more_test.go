@@ -147,7 +147,7 @@ func TestSQLiteRepo_RenewOrderAndInstances(t *testing.T) {
 	ctx := context.Background()
 
 	user := testutil.CreateUser(t, repo, "renew", "renew@example.com", "pass")
-	order := domain.Order{UserID: user.ID, OrderNo: "ORD-R1", Status: domain.OrderStatusPendingPayment, TotalAmount: 1000, Currency: "CNY"}
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-R1", Status: domain.OrderStatusPendingReview, TotalAmount: 1000, Currency: "CNY"}
 	if err := repo.CreateOrder(ctx, &order); err != nil {
 		t.Fatalf("create order: %v", err)
 	}
@@ -166,6 +166,23 @@ func TestSQLiteRepo_RenewOrderAndInstances(t *testing.T) {
 	}
 	if ok, err := repo.HasPendingRenewOrder(ctx, user.ID, 999); err != nil || ok {
 		t.Fatalf("pending renew other: %v %v", err, ok)
+	}
+	order2 := domain.Order{UserID: user.ID, OrderNo: "ORD-R2", Status: domain.OrderStatusProvisioning, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(ctx, &order2); err != nil {
+		t.Fatalf("create order2: %v", err)
+	}
+	item2 := domain.OrderItem{
+		OrderID:  order2.ID,
+		Amount:   1000,
+		Status:   domain.OrderItemStatusProvisioning,
+		Action:   "resize",
+		SpecJSON: `{"vps_id":123}`,
+	}
+	if err := repo.CreateOrderItems(ctx, []domain.OrderItem{item2}); err != nil {
+		t.Fatalf("create item2: %v", err)
+	}
+	if ok, err := repo.HasPendingRenewOrder(ctx, user.ID, 123); err != nil || !ok {
+		t.Fatalf("pending renew conflict with resize: %v %v", err, ok)
 	}
 
 	itemsList, err := repo.ListOrderItems(ctx, order.ID)

@@ -57,6 +57,9 @@ func calculateRefundAmountForAmount(inst domain.VPSInstance, amount int64, polic
 		return 0
 	}
 	now := time.Now()
+	if inst.ExpireAt != nil && !inst.ExpireAt.After(now) {
+		return 0
+	}
 	elapsedRatio := refundElapsedRatio(inst, now)
 	if len(policy.Curve) > 0 {
 		if ratio, ok := RefundCurveRatio(policy.Curve, elapsedRatio*100); ok {

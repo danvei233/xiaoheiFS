@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -248,6 +249,7 @@ func (c *PluginInstanceClient) call(ctx context.Context, action string, req prot
 	start := time.Now()
 	resp, err := fn(cctx, cli)
 	err = mapUnimplemented(err)
+	err = mapRPCBusinessError(err)
 	c.logRPC(ctx, action, req, resp, time.Since(start), err)
 	return resp, err
 }
@@ -268,6 +270,81 @@ func mapUnimplemented(err error) error {
 		return fmt.Errorf("%w: %s", usecase.ErrNotSupported, msg)
 	}
 	return err
+}
+
+func mapRPCBusinessError(err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := extractRPCErrorMessage(err.Error())
+	if strings.TrimSpace(msg) == "" || msg == err.Error() {
+		return err
+	}
+	return errors.New(msg)
+}
+
+func extractRPCErrorMessage(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	if parsed := parseRPCErrorJSON(trimmed); parsed != "" {
+		return parsed
+	}
+	if idx := strings.Index(trimmed, "{"); idx >= 0 {
+		if parsed := parseRPCErrorJSON(trimmed[idx:]); parsed != "" {
+			return parsed
+		}
+	}
+	re := regexp.MustCompile(`msg":"([^"]+)"`)
+	matches := re.FindStringSubmatch(trimmed)
+	if len(matches) == 2 && strings.TrimSpace(matches[1]) != "" {
+		return matches[1]
+	}
+	return ""
+}
+
+func parseRPCErrorJSON(raw string) string {
+	var obj map[string]any
+	if json.Unmarshal([]byte(raw), &obj) != nil {
+		return ""
+	}
+	for _, key := range []string{"msg", "message", "error"} {
+		if v, ok := obj[key]; ok {
+			msg := strings.TrimSpace(fmt.Sprint(v))
+			if msg != "" && msg != "<nil>" {
+				return msg
+			}
+		}
+	}
+	if other, ok := obj["other"].(map[string]any); ok {
+		if v, ok := other["msg"]; ok {
+			msg := strings.TrimSpace(fmt.Sprint(v))
+			if msg != "" && msg != "<nil>" {
+				return msg
+			}
+		}
+	}
+	return ""
+}
+
+func ensureOpOK(resp proto.Message) error {
+	empty, ok := resp.(*pluginv1.Empty)
+	if !ok || empty == nil {
+		return nil
+	}
+	status := strings.ToLower(strings.TrimSpace(empty.GetStatus()))
+	if status == "" || status == "ok" || status == "success" || status == "succeeded" || status == "1" || status == "200" {
+		return nil
+	}
+	msg := strings.TrimSpace(empty.GetMsg())
+	if msg == "" {
+		msg = "operation failed"
+	}
+	if other := strings.TrimSpace(empty.GetOther()); other != "" {
+		return fmt.Errorf("%s (%s)", msg, other)
+	}
+	return errors.New(msg)
 }
 
 func (c *PluginInstanceClient) CreateHost(ctx context.Context, req usecase.AutomationCreateHostRequest) (usecase.AutomationCreateHostResult, error) {
@@ -358,84 +435,114 @@ func (c *PluginInstanceClient) ElasticUpdate(ctx context.Context, req usecase.Au
 	if req.PortNum != nil {
 		pb.PortNum = ptrInt32(int32(*req.PortNum))
 	}
-	_, err := c.call(ctx, "automation.ElasticUpdate", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.ElasticUpdate", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ElasticUpdate(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func ptrInt32(v int32) *int32 { return &v }
 
 func (c *PluginInstanceClient) RenewHost(ctx context.Context, hostID int64, nextDueDate time.Time) error {
 	pb := &pluginv1.RenewRequest{InstanceId: hostID, NextDueAtUnix: nextDueDate.Unix()}
-	_, err := c.call(ctx, "automation.Renew", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Renew", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Renew(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) LockHost(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.LockRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.Lock", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Lock", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Lock(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) UnlockHost(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.UnlockRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.Unlock", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Unlock", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Unlock(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) DeleteHost(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.DestroyRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.Destroy", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Destroy", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Destroy(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) StartHost(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.StartRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.Start", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Start", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Start(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) ShutdownHost(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.ShutdownRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.Shutdown", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Shutdown", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Shutdown(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) RebootHost(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.RebootRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.Reboot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Reboot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Reboot(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) ResetOS(ctx context.Context, hostID int64, templateID int64, password string) error {
 	pb := &pluginv1.RebuildRequest{InstanceId: hostID, ImageId: templateID, Password: password}
-	_, err := c.call(ctx, "automation.Rebuild", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.Rebuild", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.Rebuild(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) ResetOSPassword(ctx context.Context, hostID int64, password string) error {
 	pb := &pluginv1.ResetPasswordRequest{InstanceId: hostID, Password: password}
-	_, err := c.call(ctx, "automation.ResetPassword", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.ResetPassword", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ResetPassword(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) ([]usecase.AutomationSnapshot, error) {
@@ -454,6 +561,7 @@ func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) 
 			"name":            it.GetName(),
 			"created_at_unix": it.GetCreatedAtUnix(),
 			"created_at":      time.Unix(it.GetCreatedAtUnix(), 0).Format(time.RFC3339),
+			"state":           int(it.GetState()),
 		})
 	}
 	return out, nil
@@ -461,26 +569,35 @@ func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) 
 
 func (c *PluginInstanceClient) CreateSnapshot(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.CreateSnapshotRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.CreateSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.CreateSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.CreateSnapshot(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
 	pb := &pluginv1.DeleteSnapshotRequest{InstanceId: hostID, SnapshotId: snapshotID}
-	_, err := c.call(ctx, "automation.DeleteSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.DeleteSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.DeleteSnapshot(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) RestoreSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
 	pb := &pluginv1.RestoreSnapshotRequest{InstanceId: hostID, SnapshotId: snapshotID}
-	_, err := c.call(ctx, "automation.RestoreSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.RestoreSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.RestoreSnapshot(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([]usecase.AutomationBackup, error) {
@@ -499,6 +616,7 @@ func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([
 			"name":            it.GetName(),
 			"created_at_unix": it.GetCreatedAtUnix(),
 			"created_at":      time.Unix(it.GetCreatedAtUnix(), 0).Format(time.RFC3339),
+			"state":           int(it.GetState()),
 		})
 	}
 	return out, nil
@@ -506,26 +624,35 @@ func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([
 
 func (c *PluginInstanceClient) CreateBackup(ctx context.Context, hostID int64) error {
 	pb := &pluginv1.CreateBackupRequest{InstanceId: hostID}
-	_, err := c.call(ctx, "automation.CreateBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.CreateBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.CreateBackup(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) DeleteBackup(ctx context.Context, hostID int64, backupID int64) error {
 	pb := &pluginv1.DeleteBackupRequest{InstanceId: hostID, BackupId: backupID}
-	_, err := c.call(ctx, "automation.DeleteBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.DeleteBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.DeleteBackup(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) RestoreBackup(ctx context.Context, hostID int64, backupID int64) error {
 	pb := &pluginv1.RestoreBackupRequest{InstanceId: hostID, BackupId: backupID}
-	_, err := c.call(ctx, "automation.RestoreBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.RestoreBackup", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.RestoreBackup(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int64) ([]usecase.AutomationFirewallRule, error) {
@@ -546,6 +673,7 @@ func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int
 			"method":    it.GetMethod(),
 			"port":      it.GetPort(),
 			"ip":        it.GetIp(),
+			"priority":  int(it.GetPriority()),
 		})
 	}
 	return out, nil
@@ -559,19 +687,26 @@ func (c *PluginInstanceClient) AddFirewallRule(ctx context.Context, req usecase.
 		Method:     req.Method,
 		Port:       req.Port,
 		Ip:         req.IP,
+		Priority:   int32(req.Priority),
 	}
-	_, err := c.call(ctx, "automation.AddFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.AddFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.AddFirewallRule(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) DeleteFirewallRule(ctx context.Context, hostID int64, ruleID int64) error {
 	pb := &pluginv1.DeleteFirewallRuleRequest{InstanceId: hostID, RuleId: ruleID}
-	_, err := c.call(ctx, "automation.DeleteFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.DeleteFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.DeleteFirewallRule(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) ListPortMappings(ctx context.Context, hostID int64) ([]usecase.AutomationPortMapping, error) {
@@ -602,18 +737,24 @@ func (c *PluginInstanceClient) AddPortMapping(ctx context.Context, req usecase.A
 		Sport:      req.Sport,
 		Dport:      req.Dport,
 	}
-	_, err := c.call(ctx, "automation.AddPortMapping", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.AddPortMapping", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.AddPortMapping(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) DeletePortMapping(ctx context.Context, hostID int64, mappingID int64) error {
 	pb := &pluginv1.DeletePortMappingRequest{InstanceId: hostID, MappingId: mappingID}
-	_, err := c.call(ctx, "automation.DeletePortMapping", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+	respAny, err := c.call(ctx, "automation.DeletePortMapping", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.DeletePortMapping(cctx, pb)
 	})
-	return err
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
 }
 
 func (c *PluginInstanceClient) FindPortCandidates(ctx context.Context, hostID int64, keywords string) ([]int64, error) {

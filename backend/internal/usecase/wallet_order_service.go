@@ -55,13 +55,17 @@ func (s *WalletOrderService) CreateRefundOrder(ctx context.Context, userID int64
 	if userID == 0 || amount <= 0 {
 		return domain.WalletOrder{}, ErrInvalidInput
 	}
+	trimmedNote, err := trimAndValidateOptional(note, maxLenRefundReason)
+	if err != nil {
+		return domain.WalletOrder{}, ErrInvalidInput
+	}
 	order := domain.WalletOrder{
 		UserID:   userID,
 		Type:     domain.WalletOrderRefund,
 		Amount:   amount,
 		Currency: "CNY",
 		Status:   domain.WalletOrderPendingReview,
-		Note:     strings.TrimSpace(note),
+		Note:     trimmedNote,
 		MetaJSON: toJSON(meta),
 	}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
@@ -74,6 +78,10 @@ func (s *WalletOrderService) CreateRecharge(ctx context.Context, userID int64, i
 	if userID == 0 || input.Amount <= 0 {
 		return domain.WalletOrder{}, ErrInvalidInput
 	}
+	trimmedNote, err := trimAndValidateOptional(input.Note, maxLenPaymentNote)
+	if err != nil {
+		return domain.WalletOrder{}, ErrInvalidInput
+	}
 	currency := strings.TrimSpace(input.Currency)
 	if currency == "" {
 		currency = "CNY"
@@ -84,7 +92,7 @@ func (s *WalletOrderService) CreateRecharge(ctx context.Context, userID int64, i
 		Amount:   input.Amount,
 		Currency: currency,
 		Status:   domain.WalletOrderPendingReview,
-		Note:     strings.TrimSpace(input.Note),
+		Note:     trimmedNote,
 		MetaJSON: toJSON(input.Meta),
 	}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
@@ -95,6 +103,10 @@ func (s *WalletOrderService) CreateRecharge(ctx context.Context, userID int64, i
 
 func (s *WalletOrderService) CreateWithdraw(ctx context.Context, userID int64, input WalletOrderCreateInput) (domain.WalletOrder, error) {
 	if userID == 0 || input.Amount <= 0 {
+		return domain.WalletOrder{}, ErrInvalidInput
+	}
+	trimmedNote, err := trimAndValidateOptional(input.Note, maxLenPaymentNote)
+	if err != nil {
 		return domain.WalletOrder{}, ErrInvalidInput
 	}
 	if s.wallets == nil {
@@ -117,7 +129,7 @@ func (s *WalletOrderService) CreateWithdraw(ctx context.Context, userID int64, i
 		Amount:   input.Amount,
 		Currency: currency,
 		Status:   domain.WalletOrderPendingReview,
-		Note:     strings.TrimSpace(input.Note),
+		Note:     trimmedNote,
 		MetaJSON: toJSON(input.Meta),
 	}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
@@ -136,6 +148,10 @@ func (s *WalletOrderService) ListAllOrders(ctx context.Context, status string, l
 
 func (s *WalletOrderService) RequestRefund(ctx context.Context, userID int64, vpsID int64, reason string) (domain.WalletOrder, *domain.Wallet, error) {
 	if userID == 0 || vpsID == 0 {
+		return domain.WalletOrder{}, nil, ErrInvalidInput
+	}
+	reason, err := trimAndValidateRequired(reason, maxLenRefundReason)
+	if err != nil {
 		return domain.WalletOrder{}, nil, ErrInvalidInput
 	}
 	if s.vps == nil || s.orderItems == nil {
@@ -161,7 +177,7 @@ func (s *WalletOrderService) RequestRefund(ctx context.Context, userID int64, vp
 		"vps_id":            inst.ID,
 		"order_item_id":     item.ID,
 		"refund_policy":     policy,
-		"reason":            strings.TrimSpace(reason),
+		"reason":            reason,
 		"delete_on_approve": true,
 	}
 	status := domain.WalletOrderPendingReview
@@ -174,7 +190,7 @@ func (s *WalletOrderService) RequestRefund(ctx context.Context, userID int64, vp
 		Amount:   amount,
 		Currency: "CNY",
 		Status:   status,
-		Note:     strings.TrimSpace(reason),
+		Note:     reason,
 		MetaJSON: toJSON(meta),
 	}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
@@ -192,6 +208,10 @@ func (s *WalletOrderService) RequestRefund(ctx context.Context, userID int64, vp
 
 func (s *WalletOrderService) AutoRefundOnAdminDelete(ctx context.Context, adminID int64, vpsID int64, reason string) (domain.WalletOrder, *domain.Wallet, error) {
 	if vpsID == 0 {
+		return domain.WalletOrder{}, nil, ErrInvalidInput
+	}
+	reason, err := trimAndValidateOptional(reason, maxLenRefundReason)
+	if err != nil {
 		return domain.WalletOrder{}, nil, ErrInvalidInput
 	}
 	if s.vps == nil || s.orderItems == nil {
@@ -217,7 +237,7 @@ func (s *WalletOrderService) AutoRefundOnAdminDelete(ctx context.Context, adminI
 		"vps_id":            inst.ID,
 		"order_item_id":     item.ID,
 		"refund_policy":     policy,
-		"reason":            strings.TrimSpace(reason),
+		"reason":            reason,
 		"delete_on_approve": false,
 		"trigger":           "admin_delete",
 	}
@@ -231,7 +251,7 @@ func (s *WalletOrderService) AutoRefundOnAdminDelete(ctx context.Context, adminI
 		Amount:   amount,
 		Currency: "CNY",
 		Status:   status,
-		Note:     strings.TrimSpace(reason),
+		Note:     reason,
 		MetaJSON: toJSON(meta),
 	}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
@@ -265,6 +285,10 @@ func (s *WalletOrderService) Approve(ctx context.Context, adminID int64, orderID
 }
 
 func (s *WalletOrderService) Reject(ctx context.Context, adminID int64, orderID int64, reason string) error {
+	reason, err := trimAndValidateOptional(reason, maxLenReviewReason)
+	if err != nil {
+		return ErrInvalidInput
+	}
 	order, err := s.orders.GetWalletOrder(ctx, orderID)
 	if err != nil {
 		return err
@@ -272,7 +296,7 @@ func (s *WalletOrderService) Reject(ctx context.Context, adminID int64, orderID 
 	if order.Status != domain.WalletOrderPendingReview {
 		return ErrConflict
 	}
-	if err := s.orders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderRejected, &adminID, strings.TrimSpace(reason)); err != nil {
+	if err := s.orders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderRejected, &adminID, reason); err != nil {
 		return err
 	}
 	if s.audit != nil {

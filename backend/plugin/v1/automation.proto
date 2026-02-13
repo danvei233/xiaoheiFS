@@ -196,14 +196,24 @@ message DeletePortMappingRequest { int64 instance_id = 1; int64 mapping_id = 2; 
 message FindPortCandidatesRequest { int64 instance_id = 1; string keywords = 2; }
 message FindPortCandidatesResponse { repeated int64 ports = 1; }
 
-message AutomationBackup { int64 id = 1; string name = 2; int64 created_at_unix = 3; }
+message AutomationBackup {
+  int64 id = 1;
+  string name = 2;
+  int64 created_at_unix = 3;
+  int32 state = 4;
+}
 message ListBackupsRequest { int64 instance_id = 1; }
 message ListBackupsResponse { repeated AutomationBackup items = 1; }
 message CreateBackupRequest { int64 instance_id = 1; }
 message DeleteBackupRequest { int64 instance_id = 1; int64 backup_id = 2; }
 message RestoreBackupRequest { int64 instance_id = 1; int64 backup_id = 2; }
 
-message AutomationSnapshot { int64 id = 1; string name = 2; int64 created_at_unix = 3; }
+message AutomationSnapshot {
+  int64 id = 1;
+  string name = 2;
+  int64 created_at_unix = 3;
+  int32 state = 4;
+}
 message ListSnapshotsRequest { int64 instance_id = 1; }
 message ListSnapshotsResponse { repeated AutomationSnapshot items = 1; }
 message CreateSnapshotRequest { int64 instance_id = 1; }
@@ -217,6 +227,7 @@ message AutomationFirewallRule {
   string method = 4;
   string port = 5;
   string ip = 6;
+  int32 priority = 7;
 }
 message ListFirewallRulesRequest { int64 instance_id = 1; }
 message ListFirewallRulesResponse { repeated AutomationFirewallRule items = 1; }
@@ -227,5 +238,6 @@ message AddFirewallRuleRequest {
   string method = 4;
   string port = 5;
   string ip = 6;
+  int32 priority = 7;
 }
 message DeleteFirewallRuleRequest { int64 instance_id = 1; int64 rule_id = 2; }

@@ -13,6 +13,7 @@ const textMap = {
   running: "运行中",
   stopped: "关机",
   locked: "锁定",
+  expired_locked: "已到期",
   normal: "正常",
   abuse: "滥用",
   fraud: "欺诈",

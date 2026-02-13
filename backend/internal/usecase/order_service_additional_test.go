@@ -78,6 +78,45 @@ func TestOrderService_RetryProvisionConflict(t *testing.T) {
 	}
 }
 
+func TestOrderService_RetryProvisionFailedOrderBlockedByNewExclusiveOrder(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	user := testutil.CreateUser(t, repo, "retry2", "retry2@example.com", "pass")
+	failedOrder := domain.Order{UserID: user.ID, OrderNo: "ORD-FAILED", Status: domain.OrderStatusFailed, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &failedOrder); err != nil {
+		t.Fatalf("create failed order: %v", err)
+	}
+	failedItem := domain.OrderItem{
+		OrderID:  failedOrder.ID,
+		Amount:   1000,
+		Status:   domain.OrderItemStatusFailed,
+		Action:   "renew",
+		SpecJSON: `{"vps_id":123}`,
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{failedItem}); err != nil {
+		t.Fatalf("create failed item: %v", err)
+	}
+
+	newOrder := domain.Order{UserID: user.ID, OrderNo: "ORD-NEW", Status: domain.OrderStatusPendingReview, TotalAmount: 0, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &newOrder); err != nil {
+		t.Fatalf("create new order: %v", err)
+	}
+	newItem := domain.OrderItem{
+		OrderID:  newOrder.ID,
+		Amount:   0,
+		Status:   domain.OrderItemStatusPendingReview,
+		Action:   "resize",
+		SpecJSON: `{"vps_id":123}`,
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{newItem}); err != nil {
+		t.Fatalf("create new item: %v", err)
+	}
+
+	svc := usecase.NewOrderService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	if err := svc.RetryProvision(failedOrder.ID); err != usecase.ErrConflict {
+		t.Fatalf("expected conflict, got %v", err)
+	}
+}
+
 func TestOrderService_RejectOrderWithPayment(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	user := testutil.CreateUser(t, repo, "reject", "reject@example.com", "pass")

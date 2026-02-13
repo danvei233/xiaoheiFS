@@ -21,9 +21,13 @@ func NewTicketService(repo TicketRepository, users UserRepository, settings Sett
 }
 
 func (s *TicketService) Create(ctx context.Context, userID int64, subject, content string, resources []domain.TicketResource) (domain.Ticket, []domain.TicketMessage, []domain.TicketResource, error) {
-	subject = strings.TrimSpace(subject)
-	content = strings.TrimSpace(content)
-	if subject == "" || content == "" {
+	var err error
+	subject, err = trimAndValidateRequired(subject, maxLenTicketSubject)
+	if err != nil {
+		return domain.Ticket{}, nil, nil, ErrInvalidInput
+	}
+	content, err = trimAndValidateRequired(content, maxLenTicketContent)
+	if err != nil {
 		return domain.Ticket{}, nil, nil, ErrInvalidInput
 	}
 
@@ -55,7 +59,10 @@ func (s *TicketService) Create(ctx context.Context, userID int64, subject, conte
 	}
 	for i := range resources {
 		resources[i].ResourceType = strings.TrimSpace(resources[i].ResourceType)
-		resources[i].ResourceName = strings.TrimSpace(resources[i].ResourceName)
+		resources[i].ResourceName, err = trimAndValidateOptional(resources[i].ResourceName, maxLenTicketResName)
+		if err != nil {
+			return domain.Ticket{}, nil, nil, ErrInvalidInput
+		}
 	}
 	if err := s.repo.CreateTicketWithDetails(ctx, &ticket, &msg, resources); err != nil {
 		return domain.Ticket{}, nil, nil, err
@@ -88,8 +95,9 @@ func (s *TicketService) GetDetail(ctx context.Context, id int64) (domain.Ticket,
 }
 
 func (s *TicketService) AddMessage(ctx context.Context, ticket domain.Ticket, senderID int64, senderRole, content string) (domain.TicketMessage, error) {
-	content = strings.TrimSpace(content)
-	if content == "" {
+	var err error
+	content, err = trimAndValidateRequired(content, maxLenTicketContent)
+	if err != nil {
 		return domain.TicketMessage{}, ErrInvalidInput
 	}
 	if ticket.Status == "closed" && senderRole == "user" {
@@ -143,6 +151,11 @@ func (s *TicketService) Close(ctx context.Context, ticket domain.Ticket, userID 
 }
 
 func (s *TicketService) AdminUpdate(ctx context.Context, ticket domain.Ticket) error {
+	subject, err := trimAndValidateRequired(ticket.Subject, maxLenTicketSubject)
+	if err != nil {
+		return ErrInvalidInput
+	}
+	ticket.Subject = subject
 	if ticket.Status == "closed" && ticket.ClosedAt == nil {
 		now := time.Now()
 		ticket.ClosedAt = &now

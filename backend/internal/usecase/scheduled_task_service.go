@@ -253,6 +253,10 @@ func (s *ScheduledTaskService) executeTask(ctx context.Context, cfg ScheduledTas
 			if s.vps != nil {
 				runErr = s.vps.AutoDeleteExpired(ctx)
 			}
+		case "vps_expire_lock":
+			if s.vps != nil {
+				runErr = s.vps.AutoLockExpired(ctx)
+			}
 		}
 	}()
 }
@@ -438,6 +442,14 @@ func defaultTaskDefinitions() map[string]ScheduledTaskConfig {
 			Enabled:     true,
 			Strategy:    TaskStrategyDaily,
 			DailyAt:     "03:00",
+		},
+		"vps_expire_lock": {
+			Key:         "vps_expire_lock",
+			Name:        "VPS Expire Lock",
+			Description: "Auto lock expired VPS instances that are not locked yet.",
+			Enabled:     true,
+			Strategy:    TaskStrategyInterval,
+			IntervalSec: 300,
 		},
 	}
 }

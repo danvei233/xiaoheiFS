@@ -103,7 +103,7 @@ func TestHandlers_UserOpsMore(t *testing.T) {
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/refund", map[string]any{
 		"reason": "not needed",
 	}, token)
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusConflict {
 		t.Fatalf("vps refund: %d", rec.Code)
 	}
 

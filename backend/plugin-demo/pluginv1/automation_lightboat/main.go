@@ -398,13 +398,13 @@ func (a *automationServer) Start(ctx context.Context, req *pluginv1.StartRequest
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.StartHost(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) Shutdown(ctx context.Context, req *pluginv1.ShutdownRequest) (*pluginv1.Empty, error) {
@@ -413,13 +413,13 @@ func (a *automationServer) Shutdown(ctx context.Context, req *pluginv1.ShutdownR
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.ShutdownHost(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) Reboot(ctx context.Context, req *pluginv1.RebootRequest) (*pluginv1.Empty, error) {
@@ -428,13 +428,13 @@ func (a *automationServer) Reboot(ctx context.Context, req *pluginv1.RebootReque
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.RebootHost(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) Rebuild(ctx context.Context, req *pluginv1.RebuildRequest) (*pluginv1.Empty, error) {
@@ -443,13 +443,13 @@ func (a *automationServer) Rebuild(ctx context.Context, req *pluginv1.RebuildReq
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.ResetOS(ctx, req.GetInstanceId(), req.GetImageId(), req.GetPassword())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) ResetPassword(ctx context.Context, req *pluginv1.ResetPasswordRequest) (*pluginv1.Empty, error) {
@@ -458,13 +458,13 @@ func (a *automationServer) ResetPassword(ctx context.Context, req *pluginv1.Rese
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.ResetOSPassword(ctx, req.GetInstanceId(), req.GetPassword())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) ElasticUpdate(ctx context.Context, req *pluginv1.ElasticUpdateRequest) (*pluginv1.Empty, error) {
@@ -473,7 +473,7 @@ func (a *automationServer) ElasticUpdate(ctx context.Context, req *pluginv1.Elas
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	r := usecase.AutomationElasticUpdateRequest{HostID: req.GetInstanceId()}
 	if req.Cpu != nil {
@@ -500,7 +500,7 @@ func (a *automationServer) ElasticUpdate(ctx context.Context, req *pluginv1.Elas
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) Lock(ctx context.Context, req *pluginv1.LockRequest) (*pluginv1.Empty, error) {
@@ -509,13 +509,13 @@ func (a *automationServer) Lock(ctx context.Context, req *pluginv1.LockRequest) 
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.LockHost(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) Unlock(ctx context.Context, req *pluginv1.UnlockRequest) (*pluginv1.Empty, error) {
@@ -524,13 +524,13 @@ func (a *automationServer) Unlock(ctx context.Context, req *pluginv1.UnlockReque
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.UnlockHost(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) Renew(ctx context.Context, req *pluginv1.RenewRequest) (*pluginv1.Empty, error) {
@@ -539,14 +539,14 @@ func (a *automationServer) Renew(ctx context.Context, req *pluginv1.RenewRequest
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	next := time.Unix(req.GetNextDueAtUnix(), 0)
 	err = c.RenewHost(ctx, req.GetInstanceId(), next)
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) Destroy(ctx context.Context, req *pluginv1.DestroyRequest) (*pluginv1.Empty, error) {
@@ -555,13 +555,13 @@ func (a *automationServer) Destroy(ctx context.Context, req *pluginv1.DestroyReq
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.DeleteHost(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) GetPanelURL(ctx context.Context, req *pluginv1.GetPanelURLRequest) (*pluginv1.GetPanelURLResponse, error) {
@@ -661,7 +661,7 @@ func (a *automationServer) AddPortMapping(ctx context.Context, req *pluginv1.Add
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.AddPortMapping(ctx, usecase.AutomationPortMappingCreate{
 		HostID: req.GetInstanceId(),
@@ -672,7 +672,7 @@ func (a *automationServer) AddPortMapping(ctx context.Context, req *pluginv1.Add
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) DeletePortMapping(ctx context.Context, req *pluginv1.DeletePortMappingRequest) (*pluginv1.Empty, error) {
@@ -681,13 +681,13 @@ func (a *automationServer) DeletePortMapping(ctx context.Context, req *pluginv1.
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.DeletePortMapping(ctx, req.GetInstanceId(), req.GetMappingId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) FindPortCandidates(ctx context.Context, req *pluginv1.FindPortCandidatesRequest) (*pluginv1.FindPortCandidatesResponse, error) {
@@ -727,6 +727,7 @@ func (a *automationServer) ListBackups(ctx context.Context, req *pluginv1.ListBa
 			Id:            toInt64(it["id"]),
 			Name:          fmt.Sprint(it["name"]),
 			CreatedAtUnix: toTimeUnix(it["created_at"], it["created_at_unix"]),
+			State:         int32(toInt64(it["state"])),
 		})
 	}
 	return &pluginv1.ListBackupsResponse{Items: out}, nil
@@ -738,13 +739,13 @@ func (a *automationServer) CreateBackup(ctx context.Context, req *pluginv1.Creat
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.CreateBackup(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) DeleteBackup(ctx context.Context, req *pluginv1.DeleteBackupRequest) (*pluginv1.Empty, error) {
@@ -753,13 +754,13 @@ func (a *automationServer) DeleteBackup(ctx context.Context, req *pluginv1.Delet
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.DeleteBackup(ctx, req.GetInstanceId(), req.GetBackupId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) RestoreBackup(ctx context.Context, req *pluginv1.RestoreBackupRequest) (*pluginv1.Empty, error) {
@@ -768,13 +769,13 @@ func (a *automationServer) RestoreBackup(ctx context.Context, req *pluginv1.Rest
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.RestoreBackup(ctx, req.GetInstanceId(), req.GetBackupId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) ListSnapshots(ctx context.Context, req *pluginv1.ListSnapshotsRequest) (*pluginv1.ListSnapshotsResponse, error) {
@@ -797,6 +798,7 @@ func (a *automationServer) ListSnapshots(ctx context.Context, req *pluginv1.List
 			Id:            toInt64(it["id"]),
 			Name:          fmt.Sprint(it["name"]),
 			CreatedAtUnix: toTimeUnix(it["created_at"], it["created_at_unix"]),
+			State:         int32(toInt64(it["state"])),
 		})
 	}
 	return &pluginv1.ListSnapshotsResponse{Items: out}, nil
@@ -808,13 +810,13 @@ func (a *automationServer) CreateSnapshot(ctx context.Context, req *pluginv1.Cre
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.CreateSnapshot(ctx, req.GetInstanceId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) DeleteSnapshot(ctx context.Context, req *pluginv1.DeleteSnapshotRequest) (*pluginv1.Empty, error) {
@@ -823,13 +825,13 @@ func (a *automationServer) DeleteSnapshot(ctx context.Context, req *pluginv1.Del
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.DeleteSnapshot(ctx, req.GetInstanceId(), req.GetSnapshotId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) RestoreSnapshot(ctx context.Context, req *pluginv1.RestoreSnapshotRequest) (*pluginv1.Empty, error) {
@@ -838,13 +840,13 @@ func (a *automationServer) RestoreSnapshot(ctx context.Context, req *pluginv1.Re
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.RestoreSnapshot(ctx, req.GetInstanceId(), req.GetSnapshotId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) ListFirewallRules(ctx context.Context, req *pluginv1.ListFirewallRulesRequest) (*pluginv1.ListFirewallRulesResponse, error) {
@@ -870,6 +872,7 @@ func (a *automationServer) ListFirewallRules(ctx context.Context, req *pluginv1.
 			Method:    toString(it["method"]),
 			Port:      toString(it["port"]),
 			Ip:        toString(it["ip"]),
+			Priority:  int32(toInt64(it["priority"])),
 		})
 	}
 	return &pluginv1.ListFirewallRulesResponse{Items: out}, nil
@@ -881,7 +884,7 @@ func (a *automationServer) AddFirewallRule(ctx context.Context, req *pluginv1.Ad
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.AddFirewallRule(ctx, usecase.AutomationFirewallRuleCreate{
 		HostID:    req.GetInstanceId(),
@@ -890,11 +893,12 @@ func (a *automationServer) AddFirewallRule(ctx context.Context, req *pluginv1.Ad
 		Method:    req.GetMethod(),
 		Port:      req.GetPort(),
 		IP:        req.GetIp(),
+		Priority:  int(req.GetPriority()),
 	})
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func (a *automationServer) DeleteFirewallRule(ctx context.Context, req *pluginv1.DeleteFirewallRuleRequest) (*pluginv1.Empty, error) {
@@ -903,13 +907,13 @@ func (a *automationServer) DeleteFirewallRule(ctx context.Context, req *pluginv1
 		return nil, err
 	}
 	if a.core.cfg.DryRun {
-		return &pluginv1.Empty{}, nil
+		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
 	err = c.DeleteFirewallRule(ctx, req.GetInstanceId(), req.GetRuleId())
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	return &pluginv1.Empty{}, nil
+	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 }
 
 func toInt64(v any) int64 {

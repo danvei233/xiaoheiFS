@@ -61,7 +61,24 @@ func (s *AuthService) CreateCaptcha(ctx context.Context, ttl time.Duration) (dom
 }
 
 func (s *AuthService) Register(ctx context.Context, in RegisterInput) (domain.User, error) {
-	if in.Username == "" || in.Password == "" || in.Email == "" {
+	username, err := trimAndValidateRequired(in.Username, maxLenUsername)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	email, err := trimAndValidateRequired(in.Email, maxLenEmail)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	password, err := trimAndValidateRequired(in.Password, maxLenPassword)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	qq, err := trimAndValidateOptional(in.QQ, maxLenQQ)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	phone, err := trimAndValidateOptional(in.Phone, maxLenPhone)
+	if err != nil {
 		return domain.User{}, ErrInvalidInput
 	}
 	if in.CaptchaID != "" || in.CaptchaCode != "" || in.CaptchaRequired {
@@ -69,21 +86,21 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (domain.Us
 			return domain.User{}, err
 		}
 	}
-	if _, err := s.users.GetUserByUsernameOrEmail(ctx, in.Username); err == nil {
+	if _, err := s.users.GetUserByUsernameOrEmail(ctx, username); err == nil {
 		return domain.User{}, ErrConflict
 	}
-	if _, err := s.users.GetUserByUsernameOrEmail(ctx, in.Email); err == nil {
+	if _, err := s.users.GetUserByUsernameOrEmail(ctx, email); err == nil {
 		return domain.User{}, ErrConflict
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return domain.User{}, err
 	}
 	user := domain.User{
-		Username:     in.Username,
-		Email:        in.Email,
-		QQ:           in.QQ,
-		Phone:        in.Phone,
+		Username:     username,
+		Email:        email,
+		QQ:           qq,
+		Phone:        phone,
 		PasswordHash: string(hash),
 		Role:         domain.UserRoleUser,
 		Status:       domain.UserStatusActive,
@@ -95,7 +112,12 @@ func (s *AuthService) Register(ctx context.Context, in RegisterInput) (domain.Us
 }
 
 func (s *AuthService) Login(ctx context.Context, usernameOrEmail string, password string) (domain.User, error) {
-	if usernameOrEmail == "" || password == "" {
+	usernameOrEmail, err := trimAndValidateRequired(usernameOrEmail, maxLenEmail)
+	if err != nil {
+		return domain.User{}, ErrInvalidInput
+	}
+	password, err = trimAndValidateRequired(password, maxLenPassword)
+	if err != nil {
 		return domain.User{}, ErrInvalidInput
 	}
 	user, err := s.users.GetUserByUsernameOrEmail(ctx, usernameOrEmail)
@@ -112,7 +134,8 @@ func (s *AuthService) Login(ctx context.Context, usernameOrEmail string, passwor
 }
 
 func (s *AuthService) VerifyPassword(ctx context.Context, userID int64, password string) error {
-	if userID == 0 || password == "" {
+	password, err := trimAndValidateRequired(password, maxLenPassword)
+	if userID == 0 || err != nil {
 		return ErrInvalidInput
 	}
 	user, err := s.users.GetUserByID(ctx, userID)
@@ -131,6 +154,55 @@ func (s *AuthService) VerifyPassword(ctx context.Context, userID int64, password
 func (s *AuthService) UpdateProfile(ctx context.Context, userID int64, in UpdateProfileInput) (domain.User, error) {
 	if userID == 0 {
 		return domain.User{}, ErrInvalidInput
+	}
+	if in.Username != "" {
+		normalized, err := trimAndValidateRequired(in.Username, maxLenUsername)
+		if err != nil {
+			return domain.User{}, ErrInvalidInput
+		}
+		in.Username = normalized
+	}
+	if in.Email != "" {
+		normalized, err := trimAndValidateRequired(in.Email, maxLenEmail)
+		if err != nil {
+			return domain.User{}, ErrInvalidInput
+		}
+		in.Email = normalized
+	}
+	if in.QQ != "" {
+		normalized, err := trimAndValidateOptional(in.QQ, maxLenQQ)
+		if err != nil {
+			return domain.User{}, ErrInvalidInput
+		}
+		in.QQ = normalized
+	}
+	if in.Phone != "" {
+		normalized, err := trimAndValidateOptional(in.Phone, maxLenPhone)
+		if err != nil {
+			return domain.User{}, ErrInvalidInput
+		}
+		in.Phone = normalized
+	}
+	if in.Bio != "" {
+		normalized, err := trimAndValidateOptional(in.Bio, maxLenBio)
+		if err != nil {
+			return domain.User{}, ErrInvalidInput
+		}
+		in.Bio = normalized
+	}
+	if in.Intro != "" {
+		normalized, err := trimAndValidateOptional(in.Intro, maxLenIntro)
+		if err != nil {
+			return domain.User{}, ErrInvalidInput
+		}
+		in.Intro = normalized
+	}
+	if in.Password != "" {
+		normalized, err := trimAndValidateRequired(in.Password, maxLenPassword)
+		if err != nil {
+			return domain.User{}, ErrInvalidInput
+		}
+		in.Password = normalized
 	}
 	user, err := s.users.GetUserByID(ctx, userID)
 	if err != nil {
