@@ -231,6 +231,8 @@ export const getAdminProbeDetail = (id: number | string, params?: Record<string,
   http.get<{ probe?: ProbeNode; online?: boolean }>(`/admin/api/v1/probes/${id}`, { params });
 export const updateAdminProbe = (id: number | string, payload: Record<string, unknown>) =>
   http.patch(`/admin/api/v1/probes/${id}`, payload);
+export const deleteAdminProbe = (id: number | string) =>
+  http.delete(`/admin/api/v1/probes/${id}`);
 export const resetAdminProbeEnrollToken = (id: number | string) =>
   http.post<{ enroll_token?: string }>(`/admin/api/v1/probes/${id}/enroll-token/reset`);
 export const getAdminProbeSla = (id: number | string, params?: Record<string, unknown>) =>

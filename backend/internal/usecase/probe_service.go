@@ -108,6 +108,13 @@ func (s *ProbeService) UpdateProbe(ctx context.Context, node domain.ProbeNode) e
 	return s.nodes.UpdateProbeNode(ctx, node)
 }
 
+func (s *ProbeService) DeleteProbe(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return ErrInvalidInput
+	}
+	return s.nodes.DeleteProbeNode(ctx, id)
+}
+
 func (s *ProbeService) Enroll(ctx context.Context, enrollToken, agentID, name, osType string) (domain.ProbeNode, string, error) {
 	enrollToken = strings.TrimSpace(enrollToken)
 	if enrollToken == "" {
@@ -282,9 +289,9 @@ func (s *ProbeService) StartOfflineWatcher(ctx context.Context) {
 }
 
 func (s *ProbeService) scanOffline(ctx context.Context) {
-	grace := s.getIntSetting(ctx, "probe_offline_grace_sec", 35)
+	grace := s.getIntSetting(ctx, "probe_offline_grace_sec", 90)
 	if grace <= 0 {
-		grace = 35
+		grace = 90
 	}
 	retentionDays := s.getIntSetting(ctx, "probe_sla_window_days", 7)
 	if retentionDays <= 0 {

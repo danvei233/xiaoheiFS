@@ -13,6 +13,21 @@
     </div>
 
     <a-card :bordered="false">
+      <a-form layout="inline" style="margin-bottom: 12px">
+        <a-form-item label="心跳间隔(秒)">
+          <a-input-number v-model:value="probeSettings.heartbeat_interval_sec" :min="5" :max="300" />
+        </a-form-item>
+        <a-form-item label="离线宽限(秒)">
+          <a-input-number v-model:value="probeSettings.offline_grace_sec" :min="15" :max="1800" />
+        </a-form-item>
+        <a-form-item>
+          <a-button @click="fetchProbeSettings" :loading="settingsLoading">刷新探针设置</a-button>
+        </a-form-item>
+        <a-form-item>
+          <a-button type="primary" @click="saveProbeSettings" :loading="settingsSaving">保存探针设置</a-button>
+        </a-form-item>
+      </a-form>
+
       <a-space style="margin-bottom: 12px">
         <a-input v-model:value="filters.keyword" allow-clear placeholder="按名称/AgentID 搜索" style="width: 240px" />
         <a-select v-model:value="filters.status" style="width: 140px" :options="statusOptions" allow-clear placeholder="状态" />
@@ -67,7 +82,11 @@
           <template v-else-if="column.key === 'action'">
             <a-space>
               <a-button type="link" @click="goDetail(record)">详情</a-button>
+              <a-button type="link" @click="openEdit(record)">编辑</a-button>
               <a-button type="link" @click="resetEnroll(record)">重置注册码</a-button>
+              <a-popconfirm title="确认删除这个探针？" ok-text="删除" cancel-text="取消" @confirm="removeProbe(record)">
+                <a-button type="link" danger>删除</a-button>
+              </a-popconfirm>
             </a-space>
           </template>
         </template>
@@ -91,6 +110,20 @@
       </a-form>
     </a-modal>
 
+    <a-modal v-model:open="editOpen" title="编辑探针" @ok="submitEdit" :confirm-loading="editing">
+      <a-form layout="vertical">
+        <a-form-item label="探针名称">
+          <a-input v-model:value="editForm.name" />
+        </a-form-item>
+        <a-form-item label="OS 类型">
+          <a-select v-model:value="editForm.os_type" :options="osOptions" />
+        </a-form-item>
+        <a-form-item label="标签">
+          <a-select v-model:value="editForm.tags" mode="tags" :token-separators="[',']" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
     <a-modal v-model:open="tokenOpen" title="一次性注册码" :footer="null">
       <a-alert type="warning" show-icon message="仅展示一次，请尽快配置到探针端。" />
       <a-typography-paragraph copyable style="margin-top: 12px; word-break: break-all;">
@@ -104,14 +137,28 @@
 import { onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { message } from "ant-design-vue";
 import { useRouter } from "vue-router";
-import { createAdminProbe, getAdminProbeSla, listAdminProbes, resetAdminProbeEnrollToken } from "@/services/admin";
+import {
+  createAdminProbe,
+  deleteAdminProbe,
+  getAdminProbeSla,
+  listAdminProbes,
+  listSettings,
+  resetAdminProbeEnrollToken,
+  updateAdminProbe,
+  updateSetting
+} from "@/services/admin";
 
 const router = useRouter();
 const loading = ref(false);
 const creating = ref(false);
 const createOpen = ref(false);
+const editOpen = ref(false);
 const tokenOpen = ref(false);
 const latestToken = ref("");
+const editing = ref(false);
+const settingsLoading = ref(false);
+const settingsSaving = ref(false);
+const editingProbeID = ref<number | null>(null);
 const rows = ref<any[]>([]);
 const refreshError = ref("");
 const lastRefreshAt = ref("");
@@ -126,6 +173,15 @@ const createForm = reactive({
   agent_id: "",
   os_type: "linux",
   tags: [] as string[]
+});
+const editForm = reactive({
+  name: "",
+  os_type: "linux",
+  tags: [] as string[]
+});
+const probeSettings = reactive({
+  heartbeat_interval_sec: 20,
+  offline_grace_sec: 90
 });
 
 const statusOptions = [
@@ -149,7 +205,7 @@ const columns = [
   { title: "标签", dataIndex: "tags", key: "tags" },
   { title: "最后心跳", dataIndex: "last_heartbeat_at", key: "last_heartbeat_at", width: 180 },
   { title: "7天 SLA", key: "sla", width: 110 },
-  { title: "操作", key: "action", width: 220 }
+  { title: "操作", key: "action", width: 280 }
 ];
 
 const formatDate = (v?: string) => (v ? new Date(v).toLocaleString("zh-CN") : "-");
@@ -222,6 +278,52 @@ const fetchList = async () => {
   }
 };
 
+const toInt = (raw: unknown, fallback: number) => {
+  const s = String(raw ?? "").trim();
+  if (!s) return fallback;
+  const n = Number.parseInt(s, 10);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const fetchProbeSettings = async () => {
+  settingsLoading.value = true;
+  try {
+    const res = await listSettings();
+    const items = res.data?.items || [];
+    const map: Record<string, string> = {};
+    items.forEach((item: any) => {
+      map[item.key] = item.value;
+    });
+    probeSettings.heartbeat_interval_sec = Math.max(5, toInt(map.probe_heartbeat_interval_sec, 20));
+    probeSettings.offline_grace_sec = Math.max(15, toInt(map.probe_offline_grace_sec, 90));
+  } catch (e: any) {
+    message.error(e?.message || "加载探针设置失败");
+  } finally {
+    settingsLoading.value = false;
+  }
+};
+
+const saveProbeSettings = async () => {
+  settingsSaving.value = true;
+  try {
+    const heartbeat = Math.max(5, Number(probeSettings.heartbeat_interval_sec || 20));
+    const grace = Math.max(heartbeat * 3, Number(probeSettings.offline_grace_sec || 90));
+    await updateSetting({
+      items: [
+        { key: "probe_heartbeat_interval_sec", value: String(heartbeat) },
+        { key: "probe_offline_grace_sec", value: String(grace) }
+      ]
+    });
+    probeSettings.heartbeat_interval_sec = heartbeat;
+    probeSettings.offline_grace_sec = grace;
+    message.success("探针设置已保存");
+  } catch (e: any) {
+    message.error(e?.message || "保存探针设置失败");
+  } finally {
+    settingsSaving.value = false;
+  }
+};
+
 const onSearch = () => {
   pagination.current = 1;
   fetchList();
@@ -277,12 +379,54 @@ const resetEnroll = async (record: any) => {
   }
 };
 
+const openEdit = (record: any) => {
+  editingProbeID.value = Number(record?.id || 0);
+  if (!editingProbeID.value) return;
+  editForm.name = String(record?.name || "");
+  editForm.os_type = String(record?.os_type || "linux");
+  editForm.tags = Array.isArray(record?.tags) ? record.tags.map((x: unknown) => String(x)) : [];
+  editOpen.value = true;
+};
+
+const submitEdit = async () => {
+  const id = editingProbeID.value;
+  if (!id) return;
+  editing.value = true;
+  try {
+    await updateAdminProbe(id, {
+      name: editForm.name,
+      os_type: editForm.os_type,
+      tags: editForm.tags
+    });
+    message.success("探针已更新");
+    editOpen.value = false;
+    await fetchList();
+  } catch (e: any) {
+    message.error(e?.message || "更新失败");
+  } finally {
+    editing.value = false;
+  }
+};
+
+const removeProbe = async (record: any) => {
+  const id = Number(record?.id || 0);
+  if (!id) return;
+  try {
+    await deleteAdminProbe(id);
+    message.success("探针已删除");
+    await fetchList();
+  } catch (e: any) {
+    message.error(e?.message || "删除失败");
+  }
+};
+
 const goDetail = (record: any) => {
   router.push(`/admin/probes/${record.id}`);
 };
 
 onMounted(() => {
   fetchList();
+  fetchProbeSettings();
   refreshTimer = window.setInterval(() => {
     fetchList();
   }, 10000);

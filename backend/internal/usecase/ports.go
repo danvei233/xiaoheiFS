@@ -387,6 +387,7 @@ type ProbeNodeRepository interface {
 	GetProbeNodeByAgentID(ctx context.Context, agentID string) (domain.ProbeNode, error)
 	ListProbeNodes(ctx context.Context, filter ProbeNodeFilter, limit, offset int) ([]domain.ProbeNode, int, error)
 	UpdateProbeNode(ctx context.Context, node domain.ProbeNode) error
+	DeleteProbeNode(ctx context.Context, id int64) error
 	UpdateProbeNodeStatus(ctx context.Context, id int64, status domain.ProbeStatus, reason string, at time.Time) error
 	UpdateProbeNodeHeartbeat(ctx context.Context, id int64, at time.Time) error
 	UpdateProbeNodeSnapshot(ctx context.Context, id int64, at time.Time, snapshotJSON string, osType string) error

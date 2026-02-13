@@ -316,6 +316,7 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 		admin.POST("/probes", handler.AdminProbeCreate)
 		admin.GET("/probes/:id", handler.AdminProbeDetail)
 		admin.PATCH("/probes/:id", handler.AdminProbeUpdate)
+		admin.DELETE("/probes/:id", handler.AdminProbeDelete)
 		admin.POST("/probes/:id/enroll-token/reset", handler.AdminProbeResetEnrollToken)
 		admin.GET("/probes/:id/sla", handler.AdminProbeSLA)
 		admin.POST("/probes/:id/port-check", handler.AdminProbePortCheck)

@@ -138,6 +138,31 @@ func (h *Handler) ProbeWS(c *gin.Context) {
 	}
 	_ = h.probeHub.SendJSON(probeID, hello)
 
+	// Keep WS downstream traffic active so probe-side read deadline does not
+	// timeout on quiet links/proxies.
+	stopPing := make(chan struct{})
+	defer close(stopPing)
+	go func() {
+		ticker := time.NewTicker(25 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopPing:
+				return
+			case <-c.Request.Context().Done():
+				return
+			case <-ticker.C:
+				_ = h.probeHub.SendJSON(probeID, map[string]any{
+					"type":       "ping",
+					"request_id": "ping_" + probeRandomToken(8),
+					"payload": map[string]any{
+						"at": time.Now().Format(time.RFC3339),
+					},
+				})
+			}
+		}
+	}()
+
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(90 * time.Second))
 		_, data, err := conn.ReadMessage()
@@ -318,6 +343,33 @@ func (h *Handler) AdminProbeUpdate(c *gin.Context) {
 	}
 	if h.adminSvc != nil {
 		h.adminSvc.Audit(c, getUserID(c), "probe.update", "probe", strconv.FormatInt(node.ID, 10), map[string]any{})
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) AdminProbeDelete(c *gin.Context) {
+	if h.probeSvc == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "probe disabled"})
+		return
+	}
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	if _, err := h.probeSvc.GetProbe(c, id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "probe not found"})
+		return
+	}
+	if err := h.probeSvc.DeleteProbe(c, id); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if h.probeHub != nil {
+		h.probeHub.UnregisterConn(id)
+	}
+	if h.adminSvc != nil {
+		h.adminSvc.Audit(c, getUserID(c), "probe.delete", "probe", strconv.FormatInt(id, 10), map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -556,7 +608,7 @@ func parseTimeOrNow(raw string) time.Time {
 
 func (h *Handler) probeRuntimeConfig(ctx context.Context) map[string]any {
 	return map[string]any{
-		"heartbeat_interval_sec": h.probeIntSetting(ctx, "probe_heartbeat_interval_sec", 10),
+		"heartbeat_interval_sec": h.probeIntSetting(ctx, "probe_heartbeat_interval_sec", 20),
 		"snapshot_interval_sec":  h.probeIntSetting(ctx, "probe_snapshot_interval_sec", 60),
 		"log_chunk_max_bytes":    h.probeIntSetting(ctx, "probe_log_chunk_max_bytes", 16384),
 	}

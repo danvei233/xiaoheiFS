@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
 	"xiaoheiplay/internal/domain"
@@ -96,6 +97,21 @@ func (r *GormRepo) UpdateProbeNode(ctx context.Context, node domain.ProbeNode) e
 		"tags_json":   node.TagsJSON,
 		"updated_at":  time.Now(),
 	}).Error
+}
+
+func (r *GormRepo) DeleteProbeNode(ctx context.Context, id int64) error {
+	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("probe_id = ?", id).Delete(&probeLogSessionRow{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("probe_id = ?", id).Delete(&probeStatusEventRow{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("probe_id = ?", id).Delete(&probeEnrollTokenRow{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("id = ?", id).Delete(&probeNodeRow{}).Error
+	})
 }
 
 func (r *GormRepo) UpdateProbeNodeStatus(ctx context.Context, id int64, status domain.ProbeStatus, reason string, at time.Time) error {
