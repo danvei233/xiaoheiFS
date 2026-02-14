@@ -239,8 +239,8 @@ func EnsureSettings(gdb *gorm.DB) error {
 	settings := map[string]string{
 		"default_line_id":                    "0",
 		"default_port_num":                   "30",
-		"payment_providers_enabled":          `{"approval":true,"balance":true,"custom":true,"yipay":false}`,
-		"payment_providers_config":           `{"custom":{"pay_url":"","instructions":""},"yipay":{"base_url":"https://pays.org.cn/submit.php","pid":"","key":"","pay_type":"","notify_url":"","return_url":"","sign_type":"MD5"}}`,
+		"payment_providers_enabled":          `{"approval":true,"balance":true,"yipay":false}`,
+		"payment_providers_config":           `{"yipay":{"base_url":"https://pays.org.cn/submit.php","pid":"","key":"","pay_type":"","notify_url":"","return_url":"","sign_type":"MD5"}}`,
 		"payment_plugins":                    "[]",
 		"payment_plugin_dir":                 "plugins/payment",
 		"payment_plugin_upload_password":     "qweasd123456",

@@ -251,12 +251,12 @@ func TestPaymentService_HandleNotify_OrderNoPreferredWhenTradeNoEmpty(t *testing
 	}
 }
 
-func TestPaymentService_CustomProviderDisabled(t *testing.T) {
+func TestPaymentService_DisabledProvider(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
-	user := testutil.CreateUser(t, repo, "custom", "custom@example.com", "pass")
+	user := testutil.CreateUser(t, repo, "disabledpay", "disabledpay@example.com", "pass")
 	order := domain.Order{
 		UserID:      user.ID,
-		OrderNo:     "ORD-CUS",
+		OrderNo:     "ORD-DISABLED-PAY",
 		Status:      domain.OrderStatusPendingPayment,
 		TotalAmount: 1000,
 		Currency:    "CNY",
@@ -275,10 +275,10 @@ func TestPaymentService_CustomProviderDisabled(t *testing.T) {
 	}
 
 	reg := testutil.NewFakePaymentRegistry()
-	reg.RegisterProvider(&testutil.FakePaymentProvider{KeyVal: "custom", NameVal: "Custom"}, false, `{"pay_url":"x"}`)
+	reg.RegisterProvider(&testutil.FakePaymentProvider{KeyVal: "disabled.pay", NameVal: "Disabled Pay"}, false, `{}`)
 	svc := usecase.NewPaymentService(repo, repo, repo, reg, repo, nil, nil)
 
-	if _, err := svc.SelectPayment(context.Background(), user.ID, order.ID, usecase.PaymentSelectInput{Method: "custom"}); err != usecase.ErrForbidden {
+	if _, err := svc.SelectPayment(context.Background(), user.ID, order.ID, usecase.PaymentSelectInput{Method: "disabled.pay"}); err != usecase.ErrForbidden {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
 }

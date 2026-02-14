@@ -2912,7 +2912,8 @@ func (h *Handler) AdminPaymentProviders(c *gin.Context) {
 	if !includeLegacy {
 		filtered := make([]usecase.PaymentProviderInfo, 0, len(items))
 		for _, item := range items {
-			if strings.EqualFold(strings.TrimSpace(item.Key), "yipay") {
+			k := strings.ToLower(strings.TrimSpace(item.Key))
+			if k == "yipay" || k == "custom" {
 				continue
 			}
 			filtered = append(filtered, item)
@@ -2923,7 +2924,7 @@ func (h *Handler) AdminPaymentProviders(c *gin.Context) {
 }
 
 func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
-	if h.paymentSvc == nil {
+	if h.paymentSvc == nil && h.pluginPayMeth == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "payment disabled"})
 		return
 	}
@@ -2939,6 +2940,53 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 	enabled := true
 	if payload.Enabled != nil {
 		enabled = *payload.Enabled
+	}
+	trimmedKey := strings.TrimSpace(key)
+	if strings.Contains(trimmedKey, ".") {
+		if h.pluginPayMeth == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "payment method repo missing"})
+			return
+		}
+		parts := strings.Split(trimmedKey, ".")
+		pluginID := ""
+		instanceID := plugins.DefaultInstanceID
+		method := ""
+		switch len(parts) {
+		case 2:
+			pluginID = strings.TrimSpace(parts[0])
+			method = strings.TrimSpace(parts[1])
+		default:
+			pluginID = strings.TrimSpace(parts[0])
+			instanceID = strings.TrimSpace(parts[1])
+			method = strings.TrimSpace(strings.Join(parts[2:], "."))
+		}
+		if pluginID == "" || instanceID == "" || method == "" || payload.Enabled == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid plugin payment key or payload"})
+			return
+		}
+		if err := h.pluginPayMeth.UpsertPluginPaymentMethod(c, &domain.PluginPaymentMethod{
+			Category:   "payment",
+			PluginID:   pluginID,
+			InstanceID: instanceID,
+			Method:     method,
+			Enabled:    enabled,
+		}); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if h.adminSvc != nil {
+			h.adminSvc.Audit(c, getUserID(c), "plugin.payment_method.update", "plugin", "payment/"+pluginID+"/"+instanceID, map[string]any{
+				"method":  method,
+				"enabled": enabled,
+				"via":     "payments.providers.update",
+			})
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	}
+	if h.paymentSvc == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "payment disabled"})
+		return
 	}
 	if err := h.paymentSvc.UpdateProvider(c, key, enabled, payload.ConfigJSON); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

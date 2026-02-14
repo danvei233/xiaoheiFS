@@ -318,14 +318,6 @@ func (r *Registry) builtins() []providerMeta {
 			},
 		},
 		{
-			key:            "custom",
-			defaultEnabled: true,
-			defaultConfig:  `{"pay_url":"","instructions":""}`,
-			factory: func() usecase.PaymentProvider {
-				return newCustomProvider()
-			},
-		},
-		{
 			key:            "yipay",
 			defaultEnabled: false,
 			defaultConfig:  `{"base_url":"https://pays.org.cn/submit.php","pid":"","key":"","pay_type":"","notify_url":"","return_url":"","sign_type":"MD5"}`,

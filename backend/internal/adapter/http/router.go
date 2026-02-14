@@ -265,6 +265,10 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 		admin.PATCH("/integrations/sms", handler.AdminSMSConfigUpdate)
 		admin.POST("/integrations/sms/test", handler.AdminSMSTest)
 		admin.POST("/integrations/sms/preview", handler.AdminSMSPreview)
+		// Backward-compatible aliases
+		admin.GET("/integrations/sms/config", handler.AdminSMSConfig)
+		admin.PATCH("/integrations/sms/config", handler.AdminSMSConfigUpdate)
+		admin.POST("/integrations/sms/send-test", handler.AdminSMSTest)
 		admin.GET("/api-keys", handler.AdminAPIKeys)
 		admin.POST("/api-keys", handler.AdminAPIKeyCreate)
 		admin.PATCH("/api-keys/:id", handler.AdminAPIKeyUpdate)
@@ -300,6 +304,11 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 		admin.POST("/sms-templates", handler.AdminSMSTemplateUpsert)
 		admin.PATCH("/sms-templates/:id", handler.AdminSMSTemplateUpsert)
 		admin.DELETE("/sms-templates/:id", handler.AdminSMSTemplateDelete)
+		// Backward-compatible aliases
+		admin.GET("/sms/templates", handler.AdminSMSTemplates)
+		admin.POST("/sms/templates", handler.AdminSMSTemplateUpsert)
+		admin.PATCH("/sms/templates/:id", handler.AdminSMSTemplateUpsert)
+		admin.DELETE("/sms/templates/:id", handler.AdminSMSTemplateDelete)
 		admin.GET("/admins", handler.AdminAdmins)
 		admin.POST("/admins", handler.AdminAdminCreate)
 		admin.PATCH("/admins/:id", handler.AdminAdminUpdate)

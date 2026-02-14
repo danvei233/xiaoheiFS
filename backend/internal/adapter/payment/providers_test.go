@@ -9,23 +9,6 @@ import (
 	"xiaoheiplay/internal/usecase"
 )
 
-func TestCustomProvider_CreatePayment(t *testing.T) {
-	p := newCustomProvider()
-	if err := p.SetConfig(`{"pay_url":"https://pay.local","instructions":"hello"}`); err != nil {
-		t.Fatalf("set config: %v", err)
-	}
-	res, err := p.CreatePayment(context.Background(), usecase.PaymentCreateRequest{
-		OrderID: 1,
-		Amount:  990,
-	})
-	if err != nil {
-		t.Fatalf("create payment: %v", err)
-	}
-	if res.PayURL != "https://pay.local" || res.TradeNo == "" {
-		t.Fatalf("unexpected result: %#v", res)
-	}
-}
-
 func TestYipayProvider_SignAndVerify(t *testing.T) {
 	p := newYipayProvider()
 	if err := p.SetConfig(`{"base_url":"https://yipay.local","pid":"100","key":"k","pay_type":"alipay","sign_type":"MD5"}`); err != nil {

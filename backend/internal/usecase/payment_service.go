@@ -150,8 +150,6 @@ func (s *PaymentService) SelectPayment(ctx context.Context, userID int64, orderI
 			Status:  "manual",
 			Message: "submit payment proof to /api/v1/orders/{id}/payments",
 		}, nil
-	case "custom":
-		return s.selectCustom(ctx, input.Method)
 	case "balance":
 		return s.payWithBalance(ctx, order)
 	default:
@@ -241,24 +239,6 @@ func (s *PaymentService) HandleNotify(ctx context.Context, providerKey string, r
 		}
 	}
 	return result, nil
-}
-
-func (s *PaymentService) selectCustom(ctx context.Context, method string) (PaymentSelectResult, error) {
-	if s.registry == nil {
-		return PaymentSelectResult{}, ErrInvalidInput
-	}
-	configJSON, enabled, err := s.registry.GetProviderConfig(ctx, method)
-	if err != nil {
-		return PaymentSelectResult{}, err
-	}
-	if !enabled {
-		return PaymentSelectResult{}, ErrForbidden
-	}
-	return PaymentSelectResult{
-		Method: method,
-		Status: "manual",
-		Extra:  map[string]string{"config_json": configJSON},
-	}, nil
 }
 
 func (s *PaymentService) payWithBalance(ctx context.Context, order domain.Order) (PaymentSelectResult, error) {
