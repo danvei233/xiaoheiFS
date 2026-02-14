@@ -79,15 +79,7 @@
             </a-form-item>
 
             <template v-if="form.register_verify_type === 'sms'">
-              <a-form-item label="短信插件 ID">
-                <a-input v-model:value="form.register_sms_plugin_id" placeholder="例如 alisms / tencentsms" />
-              </a-form-item>
-              <a-form-item label="短信插件实例">
-                <a-input v-model:value="form.register_sms_instance_id" placeholder="default" />
-              </a-form-item>
-              <a-form-item label="短信模板 ID">
-                <a-input v-model:value="form.register_sms_template_id" placeholder="模板 ID（可空）" />
-              </a-form-item>
+              <a-alert type="info" show-icon message="短信插件、模板与测试请在「系统设置 - 短信设置」里配置。" />
             </template>
           </a-form>
         </a-card>
@@ -140,9 +132,6 @@ const form = reactive({
   register_captcha_enabled: true,
   register_email_subject: "Your verification code",
   register_email_body: "Your verification code is: {{code}}",
-  register_sms_plugin_id: "",
-  register_sms_instance_id: "default",
-  register_sms_template_id: "",
   login_captcha_enabled: false,
   login_rate_limit_enabled: true,
   login_rate_limit_window_sec: 300,
@@ -210,9 +199,6 @@ const fetchData = async () => {
     form.register_captcha_enabled = parseBool(map.get("auth_register_captcha_enabled"), true);
     form.register_email_subject = String(map.get("auth_register_email_subject") || "Your verification code");
     form.register_email_body = String(map.get("auth_register_email_body") || "Your verification code is: {{code}}");
-    form.register_sms_plugin_id = String(map.get("auth_register_sms_plugin_id") || "");
-    form.register_sms_instance_id = String(map.get("auth_register_sms_instance_id") || "default");
-    form.register_sms_template_id = String(map.get("auth_register_sms_template_id") || "");
     form.login_captcha_enabled = parseBool(map.get("auth_login_captcha_enabled"), false);
     form.login_rate_limit_enabled = parseBool(map.get("auth_login_rate_limit_enabled"), true);
     form.login_rate_limit_window_sec = parseIntValue(map.get("auth_login_rate_limit_window_sec"), 300);
@@ -240,9 +226,6 @@ const handleSave = async () => {
       { key: "auth_register_captcha_enabled", value: form.register_captcha_enabled ? "true" : "false" },
       { key: "auth_register_email_subject", value: form.register_email_subject || "" },
       { key: "auth_register_email_body", value: form.register_email_body || "" },
-      { key: "auth_register_sms_plugin_id", value: form.register_sms_plugin_id || "" },
-      { key: "auth_register_sms_instance_id", value: form.register_sms_instance_id || "default" },
-      { key: "auth_register_sms_template_id", value: form.register_sms_template_id || "" },
       { key: "auth_login_captcha_enabled", value: form.login_captcha_enabled ? "true" : "false" },
       { key: "auth_login_rate_limit_enabled", value: form.login_rate_limit_enabled ? "true" : "false" },
       { key: "auth_login_rate_limit_window_sec", value: String(form.login_rate_limit_window_sec ?? 300) },

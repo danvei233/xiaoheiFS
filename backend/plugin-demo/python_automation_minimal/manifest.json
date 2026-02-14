@@ -1,0 +1,25 @@
+{
+  "plugin_id": "python_automation_minimal",
+  "name": "Python Automation Minimal",
+  "version": "0.1.0",
+  "description": "Minimal empty automation plugin scaffold (python)",
+  "binaries": {
+    "windows_amd64": "bin/windows_amd64/plugin.bat",
+    "linux_amd64": "bin/linux_amd64/plugin",
+    "darwin_amd64": "bin/darwin_amd64/plugin",
+    "darwin_arm64": "bin/darwin_arm64/plugin"
+  },
+  "capabilities": {
+    "automation": {
+      "features": [
+        "catalog_sync",
+        "lifecycle",
+        "port_mapping",
+        "backup",
+        "snapshot",
+        "firewall"
+      ]
+    }
+  }
+}
+

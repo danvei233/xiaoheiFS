@@ -138,6 +138,7 @@ import {
   CloudUploadOutlined,
   ApiOutlined,
   MailOutlined,
+  MessageOutlined,
   KeyOutlined,
   LinkOutlined,
   SettingOutlined,
@@ -266,6 +267,7 @@ const menuTree = [
         icon: ApiOutlined,
         children: [
           { key: "/admin/settings/email", label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
+          { key: "/admin/settings/sms", label: "短信设置", icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
           { key: "/admin/settings/payments", label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
           { key: "/admin/settings/fcm", label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] },
           { key: "/admin/settings/pricing", label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },

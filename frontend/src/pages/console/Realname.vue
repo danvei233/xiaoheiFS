@@ -80,7 +80,7 @@
             <span class="info-label">审核时间</span>
             <span class="info-value">{{ formatDate(verification.verified_at) }}</span>
           </div>
-          <div v-if="verification.reason" class="info-item error-item">
+          <div v-if="verification.status === 'failed' && verification.reason" class="info-item error-item">
             <WarningOutlined class="item-icon error" />
             <span class="info-label">拒绝原因</span>
             <span class="info-value error">{{ verification.reason }}</span>

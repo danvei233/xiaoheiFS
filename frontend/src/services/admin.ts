@@ -30,6 +30,8 @@ import type {
   ProbeSLA,
   ProbeLogSession,
   SMTPConfig,
+  SMSConfig,
+  SMSTemplate,
   SettingItem,
   SystemImage,
   Ticket,
@@ -215,6 +217,15 @@ export const listRealNameRecords = (params?: Record<string, unknown>) =>
 export const getSmtpConfig = () => http.get<SMTPConfig>("/admin/api/v1/integrations/smtp");
 export const updateSmtpConfig = (payload: Record<string, unknown>) => http.patch("/admin/api/v1/integrations/smtp", payload);
 export const testSmtpConfig = (payload: Record<string, unknown>) => http.post("/admin/api/v1/integrations/smtp/test", payload);
+export const getSmsConfig = () => http.get<SMSConfig>("/admin/api/v1/integrations/sms");
+export const updateSmsConfig = (payload: Record<string, unknown>) => http.patch("/admin/api/v1/integrations/sms", payload);
+export const previewSmsConfig = (payload: Record<string, unknown>) => http.post<{ content?: string }>("/admin/api/v1/integrations/sms/preview", payload);
+export const testSmsConfig = (payload: Record<string, unknown>) => http.post("/admin/api/v1/integrations/sms/test", payload);
+export const listSmsTemplates = () => http.get<ApiList<SMSTemplate>>("/admin/api/v1/sms-templates");
+export const upsertSmsTemplate = (payload: Record<string, unknown>) => http.post<SMSTemplate>("/admin/api/v1/sms-templates", payload);
+export const updateSmsTemplate = (id: number | string, payload: Record<string, unknown>) =>
+  http.patch<SMSTemplate>(`/admin/api/v1/sms-templates/${id}`, payload);
+export const deleteSmsTemplate = (id: number | string) => http.delete(`/admin/api/v1/sms-templates/${id}`);
 
 export const getAdminDashboardOverview = () => http.post<DashboardOverview>("/admin/api/v1/dashboard/overview");
 export const getAdminDashboardRevenue = (params?: Record<string, unknown>) =>

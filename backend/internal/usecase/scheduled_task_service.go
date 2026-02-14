@@ -53,17 +53,23 @@ type ScheduledTaskService struct {
 	vps      *VPSService
 	orders   *OrderService
 	notify   *NotificationService
+	realname *RealNameService
 	runs     ScheduledTaskRunRepository
 	mu       sync.Mutex
 	runtime  map[string]*taskRuntime
 }
 
-func NewScheduledTaskService(settings SettingsRepository, vps *VPSService, orders *OrderService, notify *NotificationService, runs ScheduledTaskRunRepository) *ScheduledTaskService {
+func NewScheduledTaskService(settings SettingsRepository, vps *VPSService, orders *OrderService, notify *NotificationService, runs ScheduledTaskRunRepository, realname ...*RealNameService) *ScheduledTaskService {
+	var rn *RealNameService
+	if len(realname) > 0 {
+		rn = realname[0]
+	}
 	return &ScheduledTaskService{
 		settings: settings,
 		vps:      vps,
 		orders:   orders,
 		notify:   notify,
+		realname: rn,
 		runs:     runs,
 		runtime:  make(map[string]*taskRuntime),
 	}
@@ -256,6 +262,10 @@ func (s *ScheduledTaskService) executeTask(ctx context.Context, cfg ScheduledTas
 		case "vps_expire_lock":
 			if s.vps != nil {
 				runErr = s.vps.AutoLockExpired(ctx)
+			}
+		case "realname_mangzhu_poll":
+			if s.realname != nil {
+				_, runErr = s.realname.PollPending(ctx, 200)
 			}
 		}
 	}()
@@ -450,6 +460,14 @@ func defaultTaskDefinitions() map[string]ScheduledTaskConfig {
 			Enabled:     true,
 			Strategy:    TaskStrategyInterval,
 			IntervalSec: 300,
+		},
+		"realname_mangzhu_poll": {
+			Key:         "realname_mangzhu_poll",
+			Name:        "Realname Mangzhu Poll",
+			Description: "Poll pending Mangzhu face verification records and update status.",
+			Enabled:     true,
+			Strategy:    TaskStrategyInterval,
+			IntervalSec: 20,
 		},
 	}
 }

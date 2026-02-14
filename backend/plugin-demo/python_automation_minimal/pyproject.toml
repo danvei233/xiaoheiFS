@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-automation-minimal"
+version = "0.1.0"
+description = "Minimal empty automation plugin scaffold for xiaohei"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["xiaohei-plugin-sdk>=0.1.0"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

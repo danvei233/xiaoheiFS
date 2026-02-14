@@ -224,9 +224,9 @@ func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
 		RegisterCaptchaEnabled: getBool("auth_register_captcha_enabled", true),
 		RegisterEmailSubject:   getString("auth_register_email_subject", "Your verification code"),
 		RegisterEmailBody:      getString("auth_register_email_body", "Your verification code is: {{code}}"),
-		RegisterSMSPluginID:    getString("auth_register_sms_plugin_id", ""),
-		RegisterSMSInstanceID:  getString("auth_register_sms_instance_id", "default"),
-		RegisterSMSTemplateID:  getString("auth_register_sms_template_id", ""),
+		RegisterSMSPluginID:    getString("auth_register_sms_plugin_id", getString("sms_plugin_id", "")),
+		RegisterSMSInstanceID:  getString("auth_register_sms_instance_id", getString("sms_instance_id", "default")),
+		RegisterSMSTemplateID:  getString("auth_register_sms_template_id", getString("sms_provider_template_id", "")),
 		LoginCaptchaEnabled:    getBool("auth_login_captcha_enabled", false),
 		LoginRateLimitEnabled:  getBool("auth_login_rate_limit_enabled", true),
 		LoginRateLimitWindow:   time.Duration(getInt("auth_login_rate_limit_window_sec", 300)) * time.Second,
@@ -562,7 +562,19 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			Phones: []string{phoneVal},
 		}
 		if settings.RegisterSMSTemplateID == "" {
-			req.Content = "Your verification code is: " + code
+			content := "Your verification code is: " + code
+			if v := strings.TrimSpace(getSettingValue(c, h.settings, "sms_default_template_id")); v != "" {
+				if tid, err := strconv.ParseInt(v, 10, 64); err == nil && tid > 0 {
+					if rendered, ok := h.renderSMSTemplateByID(c, tid, map[string]any{
+						"code":  code,
+						"phone": phoneVal,
+						"now":   time.Now().Format(time.RFC3339),
+					}); ok {
+						content = rendered
+					}
+				}
+			}
+			req.Content = content
 		}
 		cctx, cancel := context.WithTimeout(c, 10*time.Second)
 		defer cancel()
@@ -756,12 +768,25 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 	var payload struct {
 		RealName string `json:"real_name"`
 		IDNumber string `json:"id_number"`
+		Phone    string `json:"phone"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	record, err := h.realnameSvc.Verify(c, getUserID(c), payload.RealName, payload.IDNumber)
+	phone := strings.TrimSpace(payload.Phone)
+	if h.users != nil {
+		if user, err := h.users.GetUserByID(c, getUserID(c)); err == nil {
+			if strings.TrimSpace(user.Phone) != "" {
+				phone = strings.TrimSpace(user.Phone)
+			}
+		}
+	}
+	record, err := h.realnameSvc.VerifyWithInput(c, getUserID(c), usecase.RealNameVerifyInput{
+		RealName: payload.RealName,
+		IDNumber: payload.IDNumber,
+		Phone:    phone,
+	})
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == usecase.ErrForbidden {
@@ -1204,6 +1229,18 @@ func (h *Handler) OrderPay(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
+	if payload.Extra == nil {
+		payload.Extra = map[string]string{}
+	}
+	if strings.TrimSpace(payload.Extra["client_ip"]) == "" {
+		ip := strings.TrimSpace(c.ClientIP())
+		if ip != "" {
+			payload.Extra["client_ip"] = ip
+		}
+	}
+	if strings.TrimSpace(payload.Extra["device"]) == "" {
+		payload.Extra["device"] = detectEZPayDeviceFromUA(c.GetHeader("User-Agent"))
+	}
 	result, err := h.paymentSvc.SelectPayment(c, getUserID(c), id, usecase.PaymentSelectInput{
 		Method:    payload.Method,
 		ReturnURL: payload.ReturnURL,
@@ -1225,6 +1262,25 @@ func (h *Handler) OrderPay(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toPaymentSelectDTO(result))
+}
+
+func detectEZPayDeviceFromUA(ua string) string {
+	ua = strings.ToLower(strings.TrimSpace(ua))
+	if ua == "" {
+		return "mobile"
+	}
+	switch {
+	case strings.Contains(ua, "micromessenger"):
+		return "wechat"
+	case strings.Contains(ua, "alipayclient"):
+		return "alipay"
+	case strings.Contains(ua, "mqqbrowser"), strings.Contains(ua, " qq/"):
+		return "qq"
+	case strings.Contains(ua, "mobile"), strings.Contains(ua, "android"), strings.Contains(ua, "iphone"), strings.Contains(ua, "ipad"):
+		return "mobile"
+	default:
+		return "pc"
+	}
 }
 
 func (h *Handler) PaymentNotify(c *gin.Context) {
@@ -5793,10 +5849,18 @@ func (h *Handler) AdminRealNameConfig(c *gin.Context) {
 		return
 	}
 	enabled, provider, actions := h.realnameSvc.GetConfig(c)
+	mangzhu := h.realnameSvc.GetMangzhuConfig(c)
 	c.JSON(http.StatusOK, gin.H{
 		"enabled":       enabled,
 		"provider":      provider,
 		"block_actions": actions,
+		"mangzhu": gin.H{
+			"base_url":      mangzhu.BaseURL,
+			"auth_mode":     mangzhu.AuthMode,
+			"face_provider": mangzhu.FaceProvider,
+			"timeout_sec":   mangzhu.TimeoutSec,
+			"key_set":       mangzhu.KeySet,
+		},
 	})
 }
 
@@ -5809,12 +5873,29 @@ func (h *Handler) AdminRealNameConfigUpdate(c *gin.Context) {
 		Enabled      bool     `json:"enabled"`
 		Provider     string   `json:"provider"`
 		BlockActions []string `json:"block_actions"`
+		Mangzhu      struct {
+			BaseURL      string `json:"base_url"`
+			Key          string `json:"key"`
+			AuthMode     string `json:"auth_mode"`
+			FaceProvider string `json:"face_provider"`
+			TimeoutSec   int    `json:"timeout_sec"`
+		} `json:"mangzhu"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
 	if err := h.realnameSvc.UpdateConfig(c, payload.Enabled, payload.Provider, payload.BlockActions); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.realnameSvc.UpdateMangzhuConfig(c, usecase.RealNameMangzhuConfig{
+		BaseURL:      payload.Mangzhu.BaseURL,
+		Key:          payload.Mangzhu.Key,
+		AuthMode:     payload.Mangzhu.AuthMode,
+		FaceProvider: payload.Mangzhu.FaceProvider,
+		TimeoutSec:   payload.Mangzhu.TimeoutSec,
+	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -5859,6 +5940,311 @@ func (h *Handler) AdminRealNameRecords(c *gin.Context) {
 		resp = append(resp, toRealNameVerificationDTO(item))
 	}
 	c.JSON(http.StatusOK, gin.H{"items": resp, "total": total})
+}
+
+type smsTemplateItem struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Content   string    `json:"content"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func (h *Handler) AdminSMSConfig(c *gin.Context) {
+	if h.settings == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+		return
+	}
+	enabledRaw := strings.TrimSpace(getSettingValue(c, h.settings, "sms_enabled"))
+	enabled := true
+	if enabledRaw != "" {
+		enabled = strings.EqualFold(enabledRaw, "true") || enabledRaw == "1"
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"enabled":              enabled,
+		"plugin_id":            strings.TrimSpace(getSettingValue(c, h.settings, "sms_plugin_id")),
+		"instance_id":          strings.TrimSpace(getSettingValue(c, h.settings, "sms_instance_id")),
+		"default_template_id":  strings.TrimSpace(getSettingValue(c, h.settings, "sms_default_template_id")),
+		"provider_template_id": strings.TrimSpace(getSettingValue(c, h.settings, "sms_provider_template_id")),
+	})
+}
+
+func (h *Handler) AdminSMSConfigUpdate(c *gin.Context) {
+	var payload struct {
+		Enabled            bool   `json:"enabled"`
+		PluginID           string `json:"plugin_id"`
+		InstanceID         string `json:"instance_id"`
+		DefaultTemplateID  string `json:"default_template_id"`
+		ProviderTemplateID string `json:"provider_template_id"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	pluginID := strings.TrimSpace(payload.PluginID)
+	instanceID := strings.TrimSpace(payload.InstanceID)
+	if pluginID != "" && instanceID == "" {
+		instanceID = "default"
+	}
+	if pluginID == "" {
+		instanceID = ""
+	}
+	adminID := getUserID(c)
+	_ = h.adminSvc.UpdateSetting(c, adminID, "sms_enabled", boolToString(payload.Enabled))
+	_ = h.adminSvc.UpdateSetting(c, adminID, "sms_plugin_id", pluginID)
+	_ = h.adminSvc.UpdateSetting(c, adminID, "sms_instance_id", instanceID)
+	_ = h.adminSvc.UpdateSetting(c, adminID, "sms_default_template_id", strings.TrimSpace(payload.DefaultTemplateID))
+	_ = h.adminSvc.UpdateSetting(c, adminID, "sms_provider_template_id", strings.TrimSpace(payload.ProviderTemplateID))
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) AdminSMSPreview(c *gin.Context) {
+	var payload struct {
+		TemplateID *int64         `json:"template_id"`
+		Content    string         `json:"content"`
+		Variables  map[string]any `json:"variables"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	vars := map[string]any{"now": time.Now().Format(time.RFC3339)}
+	for k, v := range payload.Variables {
+		vars[k] = v
+	}
+	content := strings.TrimSpace(payload.Content)
+	if payload.TemplateID != nil && *payload.TemplateID > 0 {
+		rendered, ok := h.renderSMSTemplateByID(c, *payload.TemplateID, vars)
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "template not found"})
+			return
+		}
+		content = rendered
+	} else if content != "" {
+		content = renderSMSText(content, vars)
+	}
+	if strings.TrimSpace(content) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content required"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"content": content})
+}
+
+func (h *Handler) AdminSMSTest(c *gin.Context) {
+	if h.settings == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+		return
+	}
+	var payload struct {
+		Phone              string         `json:"phone"`
+		TemplateID         *int64         `json:"template_id"`
+		Content            string         `json:"content"`
+		Variables          map[string]any `json:"variables"`
+		PluginID           string         `json:"plugin_id"`
+		InstanceID         string         `json:"instance_id"`
+		ProviderTemplateID string         `json:"provider_template_id"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	if h.pluginMgr == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "plugin manager unavailable"})
+		return
+	}
+	phoneRaw := strings.TrimSpace(payload.Phone)
+	if phoneRaw == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "phone required"})
+		return
+	}
+	phones := make([]string, 0, 4)
+	for _, p := range strings.FieldsFunc(phoneRaw, func(r rune) bool { return r == ',' || r == ';' || r == ' ' || r == '\n' || r == '\t' }) {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			phones = append(phones, p)
+		}
+	}
+	if len(phones) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "phone required"})
+		return
+	}
+
+	vars := map[string]any{"now": time.Now().Format(time.RFC3339)}
+	for k, v := range payload.Variables {
+		vars[k] = v
+	}
+	content := strings.TrimSpace(payload.Content)
+	if payload.TemplateID != nil && *payload.TemplateID > 0 {
+		rendered, ok := h.renderSMSTemplateByID(c, *payload.TemplateID, vars)
+		if !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "template not found"})
+			return
+		}
+		content = rendered
+	} else if content != "" {
+		content = renderSMSText(content, vars)
+	} else {
+		defaultTemplateID := strings.TrimSpace(getSettingValue(c, h.settings, "sms_default_template_id"))
+		if defaultTemplateID != "" {
+			if tid, err := strconv.ParseInt(defaultTemplateID, 10, 64); err == nil && tid > 0 {
+				if rendered, ok := h.renderSMSTemplateByID(c, tid, vars); ok {
+					content = rendered
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(content) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content required"})
+		return
+	}
+
+	pluginID := strings.TrimSpace(payload.PluginID)
+	instanceID := strings.TrimSpace(payload.InstanceID)
+	if pluginID == "" {
+		pluginID = strings.TrimSpace(getSettingValue(c, h.settings, "sms_plugin_id"))
+	}
+	if instanceID == "" {
+		instanceID = strings.TrimSpace(getSettingValue(c, h.settings, "sms_instance_id"))
+	}
+	if instanceID == "" {
+		instanceID = "default"
+	}
+	if pluginID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "sms plugin not configured"})
+		return
+	}
+	providerTemplateID := strings.TrimSpace(payload.ProviderTemplateID)
+	if providerTemplateID == "" {
+		providerTemplateID = strings.TrimSpace(getSettingValue(c, h.settings, "sms_provider_template_id"))
+	}
+
+	if _, err := h.pluginMgr.EnsureRunning(c, "sms", pluginID, instanceID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	client, ok := h.pluginMgr.GetSMSClient("sms", pluginID, instanceID)
+	if !ok || client == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "sms plugin not running"})
+		return
+	}
+	resp, err := client.Send(c, &pluginv1.SendSmsRequest{
+		TemplateId: providerTemplateID,
+		Content:    content,
+		Phones:     phones,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if resp == nil || !resp.Ok {
+		errMsg := "sms send failed"
+		if resp != nil && strings.TrimSpace(resp.Error) != "" {
+			errMsg = strings.TrimSpace(resp.Error)
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": errMsg})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":          true,
+		"message_id":  strings.TrimSpace(resp.MessageId),
+		"plugin_id":   pluginID,
+		"instance_id": instanceID,
+	})
+}
+
+func (h *Handler) AdminSMSTemplates(c *gin.Context) {
+	items, err := h.loadSMSTemplates(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sms_templates_json"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) AdminSMSTemplateUpsert(c *gin.Context) {
+	var payload smsTemplateItem
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	if idParam := strings.TrimSpace(c.Param("id")); idParam != "" {
+		if id, err := strconv.ParseInt(idParam, 10, 64); err == nil {
+			payload.ID = id
+		}
+	}
+	payload.Name = strings.TrimSpace(payload.Name)
+	payload.Content = strings.TrimSpace(payload.Content)
+	if payload.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "name required"})
+		return
+	}
+	if payload.Content == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "content required"})
+		return
+	}
+	items, err := h.loadSMSTemplates(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sms_templates_json"})
+		return
+	}
+	now := time.Now()
+	if payload.ID <= 0 {
+		payload.ID = nextSMSTemplateID(items)
+		payload.CreatedAt = now
+		payload.UpdatedAt = now
+		items = append(items, payload)
+	} else {
+		updated := false
+		for i := range items {
+			if items[i].ID != payload.ID {
+				continue
+			}
+			payload.CreatedAt = items[i].CreatedAt
+			if payload.CreatedAt.IsZero() {
+				payload.CreatedAt = now
+			}
+			payload.UpdatedAt = now
+			items[i] = payload
+			updated = true
+			break
+		}
+		if !updated {
+			payload.CreatedAt = now
+			payload.UpdatedAt = now
+			items = append(items, payload)
+		}
+	}
+	if err := h.saveSMSTemplates(c, getUserID(c), items); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, payload)
+}
+
+func (h *Handler) AdminSMSTemplateDelete(c *gin.Context) {
+	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		return
+	}
+	items, err := h.loadSMSTemplates(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sms_templates_json"})
+		return
+	}
+	out := make([]smsTemplateItem, 0, len(items))
+	for _, item := range items {
+		if item.ID == id {
+			continue
+		}
+		out = append(out, item)
+	}
+	if err := h.saveSMSTemplates(c, getUserID(c), out); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) AdminSMTPConfig(c *gin.Context) {
@@ -7283,6 +7669,88 @@ func verifyHMAC(body []byte, secret string, signature string) bool {
 	_, _ = mac.Write(body)
 	expected := fmt.Sprintf("%x", mac.Sum(nil))
 	return hmac.Equal([]byte(strings.ToLower(signature)), []byte(strings.ToLower(expected)))
+}
+
+func (h *Handler) loadSMSTemplates(ctx *gin.Context) ([]smsTemplateItem, error) {
+	raw := strings.TrimSpace(getSettingValue(ctx, h.settings, "sms_templates_json"))
+	if raw == "" {
+		return []smsTemplateItem{}, nil
+	}
+	var items []smsTemplateItem
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if items[i].CreatedAt.IsZero() {
+			items[i].CreatedAt = time.Now()
+		}
+		if items[i].UpdatedAt.IsZero() {
+			items[i].UpdatedAt = items[i].CreatedAt
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		return items[i].ID > items[j].ID
+	})
+	return items, nil
+}
+
+func (h *Handler) saveSMSTemplates(ctx *gin.Context, adminID int64, items []smsTemplateItem) error {
+	for i := range items {
+		items[i].Name = strings.TrimSpace(items[i].Name)
+		items[i].Content = strings.TrimSpace(items[i].Content)
+		if items[i].CreatedAt.IsZero() {
+			items[i].CreatedAt = time.Now()
+		}
+		if items[i].UpdatedAt.IsZero() {
+			items[i].UpdatedAt = time.Now()
+		}
+	}
+	raw, err := json.Marshal(items)
+	if err != nil {
+		return err
+	}
+	if h.adminSvc == nil {
+		return errors.New("admin service unavailable")
+	}
+	return h.adminSvc.UpdateSetting(ctx, adminID, "sms_templates_json", string(raw))
+}
+
+func (h *Handler) renderSMSTemplateByID(ctx *gin.Context, id int64, vars map[string]any) (string, bool) {
+	items, err := h.loadSMSTemplates(ctx)
+	if err != nil {
+		return "", false
+	}
+	for _, item := range items {
+		if item.ID != id {
+			continue
+		}
+		if !item.Enabled {
+			return "", false
+		}
+		return renderSMSText(item.Content, vars), true
+	}
+	return "", false
+}
+
+func nextSMSTemplateID(items []smsTemplateItem) int64 {
+	var maxID int64
+	for _, item := range items {
+		if item.ID > maxID {
+			maxID = item.ID
+		}
+	}
+	return maxID + 1
+}
+
+func renderSMSText(content string, vars map[string]any) string {
+	replacer := strings.NewReplacer(
+		"{{code}}", "{{.code}}",
+		"{{ code }}", "{{.code}}",
+		"{{phone}}", "{{.phone}}",
+		"{{ phone }}", "{{.phone}}",
+	)
+	normalized := replacer.Replace(strings.TrimSpace(content))
+	return strings.TrimSpace(usecase.RenderTemplate(normalized, vars, false))
 }
 
 func getSettingValue(ctx *gin.Context, settings usecase.SettingsRepository, key string) string {

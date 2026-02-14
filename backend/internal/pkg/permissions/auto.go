@@ -29,8 +29,10 @@ var moduleMapping = map[string]moduleMeta{
 	"automation":       {Display: "自动化平台", SortOrder: 10},
 	"robot":            {Display: "机器人配置", SortOrder: 11},
 	"smtp":             {Display: "SMTP配置", SortOrder: 12},
+	"sms":              {Display: "短信配置", SortOrder: 12},
 	"api_key":          {Display: "API密钥", SortOrder: 13},
 	"email_template":   {Display: "邮件模板", SortOrder: 14},
+	"sms_template":     {Display: "短信模板", SortOrder: 14},
 	"admin":            {Display: "管理员管理", SortOrder: 15},
 	"permission_group": {Display: "权限组", SortOrder: 16},
 	"permission":       {Display: "权限配置", SortOrder: 17},
@@ -240,6 +242,8 @@ func moduleFromSegments(segments []string) string {
 		return "api_key"
 	case "email-templates":
 		return "email_template"
+	case "sms-templates":
+		return "sms_template"
 	case "permission-groups":
 		return "permission_group"
 	case "permissions":

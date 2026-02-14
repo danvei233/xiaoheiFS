@@ -6,9 +6,14 @@ type Registry struct {
 	providers map[string]usecase.RealNameProvider
 }
 
-func NewRegistry() *Registry {
+func NewRegistry(settings ...usecase.SettingsRepository) *Registry {
+	var settingRepo usecase.SettingsRepository
+	if len(settings) > 0 {
+		settingRepo = settings[0]
+	}
 	reg := &Registry{providers: map[string]usecase.RealNameProvider{}}
 	reg.Register(&IDCardCNProvider{})
+	reg.Register(NewMangzhuRealNameProvider(settingRepo))
 	return reg
 }
 

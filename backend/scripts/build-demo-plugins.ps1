@@ -11,8 +11,10 @@ New-Item -ItemType Directory -Force "plugins/payment/wechatpay_v3" | Out-Null
 New-Item -ItemType Directory -Force "plugins/payment/alipay_open" | Out-Null
 New-Item -ItemType Directory -Force "plugins/sms/alisms" | Out-Null
 New-Item -ItemType Directory -Force "plugins/sms/tencent_sms" | Out-Null
+New-Item -ItemType Directory -Force "plugins/sms/duanxinbao" | Out-Null
 New-Item -ItemType Directory -Force "plugins/kyc/aliyun_kyc" | Out-Null
 New-Item -ItemType Directory -Force "plugins/kyc/tencent_kyc" | Out-Null
+New-Item -ItemType Directory -Force "plugins/kyc/mangzhu_realname" | Out-Null
 New-Item -ItemType Directory -Force "plugins/automation/lightboat" | Out-Null
 
 $targets = @(
@@ -28,8 +30,10 @@ $plugins = @(
   @{ id = "payment/alipay_open"; pkg = "./plugin-demo/pluginv1/payment_alipay_open" },
   @{ id = "sms/alisms"; pkg = "./plugin-demo/pluginv1/sms_alisms_mock" },
   @{ id = "sms/tencent_sms"; pkg = "./plugin-demo/pluginv1/sms_tencent_mock" },
+  @{ id = "sms/duanxinbao"; pkg = "./plugin-demo/pluginv1/sms_duanxinbao" },
   @{ id = "kyc/aliyun_kyc"; pkg = "./plugin-demo/pluginv1/kyc_aliyun_mock" },
   @{ id = "kyc/tencent_kyc"; pkg = "./plugin-demo/pluginv1/kyc_tencent_mock" },
+  @{ id = "kyc/mangzhu_realname"; pkg = "./plugin-demo/pluginv1/kyc_mangzhu_realname" },
   @{ id = "automation/lightboat"; pkg = "./plugin-demo/pluginv1/automation_lightboat" }
 )
 

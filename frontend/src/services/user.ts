@@ -155,7 +155,7 @@ export const triggerRobotWebhook = (payload: Record<string, unknown>, headers?: 
 
 // 实名认证
 export const getRealNameStatus = () => http.get<RealNameStatusResponse>("/api/v1/realname/status");
-export const submitRealNameVerification = (payload: { real_name: string; id_number: string }) =>
+export const submitRealNameVerification = (payload: { real_name: string; id_number: string; phone?: string }) =>
   http.post<RealNameVerification>("/api/v1/realname/verify", payload);
 
 // 密码找回

@@ -908,6 +908,24 @@ const submitPayment = async () => {
         return;
       }
     }
+    if (payKind === "urlscheme") {
+      const scheme = String(result.extra?.urlscheme || "");
+      if (scheme) {
+        window.location.href = scheme;
+        message.info("正在拉起支付应用，请完成支付");
+        closePaymentModal();
+        return;
+      }
+    }
+    if (payKind === "redirect") {
+      const url = String(result.extra?.pay_url || result.pay_url || "");
+      if (url) {
+        window.open(url, "_blank");
+        message.info("已打开支付页面，请完成支付");
+        closePaymentModal();
+        return;
+      }
+    }
     if (result.paid) {
       message.success("支付完成");
       closePaymentModal();

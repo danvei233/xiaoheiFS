@@ -64,8 +64,10 @@ jobs:
             @{ id = "payment/alipay_open"; pkg = "./plugin-demo/pluginv1/payment_alipay_open" },
             @{ id = "sms/alisms"; pkg = "./plugin-demo/pluginv1/sms_alisms_mock" },
             @{ id = "sms/tencent_sms"; pkg = "./plugin-demo/pluginv1/sms_tencent_mock" },
+            @{ id = "sms/duanxinbao"; pkg = "./plugin-demo/pluginv1/sms_duanxinbao" },
             @{ id = "kyc/aliyun_kyc"; pkg = "./plugin-demo/pluginv1/kyc_aliyun_mock" },
             @{ id = "kyc/tencent_kyc"; pkg = "./plugin-demo/pluginv1/kyc_tencent_mock" },
+            @{ id = "kyc/mangzhu_realname"; pkg = "./plugin-demo/pluginv1/kyc_mangzhu_realname" },
             @{ id = "automation/lightboat"; pkg = "./plugin-demo/pluginv1/automation_lightboat" }
           )
           $env:CGO_ENABLED = "0"
@@ -102,8 +104,10 @@ jobs:
             "payment/alipay_open ./plugin-demo/pluginv1/payment_alipay_open" \
             "sms/alisms ./plugin-demo/pluginv1/sms_alisms_mock" \
             "sms/tencent_sms ./plugin-demo/pluginv1/sms_tencent_mock" \
+            "sms/duanxinbao ./plugin-demo/pluginv1/sms_duanxinbao" \
             "kyc/aliyun_kyc ./plugin-demo/pluginv1/kyc_aliyun_mock" \
             "kyc/tencent_kyc ./plugin-demo/pluginv1/kyc_tencent_mock" \
+            "kyc/mangzhu_realname ./plugin-demo/pluginv1/kyc_mangzhu_realname" \
             "automation/lightboat ./plugin-demo/pluginv1/automation_lightboat"; do
               id="$(echo "$p" | cut -d' ' -f1)"
               pkg="$(echo "$p" | cut -d' ' -f2)"

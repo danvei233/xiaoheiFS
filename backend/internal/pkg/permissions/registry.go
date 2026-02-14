@@ -90,6 +90,13 @@ func InitRegistry() {
 	Register("email_template.list", "查看邮件模板列表", "邮件模板", 2)
 	Register("email_template.update", "更新邮件模板", "邮件模板", 3)
 	Register("email_template.delete", "删除邮件模板", "邮件模板", 4)
+	Register("sms.view", "查看短信配置", "短信配置", 1)
+	Register("sms.update", "更新短信配置", "短信配置", 2)
+	Register("sms.test", "测试短信发送", "短信配置", 3)
+	Register("sms_template.view", "查看短信模板详情", "短信模板", 1)
+	Register("sms_template.list", "查看短信模板列表", "短信模板", 2)
+	Register("sms_template.update", "更新短信模板", "短信模板", 3)
+	Register("sms_template.delete", "删除短信模板", "短信模板", 4)
 
 	Register("product.view", "查看产品详情", "产品管理", 1)
 	Register("product.list", "查看产品列表", "产品管理", 2)

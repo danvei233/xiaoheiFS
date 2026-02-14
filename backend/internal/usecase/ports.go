@@ -678,6 +678,20 @@ type RealNameProvider interface {
 	Verify(ctx context.Context, realName string, idNumber string) (bool, string, error)
 }
 
+type RealNameVerifyInput struct {
+	RealName string
+	IDNumber string
+	Phone    string
+}
+
+type RealNameProviderWithInput interface {
+	VerifyWithInput(ctx context.Context, in RealNameVerifyInput) (bool, string, error)
+}
+
+type RealNameProviderPendingPoller interface {
+	QueryPending(ctx context.Context, token string, provider string) (status string, reason string, err error)
+}
+
 type RealNameProviderRegistry interface {
 	GetProvider(key string) (RealNameProvider, error)
 	ListProviders() []RealNameProvider

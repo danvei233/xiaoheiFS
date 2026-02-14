@@ -1,0 +1,13 @@
+{
+  "title": "Duanxinbao SMS Config",
+  "type": "object",
+  "properties": {
+    "username": { "type": "string", "title": "Username" },
+    "passwd": { "type": "string", "title": "Password / MD5", "format": "password" },
+    "passwd_is_md5": { "type": "boolean", "title": "Password Is MD5", "default": true },
+    "goods_id": { "type": "string", "title": "Goods ID (optional)" },
+    "endpoint": { "type": "string", "title": "Endpoint", "default": "https://api.smsbao.com/sms" },
+    "timeout_sec": { "type": "integer", "title": "Request Timeout (sec)", "default": 10, "minimum": 1, "maximum": 60 }
+  },
+  "required": ["username", "passwd"]
+}

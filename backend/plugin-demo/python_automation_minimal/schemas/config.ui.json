@@ -1,0 +1,7 @@
+{
+  "api_key": {
+    "ui:widget": "password",
+    "ui:help": "Leave empty means keep old value."
+  }
+}
+

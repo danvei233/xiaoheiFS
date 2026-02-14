@@ -1,0 +1,24 @@
+{
+  "title": "Python Automation Minimal",
+  "type": "object",
+  "properties": {
+    "base_url": {
+      "type": "string",
+      "title": "Base URL"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password"
+    },
+    "timeout_sec": {
+      "type": "integer",
+      "title": "Timeout (sec)",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 60
+    }
+  },
+  "required": ["base_url", "api_key"]
+}
+

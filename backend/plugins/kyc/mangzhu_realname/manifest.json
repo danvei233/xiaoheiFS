@@ -1,0 +1,16 @@
+{
+  "plugin_id": "mangzhu_realname",
+  "name": "Mangzhu Realname",
+  "version": "1.0.0",
+  "description": "Mangzhu realname verification plugin (two-factor/three-factor/face).",
+  "binaries": {
+    "windows_amd64": "bin/windows_amd64/plugin.exe",
+    "linux_amd64": "bin/linux_amd64/plugin",
+    "darwin_amd64": "bin/darwin_amd64/plugin",
+    "darwin_arm64": "bin/darwin_arm64/plugin"
+  },
+  "capabilities": {
+    "kyc": { "start": true, "query_result": true }
+  }
+}
+

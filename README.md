@@ -121,6 +121,7 @@ cp -a frontend/dist/. build/linux/static/
 ## 6. 文档索引
 - App 部署教程：`docs/app-deploy.md`
 - 探针部署教程：`docs/probe-deploy.md`
+- 自动化系统对接插件开发文档：`docs/automation-plugin-development.md`
 
 ## 7. 已知问题（Alpha）
 - 支付实名插件流程未完整测试。

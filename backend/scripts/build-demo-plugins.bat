@@ -18,8 +18,10 @@ call :build_one "plugins\\payment\\wechatpay_v3\\bin\\windows_amd64" "./plugin-d
 call :build_one "plugins\\payment\\alipay_open\\bin\\windows_amd64" "./plugin-demo/pluginv1/payment_alipay_open"
 call :build_one "plugins\\sms\\alisms\\bin\\windows_amd64" "./plugin-demo/pluginv1/sms_alisms_mock"
 call :build_one "plugins\\sms\\tencent_sms\\bin\\windows_amd64" "./plugin-demo/pluginv1/sms_tencent_mock"
+call :build_one "plugins\\sms\\duanxinbao\\bin\\windows_amd64" "./plugin-demo/pluginv1/sms_duanxinbao"
 call :build_one "plugins\\kyc\\aliyun_kyc\\bin\\windows_amd64" "./plugin-demo/pluginv1/kyc_aliyun_mock"
 call :build_one "plugins\\kyc\\tencent_kyc\\bin\\windows_amd64" "./plugin-demo/pluginv1/kyc_tencent_mock"
+call :build_one "plugins\\kyc\\mangzhu_realname\\bin\\windows_amd64" "./plugin-demo/pluginv1/kyc_mangzhu_realname"
 call :build_one "plugins\\automation\\lightboat\\bin\\windows_amd64" "./plugin-demo/pluginv1/automation_lightboat"
 
 set GOOS=%ORIG_GOOS%

@@ -582,6 +582,23 @@ export interface SMTPConfig {
   enabled?: boolean;
 }
 
+export interface SMSConfig {
+  enabled?: boolean;
+  plugin_id?: string;
+  instance_id?: string;
+  default_template_id?: string;
+  provider_template_id?: string;
+}
+
+export interface SMSTemplate {
+  id?: number;
+  name?: string;
+  content?: string;
+  enabled?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 // 管理员相关
 export interface AdminUser {
   id?: number;
@@ -916,6 +933,14 @@ export interface RealNameConfig {
   enabled?: boolean;
   provider?: string;
   block_actions?: string[];
+  mangzhu?: {
+    base_url?: string;
+    auth_mode?: "two_factor" | "three_factor" | "face";
+    face_provider?: "baidu" | "wechat";
+    timeout_sec?: number;
+    key?: string;
+    key_set?: boolean;
+  };
 }
 
 export interface RealNameProvider {
