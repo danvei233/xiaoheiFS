@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../services/api_client.dart';
@@ -340,20 +341,13 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
       return;
     }
     await Clipboard.setData(ClipboardData(text: token));
-    if (mounted) {
-      showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('用户令牌'),
-          content: Text('已复制到剪贴板：\n$token'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
-        ),
-      );
+    final baseUrl = context.read<AppState>().apiClient?.baseUrl ?? '';
+    final url = _buildImpersonateConsoleUri(baseUrl, token);
+    final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开浏览器，请检查系统设置')));
     }
   }
 
@@ -1268,4 +1262,13 @@ Map<String, dynamic> _unwrapUser(Map<String, dynamic> raw) {
     return raw['data'] as Map<String, dynamic>;
   }
   return raw;
+}
+
+Uri _buildImpersonateConsoleUri(String rawBaseUrl, String token) {
+  final normalized = rawBaseUrl.endsWith('/')
+      ? rawBaseUrl.substring(0, rawBaseUrl.length - 1)
+      : rawBaseUrl;
+  return Uri.parse(
+    '$normalized/console#impersonate_token=${Uri.encodeComponent(token)}',
+  );
 }

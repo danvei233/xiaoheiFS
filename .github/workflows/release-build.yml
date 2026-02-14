@@ -53,21 +53,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Write-Host "[1/5] Build frontend..."
-          Push-Location frontend
-          npm ci
-          npm run build
-          Pop-Location
-
-          Write-Host "[2/5] Copy dist to build/windows/static..."
-          Remove-Item -Recurse -Force build/windows -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force build/windows/static | Out-Null
-          Copy-Item -Path frontend/dist/* -Destination build/windows/static -Recurse -Force
-
-          Write-Host "[3/5] Build backend (windows)..."
-          Push-Location backend
-          go build -o ..\\build\\windows\\server.exe .\\cmd\\server
-          Pop-Location
+          Write-Host "[1/5] Build frontend/static/backend via script/build-win.bat..."
+          cmd /c script\build-win.bat
 
           Write-Host "[4/5] Build built-in plugins (windows)..."
           Push-Location backend
@@ -100,21 +87,9 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          echo "[1/5] Build frontend..."
-          cd frontend
-          npm ci
-          npm run build
-          cd ..
-
-          echo "[2/5] Copy dist to build/linux/static..."
-          rm -rf build/linux
-          mkdir -p build/linux/static
-          cp -a frontend/dist/. build/linux/static/
-
-          echo "[3/5] Build backend (linux)..."
-          cd backend
-          go build -o ../build/linux/server ./cmd/server
-          cd ..
+          echo "[1/5] Build frontend/static/backend via script/build-linux.sh..."
+          chmod +x script/build-linux.sh
+          ./script/build-linux.sh
 
           echo "[4/5] Build built-in plugins (linux)..."
           cd backend

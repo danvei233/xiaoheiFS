@@ -4,8 +4,8 @@ class StorageKeys {
   StorageKeys._();
 
   // 认证相关
-  static const String accessToken = 'access_token';
-  static const String refreshToken = 'refresh_token';
+  static const String accessToken = '<REDACTED>';
+  static const String refreshToken = '<REDACTED>';
   static const String userId = 'user_id';
   static const String userInfo = 'user_info';
 

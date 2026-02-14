@@ -1,4 +1,4 @@
-package com.example.xiaoheifs_userapp
+package com.example.opensource_userapp
 
 import io.flutter.embedding.android.FlutterActivity
 

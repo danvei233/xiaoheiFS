@@ -118,7 +118,7 @@ class _UsersScreenState extends State<UsersScreen> {
               Row(
                 children: [
                   Text(
-                    '????',
+                    '用户管理',
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       fontSize: 16,
@@ -186,7 +186,7 @@ class _UsersScreenState extends State<UsersScreen> {
               extendedPadding: const EdgeInsets.symmetric(horizontal: 12),
               onPressed: _loading ? null : _openCreate,
               icon: const Icon(Icons.person_add, size: 18),
-              label: const Text('????'),
+              label: const Text('新增用户'),
             ),
           ),
         ],
@@ -443,14 +443,25 @@ Future<void> _openDetail(UserItem item) async {
       ).showSnackBar(const SnackBar(content: Text('未获取到用户令牌')));
       return;
     }
-    final baseUrl = context.read<AppState>().apiClient?.baseUrl ?? '';
-    final base = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final url = Uri.parse('$base/console?token=$token');
     await Clipboard.setData(ClipboardData(text: token));
-    await launchUrl(url, mode: LaunchMode.externalApplication);
+    final baseUrl = context.read<AppState>().apiClient?.baseUrl ?? '';
+    final url = _buildImpersonateConsoleUri(baseUrl, token);
+    final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('无法打开浏览器，请检查系统设置')));
+    }
   }
+}
+
+Uri _buildImpersonateConsoleUri(String rawBaseUrl, String token) {
+  final normalized = rawBaseUrl.endsWith('/')
+      ? rawBaseUrl.substring(0, rawBaseUrl.length - 1)
+      : rawBaseUrl;
+  return Uri.parse(
+    '$normalized/console#impersonate_token=${Uri.encodeComponent(token)}',
+  );
 }
 
 class _FilterBar extends StatelessWidget {

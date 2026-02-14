@@ -428,6 +428,7 @@ class _OrderTile extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final statusMeta = _statusMeta(item.status, colorScheme);
+    final canDelete = _canDeleteOrder(item.status);
 
     return Container(
       decoration: BoxDecoration(
@@ -585,7 +586,7 @@ class _OrderTile extends StatelessWidget {
                                 _ActionButton(
                                   label: '删除',
                                   icon: Icons.delete_outline,
-                                  onPressed: !busy ? onDelete : null,
+                                  onPressed: canDelete && !busy ? onDelete : null,
                                   color: const Color(0xFFD32F2F),
                                 ),
                               ],
@@ -1014,7 +1015,7 @@ class OrdersState extends ChangeNotifier {
   }
 
   Future<void> delete(OrderListItem item) async {
-    if (actionBusy.contains(item.id)) return;
+    if (!_canDeleteOrder(item.status) || actionBusy.contains(item.id)) return;
     actionBusy.add(item.id);
     notifyListeners();
     try {
@@ -1158,6 +1159,18 @@ _StatusMeta _statusMeta(String status, ColorScheme scheme) {
       return _StatusMeta('已取消', const Color(0xFF757575));
     default:
       return _StatusMeta(status.isEmpty ? '未知' : status, scheme.outline);
+  }
+}
+
+bool _canDeleteOrder(String status) {
+  switch (status) {
+    case 'pending_review':
+    case 'rejected':
+    case 'failed':
+    case 'canceled':
+      return true;
+    default:
+      return false;
   }
 }
 

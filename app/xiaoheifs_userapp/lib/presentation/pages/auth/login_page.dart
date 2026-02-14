@@ -7,6 +7,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/storage_service.dart';
+import '../../../core/update/update_service.dart';
+import '../../../core/utils/platform_utils.dart';
 import '../../../core/utils/validators.dart';
 import '../../providers/auth_provider.dart';
 import '../../widgets/common/app_button.dart';
@@ -30,11 +32,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   String? _errorMessage;
   String _appVersionLabel = 'V1.2.0';
   late final ProviderSubscription<AuthState> _authSubscription;
+  static bool _hasCheckedUpdateInThisLaunch = false;
+  final UpdateService _updateService = UpdateService();
 
   @override
   void initState() {
     super.initState();
-    _authSubscription = ref.listenManual<AuthState>(authProvider, (previous, next) {
+    _authSubscription = ref.listenManual<AuthState>(authProvider, (
+      previous,
+      next,
+    ) {
       if (next.error != null && next.error != previous?.error) {
         final message = _normalizeError(next.error!);
         _setErrorMessage(message);
@@ -49,6 +56,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       }
     });
     _loadAppVersion();
+    _checkAppUpdateIfNeeded();
   }
 
   Future<void> _loadAppVersion() async {
@@ -61,6 +69,68 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     } catch (_) {
       // Keep fallback version label.
     }
+  }
+
+  Future<void> _checkAppUpdateIfNeeded() async {
+    if (_hasCheckedUpdateInThisLaunch) return;
+    _hasCheckedUpdateInThisLaunch = true;
+
+    final platform = getPlatformUtils();
+    if (!platform.isAndroid) return;
+
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final buildNumber = int.tryParse(info.buildNumber) ?? 0;
+      final update = await _updateService.checkForUpdate(
+        packageName: info.packageName,
+        versionCode: buildNumber,
+      );
+      if (!mounted || update == null || !update.hasUpdate) return;
+      await _showUpdateDialog(update);
+    } catch (_) {
+      // Keep login flow unaffected if update check fails.
+    }
+  }
+
+  Future<void> _showUpdateDialog(AppUpdateInfo update) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !update.forceUpdate,
+      builder: (context) {
+        return PopScope(
+          canPop: !update.forceUpdate,
+          child: AlertDialog(
+            title: Text('发现新版本 V${update.latestVersion}'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('版本号: ${update.latestVersionCode}'),
+                  const SizedBox(height: 10),
+                  const Text('更新说明:'),
+                  const SizedBox(height: 6),
+                  Text(update.changelog.isEmpty ? '暂无更新说明' : update.changelog),
+                ],
+              ),
+            ),
+            actions: [
+              if (!update.forceUpdate)
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('稍后'),
+                ),
+              FilledButton(
+                onPressed: () async {
+                  await _updateService.openUpdateLink(update.apkUrl);
+                },
+                child: Text(update.forceUpdate ? '立即更新(必需)' : '立即更新'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -105,11 +175,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     }
 
     try {
-      await ref.read(authProvider.notifier).login(
-            username: username,
-            password: password,
-            apiUrl: apiUrl,
-          );
+      await ref
+          .read(authProvider.notifier)
+          .login(username: username, password: password, apiUrl: apiUrl);
     } catch (_) {
       // Error is handled by authProvider listener to avoid duplicate toasts.
     }
@@ -192,14 +260,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       child: Row(
                         children: [
                           Icon(
-                            _showAdvanced ? Icons.expand_less : Icons.expand_more,
+                            _showAdvanced
+                                ? Icons.expand_less
+                                : Icons.expand_more,
                             size: 20,
                             color: AppColors.gray400,
                           ),
                           const SizedBox(width: 4),
                           Text(
                             '高级设置',
-                            style: TextStyle(fontSize: 14, color: AppColors.gray400),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppColors.gray400,
+                            ),
                           ),
                         ],
                       ),
@@ -212,26 +285,32 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       decoration: BoxDecoration(
                         color: AppColors.danger.withOpacity(0.12),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.danger.withOpacity(0.5)),
+                        border: Border.all(
+                          color: AppColors.danger.withOpacity(0.5),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.error_outline, color: AppColors.danger, size: 20),
+                          Icon(
+                            Icons.error_outline,
+                            color: AppColors.danger,
+                            size: 20,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _errorMessage!,
-                              style: TextStyle(fontSize: 14, color: AppColors.danger),
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.danger,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                   if (_errorMessage != null) const SizedBox(height: 14),
-                  AppButton(
-                    text: AppStrings.login,
-                    onPressed: _login,
-                  ),
+                  AppButton(text: AppStrings.login, onPressed: _login),
                   const SizedBox(height: 24),
                   Center(
                     child: Text(
@@ -260,10 +339,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: AppColors.danger,
-        ),
+        SnackBar(content: Text(message), backgroundColor: AppColors.danger),
       );
   }
 
@@ -275,7 +351,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (lower.contains('connection refused')) {
       return '连接被拒绝：$currentBaseUrl 无法连接。请确认后端监听地址不是 localhost，并且手机可访问该 IP。';
     }
-    if (lower.contains('connection error') || lower.contains('failed host lookup')) {
+    if (lower.contains('connection error') ||
+        lower.contains('failed host lookup')) {
       return '网络连接失败：请检查手机与服务端是否同一网络，当前地址：$currentBaseUrl';
     }
     if (lower.contains('localhost') || lower.contains('127.0.0.1')) {
@@ -293,10 +370,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         SizedBox(
           width: 100,
           height: 100,
-          child: SvgPicture.asset(
-            'assets/app_icon.svg',
-            fit: BoxFit.contain,
-          ),
+          child: SvgPicture.asset('assets/app_icon.svg', fit: BoxFit.contain),
         ),
         const SizedBox(height: 24),
         Text(
@@ -310,13 +384,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         const SizedBox(height: 8),
         Text(
           '请登录您的账户',
-          style: TextStyle(
-            fontSize: 14,
-            color: AppColors.gray400,
-          ),
+          style: TextStyle(fontSize: 14, color: AppColors.gray400),
         ),
       ],
     );
   }
 }
-

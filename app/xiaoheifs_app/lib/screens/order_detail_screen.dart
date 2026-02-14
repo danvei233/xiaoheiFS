@@ -338,14 +338,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                                             (plan?['name'] ?? '').toString();
                                         final pkgName =
                                             (pkg?['name'] ?? '').toString();
-                                        final specText =
-                                            _specSummary(item['spec'], pkg);
+                                        final specRaw = item['spec'] ?? item['Spec'];
+                                        final specText = _specSummary(
+                                          specRaw,
+                                          pkg,
+                                          item: item,
+                                        );
+                                        final specDetail = _specDetail(
+                                          specRaw,
+                                          item,
+                                        );
                                         return _OrderItemCard(
                                           pkgName: pkgName,
                                           regionName: regionName,
                                           lineName: lineName,
                                           item: item,
                                           specText: specText,
+                                          specDetail: specDetail,
                                         );
                                       }).toList(),
                                     );
@@ -1444,6 +1453,7 @@ class _OrderItemCard extends StatelessWidget {
   final String lineName;
   final Map<String, dynamic> item;
   final String specText;
+  final List<String> specDetail;
 
   const _OrderItemCard({
     required this.pkgName,
@@ -1451,6 +1461,7 @@ class _OrderItemCard extends StatelessWidget {
     required this.lineName,
     required this.item,
     required this.specText,
+    required this.specDetail,
   });
 
   @override
@@ -1567,6 +1578,12 @@ class _OrderItemCard extends StatelessWidget {
                     label: '规格',
                     value: specText,
                   ),
+                  if (specDetail.isNotEmpty)
+                    _DetailRow(
+                      icon: Icons.notes_rounded,
+                      label: '规格明细',
+                      value: specDetail.join('\n'),
+                    ),
                 ],
               ),
             ),
@@ -2056,45 +2073,170 @@ String _money(dynamic value) {
   return value?.toString() ?? '0.00';
 }
 
-String _specSummary(dynamic spec, Map<String, dynamic>? pkg) {
+String _specSummary(
+  dynamic spec,
+  Map<String, dynamic>? pkg, {
+  Map<String, dynamic>? item,
+}) {
   if (spec == null) return '-';
-  dynamic parsed = spec;
-  if (spec is String) {
-    try {
-      parsed = jsonDecode(spec);
-    } catch (_) {
-      parsed = spec;
+  final parsed = _parseSpecMap(spec);
+  if (parsed == null) {
+    if (spec is String) return spec;
+    return spec.toString();
+  }
+
+  if (_isResizeAction(item, parsed)) {
+    final currentCpu = _numVal(parsed, ['current_cpu', 'currentCpu']);
+    final currentMem = _numVal(parsed, ['current_mem_gb', 'currentMemGB']);
+    final currentDisk = _numVal(parsed, ['current_disk_gb', 'currentDiskGB']);
+    final currentBw = _numVal(parsed, ['current_bw_mbps', 'currentBwMbps']);
+    final targetCpu = _numVal(parsed, ['target_cpu', 'targetCpu']);
+    final targetMem = _numVal(parsed, ['target_mem_gb', 'targetMemGB']);
+    final targetDisk = _numVal(parsed, ['target_disk_gb', 'targetDiskGB']);
+    final targetBw = _numVal(parsed, ['target_bw_mbps', 'targetBwMbps']);
+    final hasResizeSpec = currentCpu > 0 ||
+        currentMem > 0 ||
+        currentDisk > 0 ||
+        currentBw > 0 ||
+        targetCpu > 0 ||
+        targetMem > 0 ||
+        targetDisk > 0 ||
+        targetBw > 0;
+    if (hasResizeSpec) {
+      return [
+        'CPU ${_fmtPair(currentCpu, targetCpu)}',
+        '内存 ${_fmtPair(currentMem, targetMem)}G',
+        '磁盘 ${_fmtPair(currentDisk, targetDisk)}G',
+        '带宽 ${_fmtPair(currentBw, targetBw)}M',
+      ].join(' / ');
     }
   }
-  if (parsed is Map<String, dynamic>) {
-    final addC = _asInt(parsed['add_cores']);
-    final addMem = _asInt(parsed['add_mem_gb']);
-    final addDisk = _asInt(parsed['add_disk_gb']);
-    final addBw = _asInt(parsed['add_bw_mbps']);
-    int cpu = _asInt(parsed['cpu'] ?? parsed['cores']);
-    int mem = _asInt(parsed['memory_gb'] ?? parsed['memory']);
-    int disk = _asInt(parsed['disk_gb'] ?? parsed['disk']);
-    int bw = _asInt(parsed['bandwidth_mbps'] ?? parsed['bandwidth']);
-    final baseCpu = _asInt(pkg?['cores']);
-    final baseMem = _asInt(pkg?['memory_gb']);
-    final baseDisk = _asInt(pkg?['disk_gb']);
-    final baseBw = _asInt(pkg?['bandwidth_mbps']);
-    if (cpu == 0) cpu = baseCpu + addC;
-    if (mem == 0) mem = baseMem + addMem;
-    if (disk == 0) disk = baseDisk + addDisk;
-    if (bw == 0) bw = baseBw + addBw;
-    final duration = parsed['duration_months'];
-    final billing = parsed['billing_cycle_id'];
-    final cycleQty = parsed['cycle_qty'];
-    final hasAny = cpu > 0 || mem > 0 || disk > 0 || bw > 0;
-    final parts = <String>[];
-    parts.add(hasAny ? '$cpu''C ${mem}G ${disk}G ${bw}M' : '默认规格');
-    if (duration != null) parts.add('时长 $duration 个月');
-    if (billing != null) parts.add('计费ID $billing');
-    if (cycleQty != null) parts.add('周期 $cycleQty');
-    return parts.join(' · ');
+
+  final addC = _asInt(parsed['add_cores'] ?? parsed['AddCores']);
+  final addMem = _asInt(parsed['add_mem_gb'] ?? parsed['AddMemGB']);
+  final addDisk = _asInt(parsed['add_disk_gb'] ?? parsed['AddDiskGB']);
+  final addBw = _asInt(parsed['add_bw_mbps'] ?? parsed['AddBWMbps']);
+  int cpu = _asInt(parsed['cpu'] ?? parsed['cores'] ?? parsed['CPU'] ?? parsed['Cores']);
+  int mem = _asInt(parsed['memory_gb'] ?? parsed['memory'] ?? parsed['MemoryGB']);
+  int disk = _asInt(parsed['disk_gb'] ?? parsed['disk'] ?? parsed['DiskGB']);
+  int bw = _asInt(parsed['bandwidth_mbps'] ?? parsed['bandwidth'] ?? parsed['BandwidthMB']);
+  final baseCpu = _asInt(pkg?['cores']);
+  final baseMem = _asInt(pkg?['memory_gb']);
+  final baseDisk = _asInt(pkg?['disk_gb']);
+  final baseBw = _asInt(pkg?['bandwidth_mbps']);
+  if (cpu == 0) cpu = baseCpu + addC;
+  if (mem == 0) mem = baseMem + addMem;
+  if (disk == 0) disk = baseDisk + addDisk;
+  if (bw == 0) bw = baseBw + addBw;
+  final duration = parsed['duration_months'] ?? parsed['DurationMonths'];
+  final billing = parsed['billing_cycle_id'] ?? parsed['BillingCycleID'];
+  final cycleQty = parsed['cycle_qty'] ?? parsed['CycleQty'];
+  final hasAny = cpu > 0 || mem > 0 || disk > 0 || bw > 0;
+  final parts = <String>[];
+  parts.add(hasAny ? '$cpu''C ${mem}G ${disk}G ${bw}M' : '默认规格');
+  if (duration != null) parts.add('时长 $duration 个月');
+  if (billing != null) parts.add('计费ID $billing');
+  if (cycleQty != null) parts.add('周期 $cycleQty');
+  return parts.join(' · ');
+}
+
+List<String> _specDetail(dynamic spec, Map<String, dynamic>? item) {
+  final parsed = _parseSpecMap(spec);
+  if (parsed == null || !_isResizeAction(item, parsed)) return const [];
+
+  final currentCpu = _numVal(parsed, ['current_cpu', 'currentCpu']);
+  final currentMem = _numVal(parsed, ['current_mem_gb', 'currentMemGB']);
+  final currentDisk = _numVal(parsed, ['current_disk_gb', 'currentDiskGB']);
+  final currentBw = _numVal(parsed, ['current_bw_mbps', 'currentBwMbps']);
+  final targetCpu = _numVal(parsed, ['target_cpu', 'targetCpu']);
+  final targetMem = _numVal(parsed, ['target_mem_gb', 'targetMemGB']);
+  final targetDisk = _numVal(parsed, ['target_disk_gb', 'targetDiskGB']);
+  final targetBw = _numVal(parsed, ['target_bw_mbps', 'targetBwMbps']);
+  final currentPkg = _asInt(parsed['current_package_id'] ?? parsed['currentPackageID']);
+  final targetPkg = _asInt(parsed['target_package_id'] ?? parsed['targetPackageID']);
+  final currentMonthly = _numVal(parsed, ['current_monthly', 'currentMonthly']);
+  final targetMonthly = _numVal(parsed, ['target_monthly', 'targetMonthly']);
+  final chargeAmount = _numVal(parsed, ['charge_amount', 'chargeAmount']);
+  final refundAmount = _numVal(parsed, ['refund_amount', 'refundAmount']);
+  final refundToWallet = (parsed['refund_to_wallet'] ?? parsed['refundToWallet']) == true;
+
+  final lines = <String>[
+    '原配置：CPU ${_numText(currentCpu)}核 / 内存 ${_numText(currentMem)}G / 磁盘 ${_numText(currentDisk)}G / 带宽 ${_numText(currentBw)}M${currentPkg > 0 ? ' / 套餐ID $currentPkg' : ''}',
+    '新配置：CPU ${_numText(targetCpu)}核 / 内存 ${_numText(targetMem)}G / 磁盘 ${_numText(targetDisk)}G / 带宽 ${_numText(targetBw)}M${targetPkg > 0 ? ' / 套餐ID $targetPkg' : ''}',
+  ];
+
+  final changes = <String>[];
+  _pushDelta(changes, 'CPU', currentCpu, targetCpu, '核');
+  _pushDelta(changes, '内存', currentMem, targetMem, 'G');
+  _pushDelta(changes, '磁盘', currentDisk, targetDisk, 'G');
+  _pushDelta(changes, '带宽', currentBw, targetBw, 'M');
+  if (currentMonthly > 0 || targetMonthly > 0) {
+    changes.add('月费 ${_fmtMoney(currentMonthly)} -> ${_fmtMoney(targetMonthly)}');
   }
-  return parsed.toString();
+  if (chargeAmount > 0) {
+    changes.add('补差价 ${_fmtMoney(chargeAmount)}');
+  } else if (refundAmount > 0) {
+    changes.add('退款 ${_fmtMoney(refundAmount)}${refundToWallet ? '（退回钱包）' : ''}');
+  }
+  lines.add('变动说明：${changes.isEmpty ? '无配置变化' : changes.join('，')}');
+  return lines;
+}
+
+Map<String, dynamic>? _parseSpecMap(dynamic spec) {
+  if (spec is Map<String, dynamic>) return spec;
+  if (spec is Map) return spec.cast<String, dynamic>();
+  if (spec is String) {
+    try {
+      final decoded = jsonDecode(spec);
+      if (decoded is Map<String, dynamic>) return decoded;
+      if (decoded is Map) return decoded.cast<String, dynamic>();
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
+bool _isResizeAction(Map<String, dynamic>? item, Map<String, dynamic> payload) {
+  final raw = (item?['action'] ?? item?['Action'] ?? payload['action'] ?? payload['Action'] ?? '')
+      .toString()
+      .toLowerCase();
+  return raw == 'resize';
+}
+
+double _numVal(Map<String, dynamic> map, List<String> keys) {
+  for (final key in keys) {
+    final value = map[key];
+    if (value == null) continue;
+    if (value is num) return value.toDouble();
+    if (value is String) {
+      final parsed = double.tryParse(value);
+      if (parsed != null) return parsed;
+    }
+  }
+  return 0;
+}
+
+String _numText(double value) {
+  if (value == value.roundToDouble()) return value.toInt().toString();
+  return value.toString();
+}
+
+String _fmtPair(double from, double to) {
+  if (from == 0 && to == 0) return '-';
+  return '${_numText(from)} -> ${_numText(to)}';
+}
+
+String _fmtMoney(double value) => '¥${value.toStringAsFixed(2)}';
+
+void _pushDelta(List<String> out, String label, double from, double to, String unit) {
+  final diff = to - from;
+  if (diff == 0) {
+    out.add('$label 无变化');
+    return;
+  }
+  final sign = diff > 0 ? '+' : '';
+  out.add('$label $sign${_numText(diff)}$unit');
 }
 
 String _resolveAvatar(dynamic avatarValue, String qq, String baseUrl) {

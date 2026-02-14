@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_strings.dart';
@@ -8,9 +8,9 @@ import '../pages/dashboard/dashboard_page.dart';
 import '../pages/vps/vps_list_page.dart';
 import '../pages/vps/vps_detail_page.dart';
 import '../pages/orders/orders_list_page.dart';
-import 'package:xiaoheifs_userapp/presentation/pages/orders/order_detail_page.dart';
+import 'package:opensource_userapp/presentation/pages/orders/order_detail_page.dart';
 import '../pages/cart/cart_page.dart';
-import 'package:xiaoheifs_userapp/presentation/pages/buy/buy_vps_page.dart';
+import 'package:opensource_userapp/presentation/pages/buy/buy_vps_page.dart';
 import '../pages/billing/billing_page.dart';
 import '../pages/tickets/tickets_list_page.dart';
 import '../pages/tickets/ticket_detail_page.dart';

@@ -61,6 +61,13 @@ Thumbs.db
 /frontend/.vite/
 /frontend/.claude/
 /frontend/.idea/
+/frontend/.cache/
+/frontend/.tmp/
+/frontend/.temp/
+/frontend/coverage/
+/frontend/.turbo/
+/frontend/.eslintcache
+/frontend/.stylelintcache
 /CLAUDE.md
 /backend/.claude/
 /backend/.plan/
@@ -86,3 +93,9 @@ app/xiaoheifs_app/android/app/google-services.json
 app/xiaoheifs_userapp/assets/nul
 /dist/xiaohei-local-windows-amd64.zip
 /dist/
+
+# Root build artifacts
+/build/
+/dist/
+/tmp/
+/app/userapp/

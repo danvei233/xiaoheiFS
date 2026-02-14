@@ -1,4 +1,4 @@
-# xiaoheifs_app
+# opensource_adminapp
 
 A new Flutter project.
 
@@ -14,3 +14,25 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## Build with Git Version
+
+Use the root script to build `admin app` with version info derived from Git:
+
+```powershell
+# from d:\proj-netmc\app
+.\build_adminapp_from_git.ps1
+```
+
+Rules:
+- `build-name` uses latest Git tag (for example `v1.2.0` -> `1.2.0`).
+- `build-number` uses `git rev-list --count HEAD`.
+- If no valid tag is found, `build-name` falls back to `pubspec.yaml` `version`.
+
+More options:
+
+```powershell
+.\build_adminapp_from_git.ps1 -Target appbundle
+.\build_adminapp_from_git.ps1 -SplitPerAbi
+.\build_adminapp_from_git.ps1 -DryRun
+```

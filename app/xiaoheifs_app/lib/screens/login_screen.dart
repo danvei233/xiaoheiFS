@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../services/admin_auth.dart';
 import '../services/api_client.dart';
 import '../services/app_storage.dart';
+import '../services/update_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -18,9 +21,9 @@ class _LoginScreenState extends State<LoginScreen>
   final _apiKeyFormKey = GlobalKey<FormState>();
   final _passwordFormKey = GlobalKey<FormState>();
 
-  final _apiUrlController = TextEditingController();
+  final _apiUrlController = TextEditingController(text: 'https://api.example.com');
   final _apiKeyController = TextEditingController();
-  final _usernameController = TextEditingController(text: '管理�?);
+  final _usernameController = TextEditingController(text: 'Admin');
 
   final _loginUserController = TextEditingController(text: 'admin');
   final _loginPasswordController = TextEditingController();
@@ -28,12 +31,15 @@ class _LoginScreenState extends State<LoginScreen>
   late final TabController _tabController;
   bool _saving = false;
   String? _error;
+  static bool _hasCheckedUpdateInThisLaunch = false;
+  final UpdateService _updateService = UpdateService();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadLastSession();
+    _checkAppUpdateIfNeeded();
   }
 
   @override
@@ -58,6 +64,66 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
+  Future<void> _checkAppUpdateIfNeeded() async {
+    if (_hasCheckedUpdateInThisLaunch) return;
+    _hasCheckedUpdateInThisLaunch = true;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final buildNumber = int.tryParse(info.buildNumber) ?? 0;
+      final update = await _updateService.checkForUpdate(
+        packageName: info.packageName,
+        versionCode: buildNumber,
+      );
+      if (!mounted || update == null || !update.hasUpdate) return;
+      await _showUpdateDialog(update);
+    } catch (_) {
+      // Keep login flow unaffected if update check fails.
+    }
+  }
+
+  Future<void> _showUpdateDialog(AppUpdateInfo update) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !update.forceUpdate,
+      builder: (context) {
+        return PopScope(
+          canPop: !update.forceUpdate,
+          child: AlertDialog(
+            title: Text('发现新版本 V${update.latestVersion}'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('版本号: ${update.latestVersionCode}'),
+                  const SizedBox(height: 10),
+                  const Text('更新说明:'),
+                  const SizedBox(height: 6),
+                  Text(update.changelog.isEmpty ? '暂无更新说明' : update.changelog),
+                ],
+              ),
+            ),
+            actions: [
+              if (!update.forceUpdate)
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('稍后'),
+                ),
+              FilledButton(
+                onPressed: () async {
+                  await _updateService.openUpdateLink(update.apkUrl);
+                },
+                child: Text(update.forceUpdate ? '立即更新(必需)' : '立即更新'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _loginWithApiKey() async {
     if (!_apiKeyFormKey.currentState!.validate()) return;
     setState(() {
@@ -70,11 +136,11 @@ class _LoginScreenState extends State<LoginScreen>
         apiUrl: _apiUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
         username: _usernameController.text.trim().isEmpty
-            ? '管理�?
+            ? 'Admin'
             : _usernameController.text.trim(),
       );
     } catch (e) {
-      _error = '登录失败�?e';
+      _error = _mapLoginError(e.toString());
     } finally {
       if (mounted) {
         setState(() {
@@ -103,15 +169,15 @@ class _LoginScreenState extends State<LoginScreen>
       final username = (profile['username'] as String?)?.trim();
       final email = profile['email'] as String?;
       await context.read<AppState>().loginWithPassword(
-            apiUrl: apiUrl,
-            tokens: tokens,
-            username: username?.isNotEmpty == true ? username! : '����Ա',
-            email: email,
-          );
+        apiUrl: apiUrl,
+        tokens: tokens,
+        username: username?.isNotEmpty == true ? username! : 'Admin',
+        email: email,
+      );
     } on AuthException catch (e) {
-      _error = '��¼ʧ�ܣ�';
+      _error = _mapLoginError(e.message);
     } catch (e) {
-      _error = '��¼ʧ�ܣ�';
+      _error = _mapLoginError(e.toString());
     } finally {
       if (mounted) {
         setState(() {
@@ -119,6 +185,14 @@ class _LoginScreenState extends State<LoginScreen>
         });
       }
     }
+  }
+
+  String _mapLoginError(String raw) {
+    final message = raw.toLowerCase();
+    if (message.contains('invalid credentials')) {
+      return '无效登录凭据';
+    }
+    return '登录失败: $raw';
   }
 
   @override
@@ -144,14 +218,14 @@ class _LoginScreenState extends State<LoginScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '\u8d22\u52a1\u7ba1\u7406',
+                              'Admin Portal',
                               style: theme.textTheme.titleLarge?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              '\u8d22\u52a1\u540e\u53f0\u7ba1\u7406',
+                              'Cloud Management',
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: theme.colorScheme.onSurfaceVariant,
                               ),
@@ -161,14 +235,14 @@ class _LoginScreenState extends State<LoginScreen>
                       ],
                     ),
                     const SizedBox(height: 12),
-Card(
+                    Card(
                       child: Padding(
                         padding: const EdgeInsets.all(20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '管理员登�?,
+                              '登录以继续',
                               style: theme.textTheme.titleMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
                               ),
@@ -178,11 +252,11 @@ Card(
                               controller: _apiUrlController,
                               decoration: const InputDecoration(
                                 labelText: 'API 地址',
-                                hintText: 'http://127.0.0.1:8080',
+                                hintText: 'https://api.example.com',
                               ),
                               validator: (value) {
                                 if (value == null || value.trim().isEmpty) {
-                                  return '请输�?API 地址';
+                                  return '请填写 API 地址';
                                 }
                                 return null;
                               },
@@ -193,7 +267,7 @@ Card(
                               labelColor: theme.colorScheme.primary,
                               unselectedLabelColor: Colors.black54,
                               tabs: const [
-                                Tab(text: '账号登录'),
+                                Tab(text: '密码登录'),
                                 Tab(text: 'API Key'),
                               ],
                             ),
@@ -210,12 +284,12 @@ Card(
                                         TextFormField(
                                           controller: _loginUserController,
                                           decoration: const InputDecoration(
-                                            labelText: '管理员账�?,
+                                            labelText: '用户名',
                                           ),
                                           validator: (value) {
                                             if (value == null ||
                                                 value.trim().isEmpty) {
-                                              return '请输入账�?;
+                                              return '请输入用户名';
                                             }
                                             return null;
                                           },
@@ -230,7 +304,7 @@ Card(
                                           validator: (value) {
                                             if (value == null ||
                                                 value.trim().isEmpty) {
-                                              return '请输入密�?;
+                                              return '请输入密码';
                                             }
                                             return null;
                                           },
@@ -239,16 +313,17 @@ Card(
                                         SizedBox(
                                           width: double.infinity,
                                           child: FilledButton(
-                                            onPressed:
-                                                _saving ? null : _loginWithPassword,
+                                            onPressed: _saving
+                                                ? null
+                                                : _loginWithPassword,
                                             child: _saving
                                                 ? const SizedBox(
                                                     height: 20,
                                                     width: 20,
                                                     child:
                                                         CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
+                                                          strokeWidth: 2,
+                                                        ),
                                                   )
                                                 : const Text('登录'),
                                           ),
@@ -269,7 +344,7 @@ Card(
                                           validator: (value) {
                                             if (value == null ||
                                                 value.trim().isEmpty) {
-                                              return '请输�?API Key';
+                                              return '请输入 API Key';
                                             }
                                             return null;
                                           },
@@ -278,24 +353,25 @@ Card(
                                         TextFormField(
                                           controller: _usernameController,
                                           decoration: const InputDecoration(
-                                            labelText: '显示�?,
-                                            hintText: '管理�?,
+                                            labelText: '展示名称',
+                                            hintText: '管理员',
                                           ),
                                         ),
                                         const Spacer(),
                                         SizedBox(
                                           width: double.infinity,
                                           child: FilledButton(
-                                            onPressed:
-                                                _saving ? null : _loginWithApiKey,
+                                            onPressed: _saving
+                                                ? null
+                                                : _loginWithApiKey,
                                             child: _saving
                                                 ? const SizedBox(
                                                     height: 20,
                                                     width: 20,
                                                     child:
                                                         CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
+                                                          strokeWidth: 2,
+                                                        ),
                                                   )
                                                 : const Text('登录'),
                                           ),
@@ -330,62 +406,19 @@ Card(
   }
 }
 
-
 class _AppLogo extends StatelessWidget {
   const _AppLogo();
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      width: 56,
-      height: 56,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withOpacity(0.12),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          const Text(
-            '\u8d22',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          Positioned(
-            right: 10,
-            bottom: 10,
-            child: Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: const Icon(
-                Icons.trending_up,
-                size: 12,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Image.asset(
+        'assets/admin_logo.png',
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
       ),
     );
   }
 }
-

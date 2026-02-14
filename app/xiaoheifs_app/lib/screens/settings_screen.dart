@@ -13,6 +13,7 @@ import 'tickets_screen.dart';
 import 'wallet_orders_screen.dart';
 import 'catalog/catalog_hub_screen.dart';
 import 'permissions_screen.dart';
+import 'probes_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -98,6 +99,17 @@ class SettingsScreen extends StatelessWidget {
                     MaterialPageRoute(
                       builder: (_) => const ScheduledTasksScreen(),
                     ),
+                  );
+                },
+              ),
+              _SettingTile(
+                icon: Icons.radar,
+                title: '探针管理',
+                subtitle: '查看探针状态、SLA 与日志',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ProbesScreen()),
                   );
                 },
               ),

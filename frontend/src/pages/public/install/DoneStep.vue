@@ -155,7 +155,7 @@ const goAdmin = async () => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding: 20px;
+  padding: 20px 8px;
 }
 
 /* Success Visual */
@@ -272,12 +272,12 @@ const goAdmin = async () => {
 /* Success Content */
 .success-content {
   width: 100%;
-  max-width: 500px;
+  max-width: 560px;
 }
 
 .success-title {
   font-size: 28px;
-  font-weight: 900;
+  font-weight: 800;
   color: #ffffff;
   margin: 0 0 12px 0;
   letter-spacing: -0.02em;
@@ -296,50 +296,53 @@ const goAdmin = async () => {
 
 .success-desc code {
   padding: 2px 6px;
-  border-radius: 6px;
+  border-radius: 4px;
   background: rgba(34, 211, 238, 0.15);
   font-family: "SF Mono", "Consolas", monospace;
   font-size: 12px;
   color: #22d3ee;
 }
 
-/* Info Cards */
 .info-cards {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 0;
   margin-bottom: 28px;
+  border-top: 1px solid rgba(71, 85, 105, 0.4);
+  border-bottom: 1px solid rgba(71, 85, 105, 0.4);
 }
 
 .info-card {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  padding: 16px;
-  border-radius: 14px;
+  padding: 14px 10px;
+  border-radius: 0;
   text-align: left;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.25);
 }
 
 .info-card.primary {
-  background: rgba(34, 211, 238, 0.1);
-  border: 1px solid rgba(34, 211, 238, 0.25);
+  background: rgba(34, 211, 238, 0.05);
+  border-left: 3px solid rgba(34, 211, 238, 0.6);
 }
 
 .info-card.warning {
-  background: rgba(251, 191, 36, 0.1);
-  border: 1px solid rgba(251, 191, 36, 0.25);
+  background: rgba(251, 191, 36, 0.05);
+  border-left: 3px solid rgba(251, 191, 36, 0.6);
 }
 
 .info-card.neutral {
-  background: rgba(71, 85, 105, 0.2);
-  border: 1px solid rgba(71, 85, 105, 0.3);
+  background: rgba(71, 85, 105, 0.1);
+  border-left: 3px solid rgba(100, 116, 139, 0.7);
+  border-bottom: none;
 }
 
 .info-card-icon {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -406,7 +409,7 @@ const goAdmin = async () => {
   gap: 8px;
   height: 48px;
   padding: 0 24px;
-  border-radius: 12px;
+  border-radius: 4px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -428,7 +431,7 @@ const goAdmin = async () => {
 .action-btn.secondary:hover {
   background: rgba(30, 41, 59, 1);
   border-color: rgba(34, 211, 238, 0.5);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .action-btn.primary {
@@ -439,7 +442,7 @@ const goAdmin = async () => {
 
 .action-btn.primary:hover {
   box-shadow: 0 6px 30px rgba(34, 211, 238, 0.5);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 /* Footer Branding */

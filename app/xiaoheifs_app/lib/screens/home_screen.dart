@@ -11,12 +11,12 @@ import 'wallet_orders_screen.dart';
 import 'tickets_screen.dart';
 import 'audit_logs_screen.dart';
 import 'scheduled_tasks_screen.dart';
-import 'api_keys_screen.dart';
 import 'payment_providers_screen.dart';
 import 'settings_kv_screen.dart';
 import 'catalog/catalog_hub_screen.dart';
 import 'permissions_screen.dart';
 import 'settings_screen.dart';
+import 'probes_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -480,7 +480,7 @@ class _QuickEntrySection extends StatelessWidget {
       _EntryItem('工单管理', Icons.support_agent, const TicketsScreen()),
       _EntryItem('操作日志', Icons.history, const AuditLogsScreen()),
       _EntryItem('定时任务', Icons.schedule, const ScheduledTasksScreen()),
-      _EntryItem('API密钥', Icons.vpn_key, const ApiKeysScreen()),
+      _EntryItem('探针管理', Icons.radar, const ProbesScreen()),
     ];
 
     return Container(

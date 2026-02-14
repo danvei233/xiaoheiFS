@@ -1,8 +1,8 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:xiaoheifs_userapp/main.dart';
-import 'package:xiaoheifs_userapp/core/storage/storage_service.dart';
+import 'package:opensource_userapp/main.dart';
+import 'package:opensource_userapp/core/storage/storage_service.dart';
 
 void main() {
   testWidgets('App builds without crashing', (WidgetTester tester) async {

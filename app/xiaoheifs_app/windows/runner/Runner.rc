@@ -1,4 +1,4 @@
-// Microsoft Visual C++ generated resource script.
+﻿// Microsoft Visual C++ generated resource script.
 //
 #pragma code_page(65001)
 #include "resource.h"
@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "xiaoheifs_app" "\0"
+            VALUE "CompanyName", "NetMC" "\\0"
+            VALUE "FileDescription", "云享互联管理端" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "xiaoheifs_app" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "xiaoheifs_app.exe" "\0"
-            VALUE "ProductName", "xiaoheifs_app" "\0"
+            VALUE "InternalName", "yunxianghulian_admin" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 NetMC. All rights reserved." "\\0"
+            VALUE "OriginalFilename", "yunxianghulian_admin.exe" "\0"
+            VALUE "ProductName", "云享互联管理端" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

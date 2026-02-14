@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="20%" y1="10%" x2="90%" y2="95%">
+      <stop offset="0%" stop-color="#0ea5e9" />
+      <stop offset="55%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22d3ee" />
+      <stop offset="100%" stop-color="#14b8a6" />
+    </linearGradient>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="10" y="10" width="236" height="236" rx="56" fill="url(#bg)" />
+
+  <circle cx="76" cy="80" r="14" fill="#ffffff" opacity="0.22" />
+  <circle cx="188" cy="72" r="10" fill="#ffffff" opacity="0.18" />
+  <circle cx="198" cy="178" r="12" fill="#ffffff" opacity="0.16" />
+
+  <path d="M74 151c-15 0-27-11-27-25 0-12 9-22 21-24 4-21 24-37 48-37 24 0 44 15 49 36 14 1 26 12 26 26 0 14-13 24-29 24H74z"
+        fill="#ffffff" opacity="0.96" />
+
+  <line x1="96" y1="143" x2="128" y2="114" stroke="#0f172a" stroke-opacity="0.2" stroke-width="5" stroke-linecap="round" />
+  <line x1="160" y1="143" x2="128" y2="114" stroke="#0f172a" stroke-opacity="0.2" stroke-width="5" stroke-linecap="round" />
+  <line x1="128" y1="114" x2="128" y2="90" stroke="#0f172a" stroke-opacity="0.2" stroke-width="5" stroke-linecap="round" />
+
+  <rect x="113" y="104" width="30" height="30" rx="8" fill="url(#accent)" filter="url(#softGlow)" />
+  <circle cx="96" cy="143" r="7" fill="url(#accent)" />
+  <circle cx="160" cy="143" r="7" fill="url(#accent)" />
+  <circle cx="128" cy="90" r="7" fill="url(#accent)" />
+</svg>

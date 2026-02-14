@@ -1,8 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -23,6 +24,10 @@ class RootScaffold extends StatefulWidget {
 class _RootScaffoldState extends State<RootScaffold> {
   int _index = 0;
   StreamSubscription<String>? _tokenSub;
+  StreamSubscription<RemoteMessage>? _messageSub;
+  StreamSubscription<RemoteMessage>? _openMessageSub;
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
 
   final List<_TabItem> _tabs = const [
     _TabItem(title: '主页', icon: Icons.dashboard, widget: HomeScreen()),
@@ -35,32 +40,36 @@ class _RootScaffoldState extends State<RootScaffold> {
   @override
   void initState() {
     super.initState();
+    _initLocalNotifications();
     _initPush();
   }
 
   @override
   void dispose() {
     _tokenSub?.cancel();
+    _messageSub?.cancel();
+    _openMessageSub?.cancel();
     super.dispose();
   }
 
-  Future<void> _initPush() async {
+  Future<void> _initLocalNotifications() async {
     if (!Platform.isAndroid) return;
-    final client = context.read<AppState>().apiClient;
-    if (client == null) return;
-    try {
-      await FirebaseMessaging.instance.requestPermission();
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) {
-        await _registerToken(client, token);
-      }
-      _tokenSub = FirebaseMessaging.instance.onTokenRefresh.listen((token) {
-        final latest = context.read<AppState>().apiClient;
-        if (latest != null && token.isNotEmpty) {
-          _registerToken(latest, token);
-        }
-      });
-    } catch (_) {}
+    const android = AndroidInitializationSettings('ic_launcher');
+    await _localNotifications.initialize(
+      const InitializationSettings(android: android),
+      onDidReceiveNotificationResponse: (response) {
+        _openByPayload(response.payload);
+      },
+    );
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+  }
+
+  Future<void> _initPush() async {
+    // Firebase push disabled for open-source build.
+    return;
   }
 
   Future<void> _registerToken(ApiClient client, String token) async {
@@ -70,6 +79,64 @@ class _RootScaffoldState extends State<RootScaffold> {
         'platform': 'android',
       });
     } catch (_) {}
+  }
+
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    if (!mounted) return;
+    final title = message.notification?.title ?? '新消息';
+    final body = message.notification?.body ?? '你有一条新通知';
+    final payload = _routePayloadFromMessage(message);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$title：$body'),
+        action: SnackBarAction(
+          label: '查看',
+          onPressed: () => _openByPayload(payload),
+        ),
+      ),
+    );
+
+    await _localNotifications.show(
+      message.messageId.hashCode,
+      title,
+      body,
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'new_orders_channel',
+          '管理端通知',
+          channelDescription: '用于提醒管理员有新消息',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      ),
+      payload: payload,
+    );
+  }
+
+  void _handleOpenedMessage(RemoteMessage message) {
+    _openByPayload(_routePayloadFromMessage(message));
+  }
+
+  String _routePayloadFromMessage(RemoteMessage message) {
+    final route = message.data['route']?.toString();
+    if (route != null && route.isNotEmpty) return route;
+    final type = message.data['type']?.toString().toLowerCase() ?? '';
+    if (type.contains('order')) return 'orders';
+    return 'home';
+  }
+
+  void _openByPayload(String? payload) {
+    if (!mounted) return;
+    if (payload == null || payload.isEmpty || payload == 'home') {
+      setState(() => _index = 0);
+      return;
+    }
+    if (payload == 'orders' || payload.contains('order')) {
+      setState(() => _index = 1);
+      return;
+    }
+    setState(() => _index = 0);
   }
 
   @override

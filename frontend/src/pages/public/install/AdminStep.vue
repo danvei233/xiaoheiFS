@@ -245,9 +245,10 @@ const onSubmit = async () => {
 
 /* Config Card */
 .config-card {
-  border-radius: 16px;
-  background: rgba(30, 41, 59, 0.4);
-  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: 0;
+  background: rgba(10, 16, 28, 0.3);
+  border-top: 1px solid rgba(71, 85, 105, 0.5);
+  border-bottom: 1px solid rgba(71, 85, 105, 0.5);
   overflow: hidden;
   margin-bottom: 16px;
 }
@@ -256,8 +257,8 @@ const onSubmit = async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 18px;
-  background: rgba(15, 23, 42, 0.5);
+  padding: 14px 16px;
+  background: rgba(15, 23, 42, 0.2);
   border-bottom: 1px solid rgba(71, 85, 105, 0.3);
 }
 
@@ -284,7 +285,7 @@ const onSubmit = async () => {
 }
 
 .card-body {
-  padding: 18px;
+  padding: 18px 16px;
 }
 
 /* Styled Input Override */
@@ -329,7 +330,7 @@ const onSubmit = async () => {
 /* Warning Alert */
 .warning-alert {
   margin-bottom: 16px;
-  border-radius: 12px;
+  border-radius: 4px;
   background: rgba(251, 191, 36, 0.1);
   border: 1px solid rgba(251, 191, 36, 0.3);
 }
@@ -355,7 +356,7 @@ const onSubmit = async () => {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: 4px;
   background: rgba(34, 211, 238, 0.05);
   border: 1px solid rgba(34, 211, 238, 0.15);
   max-width: 340px;
@@ -405,7 +406,7 @@ const onSubmit = async () => {
 .action-btn {
   height: 44px;
   padding: 0 20px;
-  border-radius: 10px;
+  border-radius: 4px;
   font-size: 14px;
   font-weight: 600;
   display: flex;

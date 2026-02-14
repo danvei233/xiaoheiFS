@@ -1,19 +1,29 @@
 <template>
-  <div class="install-shell">
+  <a-config-provider :theme="{ algorithm: antTheme.darkAlgorithm }">
+    <div class="install-shell">
+    <!-- Animated background elements -->
+    <div class="bg-orbs">
+      <div class="orb orb-1"></div>
+      <div class="orb orb-2"></div>
+      <div class="orb orb-3"></div>
+    </div>
+
     <div class="install-wrap">
       <!-- Clean header -->
       <header class="install-header">
         <div class="brand-section">
           <div class="brand-logo">
-            <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="8" y="8" width="32" height="32" rx="8" fill="#1677ff" opacity="0.1"/>
-              <path d="M24 16L16 21V27L24 32L32 27V21L24 16Z" stroke="#1677ff" stroke-width="2" stroke-linejoin="round"/>
-              <circle cx="24" cy="24" r="3" fill="#1677ff"/>
-            </svg>
+            <div class="logo-inner">
+              <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M24 6L8 17V31L24 42L40 31V17L24 6Z" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+                <circle cx="24" cy="24" r="5" fill="currentColor"/>
+              </svg>
+            </div>
+            <div class="logo-glow"></div>
           </div>
           <div class="brand-info">
             <span class="brand-badge">安装向导</span>
-            <h1 class="brand-title">小黑云财务</h1>
+            <h1 class="brand-title">小黑云</h1>
           </div>
         </div>
         <div class="header-badge">
@@ -96,17 +106,24 @@
 
       <!-- Footer -->
       <footer class="install-footer">
-        <span>小黑云财务 v1.0.0</span>
-        <span class="footer-sep">·</span>
+        <span class="footer-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L4 8.5V17.5L12 24L20 17.5V8.5L12 2Z"/>
+          </svg>
+        </span>
+        <span>小黑云 v1.0.0</span>
+        <span class="footer-dot">·</span>
         <span>VPS 管理平台</span>
       </footer>
     </div>
-  </div>
+    </div>
+  </a-config-provider>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
+import { theme as antTheme } from "ant-design-vue";
 import { useInstallStore } from "@/stores/install";
 
 const route = useRoute();
@@ -130,53 +147,75 @@ const currentStep = computed(() => {
 </script>
 
 <style scoped>
-/* ============================================
-   VARIABLES & RESET
-   ============================================ */
 .install-shell {
-  --bg-primary: #f5f7fa;
-  --bg-surface: #ffffff;
-  --bg-sidebar: #fafbfc;
-  --border-color: #e5e7eb;
-  --border-light: #f0f2f5;
-  --text-primary: #1f2937;
-  --text-secondary: #6b7280;
-  --text-tertiary: #9ca3af;
-  --color-primary: #1677ff;
-  --color-primary-light: #e6f4ff;
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.08);
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --bg-main: #0b111c;
+  --bg-panel: #0f1726;
+  --bg-line: rgba(148, 163, 184, 0.22);
+  --bg-line-soft: rgba(148, 163, 184, 0.14);
+  --text-primary: #e2e8f0;
+  --text-secondary: rgba(226, 232, 240, 0.72);
+  --text-tertiary: rgba(226, 232, 240, 0.45);
+  --brand: #38bdf8;
+  --brand-soft: rgba(56, 189, 248, 0.16);
+  --success: #22c55e;
+  --warn: #f59e0b;
 }
 
 .install-shell {
   min-height: 100vh;
-  background: var(--bg-primary);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(56, 189, 248, 0.14), transparent 42%),
+    radial-gradient(circle at 82% 78%, rgba(20, 184, 166, 0.1), transparent 40%),
+    linear-gradient(180deg, #0b111c 0%, #080d16 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 34px 24px;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  position: relative;
+  overflow: hidden;
+}
+
+.install-shell::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: linear-gradient(to right, rgba(148, 163, 184, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(148, 163, 184, 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .install-wrap {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1180px;
+  position: relative;
+  z-index: 1;
 }
 
-/* ============================================
-   HEADER
-   ============================================ */
 .install-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
+  animation: fadeInDown 0.6s ease-out;
+  border-bottom: 1px solid var(--bg-line-soft);
+  padding-bottom: 16px;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .brand-section {
@@ -186,112 +225,155 @@ const currentStep = computed(() => {
 }
 
 .brand-logo {
-  width: 48px;
-  height: 48px;
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #0284c7, #0ea5e9);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.28);
+  position: relative;
+  overflow: hidden;
+}
+
+.brand-logo::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 3s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    left: -100%;
+  }
+  100% {
+    left: 200%;
+  }
 }
 
 .brand-logo svg {
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
+  position: relative;
+  z-index: 1;
 }
 
 .brand-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .brand-badge {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-primary);
+  color: var(--brand);
 }
 
 .brand-title {
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
-  letter-spacing: -0.02em;
+  letter-spacing: 0.01em;
 }
 
 .header-badge {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  border-radius: 100px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  font-size: 13px;
-  font-weight: 500;
+  padding: 6px 0;
+  border-bottom: 2px solid var(--bg-line);
+  font-size: 12px;
+  font-weight: 700;
   color: var(--text-secondary);
-  box-shadow: var(--shadow-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .badge-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--color-success);
+  background: var(--success);
+  animation: pulse-dot 2s ease-in-out infinite;
 }
 
-/* ============================================
-   MAIN CARD
-   ============================================ */
+@keyframes pulse-dot {
+  0%, 100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .install-main {
-  background: var(--bg-surface);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-md);
-  overflow: hidden;
+  background: linear-gradient(180deg, rgba(15, 23, 38, 0.82), rgba(10, 16, 28, 0.86));
+  border-top: 1px solid var(--bg-line);
+  border-bottom: 1px solid var(--bg-line);
+  overflow: clip;
+  animation: scaleIn 0.5s ease-out 0.1s both;
 }
 
-/* ============================================
-   INSTALLED STATE
-   ============================================ */
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .installed-state {
   padding: 48px;
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 400px;
+  min-height: 420px;
 }
 
 .installed-card {
   display: flex;
-  gap: 20px;
-  padding: 28px;
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-  border: 1px solid #fde68a;
-  max-width: 480px;
+  gap: 18px;
+  padding: 26px 0 26px 22px;
+  border-left: 4px solid rgba(245, 158, 11, 0.8);
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.02));
+  max-width: 560px;
+  width: 100%;
 }
 
 .installed-icon {
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-sm);
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #fbbf24;
+  background: rgba(245, 158, 11, 0.2);
   color: #ffffff;
+  border: 1px solid rgba(245, 158, 11, 0.4);
 }
 
 .installed-icon svg {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
 }
 
 .installed-content {
@@ -299,44 +381,38 @@ const currentStep = computed(() => {
 }
 
 .installed-title {
-  font-size: 17px;
-  font-weight: 600;
-  color: #92400e;
-  margin: 0 0 6px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: #fde68a;
+  margin: 0 0 8px 0;
 }
 
 .installed-desc {
   font-size: 14px;
   line-height: 1.6;
-  color: #b45309;
+  color: rgba(253, 224, 71, 0.8);
   margin: 0;
 }
 
 .installed-desc code {
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.3);
   font-family: "SF Mono", Consolas, monospace;
-  font-size: 13px;
-  color: #92400e;
+  font-size: 12px;
+  color: #fcd34d;
 }
 
-/* ============================================
-   WIZARD LAYOUT
-   ============================================ */
 .wizard-layout {
   display: grid;
   grid-template-columns: 260px 1fr;
-  min-height: 520px;
+  min-height: 600px;
 }
 
-/* ============================================
-   SIDEBAR - STEPS
-   ============================================ */
 .wizard-sidebar {
-  background: var(--bg-sidebar);
-  border-right: 1px solid var(--border-color);
-  padding: 28px 20px;
+  background: rgba(11, 18, 30, 0.6);
+  border-right: 1px solid var(--bg-line);
+  padding: 26px 20px 20px;
   display: flex;
   flex-direction: column;
 }
@@ -344,78 +420,79 @@ const currentStep = computed(() => {
 .steps-nav {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .step-nav-item {
   display: flex;
   gap: 12px;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  transition: all 0.2s ease;
+  padding: 14px 8px;
+  border-bottom: 1px solid var(--bg-line-soft);
+  transition: all 0.25s ease;
 }
 
 .step-nav-item:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: rgba(148, 163, 184, 0.06);
 }
 
 .step-nav-item.step-active {
-  background: var(--color-primary-light);
+  background: linear-gradient(90deg, var(--brand-soft), transparent);
+  border-bottom-color: rgba(56, 189, 248, 0.5);
 }
 
 .step-number {
   flex-shrink: 0;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 600;
-  background: var(--bg-surface);
-  border: 2px solid var(--border-color);
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.09);
+  border: 1px solid var(--bg-line-soft);
   color: var(--text-tertiary);
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .step-nav-item.step-active .step-number {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  background: #0284c7;
+  border-color: #38bdf8;
   color: #ffffff;
 }
 
 .step-nav-item.step-completed .step-number {
-  background: var(--color-success);
-  border-color: var(--color-success);
+  background: #166534;
+  border-color: #16a34a;
   color: #ffffff;
 }
 
 .step-nav-item.step-completed .step-number svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
 .step-text {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
 }
 
 .step-name {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-secondary);
-  transition: color 0.2s ease;
+  transition: color 0.3s ease;
 }
 
 .step-nav-item.step-active .step-name {
-  color: var(--color-primary);
+  color: var(--text-primary);
 }
 
 .step-nav-item.step-completed .step-name {
-  color: var(--color-success);
+  color: #4ade80;
 }
 
 .step-hint {
@@ -423,38 +500,35 @@ const currentStep = computed(() => {
   color: var(--text-tertiary);
 }
 
-/* Sidebar tip */
 .sidebar-tip {
   margin-top: auto;
   display: flex;
   gap: 10px;
-  padding: 14px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
+  padding: 14px 0 0;
+  border-top: 1px dashed var(--bg-line);
 }
 
 .tip-icon {
   flex-shrink: 0;
   width: 28px;
   height: 28px;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-primary-light);
-  color: var(--color-primary);
+  background: var(--brand-soft);
+  color: var(--brand);
 }
 
 .tip-icon svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
 }
 
 .tip-text {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .tip-text strong {
@@ -465,38 +539,53 @@ const currentStep = computed(() => {
 
 .tip-text span {
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.5;
   color: var(--text-secondary);
 }
 
-/* ============================================
-   CONTENT AREA
-   ============================================ */
 .wizard-content {
-  padding: 32px 36px;
-  background: var(--bg-surface);
+  padding: 34px 38px;
+  background: rgba(14, 22, 36, 0.45);
+  animation: fadeInRight 0.4s ease-out 0.2s both;
 }
 
-/* ============================================
-   FOOTER
-   ============================================ */
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .install-footer {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  margin-top: 20px;
+  margin-top: 14px;
   font-size: 13px;
   color: var(--text-tertiary);
+  animation: fadeInUp 0.5s ease-out 0.3s both;
 }
 
-.footer-sep {
-  color: var(--border-color);
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* ============================================
-   RESPONSIVE
-   ============================================ */
+.footer-dot {
+  color: rgba(148, 163, 184, 0.4);
+}
+
 @media (max-width: 900px) {
   .wizard-layout {
     grid-template-columns: 1fr;
@@ -504,7 +593,7 @@ const currentStep = computed(() => {
 
   .wizard-sidebar {
     border-right: none;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--bg-line);
     padding: 20px;
   }
 
@@ -516,7 +605,9 @@ const currentStep = computed(() => {
 
   .step-nav-item {
     flex-shrink: 0;
-    min-width: 140px;
+    min-width: 152px;
+    border-bottom: none;
+    border-right: 1px solid var(--bg-line-soft);
   }
 
   .step-hint {
@@ -528,19 +619,19 @@ const currentStep = computed(() => {
   }
 
   .wizard-content {
-    padding: 24px;
+    padding: 24px 20px;
   }
 }
 
 @media (max-width: 640px) {
   .install-shell {
-    padding: 16px;
+    padding: 20px 16px;
   }
 
   .install-header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: 16px;
   }
 
   .header-badge {
@@ -548,26 +639,25 @@ const currentStep = computed(() => {
   }
 
   .installed-state {
-    padding: 24px;
+    padding: 24px 16px;
   }
 
   .installed-card {
-    flex-direction: column;
-    text-align: center;
-    padding: 20px;
+    flex-direction: row;
+    padding: 18px 0 18px 14px;
   }
 
   .wizard-content {
-    padding: 20px 16px;
+    padding: 24px 16px;
   }
 
   .install-footer {
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
   }
 
-  .footer-sep {
-    display: none;
+  .footer-dot {
+    display: inline;
   }
 }
 </style>

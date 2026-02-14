@@ -165,9 +165,10 @@ const next = async () => {
 
 /* Config Card */
 .config-card {
-  border-radius: 16px;
-  background: rgba(30, 41, 59, 0.4);
-  border: 1px solid rgba(71, 85, 105, 0.5);
+  border-radius: 0;
+  background: rgba(10, 16, 28, 0.3);
+  border-top: 1px solid rgba(71, 85, 105, 0.5);
+  border-bottom: 1px solid rgba(71, 85, 105, 0.5);
   overflow: hidden;
   margin-bottom: 20px;
 }
@@ -176,8 +177,8 @@ const next = async () => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 18px;
-  background: rgba(15, 23, 42, 0.5);
+  padding: 14px 16px;
+  background: rgba(15, 23, 42, 0.2);
   border-bottom: 1px solid rgba(71, 85, 105, 0.3);
 }
 
@@ -204,7 +205,7 @@ const next = async () => {
 }
 
 .card-body {
-  padding: 18px;
+  padding: 18px 16px;
 }
 
 /* Styled Input Override */
@@ -266,7 +267,7 @@ const next = async () => {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: 4px;
   background: rgba(34, 211, 238, 0.05);
   border: 1px solid rgba(34, 211, 238, 0.15);
   max-width: 320px;
@@ -316,7 +317,7 @@ const next = async () => {
 .action-btn {
   height: 44px;
   padding: 0 20px;
-  border-radius: 10px;
+  border-radius: 4px;
   font-size: 14px;
   font-weight: 600;
   display: flex;
