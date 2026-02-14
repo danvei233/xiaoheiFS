@@ -2878,11 +2878,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     try {
       final platform = getPlatformUtils();
       final modes = platform.isMobile
-          ? const [
-              LaunchMode.externalNonBrowserApplication,
-              LaunchMode.externalApplication,
-              LaunchMode.platformDefault,
-            ]
+          ? const [LaunchMode.externalNonBrowserApplication]
           : const [LaunchMode.platformDefault];
       final lower = url.toLowerCase();
       final isWebLink = lower.startsWith('http://') || lower.startsWith('https://');

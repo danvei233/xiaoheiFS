@@ -50,6 +50,11 @@
 		<string>ssh</string>
 		<string>rdp</string>
 		<string>termius</string>
+		<string>weixin</string>
+		<string>wechat</string>
+		<string>alipay</string>
+		<string>alipays</string>
+		<string>mqqapi</string>
 	</array>
 </dict>
 </plist>

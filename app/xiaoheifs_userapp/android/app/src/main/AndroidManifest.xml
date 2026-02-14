@@ -51,5 +51,17 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="termius"/>
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="weixin"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="alipays"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="alipay"/>
+        </intent>
     </queries>
 </manifest>

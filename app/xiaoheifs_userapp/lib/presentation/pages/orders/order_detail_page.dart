@@ -2,12 +2,12 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/input_limits.dart';
+import '../../../core/config/api_config.dart';
 import '../../../core/utils/date_formatter.dart';
 import '../../../core/utils/money_formatter.dart';
 import '../../providers/catalog_provider.dart';
@@ -29,6 +29,21 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   Timer? _pollingTimer;
   bool _autoNavigated = false;
   ProviderSubscription<OrderDetailState>? _detailSub;
+
+  String _resolveBackendOrigin() {
+    final configured = Uri.tryParse(ApiConfig.baseUrl.trim());
+    if (configured != null &&
+        (configured.scheme == 'http' || configured.scheme == 'https') &&
+        configured.host.isNotEmpty) {
+      final port = configured.hasPort ? ':${configured.port}' : '';
+      return '${configured.scheme}://${configured.host}$port';
+    }
+    final base = Uri.base;
+    if (base.scheme == 'http' || base.scheme == 'https') {
+      return base.origin;
+    }
+    return '';
+  }
 
   @override
   void initState() {
@@ -908,7 +923,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     }
                   }
 
-                  final base = Uri.base.origin;
+                  final base = _resolveBackendOrigin();
+                  if (base.isEmpty) {
+                    throw Exception('无法确定后端地址，请先在设置中配置 API 地址');
+                  }
                   final payload = {
                     'method': method,
                     'return_url': '$base/console/orders/${widget.id}',
@@ -948,8 +966,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     final extra = result['extra'] is Map<String, dynamic>
         ? result['extra'] as Map<String, dynamic>
         : <String, dynamic>{};
-    final payKind = (extra['pay_kind'] ?? '').toString();
+    final payKind = (extra['pay_kind'] ?? '').toString().toLowerCase();
     final payUrl = extra['code_url'] ?? result['pay_url'] ?? result['payUrl'] ?? result['url'];
+    final urlScheme = extra['urlscheme'] ?? result['urlscheme'];
     final instructions = extra['instructions']?.toString();
 
     // balance/approval 不跳转 payUrl，直接提示结果
@@ -962,12 +981,20 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       return;
     }
 
-    if (payUrl != null && payUrl.toString().isNotEmpty) {
-      final url = Uri.tryParse(payUrl.toString());
-      if (url != null) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-        return;
-      }
+    String manualLink = '';
+    if (payKind == 'urlscheme' && urlScheme != null && urlScheme.toString().isNotEmpty) {
+      manualLink = urlScheme.toString();
+    } else if (payKind == 'redirect' &&
+        extra['pay_url'] != null &&
+        extra['pay_url'].toString().isNotEmpty) {
+      manualLink = extra['pay_url'].toString();
+    } else if (payUrl != null && payUrl.toString().isNotEmpty) {
+      manualLink = payUrl.toString();
+    }
+
+    if (manualLink.isNotEmpty) {
+      await _showPaymentCopyDialog(context, manualLink);
+      return;
     }
 
     if (context.mounted) {
@@ -976,6 +1003,45 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       );
     }
     return;
+  }
+
+  Future<void> _showPaymentCopyDialog(BuildContext context, String link) async {
+    final text = link.trim();
+    if (text.isEmpty) return;
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('复制支付链接'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('请复制下方链接，发送到微信/对应App聊天框后点击打开完成支付。'),
+              const SizedBox(height: 12),
+              SelectableText(text),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('关闭'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: text));
+                if (dialogContext.mounted) {
+                  ScaffoldMessenger.of(dialogContext).showSnackBar(
+                    const SnackBar(content: Text('支付链接已复制')),
+                  );
+                }
+              },
+              child: const Text('复制链接'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 

@@ -27,10 +27,16 @@ class RealnamePage extends ConsumerWidget {
     WidgetRef ref,
     Map<String, dynamic> status,
   ) {
-    final isVerified = status['verified'] == true;
     final verification = status['verification'] is Map<String, dynamic>
         ? status['verification'] as Map<String, dynamic>
         : null;
+    final verificationStatus = _resolveStatus(status, verification);
+    final enabled = status['enabled'] != false;
+    final canEdit =
+        enabled &&
+        (verification == null ||
+            verificationStatus == 'failed' ||
+            verificationStatus == 'rejected');
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -43,9 +49,9 @@ class RealnamePage extends ConsumerWidget {
               child: Row(
                 children: [
                   Icon(
-                    isVerified ? Icons.verified : Icons.pending_outlined,
+                    _statusIcon(verificationStatus),
                     size: 48,
-                    color: isVerified ? AppColors.success : AppColors.warning,
+                    color: _statusColor(verificationStatus),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -61,9 +67,7 @@ class RealnamePage extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          isVerified
-                              ? AppStrings.verificationApproved
-                              : AppStrings.verificationNotSubmit,
+                          _statusText(verificationStatus),
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
@@ -76,7 +80,7 @@ class RealnamePage extends ConsumerWidget {
               ),
             ),
           ),
-          if (!isVerified) ...[
+          if (canEdit) ...[
             const SizedBox(height: 24),
             const Text(
               '提交实名认证',
@@ -87,6 +91,9 @@ class RealnamePage extends ConsumerWidget {
           ] else if (verification != null) ...[
             const SizedBox(height: 24),
             _buildVerificationInfo(verification),
+          ] else ...[
+            const SizedBox(height: 24),
+            _buildReadonlyNotice(verificationStatus),
           ],
         ],
       ),
@@ -108,8 +115,13 @@ class RealnamePage extends ConsumerWidget {
           verification['id_number'] ?? verification['idNumber'] ?? '';
     }
 
+    final verificationStatus = (verification?['status'] ?? '')
+        .toString()
+        .toLowerCase();
     final canEdit =
-        verification == null || verification['status'] == 'rejected';
+        verification == null ||
+        verificationStatus == 'failed' ||
+        verificationStatus == 'rejected';
 
     return Card(
       child: Padding(
@@ -131,12 +143,13 @@ class RealnamePage extends ConsumerWidget {
               maxLength: 18,
             ),
             if (verification != null &&
-                verification['status'] == 'rejected') ...[
+                (verificationStatus == 'failed' ||
+                    verificationStatus == 'rejected')) ...[
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.danger.withOpacity(0.1),
+                  color: AppColors.danger.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
@@ -145,7 +158,7 @@ class RealnamePage extends ConsumerWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '审核未通过: ${verification['remark'] ?? ''}',
+                        '审核未通过: ${verification['reason'] ?? verification['remark'] ?? ''}',
                         style: TextStyle(color: AppColors.danger),
                       ),
                     ),
@@ -241,5 +254,66 @@ class RealnamePage extends ConsumerWidget {
     final end = value.length - 4;
     if (end <= start) return value;
     return value.replaceRange(start, end, '*' * (end - start));
+  }
+
+  String _resolveStatus(
+    Map<String, dynamic> status,
+    Map<String, dynamic>? verification,
+  ) {
+    if (status['verified'] == true) return 'verified';
+    final value = (verification?['status'] ?? '').toString().toLowerCase();
+    if (value.isNotEmpty) return value;
+    if (status['enabled'] == false) return 'disabled';
+    return 'unverified';
+  }
+
+  bool _isVerified(String status) {
+    return status == 'verified' || status == 'approved' || status == 'success';
+  }
+
+  String _statusText(String status) {
+    switch (status) {
+      case 'verified':
+      case 'approved':
+      case 'success':
+        return AppStrings.verificationApproved;
+      case 'pending':
+      case 'reviewing':
+      case 'processing':
+        return AppStrings.verificationPending;
+      case 'failed':
+      case 'rejected':
+        return AppStrings.verificationRejected;
+      case 'disabled':
+        return '未启用实名认证';
+      default:
+        return AppStrings.verificationNotSubmit;
+    }
+  }
+
+  IconData _statusIcon(String status) {
+    if (_isVerified(status)) return Icons.verified;
+    if (status == 'failed' || status == 'rejected') {
+      return Icons.cancel_outlined;
+    }
+    return Icons.pending_outlined;
+  }
+
+  Color _statusColor(String status) {
+    if (_isVerified(status)) return AppColors.success;
+    if (status == 'failed' || status == 'rejected') return AppColors.danger;
+    return AppColors.warning;
+  }
+
+  Widget _buildReadonlyNotice(String status) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          status == 'disabled' ? '当前站点未启用实名认证。' : '当前状态下无需提交实名认证信息。',
+          style: TextStyle(color: AppColors.gray600),
+        ),
+      ),
+    );
   }
 }

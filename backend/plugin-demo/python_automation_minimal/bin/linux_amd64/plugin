@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Placeholder launcher for python minimal plugin.
+# Transport bridge to Hashicorp go-plugin is not implemented in this scaffold.
+python -m python_automation_minimal.main
+
