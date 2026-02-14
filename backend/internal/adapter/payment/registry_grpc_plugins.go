@@ -129,7 +129,7 @@ func (r *Registry) grpcProviders(ctx context.Context) []usecase.PaymentProvider 
 	}
 	var out []usecase.PaymentProvider
 	for _, it := range items {
-		if !it.Enabled || it.InstanceID != plugins.DefaultInstanceID || it.Capabilities.Capabilities.Payment == nil {
+		if !it.Enabled || !it.Loaded || it.InstanceID != plugins.DefaultInstanceID || it.Capabilities.Capabilities.Payment == nil {
 			continue
 		}
 		enabledMap := r.pluginPaymentMethodEnabledMap(ctx, it.Category, it.PluginID, it.InstanceID)
@@ -172,7 +172,7 @@ func (r *Registry) grpcProviderByKey(ctx context.Context, key string) usecase.Pa
 		return nil
 	}
 	for _, it := range items {
-		if !it.Enabled || it.InstanceID != plugins.DefaultInstanceID || it.PluginID != pluginID || it.Capabilities.Capabilities.Payment == nil {
+		if !it.Enabled || !it.Loaded || it.InstanceID != plugins.DefaultInstanceID || it.PluginID != pluginID || it.Capabilities.Capabilities.Payment == nil {
 			continue
 		}
 		enabledMap := r.pluginPaymentMethodEnabledMap(ctx, it.Category, it.PluginID, it.InstanceID)

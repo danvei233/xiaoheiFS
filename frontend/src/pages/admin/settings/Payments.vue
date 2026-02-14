@@ -130,6 +130,7 @@ const buildRows = async () => {
 
   const enabledPaymentPlugins = plugins.filter((p) => {
     if (!p.enabled) return false;
+    if (!p.loaded) return false;
     const category = String(p.category || "").trim();
     if (category !== "payment") return false;
     const methods = pluginMethodsFromManifest(p);

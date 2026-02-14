@@ -3099,6 +3099,10 @@ func (h *Handler) AdminPluginPaymentMethodsList(c *gin.Context) {
 		if it.Category != category || it.PluginID != pluginID || it.InstanceID != instanceID {
 			continue
 		}
+		if !it.Enabled || !it.Loaded {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plugin instance not enabled/loaded"})
+			return
+		}
 		if it.Capabilities.Capabilities.Payment == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "not a payment plugin instance"})
 			return
@@ -3169,6 +3173,38 @@ func (h *Handler) AdminPluginPaymentMethodsUpdate(c *gin.Context) {
 	}
 	if category == "" || pluginID == "" || instanceID == "" || method == "" || payload.Enabled == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "category/plugin_id/instance_id/method/enabled required"})
+		return
+	}
+	items, err := h.pluginMgr.List(c)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	found := false
+	for _, it := range items {
+		if it.Category != category || it.PluginID != pluginID || it.InstanceID != instanceID {
+			continue
+		}
+		if !it.Enabled || !it.Loaded || it.Capabilities.Capabilities.Payment == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "plugin instance not enabled/loaded"})
+			return
+		}
+		supported := false
+		for _, m := range it.Capabilities.Capabilities.Payment.Methods {
+			if strings.TrimSpace(m) == method {
+				supported = true
+				break
+			}
+		}
+		if !supported {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "method not supported"})
+			return
+		}
+		found = true
+		break
+	}
+	if !found {
+		c.JSON(http.StatusNotFound, gin.H{"error": "plugin instance not found"})
 		return
 	}
 
@@ -5897,18 +5933,10 @@ func (h *Handler) AdminRealNameConfig(c *gin.Context) {
 		return
 	}
 	enabled, provider, actions := h.realnameSvc.GetConfig(c)
-	mangzhu := h.realnameSvc.GetMangzhuConfig(c)
 	c.JSON(http.StatusOK, gin.H{
 		"enabled":       enabled,
 		"provider":      provider,
 		"block_actions": actions,
-		"mangzhu": gin.H{
-			"base_url":      mangzhu.BaseURL,
-			"auth_mode":     mangzhu.AuthMode,
-			"face_provider": mangzhu.FaceProvider,
-			"timeout_sec":   mangzhu.TimeoutSec,
-			"key_set":       mangzhu.KeySet,
-		},
 	})
 }
 
@@ -5921,29 +5949,12 @@ func (h *Handler) AdminRealNameConfigUpdate(c *gin.Context) {
 		Enabled      bool     `json:"enabled"`
 		Provider     string   `json:"provider"`
 		BlockActions []string `json:"block_actions"`
-		Mangzhu      struct {
-			BaseURL      string `json:"base_url"`
-			Key          string `json:"key"`
-			AuthMode     string `json:"auth_mode"`
-			FaceProvider string `json:"face_provider"`
-			TimeoutSec   int    `json:"timeout_sec"`
-		} `json:"mangzhu"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
 	if err := h.realnameSvc.UpdateConfig(c, payload.Enabled, payload.Provider, payload.BlockActions); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if err := h.realnameSvc.UpdateMangzhuConfig(c, usecase.RealNameMangzhuConfig{
-		BaseURL:      payload.Mangzhu.BaseURL,
-		Key:          payload.Mangzhu.Key,
-		AuthMode:     payload.Mangzhu.AuthMode,
-		FaceProvider: payload.Mangzhu.FaceProvider,
-		TimeoutSec:   payload.Mangzhu.TimeoutSec,
-	}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

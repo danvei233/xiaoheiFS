@@ -104,6 +104,7 @@ func main() {
 	pushNotifier := push.NewOrderPushNotifier(repoSQLite, pushSvc)
 	eventBus := event.NewFanoutPublisher(broker, robotNotifier, pushNotifier)
 	realnameRegistry := realname.NewRegistry(repoSQLite)
+	realnameRegistry.SetPluginManager(pluginMgr)
 	realnameSvc := usecase.NewRealNameService(repoSQLite, realnameRegistry, repoSQLite)
 	messageSvc := usecase.NewMessageCenterService(repoSQLite, repoSQLite)
 	orderSvc := usecase.NewOrderService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, eventBus, automationResolver, nil, repoSQLite, repoSQLite, emailSender, repoSQLite, repoSQLite, repoSQLite, repoSQLite, messageSvc, realnameSvc)

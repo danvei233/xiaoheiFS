@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
@@ -14,15 +13,6 @@ type RealNameService struct {
 	repo     RealNameRepository
 	registry RealNameProviderRegistry
 	settings SettingsRepository
-}
-
-type RealNameMangzhuConfig struct {
-	BaseURL      string
-	Key          string
-	AuthMode     string
-	FaceProvider string
-	TimeoutSec   int
-	KeySet       bool
 }
 
 func NewRealNameService(repo RealNameRepository, registry RealNameProviderRegistry, settings SettingsRepository) *RealNameService {
@@ -59,6 +49,11 @@ func (s *RealNameService) UpdateConfig(ctx context.Context, enabled bool, provid
 	if provider == "" {
 		provider = "idcard_cn"
 	}
+	if s.registry != nil {
+		if _, err := s.registry.GetProvider(provider); err != nil {
+			return err
+		}
+	}
 	raw, _ := json.Marshal(actions)
 	enabledVal := "false"
 	if enabled {
@@ -71,90 +66,6 @@ func (s *RealNameService) UpdateConfig(ctx context.Context, enabled bool, provid
 		return err
 	}
 	return s.settings.UpsertSetting(ctx, domain.Setting{Key: "realname_block_actions", ValueJSON: string(raw)})
-}
-
-func (s *RealNameService) GetMangzhuConfig(ctx context.Context) RealNameMangzhuConfig {
-	cfg := RealNameMangzhuConfig{
-		BaseURL:      "https://e.mangzhuyun.cn",
-		AuthMode:     "three_factor",
-		FaceProvider: "baidu",
-		TimeoutSec:   10,
-	}
-	if s.settings == nil {
-		return cfg
-	}
-	if st, err := s.settings.GetSetting(ctx, "realname_mangzhu_base_url"); err == nil && strings.TrimSpace(st.ValueJSON) != "" {
-		cfg.BaseURL = strings.TrimSpace(st.ValueJSON)
-	}
-	if st, err := s.settings.GetSetting(ctx, "realname_mangzhu_key"); err == nil {
-		cfg.Key = strings.TrimSpace(st.ValueJSON)
-		cfg.KeySet = cfg.Key != ""
-	}
-	if st, err := s.settings.GetSetting(ctx, "realname_mangzhu_auth_mode"); err == nil && strings.TrimSpace(st.ValueJSON) != "" {
-		cfg.AuthMode = strings.TrimSpace(strings.ToLower(st.ValueJSON))
-	}
-	if st, err := s.settings.GetSetting(ctx, "realname_mangzhu_face_provider"); err == nil && strings.TrimSpace(st.ValueJSON) != "" {
-		cfg.FaceProvider = strings.TrimSpace(strings.ToLower(st.ValueJSON))
-	}
-	if st, err := s.settings.GetSetting(ctx, "realname_mangzhu_timeout_sec"); err == nil && strings.TrimSpace(st.ValueJSON) != "" {
-		var sec int
-		if _, err := fmt.Sscanf(strings.TrimSpace(st.ValueJSON), "%d", &sec); err == nil && sec > 0 && sec <= 60 {
-			cfg.TimeoutSec = sec
-		}
-	}
-	if cfg.AuthMode != "two_factor" && cfg.AuthMode != "three_factor" && cfg.AuthMode != "face" {
-		cfg.AuthMode = "three_factor"
-	}
-	if cfg.FaceProvider != "baidu" && cfg.FaceProvider != "wechat" {
-		cfg.FaceProvider = "baidu"
-	}
-	return cfg
-}
-
-func (s *RealNameService) UpdateMangzhuConfig(ctx context.Context, cfg RealNameMangzhuConfig) error {
-	if s.settings == nil {
-		return ErrInvalidInput
-	}
-	baseURL := strings.TrimSpace(cfg.BaseURL)
-	if baseURL == "" {
-		baseURL = "https://e.mangzhuyun.cn"
-	}
-	authMode := strings.TrimSpace(strings.ToLower(cfg.AuthMode))
-	if authMode == "" {
-		authMode = "three_factor"
-	}
-	if authMode != "two_factor" && authMode != "three_factor" && authMode != "face" {
-		return ErrInvalidInput
-	}
-	faceProvider := strings.TrimSpace(strings.ToLower(cfg.FaceProvider))
-	if faceProvider == "" {
-		faceProvider = "baidu"
-	}
-	if faceProvider != "baidu" && faceProvider != "wechat" {
-		return ErrInvalidInput
-	}
-	timeoutSec := cfg.TimeoutSec
-	if timeoutSec <= 0 {
-		timeoutSec = 10
-	}
-	if timeoutSec > 60 {
-		timeoutSec = 60
-	}
-	if err := s.settings.UpsertSetting(ctx, domain.Setting{Key: "realname_mangzhu_base_url", ValueJSON: baseURL}); err != nil {
-		return err
-	}
-	if strings.TrimSpace(cfg.Key) != "" {
-		if err := s.settings.UpsertSetting(ctx, domain.Setting{Key: "realname_mangzhu_key", ValueJSON: strings.TrimSpace(cfg.Key)}); err != nil {
-			return err
-		}
-	}
-	if err := s.settings.UpsertSetting(ctx, domain.Setting{Key: "realname_mangzhu_auth_mode", ValueJSON: authMode}); err != nil {
-		return err
-	}
-	if err := s.settings.UpsertSetting(ctx, domain.Setting{Key: "realname_mangzhu_face_provider", ValueJSON: faceProvider}); err != nil {
-		return err
-	}
-	return s.settings.UpsertSetting(ctx, domain.Setting{Key: "realname_mangzhu_timeout_sec", ValueJSON: fmt.Sprintf("%d", timeoutSec)})
 }
 
 func (s *RealNameService) Verify(ctx context.Context, userID int64, realName, idNumber string) (domain.RealNameVerification, error) {
@@ -219,12 +130,18 @@ func (s *RealNameService) PollPending(ctx context.Context, limit int) (int, erro
 	if limit <= 0 {
 		limit = 200
 	}
-	provider, err := s.registry.GetProvider("mangzhu_realname")
-	if err != nil {
-		return 0, nil
+	pollers := map[string]RealNameProviderPendingPoller{}
+	for _, provider := range s.registry.ListProviders() {
+		if provider == nil {
+			continue
+		}
+		poller, ok := provider.(RealNameProviderPendingPoller)
+		if !ok {
+			continue
+		}
+		pollers[provider.Key()] = poller
 	}
-	poller, ok := provider.(RealNameProviderPendingPoller)
-	if !ok {
+	if len(pollers) == 0 {
 		return 0, nil
 	}
 	offset := 0
@@ -238,7 +155,11 @@ func (s *RealNameService) PollPending(ctx context.Context, limit int) (int, erro
 			break
 		}
 		for _, item := range items {
-			if item.Provider != "mangzhu_realname" || strings.ToLower(strings.TrimSpace(item.Status)) != "pending" {
+			if strings.ToLower(strings.TrimSpace(item.Status)) != "pending" {
+				continue
+			}
+			poller, ok := pollers[item.Provider]
+			if !ok {
 				continue
 			}
 			p, token, ok := parsePendingReason(item.Reason)
@@ -273,11 +194,25 @@ func (s *RealNameService) PollPending(ctx context.Context, limit int) (int, erro
 
 func isPendingReason(reason string) bool {
 	reason = strings.TrimSpace(reason)
+	if strings.HasPrefix(reason, "pending:") {
+		return true
+	}
 	return strings.HasPrefix(reason, "pending_face:")
 }
 
 func parsePendingReason(reason string) (provider string, token string, ok bool) {
 	reason = strings.TrimSpace(reason)
+	if strings.HasPrefix(reason, "pending:") {
+		parts := strings.SplitN(reason, ":", 2)
+		if len(parts) != 2 {
+			return "", "", false
+		}
+		t := strings.TrimSpace(parts[1])
+		if t == "" {
+			return "", "", false
+		}
+		return "", t, true
+	}
 	if !strings.HasPrefix(reason, "pending_face:") {
 		return "", "", false
 	}

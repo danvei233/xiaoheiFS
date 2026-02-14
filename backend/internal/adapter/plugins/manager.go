@@ -110,6 +110,7 @@ type ListItem struct {
 	Version         string                       `json:"version"`
 	SignatureStatus domain.PluginSignatureStatus `json:"signature_status"`
 	Enabled         bool                         `json:"enabled"`
+	Loaded          bool                         `json:"loaded"`
 	InstalledAt     time.Time                    `json:"installed_at"`
 	UpdatedAt       time.Time                    `json:"updated_at"`
 	LastHealthAt    *time.Time                   `json:"last_health_at"`
@@ -167,7 +168,9 @@ func (m *Manager) List(ctx context.Context) ([]ListItem, error) {
 		var lastHealthAt *time.Time
 		healthStatus := ""
 		healthMessage := ""
+		loaded := false
 		if rp, ok := m.runtime.GetRunning(inst.Category, inst.PluginID, inst.InstanceID); ok {
+			loaded = true
 			rp.mu.Lock()
 			if !rp.lastHealth.IsZero() {
 				t := rp.lastHealth
@@ -187,6 +190,7 @@ func (m *Manager) List(ctx context.Context) ([]ListItem, error) {
 			Version:         manifest.Version,
 			SignatureStatus: inst.SignatureStatus,
 			Enabled:         inst.Enabled,
+			Loaded:          loaded,
 			InstalledAt:     inst.CreatedAt,
 			UpdatedAt:       inst.UpdatedAt,
 			LastHealthAt:    lastHealthAt,
@@ -689,6 +693,16 @@ func (m *Manager) GetSMSClient(category, pluginID, instanceID string) (pluginv1.
 	}
 	if rp, ok := m.runtime.GetRunning(category, pluginID, instanceID); ok && rp.sms != nil {
 		return rp.sms, true
+	}
+	return nil, false
+}
+
+func (m *Manager) GetKYCClient(category, pluginID, instanceID string) (pluginv1.KycServiceClient, bool) {
+	if strings.TrimSpace(instanceID) == "" {
+		instanceID = DefaultInstanceID
+	}
+	if rp, ok := m.runtime.GetRunning(category, pluginID, instanceID); ok && rp.kyc != nil {
+		return rp.kyc, true
 	}
 	return nil, false
 }

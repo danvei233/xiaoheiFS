@@ -156,7 +156,7 @@ const columns = [
 const pluginItems = ref<Array<Record<string, any>>>([]);
 const smsPluginOptions = computed(() => {
   return pluginItems.value
-    .filter((item) => (item.category || "") === "sms")
+    .filter((item) => (item.category || "") === "sms" && item.enabled === true && item.loaded === true)
     .map((item) => {
       const pluginId = String(item.plugin_id || "");
       const instanceId = String(item.instance_id || "default");

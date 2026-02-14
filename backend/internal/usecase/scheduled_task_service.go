@@ -263,7 +263,7 @@ func (s *ScheduledTaskService) executeTask(ctx context.Context, cfg ScheduledTas
 			if s.vps != nil {
 				runErr = s.vps.AutoLockExpired(ctx)
 			}
-		case "realname_mangzhu_poll":
+		case "plugin_schedule":
 			if s.realname != nil {
 				_, runErr = s.realname.PollPending(ctx, 200)
 			}
@@ -461,10 +461,10 @@ func defaultTaskDefinitions() map[string]ScheduledTaskConfig {
 			Strategy:    TaskStrategyInterval,
 			IntervalSec: 300,
 		},
-		"realname_mangzhu_poll": {
-			Key:         "realname_mangzhu_poll",
-			Name:        "Realname Mangzhu Poll",
-			Description: "Poll pending Mangzhu face verification records and update status.",
+		"plugin_schedule": {
+			Key:         "plugin_schedule",
+			Name:        "Plugin Schedule",
+			Description: "Process scheduled tasks registered by plugins.",
 			Enabled:     true,
 			Strategy:    TaskStrategyInterval,
 			IntervalSec: 20,

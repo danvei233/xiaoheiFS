@@ -31,6 +31,7 @@ export interface PluginListItem {
   version?: string;
   signature_status?: PluginSignatureStatus;
   enabled?: boolean;
+  loaded?: boolean;
   installed_at?: string;
   updated_at?: string;
   last_health_at?: string | null;
@@ -933,14 +934,6 @@ export interface RealNameConfig {
   enabled?: boolean;
   provider?: string;
   block_actions?: string[];
-  mangzhu?: {
-    base_url?: string;
-    auth_mode?: "two_factor" | "three_factor" | "face";
-    face_provider?: "baidu" | "wechat";
-    timeout_sec?: number;
-    key?: string;
-    key_set?: boolean;
-  };
 }
 
 export interface RealNameProvider {
