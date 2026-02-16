@@ -94,6 +94,14 @@
               <template v-else-if="column.key === 'action'">
                 <a-typography-text ellipsis :content="record.action" style="max-width: 200px" />
               </template>
+              <template v-else-if="column.key === 'protocol'">
+                <a-tag :color="automationProtocol(record) === 'GRPC' ? 'purple' : 'blue'">
+                  {{ automationProtocol(record) }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'connection'">
+                <a-typography-text ellipsis :content="automationConnection(record)" style="max-width: 220px" />
+              </template>
               <template v-else-if="column.key === 'detail'">
                 <a-button type="link" @click="openDetail(record)">查看详情</a-button>
               </template>
@@ -156,6 +164,14 @@
             <span class="info-item">
               <span class="info-label">订单 ID:</span>
               <span class="info-value">{{ detailRecord.order_id || '-' }}</span>
+            </span>
+            <span class="info-item">
+              <span class="info-label">协议:</span>
+              <a-tag :color="detailProtocol === 'GRPC' ? 'purple' : 'blue'">{{ detailProtocol }}</a-tag>
+            </span>
+            <span class="info-item">
+              <span class="info-label">连接:</span>
+              <span class="info-value">{{ detailConnection }}</span>
             </span>
             <a-tag :color="detailRecord.success ? 'success' : 'error'">
               {{ detailRecord.success ? '成功' : '失败' }}
@@ -285,6 +301,8 @@ const logColumns = [
 const automationColumns = [
   { title: "ID", dataIndex: "id", key: "id", width: 80 },
   { title: "API", dataIndex: "action", key: "action", width: 200 },
+  { title: "协议", dataIndex: "protocol", key: "protocol", width: 90 },
+  { title: "连接", dataIndex: "connection", key: "connection", width: 220 },
   { title: "订单ID", dataIndex: "order_id", key: "order_id", width: 100 },
   { title: "结果", dataIndex: "success", key: "success", width: 80 },
   { title: "消息", dataIndex: "message", key: "message" },
@@ -328,6 +346,42 @@ const parsePayload = (payload: any) => {
   return payload;
 };
 
+const normalizeHeaders = (headers: any): Record<string, string> => {
+  if (!headers || typeof headers !== "object") return {};
+  const out: Record<string, string> = {};
+  Object.entries(headers).forEach(([key, value]) => {
+    out[String(key)] = value == null ? "" : String(value);
+  });
+  return out;
+};
+
+const requestProtocol = (request: any): string => {
+  const method = String(request?.method || "").trim().toUpperCase();
+  const headers = normalizeHeaders(request?.headers);
+  if (method) return method;
+  if (String(headers["x-transport"] || "").trim()) {
+    return String(headers["x-transport"]).trim().toUpperCase();
+  }
+  return "UNKNOWN";
+};
+
+const requestConnection = (request: any): string => {
+  const headers = normalizeHeaders(request?.headers);
+  const pluginID = String(headers["x-plugin-id"] || "").trim();
+  const instanceID = String(headers["x-plugin-instance-id"] || "").trim();
+  if (pluginID || instanceID) {
+    return `${pluginID || "-"} / ${instanceID || "-"}`;
+  }
+  const urlText = String(request?.url || "").trim();
+  if (!urlText) return "-";
+  try {
+    const parsed = new URL(urlText);
+    return parsed.host || urlText;
+  } catch {
+    return urlText;
+  }
+};
+
 const formatJson = (payload: any) => {
   if (payload === undefined || payload === null) return "-";
   if (typeof payload === "string") return payload;
@@ -356,6 +410,18 @@ const responsePreview = computed(() => {
 
 const detailRequest = computed(() => parsePayload(detailRecord.value?.request_json));
 const detailResponse = computed(() => parsePayload(detailRecord.value?.response_json));
+const detailProtocol = computed(() => requestProtocol(detailRequest.value));
+const detailConnection = computed(() => requestConnection(detailRequest.value));
+
+const automationProtocol = (record: any) => {
+  const req = parsePayload(record?.request_json);
+  return requestProtocol(req);
+};
+
+const automationConnection = (record: any) => {
+  const req = parsePayload(record?.request_json);
+  return requestConnection(req);
+};
 
 const filteredAutomationLogs = computed(() => {
   const api = automationFilter.api.trim().toLowerCase();

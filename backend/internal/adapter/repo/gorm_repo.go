@@ -64,6 +64,14 @@ func (r *GormRepo) GetUserByUsernameOrEmail(ctx context.Context, usernameOrEmail
 
 }
 
+func (r *GormRepo) GetUserByPhone(ctx context.Context, phone string) (domain.User, error) {
+	var row userRow
+	if err := r.gdb.WithContext(ctx).Where("phone = ?", strings.TrimSpace(phone)).First(&row).Error; err != nil {
+		return domain.User{}, r.ensure(err)
+	}
+	return fromUserRow(row), nil
+}
+
 func (r *GormRepo) ListUsers(ctx context.Context, limit, offset int) ([]domain.User, int, error) {
 
 	var total int64
@@ -126,19 +134,29 @@ func (r *GormRepo) UpdateUserStatus(ctx context.Context, id int64, status domain
 }
 
 func (r *GormRepo) UpdateUser(ctx context.Context, user domain.User) error {
-
+	var email any
+	if strings.TrimSpace(user.Email) != "" {
+		email = strings.TrimSpace(user.Email)
+	}
 	return r.gdb.WithContext(ctx).Model(&userRow{}).Where("id = ?", user.ID).Updates(map[string]any{
-		"username":            user.Username,
-		"email":               user.Email,
-		"qq":                  user.QQ,
-		"avatar":              user.Avatar,
-		"phone":               user.Phone,
-		"bio":                 user.Bio,
-		"intro":               user.Intro,
-		"permission_group_id": user.PermissionGroupID,
-		"role":                user.Role,
-		"status":              user.Status,
-		"updated_at":          time.Now(),
+		"username":                user.Username,
+		"email":                   email,
+		"qq":                      user.QQ,
+		"avatar":                  user.Avatar,
+		"phone":                   user.Phone,
+		"last_login_ip":           user.LastLoginIP,
+		"last_login_at":           user.LastLoginAt,
+		"last_login_city":         user.LastLoginCity,
+		"last_login_tz":           user.LastLoginTZ,
+		"totp_enabled":            boolToInt(user.TOTPEnabled),
+		"totp_secret_enc":         user.TOTPSecretEnc,
+		"totp_pending_secret_enc": user.TOTPPendingSecretEnc,
+		"bio":                     user.Bio,
+		"intro":                   user.Intro,
+		"permission_group_id":     user.PermissionGroupID,
+		"role":                    user.Role,
+		"status":                  user.Status,
+		"updated_at":              time.Now(),
 	}).Error
 
 }
@@ -2496,6 +2514,48 @@ func (r *GormRepo) DeleteExpiredTokens(ctx context.Context) error {
 
 }
 
+func (r *GormRepo) CreatePasswordResetTicket(ctx context.Context, ticket *domain.PasswordResetTicket) error {
+	row := passwordResetTicketRow{
+		UserID:    ticket.UserID,
+		Channel:   ticket.Channel,
+		Receiver:  ticket.Receiver,
+		Token:     ticket.Token,
+		ExpiresAt: ticket.ExpiresAt,
+		Used:      boolToInt(ticket.Used),
+	}
+	if err := r.gdb.WithContext(ctx).Create(&row).Error; err != nil {
+		return err
+	}
+	ticket.ID = row.ID
+	ticket.CreatedAt = row.CreatedAt
+	return nil
+}
+
+func (r *GormRepo) GetPasswordResetTicket(ctx context.Context, token string) (domain.PasswordResetTicket, error) {
+	var row passwordResetTicketRow
+	if err := r.gdb.WithContext(ctx).Where("token = ?", token).First(&row).Error; err != nil {
+		return domain.PasswordResetTicket{}, r.ensure(err)
+	}
+	return domain.PasswordResetTicket{
+		ID:        row.ID,
+		UserID:    row.UserID,
+		Channel:   row.Channel,
+		Receiver:  row.Receiver,
+		Token:     row.Token,
+		ExpiresAt: row.ExpiresAt,
+		Used:      row.Used == 1,
+		CreatedAt: row.CreatedAt,
+	}, nil
+}
+
+func (r *GormRepo) MarkPasswordResetTicketUsed(ctx context.Context, ticketID int64) error {
+	return r.gdb.WithContext(ctx).Model(&passwordResetTicketRow{}).Where("id = ?", ticketID).Update("used", 1).Error
+}
+
+func (r *GormRepo) DeleteExpiredPasswordResetTickets(ctx context.Context) error {
+	return r.gdb.WithContext(ctx).Where("expires_at < CURRENT_TIMESTAMP").Delete(&passwordResetTicketRow{}).Error
+}
+
 func (r *GormRepo) ListPermissions(ctx context.Context) ([]domain.Permission, error) {
 
 	var rows []permissionModel
@@ -3700,6 +3760,7 @@ func (r *GormRepo) UpdateWalletOrderStatus(ctx context.Context, id int64, status
 
 func scanUser(row scanner) (domain.User, error) {
 	var u domain.User
+	var email sql.NullString
 	var qq sql.NullString
 	var avatar sql.NullString
 	var phone sql.NullString
@@ -3708,8 +3769,11 @@ func scanUser(row scanner) (domain.User, error) {
 	var permissionGroupID sql.NullInt64
 	var createdAt sql.NullTime
 	var updatedAt sql.NullTime
-	if err := row.Scan(&u.ID, &u.Username, &u.Email, &qq, &avatar, &phone, &bio, &intro, &permissionGroupID, &u.PasswordHash, &u.Role, &u.Status, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &email, &qq, &avatar, &phone, &bio, &intro, &permissionGroupID, &u.PasswordHash, &u.Role, &u.Status, &createdAt, &updatedAt); err != nil {
 		return domain.User{}, rEnsure(err)
+	}
+	if email.Valid {
+		u.Email = email.String
 	}
 	if qq.Valid {
 		u.QQ = qq.String
@@ -3966,40 +4030,63 @@ type scanner interface {
 }
 
 func toUserRow(u domain.User) userRow {
+	var email *string
+	if strings.TrimSpace(u.Email) != "" {
+		v := strings.TrimSpace(u.Email)
+		email = &v
+	}
 	return userRow{
-		ID:                u.ID,
-		Username:          u.Username,
-		Email:             u.Email,
-		QQ:                u.QQ,
-		Avatar:            u.Avatar,
-		Phone:             u.Phone,
-		Bio:               u.Bio,
-		Intro:             u.Intro,
-		PermissionGroupID: u.PermissionGroupID,
-		PasswordHash:      u.PasswordHash,
-		Role:              string(u.Role),
-		Status:            string(u.Status),
-		CreatedAt:         u.CreatedAt,
-		UpdatedAt:         u.UpdatedAt,
+		ID:                   u.ID,
+		Username:             u.Username,
+		Email:                email,
+		QQ:                   u.QQ,
+		Avatar:               u.Avatar,
+		Phone:                u.Phone,
+		LastLoginIP:          u.LastLoginIP,
+		LastLoginAt:          u.LastLoginAt,
+		LastLoginCity:        u.LastLoginCity,
+		LastLoginTZ:          u.LastLoginTZ,
+		TOTPEnabled:          boolToInt(u.TOTPEnabled),
+		TOTPSecretEnc:        u.TOTPSecretEnc,
+		TOTPPendingSecretEnc: u.TOTPPendingSecretEnc,
+		Bio:                  u.Bio,
+		Intro:                u.Intro,
+		PermissionGroupID:    u.PermissionGroupID,
+		PasswordHash:         u.PasswordHash,
+		Role:                 string(u.Role),
+		Status:               string(u.Status),
+		CreatedAt:            u.CreatedAt,
+		UpdatedAt:            u.UpdatedAt,
 	}
 }
 
 func fromUserRow(r userRow) domain.User {
+	var email string
+	if r.Email != nil {
+		email = *r.Email
+	}
 	return domain.User{
-		ID:                r.ID,
-		Username:          r.Username,
-		Email:             r.Email,
-		QQ:                r.QQ,
-		Avatar:            r.Avatar,
-		Phone:             r.Phone,
-		Bio:               r.Bio,
-		Intro:             r.Intro,
-		PermissionGroupID: r.PermissionGroupID,
-		PasswordHash:      r.PasswordHash,
-		Role:              domain.UserRole(r.Role),
-		Status:            domain.UserStatus(r.Status),
-		CreatedAt:         r.CreatedAt,
-		UpdatedAt:         r.UpdatedAt,
+		ID:                   r.ID,
+		Username:             r.Username,
+		Email:                email,
+		QQ:                   r.QQ,
+		Avatar:               r.Avatar,
+		Phone:                r.Phone,
+		LastLoginIP:          r.LastLoginIP,
+		LastLoginAt:          r.LastLoginAt,
+		LastLoginCity:        r.LastLoginCity,
+		LastLoginTZ:          r.LastLoginTZ,
+		TOTPEnabled:          r.TOTPEnabled == 1,
+		TOTPSecretEnc:        r.TOTPSecretEnc,
+		TOTPPendingSecretEnc: r.TOTPPendingSecretEnc,
+		Bio:                  r.Bio,
+		Intro:                r.Intro,
+		PermissionGroupID:    r.PermissionGroupID,
+		PasswordHash:         r.PasswordHash,
+		Role:                 domain.UserRole(r.Role),
+		Status:               domain.UserStatus(r.Status),
+		CreatedAt:            r.CreatedAt,
+		UpdatedAt:            r.UpdatedAt,
 	}
 }
 
@@ -4349,38 +4436,39 @@ func rEnsure(err error) error {
 }
 
 var (
-	_ usecase.UserRepository               = (*GormRepo)(nil)
-	_ usecase.CaptchaRepository            = (*GormRepo)(nil)
-	_ usecase.CatalogRepository            = (*GormRepo)(nil)
-	_ usecase.SystemImageRepository        = (*GormRepo)(nil)
-	_ usecase.CartRepository               = (*GormRepo)(nil)
-	_ usecase.OrderRepository              = (*GormRepo)(nil)
-	_ usecase.OrderItemRepository          = (*GormRepo)(nil)
-	_ usecase.PaymentRepository            = (*GormRepo)(nil)
-	_ usecase.VPSRepository                = (*GormRepo)(nil)
-	_ usecase.EventRepository              = (*GormRepo)(nil)
-	_ usecase.APIKeyRepository             = (*GormRepo)(nil)
-	_ usecase.SettingsRepository           = (*GormRepo)(nil)
-	_ usecase.AuditRepository              = (*GormRepo)(nil)
-	_ usecase.BillingCycleRepository       = (*GormRepo)(nil)
-	_ usecase.AutomationLogRepository      = (*GormRepo)(nil)
-	_ usecase.ProvisionJobRepository       = (*GormRepo)(nil)
-	_ usecase.ResizeTaskRepository         = (*GormRepo)(nil)
-	_ usecase.IntegrationLogRepository     = (*GormRepo)(nil)
-	_ usecase.PermissionGroupRepository    = (*GormRepo)(nil)
-	_ usecase.PasswordResetTokenRepository = (*GormRepo)(nil)
-	_ usecase.PermissionRepository         = (*GormRepo)(nil)
-	_ usecase.CMSCategoryRepository        = (*GormRepo)(nil)
-	_ usecase.CMSPostRepository            = (*GormRepo)(nil)
-	_ usecase.CMSBlockRepository           = (*GormRepo)(nil)
-	_ usecase.UploadRepository             = (*GormRepo)(nil)
-	_ usecase.TicketRepository             = (*GormRepo)(nil)
-	_ usecase.NotificationRepository       = (*GormRepo)(nil)
-	_ usecase.PushTokenRepository          = (*GormRepo)(nil)
-	_ usecase.WalletRepository             = (*GormRepo)(nil)
-	_ usecase.WalletOrderRepository        = (*GormRepo)(nil)
-	_ usecase.ProbeNodeRepository          = (*GormRepo)(nil)
-	_ usecase.ProbeEnrollTokenRepository   = (*GormRepo)(nil)
-	_ usecase.ProbeStatusEventRepository   = (*GormRepo)(nil)
-	_ usecase.ProbeLogSessionRepository    = (*GormRepo)(nil)
+	_ usecase.UserRepository                = (*GormRepo)(nil)
+	_ usecase.CaptchaRepository             = (*GormRepo)(nil)
+	_ usecase.CatalogRepository             = (*GormRepo)(nil)
+	_ usecase.SystemImageRepository         = (*GormRepo)(nil)
+	_ usecase.CartRepository                = (*GormRepo)(nil)
+	_ usecase.OrderRepository               = (*GormRepo)(nil)
+	_ usecase.OrderItemRepository           = (*GormRepo)(nil)
+	_ usecase.PaymentRepository             = (*GormRepo)(nil)
+	_ usecase.VPSRepository                 = (*GormRepo)(nil)
+	_ usecase.EventRepository               = (*GormRepo)(nil)
+	_ usecase.APIKeyRepository              = (*GormRepo)(nil)
+	_ usecase.SettingsRepository            = (*GormRepo)(nil)
+	_ usecase.AuditRepository               = (*GormRepo)(nil)
+	_ usecase.BillingCycleRepository        = (*GormRepo)(nil)
+	_ usecase.AutomationLogRepository       = (*GormRepo)(nil)
+	_ usecase.ProvisionJobRepository        = (*GormRepo)(nil)
+	_ usecase.ResizeTaskRepository          = (*GormRepo)(nil)
+	_ usecase.IntegrationLogRepository      = (*GormRepo)(nil)
+	_ usecase.PermissionGroupRepository     = (*GormRepo)(nil)
+	_ usecase.PasswordResetTokenRepository  = (*GormRepo)(nil)
+	_ usecase.PasswordResetTicketRepository = (*GormRepo)(nil)
+	_ usecase.PermissionRepository          = (*GormRepo)(nil)
+	_ usecase.CMSCategoryRepository         = (*GormRepo)(nil)
+	_ usecase.CMSPostRepository             = (*GormRepo)(nil)
+	_ usecase.CMSBlockRepository            = (*GormRepo)(nil)
+	_ usecase.UploadRepository              = (*GormRepo)(nil)
+	_ usecase.TicketRepository              = (*GormRepo)(nil)
+	_ usecase.NotificationRepository        = (*GormRepo)(nil)
+	_ usecase.PushTokenRepository           = (*GormRepo)(nil)
+	_ usecase.WalletRepository              = (*GormRepo)(nil)
+	_ usecase.WalletOrderRepository         = (*GormRepo)(nil)
+	_ usecase.ProbeNodeRepository           = (*GormRepo)(nil)
+	_ usecase.ProbeEnrollTokenRepository    = (*GormRepo)(nil)
+	_ usecase.ProbeStatusEventRepository    = (*GormRepo)(nil)
+	_ usecase.ProbeLogSessionRepository     = (*GormRepo)(nil)
 )

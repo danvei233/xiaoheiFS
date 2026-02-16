@@ -87,16 +87,16 @@ type hostListItem struct {
 }
 
 type lineItem struct {
-	ID          int64     `json:"id"`
-	LineID      int64     `json:"line_id"`
-	ThirdLineID int64     `json:"third_line_id"`
-	LineName    string    `json:"line_name"`
-	Name        string    `json:"name"`
-	Remark      string    `json:"remark"`
-	LineAPI     string    `json:"line_api"`
-	AreaID      int64     `json:"area_id"`
-	State       int       `json:"state"`
-	ImageIDs    int64List `json:"image_ids"`
+	ID          int64             `json:"id"`
+	LineID      int64             `json:"line_id"`
+	ThirdLineID int64             `json:"third_line_id"`
+	LineName    string            `json:"line_name"`
+	Name        string            `json:"name"`
+	Remark      string            `json:"remark"`
+	LineAPI     string            `json:"line_api"`
+	AreaID      int64             `json:"area_id"`
+	State       int               `json:"state"`
+	ImageIDs    optionalInt64List `json:"image_ids"`
 }
 
 type imageItem struct {
@@ -735,12 +735,17 @@ func (c *Client) ListImages(ctx context.Context, lineID int64) ([]usecase.Automa
 	if lineID <= 0 {
 		return out, nil
 	}
-	allowedImageIDs, foundLine, err := c.getLineImageIDs(ctx, lineID)
+	allowedImageIDs, foundLine, hasImageIDs, err := c.getLineImageIDs(ctx, lineID)
 	if err != nil {
 		return nil, err
 	}
 	if !foundLine {
 		return nil, fmt.Errorf("automation line not found: %d", lineID)
+	}
+	if !hasImageIDs {
+		// Some upstream automation services already honor line_id on /mirror_image
+		// but do not expose line.image_ids in /line.
+		return out, nil
 	}
 	allowed := make(map[int64]struct{}, len(allowedImageIDs))
 	for _, id := range allowedImageIDs {
@@ -760,18 +765,18 @@ func (c *Client) ListImages(ctx context.Context, lineID int64) ([]usecase.Automa
 	return filtered, nil
 }
 
-func (c *Client) getLineImageIDs(ctx context.Context, lineID int64) ([]int64, bool, error) {
+func (c *Client) getLineImageIDs(ctx context.Context, lineID int64) ([]int64, bool, bool, error) {
 	endpoint := c.baseURL + "/line"
 	resp, err := c.doRequest(ctx, http.MethodGet, endpoint, nil, "")
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	if resp.Code != 1 {
-		return nil, false, fmt.Errorf("automation error: %s", resp.Msg)
+		return nil, false, false, fmt.Errorf("automation error: %s", resp.Msg)
 	}
 	var items []lineItem
 	if err := json.Unmarshal(resp.Data, &items); err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	for _, item := range items {
 		id := item.ID
@@ -782,13 +787,26 @@ func (c *Client) getLineImageIDs(ctx context.Context, lineID int64) ([]int64, bo
 			id = item.ThirdLineID
 		}
 		if id == lineID {
-			return item.ImageIDs, true, nil
+			if !item.ImageIDs.Present {
+				return nil, true, false, nil
+			}
+			return item.ImageIDs.Values, true, true, nil
 		}
 	}
-	return nil, false, nil
+	return nil, false, false, nil
 }
 
 type int64List []int64
+
+type optionalInt64List struct {
+	Present bool
+	Values  int64List
+}
+
+func (l *optionalInt64List) UnmarshalJSON(data []byte) error {
+	l.Present = true
+	return (&l.Values).UnmarshalJSON(data)
+}
 
 func (l *int64List) UnmarshalJSON(data []byte) error {
 	trimmed := strings.TrimSpace(string(data))

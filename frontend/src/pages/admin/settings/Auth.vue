@@ -22,7 +22,7 @@
             <a-form-item label="必填字段">
               <a-checkbox-group v-model:value="form.register_required_fields" :options="requiredFieldOptions" />
               <div class="field-hint">
-                用户名、邮箱、密码为系统必需字段，无法取消。
+                用户名、密码为系统必填；邮箱必填请使用“邮箱必填”开关控制。
               </div>
             </a-form-item>
           </a-form>
@@ -57,11 +57,10 @@
           <div class="section-title">注册验证</div>
           <a-form layout="vertical">
             <a-form-item label="验证码类型">
-              <a-radio-group v-model:value="form.register_verify_type">
-                <a-radio value="none">无</a-radio>
-                <a-radio value="email">邮箱</a-radio>
-                <a-radio value="sms">短信</a-radio>
-              </a-radio-group>
+              <a-checkbox-group v-model:value="form.register_verify_channels" :options="verifyChannelOptions" />
+            </a-form-item>
+            <a-form-item label="邮箱必填">
+              <a-switch v-model:checked="form.register_email_required" />
             </a-form-item>
             <a-form-item label="验证码有效期（秒）">
               <a-input-number v-model:value="form.register_verify_ttl_sec" :min="60" :max="3600" style="width: 100%" />
@@ -69,18 +68,49 @@
             <a-form-item label="启用图形验证码">
               <a-switch v-model:checked="form.register_captcha_enabled" />
             </a-form-item>
+            <a-divider style="margin: 10px 0 14px">验证码策略</a-divider>
+            <a-row :gutter="12">
+              <a-col :span="12">
+                <a-form-item label="短信长度">
+                  <a-input-number v-model:value="form.auth_sms_code_len" :min="4" :max="12" style="width: 100%" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item label="短信复杂度">
+                  <a-select v-model:value="form.auth_sms_code_complexity" :options="codeComplexityOptions" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="12">
+              <a-col :span="12">
+                <a-form-item label="邮箱长度">
+                  <a-input-number v-model:value="form.auth_email_code_len" :min="4" :max="12" style="width: 100%" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item label="邮箱复杂度">
+                  <a-select v-model:value="form.auth_email_code_complexity" :options="codeComplexityOptions" />
+                </a-form-item>
+              </a-col>
+            </a-row>
+            <a-row :gutter="12">
+              <a-col :span="12">
+                <a-form-item label="图形长度">
+                  <a-input-number v-model:value="form.auth_captcha_code_len" :min="4" :max="12" style="width: 100%" />
+                </a-form-item>
+              </a-col>
+              <a-col :span="12">
+                <a-form-item label="图形复杂度">
+                  <a-select v-model:value="form.auth_captcha_code_complexity" :options="codeComplexityOptions" />
+                </a-form-item>
+              </a-col>
+            </a-row>
 
-            <a-form-item v-if="form.register_verify_type === 'email'" label="邮件标题">
-              <a-input v-model:value="form.register_email_subject" placeholder="Your verification code" />
-            </a-form-item>
-            <a-form-item v-if="form.register_verify_type === 'email'" label="邮件内容模板">
-              <a-textarea v-model:value="form.register_email_body" :rows="3" placeholder="Your verification code is: {{code}}" />
-              <div class="field-hint">使用 {{code}} 占位符注入验证码。</div>
-            </a-form-item>
-
-            <template v-if="form.register_verify_type === 'sms'">
-              <a-alert type="info" show-icon message="短信插件、模板与测试请在「系统设置 - 短信设置」里配置。" />
-            </template>
+            <a-alert
+              type="info"
+              show-icon
+              message="模板维护入口：邮箱模板请在「系统设置-邮件设置」，短信模板请在「系统设置-短信设置」。"
+            />
           </a-form>
         </a-card>
 
@@ -89,6 +119,48 @@
           <a-form layout="vertical">
             <a-form-item label="启用登录图形验证码">
               <a-switch v-model:checked="form.login_captcha_enabled" />
+            </a-form-item>
+            <a-form-item label="登录提醒开关">
+              <a-switch v-model:checked="form.auth_login_notify_enabled" />
+            </a-form-item>
+            <a-form-item label="登录提醒触发">
+              <a-checkbox-group v-model:value="form.auth_login_notify_events" :options="loginNotifyEventOptions" />
+            </a-form-item>
+            <a-form-item label="登录提醒渠道">
+              <a-checkbox-group v-model:value="form.auth_login_notify_channels" :options="verifyChannelOptions" />
+            </a-form-item>
+            <a-form-item label="找回密码开关">
+              <a-switch v-model:checked="form.auth_password_reset_enabled" />
+            </a-form-item>
+            <a-form-item label="找回密码渠道">
+              <a-checkbox-group v-model:value="form.auth_password_reset_channels" :options="verifyChannelOptions" />
+            </a-form-item>
+            <a-form-item label="找回验证码有效期（秒）">
+              <a-input-number v-model:value="form.auth_password_reset_verify_ttl_sec" :min="60" :max="3600" style="width: 100%" />
+            </a-form-item>
+            <a-form-item label="邮箱绑定功能">
+              <a-switch v-model:checked="form.auth_email_bind_enabled" />
+            </a-form-item>
+            <a-form-item label="手机号绑定功能">
+              <a-switch v-model:checked="form.auth_phone_bind_enabled" />
+            </a-form-item>
+            <a-form-item label="绑定验证码有效期（秒）">
+              <a-input-number v-model:value="form.auth_contact_bind_verify_ttl_sec" :min="60" :max="3600" style="width: 100%" />
+            </a-form-item>
+            <a-form-item label="未开2FA时：首次绑定需密码">
+              <a-switch v-model:checked="form.auth_bind_require_password_when_no_2fa" />
+            </a-form-item>
+            <a-form-item label="未开2FA时：换绑需密码">
+              <a-switch v-model:checked="form.auth_rebind_require_password_when_no_2fa" />
+            </a-form-item>
+            <a-form-item label="2FA总开关">
+              <a-switch v-model:checked="form.auth_2fa_enabled" />
+            </a-form-item>
+            <a-form-item label="2FA-绑定流程开关">
+              <a-switch v-model:checked="form.auth_2fa_bind_enabled" />
+            </a-form-item>
+            <a-form-item label="2FA-换绑流程开关">
+              <a-switch v-model:checked="form.auth_2fa_rebind_enabled" />
             </a-form-item>
             <a-form-item label="启用登录频率限制">
               <a-switch v-model:checked="form.login_rate_limit_enabled" />
@@ -121,30 +193,62 @@ const saving = ref(false);
 
 const form = reactive({
   register_enabled: true,
-  register_required_fields: ["username", "email", "password"],
+  register_required_fields: ["username", "password"],
+  register_email_required: true,
   password_min_len: 6,
   password_require_upper: false,
   password_require_lower: false,
   password_require_number: false,
   password_require_symbol: false,
   register_verify_type: "none",
+  register_verify_channels: ["email"],
   register_verify_ttl_sec: 600,
   register_captcha_enabled: true,
-  register_email_subject: "Your verification code",
-  register_email_body: "Your verification code is: {{code}}",
   login_captcha_enabled: false,
   login_rate_limit_enabled: true,
   login_rate_limit_window_sec: 300,
-  login_rate_limit_max_attempts: 5
+  login_rate_limit_max_attempts: 5,
+  auth_login_notify_enabled: true,
+  auth_login_notify_events: ["first", "ip_change"],
+  auth_login_notify_channels: ["email"],
+  auth_password_reset_enabled: true,
+  auth_password_reset_channels: ["email"],
+  auth_password_reset_verify_ttl_sec: 600,
+  auth_sms_code_len: 6,
+  auth_sms_code_complexity: "digits",
+  auth_email_code_len: 6,
+  auth_email_code_complexity: "alnum",
+  auth_captcha_code_len: 5,
+  auth_captcha_code_complexity: "alnum",
+  auth_email_bind_enabled: true,
+  auth_phone_bind_enabled: true,
+  auth_contact_bind_verify_ttl_sec: 600,
+  auth_bind_require_password_when_no_2fa: false,
+  auth_rebind_require_password_when_no_2fa: true,
+  auth_2fa_enabled: true,
+  auth_2fa_bind_enabled: true,
+  auth_2fa_rebind_enabled: true
 });
 
 const requiredFieldOptions = computed(() => [
   { label: "用户名", value: "username", disabled: true },
-  { label: "邮箱", value: "email", disabled: true },
   { label: "密码", value: "password", disabled: true },
   { label: "手机号", value: "phone" },
   { label: "QQ", value: "qq" }
 ]);
+const verifyChannelOptions = [
+  { label: "邮箱", value: "email" },
+  { label: "短信", value: "sms" }
+];
+const codeComplexityOptions = [
+  { label: "纯数字", value: "digits" },
+  { label: "纯字母(大写)", value: "letters" },
+  { label: "字母+数字", value: "alnum" }
+];
+const loginNotifyEventOptions = [
+  { label: "首次登录", value: "first" },
+  { label: "IP变化", value: "ip_change" }
+];
 
 const parseBool = (value: any, def = false) => {
   if (value === undefined || value === null || value === "") return def;
@@ -167,11 +271,17 @@ const parseList = (value: any, def: string[]) => {
   }
 };
 
+const normalizeComplexity = (value: any, def: string) => {
+  const v = String(value || "").trim().toLowerCase();
+  if (v === "digits" || v === "letters" || v === "alnum") return v;
+  return def;
+};
+
 const normalizeRequired = () => {
   const set = new Set(form.register_required_fields.map((v) => String(v).toLowerCase()));
   set.add("username");
-  set.add("email");
   set.add("password");
+  set.delete("email");
   form.register_required_fields = Array.from(set);
 };
 
@@ -187,22 +297,44 @@ const fetchData = async () => {
     form.register_enabled = parseBool(map.get("auth_register_enabled"), true);
     form.register_required_fields = parseList(
       map.get("auth_register_required_fields"),
-      ["username", "email", "password"]
+      ["username", "password"]
     );
+    form.register_email_required = parseBool(map.get("auth_register_email_required"), true);
     form.password_min_len = parseIntValue(map.get("auth_password_min_len"), 6);
     form.password_require_upper = parseBool(map.get("auth_password_require_upper"), false);
     form.password_require_lower = parseBool(map.get("auth_password_require_lower"), false);
     form.password_require_number = parseBool(map.get("auth_password_require_number"), false);
     form.password_require_symbol = parseBool(map.get("auth_password_require_symbol"), false);
     form.register_verify_type = String(map.get("auth_register_verify_type") || "none");
+    form.register_verify_channels = parseList(map.get("auth_register_verify_channels"), form.register_verify_type === "none" ? [] : [form.register_verify_type]);
     form.register_verify_ttl_sec = parseIntValue(map.get("auth_register_verify_ttl_sec"), 600);
     form.register_captcha_enabled = parseBool(map.get("auth_register_captcha_enabled"), true);
-    form.register_email_subject = String(map.get("auth_register_email_subject") || "Your verification code");
-    form.register_email_body = String(map.get("auth_register_email_body") || "Your verification code is: {{code}}");
     form.login_captcha_enabled = parseBool(map.get("auth_login_captcha_enabled"), false);
     form.login_rate_limit_enabled = parseBool(map.get("auth_login_rate_limit_enabled"), true);
     form.login_rate_limit_window_sec = parseIntValue(map.get("auth_login_rate_limit_window_sec"), 300);
     form.login_rate_limit_max_attempts = parseIntValue(map.get("auth_login_rate_limit_max_attempts"), 5);
+    form.auth_login_notify_enabled = parseBool(map.get("auth_login_notify_enabled"), true);
+    form.auth_login_notify_channels = parseList(map.get("auth_login_notify_channels"), ["email"]);
+    form.auth_login_notify_events = [];
+    if (parseBool(map.get("auth_login_notify_on_first_login"), true)) form.auth_login_notify_events.push("first");
+    if (parseBool(map.get("auth_login_notify_on_ip_change"), true)) form.auth_login_notify_events.push("ip_change");
+    form.auth_password_reset_enabled = parseBool(map.get("auth_password_reset_enabled"), true);
+    form.auth_password_reset_channels = parseList(map.get("auth_password_reset_channels"), ["email"]);
+    form.auth_password_reset_verify_ttl_sec = parseIntValue(map.get("auth_password_reset_verify_ttl_sec"), 600);
+    form.auth_sms_code_len = parseIntValue(map.get("auth_sms_code_len"), 6);
+    form.auth_sms_code_complexity = normalizeComplexity(map.get("auth_sms_code_complexity"), "digits");
+    form.auth_email_code_len = parseIntValue(map.get("auth_email_code_len"), 6);
+    form.auth_email_code_complexity = normalizeComplexity(map.get("auth_email_code_complexity"), "alnum");
+    form.auth_captcha_code_len = parseIntValue(map.get("auth_captcha_code_len"), 5);
+    form.auth_captcha_code_complexity = normalizeComplexity(map.get("auth_captcha_code_complexity"), "alnum");
+    form.auth_email_bind_enabled = parseBool(map.get("auth_email_bind_enabled"), true);
+    form.auth_phone_bind_enabled = parseBool(map.get("auth_phone_bind_enabled"), true);
+    form.auth_contact_bind_verify_ttl_sec = parseIntValue(map.get("auth_contact_bind_verify_ttl_sec"), 600);
+    form.auth_bind_require_password_when_no_2fa = parseBool(map.get("auth_bind_require_password_when_no_2fa"), false);
+    form.auth_rebind_require_password_when_no_2fa = parseBool(map.get("auth_rebind_require_password_when_no_2fa"), true);
+    form.auth_2fa_enabled = parseBool(map.get("auth_2fa_enabled"), true);
+    form.auth_2fa_bind_enabled = parseBool(map.get("auth_2fa_bind_enabled"), true);
+    form.auth_2fa_rebind_enabled = parseBool(map.get("auth_2fa_rebind_enabled"), true);
     normalizeRequired();
   } catch (error) {
     console.error("Failed to fetch auth settings:", error);
@@ -213,23 +345,51 @@ const handleSave = async () => {
   saving.value = true;
   try {
     normalizeRequired();
+    if (!Array.isArray(form.register_verify_channels) || form.register_verify_channels.length === 0) {
+      form.register_verify_type = "none";
+    } else if (form.register_verify_channels.includes("email")) {
+      form.register_verify_type = "email";
+    } else {
+      form.register_verify_type = "sms";
+    }
     const items = [
       { key: "auth_register_enabled", value: form.register_enabled ? "true" : "false" },
       { key: "auth_register_required_fields", value: JSON.stringify(form.register_required_fields) },
+      { key: "auth_register_email_required", value: form.register_email_required ? "true" : "false" },
       { key: "auth_password_min_len", value: String(form.password_min_len ?? 6) },
       { key: "auth_password_require_upper", value: form.password_require_upper ? "true" : "false" },
       { key: "auth_password_require_lower", value: form.password_require_lower ? "true" : "false" },
       { key: "auth_password_require_number", value: form.password_require_number ? "true" : "false" },
       { key: "auth_password_require_symbol", value: form.password_require_symbol ? "true" : "false" },
       { key: "auth_register_verify_type", value: form.register_verify_type },
+      { key: "auth_register_verify_channels", value: JSON.stringify(form.register_verify_channels || []) },
       { key: "auth_register_verify_ttl_sec", value: String(form.register_verify_ttl_sec ?? 600) },
       { key: "auth_register_captcha_enabled", value: form.register_captcha_enabled ? "true" : "false" },
-      { key: "auth_register_email_subject", value: form.register_email_subject || "" },
-      { key: "auth_register_email_body", value: form.register_email_body || "" },
       { key: "auth_login_captcha_enabled", value: form.login_captcha_enabled ? "true" : "false" },
       { key: "auth_login_rate_limit_enabled", value: form.login_rate_limit_enabled ? "true" : "false" },
       { key: "auth_login_rate_limit_window_sec", value: String(form.login_rate_limit_window_sec ?? 300) },
-      { key: "auth_login_rate_limit_max_attempts", value: String(form.login_rate_limit_max_attempts ?? 5) }
+      { key: "auth_login_rate_limit_max_attempts", value: String(form.login_rate_limit_max_attempts ?? 5) },
+      { key: "auth_login_notify_enabled", value: form.auth_login_notify_enabled ? "true" : "false" },
+      { key: "auth_login_notify_channels", value: JSON.stringify(form.auth_login_notify_channels || []) },
+      { key: "auth_login_notify_on_first_login", value: form.auth_login_notify_events.includes("first") ? "true" : "false" },
+      { key: "auth_login_notify_on_ip_change", value: form.auth_login_notify_events.includes("ip_change") ? "true" : "false" },
+      { key: "auth_password_reset_enabled", value: form.auth_password_reset_enabled ? "true" : "false" },
+      { key: "auth_password_reset_channels", value: JSON.stringify(form.auth_password_reset_channels || []) },
+      { key: "auth_password_reset_verify_ttl_sec", value: String(form.auth_password_reset_verify_ttl_sec ?? 600) },
+      { key: "auth_sms_code_len", value: String(form.auth_sms_code_len ?? 6) },
+      { key: "auth_sms_code_complexity", value: normalizeComplexity(form.auth_sms_code_complexity, "digits") },
+      { key: "auth_email_code_len", value: String(form.auth_email_code_len ?? 6) },
+      { key: "auth_email_code_complexity", value: normalizeComplexity(form.auth_email_code_complexity, "alnum") },
+      { key: "auth_captcha_code_len", value: String(form.auth_captcha_code_len ?? 5) },
+      { key: "auth_captcha_code_complexity", value: normalizeComplexity(form.auth_captcha_code_complexity, "alnum") },
+      { key: "auth_email_bind_enabled", value: form.auth_email_bind_enabled ? "true" : "false" },
+      { key: "auth_phone_bind_enabled", value: form.auth_phone_bind_enabled ? "true" : "false" },
+      { key: "auth_contact_bind_verify_ttl_sec", value: String(form.auth_contact_bind_verify_ttl_sec ?? 600) },
+      { key: "auth_bind_require_password_when_no_2fa", value: form.auth_bind_require_password_when_no_2fa ? "true" : "false" },
+      { key: "auth_rebind_require_password_when_no_2fa", value: form.auth_rebind_require_password_when_no_2fa ? "true" : "false" },
+      { key: "auth_2fa_enabled", value: form.auth_2fa_enabled ? "true" : "false" },
+      { key: "auth_2fa_bind_enabled", value: form.auth_2fa_bind_enabled ? "true" : "false" },
+      { key: "auth_2fa_rebind_enabled", value: form.auth_2fa_rebind_enabled ? "true" : "false" }
     ];
     await updateSetting({ items });
     message.success("保存成功");

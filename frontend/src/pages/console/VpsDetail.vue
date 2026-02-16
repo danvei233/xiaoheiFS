@@ -905,6 +905,7 @@
       v-model:open="refundOpen"
       title="申请退款"
       :width="480"
+      :confirm-loading="refunding"
       @ok="submitRefund"
     >
       <a-alert
@@ -1023,6 +1024,7 @@ const showPanelPassword = ref(false);
 const showPassword = ref(false);
 const refundOpen = ref(false);
 const refundReason = ref("");
+const refunding = ref(false);
 const reinstallOpen = ref(false);
 const reinstalling = ref(false);
 const reinstallImages = ref([]);
@@ -2600,6 +2602,7 @@ const openRefund = () => {
 };
 
 const submitRefund = async () => {
+  if (refunding.value) return;
   if (!refundReason.value.trim()) {
     message.error("请填写退款原因");
     return;
@@ -2608,6 +2611,7 @@ const submitRefund = async () => {
     message.error(`退款原因长度不能超过 ${INPUT_LIMITS.REFUND_REASON} 个字符`);
     return;
   }
+  refunding.value = true;
   try {
     const res = await requestVpsRefund(id, { reason: refundReason.value });
     const orderId = res?.data?.order?.id ?? res?.data?.order?.ID;
@@ -2619,6 +2623,8 @@ const submitRefund = async () => {
     refundOpen.value = false;
   } catch (err) {
     message.error(err?.response?.data?.error || err?.response?.data?.message || "提交失败");
+  } finally {
+    refunding.value = false;
   }
 };
 

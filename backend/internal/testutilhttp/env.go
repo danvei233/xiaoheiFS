@@ -44,6 +44,9 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	_, repoSQLite := testutil.NewTestDB(t, withCMS)
+	// Keep test flows deterministic: disable register verification unless tests opt in.
+	_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "auth_register_verify_type", ValueJSON: "none"})
+	_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "auth_register_verify_channels", ValueJSON: `[]`})
 	automation := &testutil.FakeAutomationClient{}
 	automationResolver := &testutil.FakeAutomationResolver{Client: automation}
 	paymentReg := testutil.NewFakePaymentRegistry()

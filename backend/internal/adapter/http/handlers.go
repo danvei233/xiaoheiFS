@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,10 +44,15 @@ import (
 )
 
 var (
-	htmlPolicy          = bluemonday.UGCPolicy()
-	forgotPwdLimiter    = newRateLimiter()
-	loginLimiter        = newRateLimiter()
-	registerCodeLimiter = newRateLimiter()
+	htmlPolicy           = bluemonday.UGCPolicy()
+	forgotPwdLimiter     = newRateLimiter()
+	loginLimiter         = newRateLimiter()
+	registerCodeLimiter  = newRateLimiter()
+	resetCodeLimiter     = newRateLimiter()
+	resetVerifyLimiter   = newRateLimiter()
+	contactCodeLimiter   = newRateLimiter()
+	contactVerifyLimiter = newRateLimiter()
+	simpleTemplateVarRE  = regexp.MustCompile(`\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`)
 )
 
 func sanitizeHTML(raw string) string {
@@ -97,17 +103,20 @@ type Handler struct {
 	taskSvc       *usecase.ScheduledTaskService
 	probeSvc      *usecase.ProbeService
 	probeHub      *usecase.ProbeHub
+	geoResolver   GeoResolver
 }
 
 type authSettings struct {
 	RegisterEnabled        bool
 	RegisterRequiredFields []string
+	RegisterEmailRequired  bool
 	PasswordMinLen         int
 	PasswordRequireUpper   bool
 	PasswordRequireLower   bool
 	PasswordRequireNumber  bool
 	PasswordRequireSymbol  bool
-	RegisterVerifyType     string // none|email|sms
+	RegisterVerifyType     string // legacy none|email|sms
+	RegisterVerifyChannels []string
 	RegisterVerifyTTL      time.Duration
 	RegisterCaptchaEnabled bool
 	RegisterEmailSubject   string
@@ -119,6 +128,31 @@ type authSettings struct {
 	LoginRateLimitEnabled  bool
 	LoginRateLimitWindow   time.Duration
 	LoginRateLimitMax      int
+	LoginNotifyEnabled     bool
+	LoginNotifyOnFirst     bool
+	LoginNotifyOnIPChange  bool
+	LoginNotifyChannels    []string
+
+	PasswordResetEnabled   bool
+	PasswordResetChannels  []string
+	PasswordResetVerifyTTL time.Duration
+
+	SMSCodeLength       int
+	SMSCodeComplexity   string
+	EmailCodeLength     int
+	EmailCodeComplexity string
+	CaptchaLength       int
+	CaptchaComplexity   string
+
+	EmailBindEnabled               bool
+	PhoneBindEnabled               bool
+	ContactBindVerifyTTL           time.Duration
+	BindRequirePasswordWhenNo2FA   bool
+	RebindRequirePasswordWhenNo2FA bool
+	TwoFAEnabled                   bool
+	TwoFABindEnabled               bool
+	TwoFARebindEnabled             bool
+	GeoIPMMDBPath                  string
 }
 
 func NewHandler(authSvc *usecase.AuthService, catalogSvc *usecase.CatalogService, goodsTypes *usecase.GoodsTypeService, cartSvc *usecase.CartService, orderSvc *usecase.OrderService, vpsSvc *usecase.VPSService, adminSvc *usecase.AdminService, adminVPS *usecase.AdminVPSService, integration *usecase.IntegrationService, reportSvc *usecase.ReportService, cmsSvc *usecase.CMSService, ticketSvc *usecase.TicketService, walletSvc *usecase.WalletService, walletOrder *usecase.WalletOrderService, paymentSvc *usecase.PaymentService, messageSvc *usecase.MessageCenterService, statusSvc *usecase.ServerStatusService, realnameSvc *usecase.RealNameService, orderItems usecase.OrderItemRepository, users usecase.UserRepository, orderRepo usecase.OrderRepository, vpsRepo usecase.VPSRepository, payments usecase.PaymentRepository, eventsRepo usecase.EventRepository, automationLogs usecase.AutomationLogRepository, settings usecase.SettingsRepository, permissions usecase.PermissionRepository, uploads usecase.UploadRepository, broker *sse.Broker, jwtSecret string, passwordReset *usecase.PasswordResetService, permissionSvc *usecase.PermissionService, taskSvc *usecase.ScheduledTaskService) *Handler {
@@ -156,6 +190,7 @@ func NewHandler(authSvc *usecase.AuthService, catalogSvc *usecase.CatalogService
 		passwordReset: passwordReset,
 		permissionSvc: permissionSvc,
 		taskSvc:       taskSvc,
+		geoResolver:   NewMMDBGeoResolver(),
 	}
 }
 
@@ -194,6 +229,25 @@ func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
 		}
 		return val
 	}
+	getCodeLength := func(key string, def int) int {
+		n := getInt(key, def)
+		if n < 4 {
+			return 4
+		}
+		if n > 12 {
+			return 12
+		}
+		return n
+	}
+	getCodeComplexity := func(key, def string) string {
+		v := strings.ToLower(strings.TrimSpace(getString(key, def)))
+		switch v {
+		case usecase.CodeComplexityDigits, usecase.CodeComplexityLetters, usecase.CodeComplexityAlnum:
+			return v
+		default:
+			return def
+		}
+	}
 	getStringSlice := func(key string, def []string) []string {
 		raw := get(key)
 		if raw == "" {
@@ -210,27 +264,62 @@ func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
 	if verifyType != "email" && verifyType != "sms" {
 		verifyType = "none"
 	}
+	verifyChannels := normalizeChannels(getStringSlice("auth_register_verify_channels", nil))
+	if len(verifyChannels) == 0 {
+		switch verifyType {
+		case "email":
+			verifyChannels = []string{"email"}
+		case "sms":
+			verifyChannels = []string{"sms"}
+		default:
+			verifyChannels = []string{}
+		}
+	}
 
 	return authSettings{
-		RegisterEnabled:        getBool("auth_register_enabled", true),
-		RegisterRequiredFields: getStringSlice("auth_register_required_fields", []string{"username", "email", "password"}),
-		PasswordMinLen:         getInt("auth_password_min_len", 6),
-		PasswordRequireUpper:   getBool("auth_password_require_upper", false),
-		PasswordRequireLower:   getBool("auth_password_require_lower", false),
-		PasswordRequireNumber:  getBool("auth_password_require_number", false),
-		PasswordRequireSymbol:  getBool("auth_password_require_symbol", false),
-		RegisterVerifyType:     verifyType,
-		RegisterVerifyTTL:      time.Duration(getInt("auth_register_verify_ttl_sec", 600)) * time.Second,
-		RegisterCaptchaEnabled: getBool("auth_register_captcha_enabled", true),
-		RegisterEmailSubject:   getString("auth_register_email_subject", "Your verification code"),
-		RegisterEmailBody:      getString("auth_register_email_body", "Your verification code is: {{code}}"),
-		RegisterSMSPluginID:    getString("auth_register_sms_plugin_id", getString("sms_plugin_id", "")),
-		RegisterSMSInstanceID:  getString("auth_register_sms_instance_id", getString("sms_instance_id", "default")),
-		RegisterSMSTemplateID:  getString("auth_register_sms_template_id", getString("sms_provider_template_id", "")),
-		LoginCaptchaEnabled:    getBool("auth_login_captcha_enabled", false),
-		LoginRateLimitEnabled:  getBool("auth_login_rate_limit_enabled", true),
-		LoginRateLimitWindow:   time.Duration(getInt("auth_login_rate_limit_window_sec", 300)) * time.Second,
-		LoginRateLimitMax:      getInt("auth_login_rate_limit_max_attempts", 5),
+		RegisterEnabled:                getBool("auth_register_enabled", true),
+		RegisterRequiredFields:         getStringSlice("auth_register_required_fields", []string{"username", "password"}),
+		RegisterEmailRequired:          getBool("auth_register_email_required", true),
+		PasswordMinLen:                 getInt("auth_password_min_len", 6),
+		PasswordRequireUpper:           getBool("auth_password_require_upper", false),
+		PasswordRequireLower:           getBool("auth_password_require_lower", false),
+		PasswordRequireNumber:          getBool("auth_password_require_number", false),
+		PasswordRequireSymbol:          getBool("auth_password_require_symbol", false),
+		RegisterVerifyType:             verifyType,
+		RegisterVerifyChannels:         verifyChannels,
+		RegisterVerifyTTL:              time.Duration(getInt("auth_register_verify_ttl_sec", 600)) * time.Second,
+		RegisterCaptchaEnabled:         getBool("auth_register_captcha_enabled", true),
+		RegisterEmailSubject:           getString("auth_register_email_subject", "Your verification code"),
+		RegisterEmailBody:              getString("auth_register_email_body", "Your verification code is: {{code}}"),
+		RegisterSMSPluginID:            getString("auth_register_sms_plugin_id", getString("sms_plugin_id", "")),
+		RegisterSMSInstanceID:          getString("auth_register_sms_instance_id", getString("sms_instance_id", "default")),
+		RegisterSMSTemplateID:          getString("auth_register_sms_template_id", getString("sms_provider_template_id", "")),
+		LoginCaptchaEnabled:            getBool("auth_login_captcha_enabled", false),
+		LoginRateLimitEnabled:          getBool("auth_login_rate_limit_enabled", true),
+		LoginRateLimitWindow:           time.Duration(getInt("auth_login_rate_limit_window_sec", 300)) * time.Second,
+		LoginRateLimitMax:              getInt("auth_login_rate_limit_max_attempts", 5),
+		LoginNotifyEnabled:             getBool("auth_login_notify_enabled", true),
+		LoginNotifyOnFirst:             getBool("auth_login_notify_on_first_login", true),
+		LoginNotifyOnIPChange:          getBool("auth_login_notify_on_ip_change", true),
+		LoginNotifyChannels:            normalizeChannels(getStringSlice("auth_login_notify_channels", []string{"email"})),
+		PasswordResetEnabled:           getBool("auth_password_reset_enabled", true),
+		PasswordResetChannels:          normalizeChannels(getStringSlice("auth_password_reset_channels", []string{"email"})),
+		PasswordResetVerifyTTL:         time.Duration(getInt("auth_password_reset_verify_ttl_sec", 600)) * time.Second,
+		SMSCodeLength:                  getCodeLength("auth_sms_code_len", 6),
+		SMSCodeComplexity:              getCodeComplexity("auth_sms_code_complexity", usecase.CodeComplexityDigits),
+		EmailCodeLength:                getCodeLength("auth_email_code_len", 6),
+		EmailCodeComplexity:            getCodeComplexity("auth_email_code_complexity", usecase.CodeComplexityAlnum),
+		CaptchaLength:                  getCodeLength("auth_captcha_code_len", 5),
+		CaptchaComplexity:              getCodeComplexity("auth_captcha_code_complexity", usecase.CodeComplexityAlnum),
+		EmailBindEnabled:               getBool("auth_email_bind_enabled", true),
+		PhoneBindEnabled:               getBool("auth_phone_bind_enabled", true),
+		ContactBindVerifyTTL:           time.Duration(getInt("auth_contact_bind_verify_ttl_sec", 600)) * time.Second,
+		BindRequirePasswordWhenNo2FA:   getBool("auth_bind_require_password_when_no_2fa", false),
+		RebindRequirePasswordWhenNo2FA: getBool("auth_rebind_require_password_when_no_2fa", true),
+		TwoFAEnabled:                   getBool("auth_2fa_enabled", true),
+		TwoFABindEnabled:               getBool("auth_2fa_bind_enabled", true),
+		TwoFARebindEnabled:             getBool("auth_2fa_rebind_enabled", true),
+		GeoIPMMDBPath:                  getString("auth_geoip_mmdb_path", ""),
 	}
 }
 
@@ -292,7 +381,8 @@ func (h *Handler) SetProbeService(svc *usecase.ProbeService, hub *usecase.ProbeH
 }
 
 func (h *Handler) Captcha(c *gin.Context) {
-	captcha, code, err := h.authSvc.CreateCaptcha(c, 5*time.Minute)
+	settings := h.loadAuthSettings(c)
+	captcha, code, err := h.authSvc.CreateCaptchaWithPolicy(c, 5*time.Minute, settings.CaptchaLength, settings.CaptchaComplexity)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "captcha error"})
 		return
@@ -313,14 +403,15 @@ func (h *Handler) Captcha(c *gin.Context) {
 
 func (h *Handler) Register(c *gin.Context) {
 	var payload struct {
-		Username    string `json:"username"`
-		Email       string `json:"email"`
-		QQ          string `json:"qq"`
-		Phone       string `json:"phone"`
-		Password    string `json:"password"`
-		CaptchaID   string `json:"captcha_id"`
-		CaptchaCode string `json:"captcha_code"`
-		VerifyCode  string `json:"verify_code"`
+		Username      string `json:"username"`
+		Email         string `json:"email"`
+		QQ            string `json:"qq"`
+		Phone         string `json:"phone"`
+		Password      string `json:"password"`
+		CaptchaID     string `json:"captcha_id"`
+		CaptchaCode   string `json:"captcha_code"`
+		VerifyCode    string `json:"verify_code"`
+		VerifyChannel string `json:"verify_channel"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
@@ -333,11 +424,24 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 	required := map[string]bool{
 		"username": true,
-		"email":    true,
 		"password": true,
 	}
 	for _, f := range settings.RegisterRequiredFields {
-		required[strings.ToLower(strings.TrimSpace(f))] = true
+		key := strings.ToLower(strings.TrimSpace(f))
+		if key == "email" {
+			continue
+		}
+		required[key] = true
+	}
+	if settings.RegisterEmailRequired {
+		required["email"] = true
+	}
+	requestedVerifyChannel := strings.ToLower(strings.TrimSpace(payload.VerifyChannel))
+	if requestedVerifyChannel == "" && len(settings.RegisterVerifyChannels) == 1 {
+		requestedVerifyChannel = settings.RegisterVerifyChannels[0]
+	}
+	if requestedVerifyChannel == "sms" {
+		required["email"] = false
 	}
 	if required["username"] && strings.TrimSpace(payload.Username) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "username required"})
@@ -359,13 +463,28 @@ func (h *Handler) Register(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if settings.RegisterVerifyType != "none" {
+	if len(settings.RegisterVerifyChannels) > 0 && settings.RegisterCaptchaEnabled {
+		if err := h.authSvc.VerifyCaptcha(c, payload.CaptchaID, payload.CaptchaCode); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "captcha failed"})
+			return
+		}
+	}
+	verifiedChannel := ""
+	if len(settings.RegisterVerifyChannels) > 0 {
 		code := strings.TrimSpace(payload.VerifyCode)
 		if code == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "verification code required"})
 			return
 		}
-		switch settings.RegisterVerifyType {
+		ch := strings.ToLower(strings.TrimSpace(payload.VerifyChannel))
+		if ch == "" && len(settings.RegisterVerifyChannels) == 1 {
+			ch = settings.RegisterVerifyChannels[0]
+		}
+		if !hasChannel(settings.RegisterVerifyChannels, ch) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "verify_channel not allowed"})
+			return
+		}
+		switch ch {
 		case "email":
 			if strings.TrimSpace(payload.Email) == "" {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "email required"})
@@ -385,6 +504,21 @@ func (h *Handler) Register(c *gin.Context) {
 				return
 			}
 		}
+		verifiedChannel = ch
+	}
+	switch verifiedChannel {
+	case "email":
+		payload.Phone = ""
+	case "sms":
+		payload.Email = ""
+	}
+	captchaID := strings.TrimSpace(payload.CaptchaID)
+	captchaCode := strings.TrimSpace(payload.CaptchaCode)
+	captchaRequired := settings.RegisterCaptchaEnabled && len(settings.RegisterVerifyChannels) == 0
+	// OTP-based registration already verifies captcha in handler; avoid double consume.
+	if len(settings.RegisterVerifyChannels) > 0 {
+		captchaID = ""
+		captchaCode = ""
 	}
 	user, err := h.authSvc.Register(c, usecase.RegisterInput{
 		Username:        payload.Username,
@@ -392,9 +526,9 @@ func (h *Handler) Register(c *gin.Context) {
 		QQ:              payload.QQ,
 		Phone:           payload.Phone,
 		Password:        payload.Password,
-		CaptchaID:       payload.CaptchaID,
-		CaptchaCode:     payload.CaptchaCode,
-		CaptchaRequired: settings.RegisterCaptchaEnabled,
+		CaptchaID:       captchaID,
+		CaptchaCode:     captchaCode,
+		CaptchaRequired: captchaRequired,
 	})
 	if err != nil {
 		status := http.StatusBadRequest
@@ -437,6 +571,7 @@ func (h *Handler) Login(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid credentials"})
 		return
 	}
+	h.postLoginSecurityHook(c, user, settings)
 	accessToken, err := h.signAuthToken(user.ID, string(user.Role), 24*time.Hour, "access")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "sign token failed"})
@@ -462,21 +597,46 @@ func (h *Handler) Logout(c *gin.Context) {
 func (h *Handler) AuthSettings(c *gin.Context) {
 	settings := h.loadAuthSettings(c)
 	c.JSON(http.StatusOK, gin.H{
-		"register_enabled":         settings.RegisterEnabled,
-		"register_required_fields": settings.RegisterRequiredFields,
-		"password_min_len":         settings.PasswordMinLen,
-		"password_require_upper":   settings.PasswordRequireUpper,
-		"password_require_lower":   settings.PasswordRequireLower,
-		"password_require_number":  settings.PasswordRequireNumber,
-		"password_require_symbol":  settings.PasswordRequireSymbol,
-		"register_verify_type":     settings.RegisterVerifyType,
-		"register_captcha_enabled": settings.RegisterCaptchaEnabled,
-		"login_captcha_enabled":    settings.LoginCaptchaEnabled,
+		"register_enabled":                         settings.RegisterEnabled,
+		"register_required_fields":                 settings.RegisterRequiredFields,
+		"register_email_required":                  settings.RegisterEmailRequired,
+		"register_verify_ttl_sec":                  int(settings.RegisterVerifyTTL / time.Second),
+		"password_min_len":                         settings.PasswordMinLen,
+		"password_require_upper":                   settings.PasswordRequireUpper,
+		"password_require_lower":                   settings.PasswordRequireLower,
+		"password_require_number":                  settings.PasswordRequireNumber,
+		"password_require_symbol":                  settings.PasswordRequireSymbol,
+		"register_verify_type":                     settings.RegisterVerifyType,
+		"register_verify_channels":                 settings.RegisterVerifyChannels,
+		"register_captcha_enabled":                 settings.RegisterCaptchaEnabled,
+		"login_captcha_enabled":                    settings.LoginCaptchaEnabled,
+		"auth_login_notify_enabled":                settings.LoginNotifyEnabled,
+		"auth_login_notify_on_first_login":         settings.LoginNotifyOnFirst,
+		"auth_login_notify_on_ip_change":           settings.LoginNotifyOnIPChange,
+		"auth_login_notify_channels":               settings.LoginNotifyChannels,
+		"auth_password_reset_enabled":              settings.PasswordResetEnabled,
+		"auth_password_reset_channels":             settings.PasswordResetChannels,
+		"auth_password_reset_verify_ttl_sec":       int(settings.PasswordResetVerifyTTL / time.Second),
+		"auth_sms_code_len":                        settings.SMSCodeLength,
+		"auth_sms_code_complexity":                 settings.SMSCodeComplexity,
+		"auth_email_code_len":                      settings.EmailCodeLength,
+		"auth_email_code_complexity":               settings.EmailCodeComplexity,
+		"auth_captcha_code_len":                    settings.CaptchaLength,
+		"auth_captcha_code_complexity":             settings.CaptchaComplexity,
+		"auth_email_bind_enabled":                  settings.EmailBindEnabled,
+		"auth_phone_bind_enabled":                  settings.PhoneBindEnabled,
+		"auth_contact_bind_verify_ttl_sec":         int(settings.ContactBindVerifyTTL / time.Second),
+		"auth_bind_require_password_when_no_2fa":   settings.BindRequirePasswordWhenNo2FA,
+		"auth_rebind_require_password_when_no_2fa": settings.RebindRequirePasswordWhenNo2FA,
+		"auth_2fa_enabled":                         settings.TwoFAEnabled,
+		"auth_2fa_bind_enabled":                    settings.TwoFABindEnabled,
+		"auth_2fa_rebind_enabled":                  settings.TwoFARebindEnabled,
 	})
 }
 
 func (h *Handler) RegisterCode(c *gin.Context) {
 	var payload struct {
+		Channel     string `json:"channel"`
 		Email       string `json:"email"`
 		Phone       string `json:"phone"`
 		CaptchaID   string `json:"captcha_id"`
@@ -498,7 +658,19 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 		}
 	}
 
-	switch settings.RegisterVerifyType {
+	channel := strings.ToLower(strings.TrimSpace(payload.Channel))
+	if channel == "" {
+		if len(settings.RegisterVerifyChannels) == 1 {
+			channel = settings.RegisterVerifyChannels[0]
+		} else if settings.RegisterVerifyType != "none" {
+			channel = settings.RegisterVerifyType
+		}
+	}
+	if !hasChannel(settings.RegisterVerifyChannels, channel) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel not enabled"})
+		return
+	}
+	switch channel {
 	case "email":
 		emailVal := strings.TrimSpace(payload.Email)
 		if emailVal == "" {
@@ -509,16 +681,19 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
 			return
 		}
-		code, err := h.authSvc.CreateVerificationCode(c, "email", emailVal, "register", settings.RegisterVerifyTTL)
+		code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, "email", emailVal, "register", settings.RegisterVerifyTTL, settings.EmailCodeLength, settings.EmailCodeComplexity)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		subject := strings.TrimSpace(settings.RegisterEmailSubject)
-		if subject == "" {
-			subject = "Your verification code"
+		subject, body, ok := h.renderEmailTemplateByName(c, "register_verify_code", map[string]string{
+			"code":  code,
+			"email": emailVal,
+		})
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email template register_verify_code not configured"})
+			return
 		}
-		body := strings.ReplaceAll(settings.RegisterEmailBody, "{{code}}", code)
 		sender := email.NewSender(h.settings)
 		if err := sender.Send(c, emailVal, subject, body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "email send failed"})
@@ -540,7 +715,7 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
 			return
 		}
-		code, err := h.authSvc.CreateVerificationCode(c, "sms", phoneVal, "register", settings.RegisterVerifyTTL)
+		code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, "sms", phoneVal, "register", settings.RegisterVerifyTTL, settings.SMSCodeLength, settings.SMSCodeComplexity)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -561,21 +736,16 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			},
 			Phones: []string{phoneVal},
 		}
-		if settings.RegisterSMSTemplateID == "" {
-			content := "Your verification code is: " + code
-			if v := strings.TrimSpace(getSettingValue(c, h.settings, "sms_default_template_id")); v != "" {
-				if tid, err := strconv.ParseInt(v, 10, 64); err == nil && tid > 0 {
-					if rendered, ok := h.renderSMSTemplateByID(c, tid, map[string]any{
-						"code":  code,
-						"phone": phoneVal,
-						"now":   time.Now().Format(time.RFC3339),
-					}); ok {
-						content = rendered
-					}
-				}
-			}
-			req.Content = content
+		content, ok := h.renderSMSTemplateByName(c, "register_verify_code", map[string]any{
+			"code":  code,
+			"phone": phoneVal,
+			"now":   time.Now().Format(time.RFC3339),
+		})
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "sms template register_verify_code not configured"})
+			return
 		}
+		req.Content = content
 		cctx, cancel := context.WithTimeout(c, 10*time.Second)
 		defer cancel()
 		resp, err := client.Send(cctx, req)
@@ -589,6 +759,193 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "verification not enabled"})
 		return
 	}
+}
+
+func (h *Handler) postLoginSecurityHook(c *gin.Context, user domain.User, settings authSettings) {
+	if !settings.LoginNotifyEnabled {
+		return
+	}
+	ip := strings.TrimSpace(c.ClientIP())
+	if ip == "" {
+		ip = "unknown"
+	}
+	firstLogin := user.LastLoginAt == nil
+	ipChanged := !firstLogin && strings.TrimSpace(user.LastLoginIP) != "" && strings.TrimSpace(user.LastLoginIP) != ip
+	shouldNotify := (settings.LoginNotifyOnFirst && firstLogin) || (settings.LoginNotifyOnIPChange && ipChanged)
+	if !shouldNotify {
+		_ = h.authSvc.UpdateLoginSecurity(c, user.ID, ip, user.LastLoginCity, user.LastLoginTZ, time.Now())
+		return
+	}
+	city, tz := h.resolveGeoByIP(c, ip, settings.GeoIPMMDBPath)
+	loginTime := time.Now()
+	timeText := loginTime.Format("01/02 15:04")
+	if strings.TrimSpace(tz) == "" {
+		tz = "GMT+00:00"
+	}
+	_ = h.sendSecurityMessage(c, settings.LoginNotifyChannels, "login_ip_change_alert", user, map[string]string{
+		"ip":       ip,
+		"city":     city,
+		"tz":       tz,
+		"time":     fmt.Sprintf("%s (%s)", timeText, tz),
+		"username": user.Username,
+	})
+	_ = h.authSvc.UpdateLoginSecurity(c, user.ID, ip, city, tz, loginTime)
+}
+
+func (h *Handler) resolveGeoByIP(ctx context.Context, ip, mmdbPath string) (string, string) {
+	defaultTZ := time.Now().Format("GMT-07:00")
+	resolver := h.geoResolver
+	if resolver == nil {
+		resolver = NewMMDBGeoResolver()
+		h.geoResolver = resolver
+	}
+	path := strings.TrimSpace(mmdbPath)
+	if path == "" {
+		path = strings.TrimSpace(os.Getenv("AUTH_GEOIP_MMDB_PATH"))
+	}
+	if path == "" {
+		path = strings.TrimSpace(os.Getenv("GEOIP_MMDB_PATH"))
+	}
+	if path == "" {
+		path = strings.TrimSpace(os.Getenv("GEOIP_DB_PATH"))
+	}
+	city, tz, err := resolver.Resolve(ctx, ip, path)
+	if err != nil {
+		return "未知地区", defaultTZ
+	}
+	if strings.TrimSpace(city) == "" {
+		city = "未知地区"
+	}
+	if strings.TrimSpace(tz) == "" {
+		tz = defaultTZ
+	}
+	return city, tz
+}
+
+func (h *Handler) sendSecurityMessage(c *gin.Context, channels []string, templateName string, user domain.User, vars map[string]string) error {
+	if len(channels) == 0 {
+		return errors.New("no message channel configured")
+	}
+	templateName = strings.TrimSpace(templateName)
+	if templateName == "" {
+		return errors.New("template name required")
+	}
+	sent := 0
+	var lastErr error
+	for _, ch := range channels {
+		switch ch {
+		case "email":
+			emailAddr := strings.TrimSpace(user.Email)
+			if emailAddr == "" {
+				lastErr = errors.New("email not bound")
+				continue
+			}
+			subject, body, ok := h.renderEmailTemplateByName(c, templateName, vars)
+			if !ok {
+				lastErr = fmt.Errorf("email template %s not configured", templateName)
+				continue
+			}
+			sender := email.NewSender(h.settings)
+			if err := sender.Send(c, emailAddr, subject, body); err != nil {
+				lastErr = err
+				continue
+			}
+			sent++
+		case "sms":
+			if h.pluginMgr == nil {
+				lastErr = errors.New("sms plugin manager unavailable")
+				continue
+			}
+			phone := strings.TrimSpace(user.Phone)
+			if phone == "" {
+				lastErr = errors.New("phone not bound")
+				continue
+			}
+			pluginID := strings.TrimSpace(getSettingValue(c, h.settings, "sms_plugin_id"))
+			instanceID := strings.TrimSpace(getSettingValue(c, h.settings, "sms_instance_id"))
+			if instanceID == "" {
+				instanceID = "default"
+			}
+			if pluginID == "" {
+				lastErr = errors.New("sms plugin not configured")
+				continue
+			}
+			providerTemplateID := strings.TrimSpace(getSettingValue(c, h.settings, "sms_provider_template_id"))
+			m := map[string]any{}
+			for k, v := range vars {
+				m[k] = v
+			}
+			content, ok := h.renderSMSTemplateByName(c, templateName, m)
+			if !ok {
+				lastErr = fmt.Errorf("sms template %s not configured", templateName)
+				continue
+			}
+			if _, err := h.pluginMgr.EnsureRunning(c, "sms", pluginID, instanceID); err != nil {
+				lastErr = err
+				continue
+			}
+			client, ok := h.pluginMgr.GetSMSClient("sms", pluginID, instanceID)
+			if !ok || client == nil {
+				lastErr = errors.New("sms plugin not running")
+				continue
+			}
+			msgVars := map[string]string{}
+			for k, v := range vars {
+				msgVars[k] = v
+			}
+			resp, err := client.Send(c, &pluginv1.SendSmsRequest{
+				TemplateId: providerTemplateID,
+				Content:    content,
+				Vars:       msgVars,
+				Phones:     []string{phone},
+			})
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			if resp == nil || !resp.Ok {
+				if resp != nil && strings.TrimSpace(resp.Error) != "" {
+					lastErr = errors.New(strings.TrimSpace(resp.Error))
+				} else {
+					lastErr = errors.New("sms send failed")
+				}
+				continue
+			}
+			sent++
+		}
+	}
+	if sent > 0 {
+		return nil
+	}
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("no available channel")
+}
+
+func (h *Handler) renderEmailTemplateByName(ctx *gin.Context, name string, vars map[string]string) (string, string, bool) {
+	if h.settings == nil {
+		return "", "", false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", "", false
+	}
+	templates, err := h.settings.ListEmailTemplates(ctx)
+	if err != nil {
+		return "", "", false
+	}
+	for _, tmpl := range templates {
+		if strings.TrimSpace(tmpl.Name) != name || !tmpl.Enabled {
+			continue
+		}
+		subjectTpl := normalizeSimpleTemplateVars(tmpl.Subject)
+		bodyTpl := normalizeSimpleTemplateVars(tmpl.Body)
+		subject := usecase.RenderTemplate(subjectTpl, vars, false)
+		body := usecase.RenderTemplate(bodyTpl, vars, usecase.IsHTMLContent(bodyTpl))
+		return subject, body, true
+	}
+	return "", "", false
 }
 
 func (h *Handler) Refresh(c *gin.Context) {
@@ -696,7 +1053,7 @@ func (h *Handler) Me(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
 	}
-	c.JSON(http.StatusOK, toUserDTO(user))
+	c.JSON(http.StatusOK, toUserSelfDTO(user))
 }
 
 func (h *Handler) UpdateProfile(c *gin.Context) {
@@ -708,19 +1065,38 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		Bio      string `json:"bio"`
 		Intro    string `json:"intro"`
 		Password string `json:"password"`
+		TOTPCode string `json:"totp_code"`
 	}
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
+	if strings.TrimSpace(payload.Password) != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password change requires /api/v1/me/password/change"})
+		return
+	}
+	if strings.TrimSpace(payload.Email) != "" || strings.TrimSpace(payload.Phone) != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "email/phone update requires /api/v1/me/security/*"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	currentUser, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	usernameChange := strings.TrimSpace(payload.Username) != "" && strings.TrimSpace(payload.Username) != strings.TrimSpace(currentUser.Username)
+	if currentUser.TOTPEnabled && settings.TwoFAEnabled && usernameChange {
+		if err := h.authSvc.VerifyTOTP(c, currentUser.ID, payload.TOTPCode); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid 2fa code"})
+			return
+		}
+	}
 	user, err := h.authSvc.UpdateProfile(c, getUserID(c), usecase.UpdateProfileInput{
 		Username: payload.Username,
-		Email:    payload.Email,
 		QQ:       payload.QQ,
-		Phone:    payload.Phone,
 		Bio:      payload.Bio,
 		Intro:    payload.Intro,
-		Password: payload.Password,
 	})
 	if err != nil {
 		status := http.StatusBadRequest
@@ -730,7 +1106,373 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toUserDTO(user))
+	c.JSON(http.StatusOK, toUserSelfDTO(user))
+}
+
+func (h *Handler) MePasswordChange(c *gin.Context) {
+	var payload struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+		TOTPCode        string `json:"totp_code"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	currentUser, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if err := h.authSvc.VerifyPassword(c, getUserID(c), payload.CurrentPassword); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "current password invalid"})
+		return
+	}
+	if currentUser.TOTPEnabled && settings.TwoFAEnabled {
+		if err := h.authSvc.VerifyTOTP(c, currentUser.ID, payload.TOTPCode); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid 2fa code"})
+			return
+		}
+	}
+	if err := validatePasswordBySettings(payload.NewPassword, settings); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := h.authSvc.UpdateProfile(c, getUserID(c), usecase.UpdateProfileInput{Password: payload.NewPassword}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) PasswordResetOptions(c *gin.Context) {
+	var payload struct {
+		Account string `json:"account"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	if !settings.PasswordResetEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "password reset disabled"})
+		return
+	}
+	user, err := h.findUserByAccount(c, payload.Account)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+		return
+	}
+	channels := make([]string, 0, 2)
+	if hasChannel(settings.PasswordResetChannels, "email") && strings.TrimSpace(user.Email) != "" {
+		channels = append(channels, "email")
+	}
+	if hasChannel(settings.PasswordResetChannels, "sms") && strings.TrimSpace(user.Phone) != "" {
+		channels = append(channels, "sms")
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"user_id":      user.ID,
+		"account":      user.Username,
+		"channels":     channels,
+		"masked_email": maskEmail(user.Email),
+		"masked_phone": maskPhone(user.Phone),
+		"has_email":    strings.TrimSpace(user.Email) != "",
+		"has_phone":    strings.TrimSpace(user.Phone) != "",
+		"sms_requires_phone_full": strings.TrimSpace(payload.Account) != "" &&
+			strings.TrimSpace(payload.Account) != strings.TrimSpace(user.Phone),
+	})
+}
+
+func (h *Handler) PasswordResetSendCode(c *gin.Context) {
+	var payload struct {
+		Account   string `json:"account"`
+		Channel   string `json:"channel"`
+		PhoneFull string `json:"phone_full"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	if !settings.PasswordResetEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "password reset disabled"})
+		return
+	}
+	user, err := h.findUserByAccount(c, payload.Account)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+		return
+	}
+	channel := strings.ToLower(strings.TrimSpace(payload.Channel))
+	if !hasChannel(settings.PasswordResetChannels, channel) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "channel not enabled"})
+		return
+	}
+	receiver := ""
+	switch channel {
+	case "email":
+		receiver = strings.TrimSpace(user.Email)
+		if receiver == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email not bound"})
+			return
+		}
+	case "sms":
+		receiver = strings.TrimSpace(user.Phone)
+		if receiver == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "phone not bound"})
+			return
+		}
+		account := strings.TrimSpace(payload.Account)
+		phoneFull := strings.TrimSpace(payload.PhoneFull)
+		if phoneFull == "" && account != receiver {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "phone_full required"})
+			return
+		}
+		if phoneFull != "" && phoneFull != receiver {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "phone mismatch"})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid channel"})
+		return
+	}
+	receiverKey := receiver
+	if channel == "email" {
+		receiverKey = strings.ToLower(receiverKey)
+	}
+	if !resetCodeLimiter.Allow("password_reset_send:ip:"+strings.TrimSpace(c.ClientIP()), 10, 10*time.Minute) ||
+		!resetCodeLimiter.Allow("password_reset_send:"+channel+":"+receiverKey, 3, 10*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
+		return
+	}
+	length := settings.SMSCodeLength
+	complexity := settings.SMSCodeComplexity
+	if channel == "email" {
+		length = settings.EmailCodeLength
+		complexity = settings.EmailCodeComplexity
+	}
+	code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, channel, receiver, "password_reset", settings.PasswordResetVerifyTTL, length, complexity)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if channel == "email" {
+		if err := h.sendSecurityMessage(c, []string{"email"}, "password_reset_verify_code", user, map[string]string{
+			"code":  code,
+			"email": user.Email,
+		}); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		if err := h.sendSecurityMessage(c, []string{"sms"}, "password_reset_verify_code", user, map[string]string{
+			"code":  code,
+			"phone": user.Phone,
+		}); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) PasswordResetVerifyCode(c *gin.Context) {
+	var payload struct {
+		Account string `json:"account"`
+		Channel string `json:"channel"`
+		Code    string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	if !settings.PasswordResetEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "password reset disabled"})
+		return
+	}
+	accountKey := strings.ToLower(strings.TrimSpace(payload.Account))
+	channelKey := strings.ToLower(strings.TrimSpace(payload.Channel))
+	if !resetVerifyLimiter.Allow("password_reset_verify:ip:"+strings.TrimSpace(c.ClientIP()), 20, 10*time.Minute) ||
+		!resetVerifyLimiter.Allow("password_reset_verify:"+channelKey+":"+accountKey, 8, 10*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
+		return
+	}
+	user, err := h.findUserByAccount(c, payload.Account)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "account not found"})
+		return
+	}
+	channel := strings.ToLower(strings.TrimSpace(payload.Channel))
+	receiver := ""
+	if channel == "email" {
+		receiver = strings.TrimSpace(user.Email)
+	} else if channel == "sms" {
+		receiver = strings.TrimSpace(user.Phone)
+	}
+	if receiver == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "receiver not found"})
+		return
+	}
+	if err := h.authSvc.VerifyVerificationCode(c, channel, receiver, "password_reset", payload.Code); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid verification code"})
+		return
+	}
+	repo, ok := h.passwordResetTicketRepo()
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+		return
+	}
+	_ = repo.DeleteExpiredPasswordResetTickets(c)
+	token := randomToken(32)
+	ticket := &domain.PasswordResetTicket{
+		UserID:    user.ID,
+		Channel:   channel,
+		Receiver:  receiver,
+		Token:     token,
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+	if err := repo.CreatePasswordResetTicket(c, ticket); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"reset_ticket": token, "expires_in": 900})
+}
+
+func (h *Handler) PasswordResetConfirm(c *gin.Context) {
+	var payload struct {
+		ResetTicket string `json:"reset_ticket"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	if !settings.PasswordResetEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "password reset disabled"})
+		return
+	}
+	repo, ok := h.passwordResetTicketRepo()
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+		return
+	}
+	ticket, err := repo.GetPasswordResetTicket(c, strings.TrimSpace(payload.ResetTicket))
+	if err != nil || ticket.Used || time.Now().After(ticket.ExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid reset ticket"})
+		return
+	}
+	if err := validatePasswordBySettings(payload.NewPassword, h.loadAuthSettings(c)); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if _, err := h.authSvc.UpdateProfile(c, ticket.UserID, usecase.UpdateProfileInput{Password: payload.NewPassword}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_ = repo.MarkPasswordResetTicketUsed(c, ticket.ID)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) MeSecurityContacts(c *gin.Context) {
+	user, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"email_bound":    strings.TrimSpace(user.Email) != "",
+		"phone_bound":    strings.TrimSpace(user.Phone) != "",
+		"email_masked":   maskEmail(user.Email),
+		"phone_masked":   maskPhone(user.Phone),
+		"totp_enabled":   user.TOTPEnabled,
+		"security_level": map[string]any{"totp_enabled": user.TOTPEnabled},
+	})
+}
+
+func (h *Handler) MeSecurityEmailSendCode(c *gin.Context) {
+	h.meSecurityContactSendCode(c, "email")
+}
+
+func (h *Handler) MeSecurityPhoneSendCode(c *gin.Context) {
+	h.meSecurityContactSendCode(c, "phone")
+}
+
+func (h *Handler) MeSecurityEmailVerify2FA(c *gin.Context) {
+	h.meSecurityContactVerify2FA(c, "email")
+}
+
+func (h *Handler) MeSecurityPhoneVerify2FA(c *gin.Context) {
+	h.meSecurityContactVerify2FA(c, "phone")
+}
+
+func (h *Handler) MeSecurityEmailConfirm(c *gin.Context) {
+	h.meSecurityContactConfirm(c, "email")
+}
+
+func (h *Handler) MeSecurityPhoneConfirm(c *gin.Context) {
+	h.meSecurityContactConfirm(c, "phone")
+}
+
+func (h *Handler) MeTwoFAStatus(c *gin.Context) {
+	user, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"enabled": user.TOTPEnabled})
+}
+
+func (h *Handler) MeTwoFASetup(c *gin.Context) {
+	var payload struct {
+		Password    string `json:"password"`
+		CurrentCode string `json:"current_code"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	if !settings.TwoFAEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "2fa disabled"})
+		return
+	}
+	user, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if user.TOTPEnabled && !settings.TwoFARebindEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "2fa rebind disabled"})
+		return
+	}
+	if !user.TOTPEnabled && !settings.TwoFABindEnabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "2fa bind disabled"})
+		return
+	}
+	secret, otpURL, err := h.authSvc.SetupTOTP(c, getUserID(c), payload.Password, payload.CurrentCode)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"secret": secret, "otpauth_url": otpURL})
+}
+
+func (h *Handler) MeTwoFAConfirm(c *gin.Context) {
+	var payload struct {
+		Code string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	if err := h.authSvc.ConfirmTOTP(c, getUserID(c), payload.Code); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) RealNameStatus(c *gin.Context) {
@@ -6152,6 +6894,17 @@ func (h *Handler) AdminSMSTest(c *gin.Context) {
 				}
 			}
 		}
+		if strings.TrimSpace(content) == "" {
+			if items, err := h.loadSMSTemplates(c); err == nil {
+				for _, item := range items {
+					if !item.Enabled {
+						continue
+					}
+					content = renderSMSText(item.Content, vars)
+					break
+				}
+			}
+		}
 	}
 	if strings.TrimSpace(content) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "content required"})
@@ -6215,8 +6968,16 @@ func (h *Handler) AdminSMSTest(c *gin.Context) {
 func (h *Handler) AdminSMSTemplates(c *gin.Context) {
 	items, err := h.loadSMSTemplates(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sms_templates_json"})
-		return
+		items = defaultSMSTemplates()
+		if h.adminSvc != nil {
+			_ = h.saveSMSTemplates(c, getUserID(c), items)
+		}
+	}
+	if len(items) == 0 {
+		items = defaultSMSTemplates()
+		if h.adminSvc != nil {
+			_ = h.saveSMSTemplates(c, getUserID(c), items)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
@@ -6244,8 +7005,7 @@ func (h *Handler) AdminSMSTemplateUpsert(c *gin.Context) {
 	}
 	items, err := h.loadSMSTemplates(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sms_templates_json"})
-		return
+		items = defaultSMSTemplates()
 	}
 	now := time.Now()
 	if payload.ID <= 0 {
@@ -6289,8 +7049,7 @@ func (h *Handler) AdminSMSTemplateDelete(c *gin.Context) {
 	}
 	items, err := h.loadSMSTemplates(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid sms_templates_json"})
-		return
+		items = defaultSMSTemplates()
 	}
 	out := make([]smsTemplateItem, 0, len(items))
 	for _, item := range items {
@@ -6413,6 +7172,13 @@ func (h *Handler) AdminEmailTemplates(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "list error"})
 		return
+	}
+	if len(items) == 0 && h.adminSvc != nil {
+		for _, tmpl := range defaultEmailTemplates() {
+			cp := tmpl
+			_ = h.adminSvc.UpsertEmailTemplate(c, getUserID(c), &cp)
+		}
+		items, _ = h.adminSvc.ListEmailTemplates(c)
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toEmailTemplateDTOs(items)})
 }
@@ -7753,6 +8519,25 @@ func (h *Handler) loadSMSTemplates(ctx *gin.Context) ([]smsTemplateItem, error) 
 	return items, nil
 }
 
+func defaultSMSTemplates() []smsTemplateItem {
+	now := time.Now()
+	return []smsTemplateItem{
+		{ID: 1, Name: "register_verify_code", Content: "【XXX】您正在注册XXX平台账号，验证码是：{{code}}，3分钟内有效，请及时输入。", Enabled: true, CreatedAt: now, UpdatedAt: now},
+		{ID: 2, Name: "login_ip_change_alert", Content: "【XXX】登录提醒：您的账号于 {{time}} 在 {{city}} 发生登录（IP：{{ip}}）。如为本人操作，请忽略本消息；如非本人操作，请立即修改密码并开启二次验证，确保账号安全。", Enabled: true, CreatedAt: now, UpdatedAt: now},
+		{ID: 3, Name: "password_reset_verify_code", Content: "【XXX】您好，您在XXX平台（APP）的账号正在进行找回密码操作，切勿将验证码泄露于他人，10分钟内有效。验证码：{{code}}。", Enabled: true, CreatedAt: now, UpdatedAt: now},
+		{ID: 4, Name: "phone_bind_verify_code", Content: "【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。", Enabled: true, CreatedAt: now, UpdatedAt: now},
+	}
+}
+
+func defaultEmailTemplates() []domain.EmailTemplate {
+	return []domain.EmailTemplate{
+		{Name: "register_verify_code", Subject: "注册验证码", Body: "您好，您的注册验证码是：{{code}}，请在有效期内完成验证。", Enabled: true},
+		{Name: "login_ip_change_alert", Subject: "登录提醒", Body: "您的账号于 {{time}} 在 {{city}} 登录（IP：{{ip}}）。如非本人操作请立即修改密码。", Enabled: true},
+		{Name: "password_reset_verify_code", Subject: "找回密码验证码", Body: "您好，您正在进行找回密码操作，验证码：{{code}}，10分钟内有效。", Enabled: true},
+		{Name: "email_bind_verify_code", Subject: "邮箱绑定验证码", Body: "您的邮箱绑定验证码：{{code}}，10分钟内有效。", Enabled: true},
+	}
+}
+
 func (h *Handler) saveSMSTemplates(ctx *gin.Context, adminID int64, items []smsTemplateItem) error {
 	for i := range items {
 		items[i].Name = strings.TrimSpace(items[i].Name)
@@ -7791,6 +8576,27 @@ func (h *Handler) renderSMSTemplateByID(ctx *gin.Context, id int64, vars map[str
 	return "", false
 }
 
+func (h *Handler) renderSMSTemplateByName(ctx *gin.Context, name string, vars map[string]any) (string, bool) {
+	items, err := h.loadSMSTemplates(ctx)
+	if err != nil {
+		return "", false
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", false
+	}
+	for _, item := range items {
+		if strings.TrimSpace(item.Name) != name {
+			continue
+		}
+		if !item.Enabled {
+			return "", false
+		}
+		return renderSMSText(item.Content, vars), true
+	}
+	return "", false
+}
+
 func nextSMSTemplateID(items []smsTemplateItem) int64 {
 	var maxID int64
 	for _, item := range items {
@@ -7802,14 +8608,16 @@ func nextSMSTemplateID(items []smsTemplateItem) int64 {
 }
 
 func renderSMSText(content string, vars map[string]any) string {
-	replacer := strings.NewReplacer(
-		"{{code}}", "{{.code}}",
-		"{{ code }}", "{{.code}}",
-		"{{phone}}", "{{.phone}}",
-		"{{ phone }}", "{{.phone}}",
-	)
-	normalized := replacer.Replace(strings.TrimSpace(content))
+	normalized := normalizeSimpleTemplateVars(content)
 	return strings.TrimSpace(usecase.RenderTemplate(normalized, vars, false))
+}
+
+func normalizeSimpleTemplateVars(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	return simpleTemplateVarRE.ReplaceAllString(content, "{{.$1}}")
 }
 
 func getSettingValue(ctx *gin.Context, settings usecase.SettingsRepository, key string) string {
@@ -7828,6 +8636,355 @@ func boolToString(v bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+func normalizeChannels(items []string) []string {
+	out := make([]string, 0, len(items))
+	seen := map[string]bool{}
+	for _, item := range items {
+		v := strings.ToLower(strings.TrimSpace(item))
+		if v != "email" && v != "sms" {
+			continue
+		}
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	return out
+}
+
+func hasChannel(channels []string, target string) bool {
+	target = strings.ToLower(strings.TrimSpace(target))
+	for _, ch := range channels {
+		if strings.ToLower(strings.TrimSpace(ch)) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func maskPhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if len(phone) < 7 {
+		return phone
+	}
+	return phone[:2] + "*****" + phone[len(phone)-2:]
+}
+
+func maskEmail(email string) string {
+	email = strings.TrimSpace(email)
+	i := strings.Index(email, "@")
+	if i <= 1 {
+		return email
+	}
+	return email[:1] + "*****" + email[i-1:]
+}
+
+func randomToken(n int) string {
+	if n <= 0 {
+		n = 32
+	}
+	b := make([]byte, n)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("%x", b)
+}
+
+func contactSecurityTicketChannel(kind string) string {
+	if strings.ToLower(strings.TrimSpace(kind)) == "phone" {
+		return "contact_bind_phone"
+	}
+	return "contact_bind_email"
+}
+
+func (h *Handler) verifyContactSecurityTicket(ctx *gin.Context, repo usecase.PasswordResetTicketRepository, userID int64, kind string, rawToken string) error {
+	token := strings.TrimSpace(rawToken)
+	if token == "" {
+		return errors.New("security ticket required")
+	}
+	ticket, err := repo.GetPasswordResetTicket(ctx, token)
+	if err != nil {
+		return errors.New("invalid security ticket")
+	}
+	if ticket.Used || time.Now().After(ticket.ExpiresAt) {
+		return errors.New("invalid security ticket")
+	}
+	if ticket.UserID != userID {
+		return errors.New("invalid security ticket")
+	}
+	if strings.TrimSpace(ticket.Channel) != contactSecurityTicketChannel(kind) {
+		return errors.New("invalid security ticket")
+	}
+	return nil
+}
+
+func (h *Handler) findUserByAccount(ctx *gin.Context, account string) (domain.User, error) {
+	account = strings.TrimSpace(account)
+	if account == "" {
+		return domain.User{}, usecase.ErrInvalidInput
+	}
+	if looksLikePhone(account) {
+		if user, err := h.users.GetUserByPhone(ctx, account); err == nil {
+			return user, nil
+		}
+	}
+	return h.users.GetUserByUsernameOrEmail(ctx, account)
+}
+
+func looksLikePhone(v string) bool {
+	v = strings.TrimSpace(v)
+	if len(v) < 6 {
+		return false
+	}
+	for _, r := range v {
+		if (r < '0' || r > '9') && r != '+' && r != '-' && r != ' ' {
+			return false
+		}
+	}
+	return true
+}
+
+func (h *Handler) passwordResetTicketRepo() (usecase.PasswordResetTicketRepository, bool) {
+	if repo, ok := any(h.users).(usecase.PasswordResetTicketRepository); ok {
+		return repo, true
+	}
+	if repo, ok := any(h.orderRepo).(usecase.PasswordResetTicketRepository); ok {
+		return repo, true
+	}
+	if repo, ok := any(h.settings).(usecase.PasswordResetTicketRepository); ok {
+		return repo, true
+	}
+	return nil, false
+}
+
+func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {
+	var payload struct {
+		Value           string `json:"value"`
+		CurrentPassword string `json:"current_password"`
+		SecurityTicket  string `json:"security_ticket"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	user, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	isRebind := false
+	if kind == "email" {
+		if !settings.EmailBindEnabled {
+			c.JSON(http.StatusForbidden, gin.H{"error": "email bind disabled"})
+			return
+		}
+		isRebind = strings.TrimSpace(user.Email) != ""
+	} else {
+		if !settings.PhoneBindEnabled {
+			c.JSON(http.StatusForbidden, gin.H{"error": "phone bind disabled"})
+			return
+		}
+		isRebind = strings.TrimSpace(user.Phone) != ""
+	}
+	require2FA := user.TOTPEnabled && settings.TwoFAEnabled
+	value := strings.TrimSpace(payload.Value)
+	if value == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "value required"})
+		return
+	}
+	if require2FA {
+		repo, ok := h.passwordResetTicketRepo()
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+			return
+		}
+		if err := h.verifyContactSecurityTicket(c, repo, user.ID, kind, payload.SecurityTicket); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		if isRebind && settings.RebindRequirePasswordWhenNo2FA {
+			if err := h.authSvc.VerifyPassword(c, user.ID, payload.CurrentPassword); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid password"})
+				return
+			}
+		}
+		if !isRebind && settings.BindRequirePasswordWhenNo2FA {
+			if err := h.authSvc.VerifyPassword(c, user.ID, payload.CurrentPassword); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid password"})
+				return
+			}
+		}
+	}
+	valueKey := value
+	if kind == "email" {
+		valueKey = strings.ToLower(valueKey)
+	}
+	if !contactCodeLimiter.Allow(fmt.Sprintf("contact_bind_send:user:%d:%s", user.ID, kind), 3, 10*time.Minute) ||
+		!contactCodeLimiter.Allow("contact_bind_send:"+kind+":"+valueKey, 5, 10*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
+		return
+	}
+	channel := "email"
+	purpose := "bind_email"
+	if kind == "phone" {
+		channel = "sms"
+		purpose = "bind_phone"
+	}
+	length := settings.SMSCodeLength
+	complexity := settings.SMSCodeComplexity
+	if channel == "email" {
+		length = settings.EmailCodeLength
+		complexity = settings.EmailCodeComplexity
+	}
+	code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, channel, value, purpose, settings.ContactBindVerifyTTL, length, complexity)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	shadow := user
+	if kind == "email" {
+		shadow.Email = value
+	} else {
+		shadow.Phone = value
+	}
+	templateName := "email_bind_verify_code"
+	if kind == "phone" {
+		templateName = "phone_bind_verify_code"
+	}
+	if err := h.sendSecurityMessage(c, []string{channel}, templateName, shadow, map[string]string{
+		"code":  code,
+		"email": value,
+		"phone": value,
+	}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) meSecurityContactConfirm(c *gin.Context, kind string) {
+	var payload struct {
+		Value          string `json:"value"`
+		Code           string `json:"code"`
+		SecurityTicket string `json:"security_ticket"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	user, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	value := strings.TrimSpace(payload.Value)
+	if value == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "value required"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	require2FA := user.TOTPEnabled && settings.TwoFAEnabled
+	var ticketRepo usecase.PasswordResetTicketRepository
+	var ticket domain.PasswordResetTicket
+	if require2FA {
+		repo, ok := h.passwordResetTicketRepo()
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+			return
+		}
+		if err := h.verifyContactSecurityTicket(c, repo, user.ID, kind, payload.SecurityTicket); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		t, err := repo.GetPasswordResetTicket(c, strings.TrimSpace(payload.SecurityTicket))
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid security ticket"})
+			return
+		}
+		ticketRepo = repo
+		ticket = t
+	}
+	if !contactVerifyLimiter.Allow(fmt.Sprintf("contact_bind_verify:user:%d:%s", user.ID, kind), 10, 10*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "too many requests"})
+		return
+	}
+	channel := "email"
+	purpose := "bind_email"
+	if kind == "phone" {
+		channel = "sms"
+		purpose = "bind_phone"
+	}
+	if err := h.authSvc.VerifyVerificationCode(c, channel, value, purpose, payload.Code); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid verification code"})
+		return
+	}
+	if kind == "email" {
+		if exists, err := h.users.GetUserByUsernameOrEmail(c, value); err == nil && exists.ID != user.ID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email already exists"})
+			return
+		}
+		user.Email = value
+	} else {
+		if exists, err := h.users.GetUserByPhone(c, value); err == nil && exists.ID != user.ID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "phone already exists"})
+			return
+		}
+		user.Phone = value
+	}
+	if err := h.users.UpdateUser(c, user); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if require2FA && ticketRepo != nil {
+		_ = ticketRepo.MarkPasswordResetTicketUsed(c, ticket.ID)
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func (h *Handler) meSecurityContactVerify2FA(c *gin.Context, kind string) {
+	var payload struct {
+		TOTPCode string `json:"totp_code"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	settings := h.loadAuthSettings(c)
+	user, err := h.users.GetUserByID(c, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
+	}
+	if !(user.TOTPEnabled && settings.TwoFAEnabled) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "2fa not enabled"})
+		return
+	}
+	if err := h.authSvc.VerifyTOTP(c, user.ID, payload.TOTPCode); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid 2fa code"})
+		return
+	}
+	repo, ok := h.passwordResetTicketRepo()
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "not supported"})
+		return
+	}
+	_ = repo.DeleteExpiredPasswordResetTickets(c)
+	token := randomToken(9)
+	ticket := &domain.PasswordResetTicket{
+		UserID:    user.ID,
+		Channel:   contactSecurityTicketChannel(kind),
+		Receiver:  "-",
+		Token:     token,
+		ExpiresAt: time.Now().Add(20 * time.Minute),
+	}
+	if err := repo.CreatePasswordResetTicket(c, ticket); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"security_ticket": token, "expires_in": 1200})
 }
 
 func isDigits(input string) bool {

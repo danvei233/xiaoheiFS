@@ -14,20 +14,23 @@ import (
 )
 
 type UserDTO struct {
-	ID                int64     `json:"id"`
-	Username          string    `json:"username"`
-	Email             string    `json:"email"`
-	QQ                string    `json:"qq"`
-	Phone             string    `json:"phone"`
-	Bio               string    `json:"bio"`
-	Intro             string    `json:"intro"`
-	AvatarURL         string    `json:"avatar_url"`
-	PermissionGroupID *int64    `json:"permission_group_id"`
-	Role              string    `json:"role"`
-	Status            string    `json:"status"`
-	Permissions       []string  `json:"permissions,omitempty"`
-	CreatedAt         time.Time `json:"created_at"`
-	UpdatedAt         time.Time `json:"updated_at"`
+	ID                int64      `json:"id"`
+	Username          string     `json:"username"`
+	Email             string     `json:"email"`
+	QQ                string     `json:"qq"`
+	Phone             string     `json:"phone"`
+	TOTPEnabled       bool       `json:"totp_enabled"`
+	LastLoginIP       string     `json:"last_login_ip"`
+	LastLoginAt       *time.Time `json:"last_login_at"`
+	Bio               string     `json:"bio"`
+	Intro             string     `json:"intro"`
+	AvatarURL         string     `json:"avatar_url"`
+	PermissionGroupID *int64     `json:"permission_group_id"`
+	Role              string     `json:"role"`
+	Status            string     `json:"status"`
+	Permissions       []string   `json:"permissions,omitempty"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 type RegionDTO struct {
@@ -379,6 +382,9 @@ func toUserDTO(user domain.User) UserDTO {
 		Email:             user.Email,
 		QQ:                user.QQ,
 		Phone:             user.Phone,
+		TOTPEnabled:       user.TOTPEnabled,
+		LastLoginIP:       user.LastLoginIP,
+		LastLoginAt:       user.LastLoginAt,
 		Bio:               user.Bio,
 		Intro:             user.Intro,
 		AvatarURL:         resolveAvatarURL(user),
@@ -388,6 +394,13 @@ func toUserDTO(user domain.User) UserDTO {
 		CreatedAt:         user.CreatedAt,
 		UpdatedAt:         user.UpdatedAt,
 	}
+}
+
+func toUserSelfDTO(user domain.User) UserDTO {
+	dto := toUserDTO(user)
+	dto.Email = ""
+	dto.Phone = ""
+	return dto
 }
 
 func toUserDTOs(items []domain.User) []UserDTO {

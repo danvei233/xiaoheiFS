@@ -68,13 +68,14 @@ export interface CaptchaResponse {
 
 export interface RegisterRequest {
   username: string;
-  email: string;
+  email?: string;
   qq?: string;
   phone?: string;
   password: string;
   captcha_id: string;
   captcha_code: string;
   verify_code?: string;
+  verify_channel?: "email" | "sms";
 }
 
 export interface LoginRequest {
@@ -93,8 +94,32 @@ export interface AuthSettings {
   password_require_number?: boolean;
   password_require_symbol?: boolean;
   register_verify_type?: "none" | "email" | "sms";
+  register_verify_channels?: Array<"email" | "sms">;
+  register_email_required?: boolean;
+  register_verify_ttl_sec?: number;
   register_captcha_enabled?: boolean;
   login_captcha_enabled?: boolean;
+  auth_login_notify_enabled?: boolean;
+  auth_login_notify_on_first_login?: boolean;
+  auth_login_notify_on_ip_change?: boolean;
+  auth_login_notify_channels?: Array<"email" | "sms">;
+  auth_password_reset_enabled?: boolean;
+  auth_password_reset_channels?: Array<"email" | "sms">;
+  auth_password_reset_verify_ttl_sec?: number;
+  auth_sms_code_len?: number;
+  auth_sms_code_complexity?: "digits" | "letters" | "alnum";
+  auth_email_code_len?: number;
+  auth_email_code_complexity?: "digits" | "letters" | "alnum";
+  auth_captcha_code_len?: number;
+  auth_captcha_code_complexity?: "digits" | "letters" | "alnum";
+  auth_email_bind_enabled?: boolean;
+  auth_phone_bind_enabled?: boolean;
+  auth_contact_bind_verify_ttl_sec?: number;
+  auth_bind_require_password_when_no_2fa?: boolean;
+  auth_rebind_require_password_when_no_2fa?: boolean;
+  auth_2fa_enabled?: boolean;
+  auth_2fa_bind_enabled?: boolean;
+  auth_2fa_rebind_enabled?: boolean;
 }
 
 export interface AuthResponse {

@@ -37,6 +37,7 @@ func migrateGorm(db *gorm.DB) error {
 		&integrationSyncLogRow{},
 		&permissionGroupRow{},
 		&passwordResetTokenRow{},
+		&passwordResetTicketRow{},
 		&permissionRow{},
 		&cmsCategoryRow{},
 		&cmsPostRow{},
@@ -143,20 +144,27 @@ func fixMySQLTextColumns(db *gorm.DB) error {
 }
 
 type userRow struct {
-	ID                int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	Username          string    `gorm:"size:191;column:username;not null;uniqueIndex"`
-	Email             string    `gorm:"size:191;column:email;not null;uniqueIndex"`
-	QQ                string    `gorm:"size:32;column:qq"`
-	PasswordHash      string    `gorm:"column:password_hash;not null"`
-	Role              string    `gorm:"column:role;not null"`
-	Status            string    `gorm:"column:status;not null"`
-	Avatar            string    `gorm:"size:1024;column:avatar"`
-	Phone             string    `gorm:"size:32;column:phone"`
-	Bio               string    `gorm:"size:512;column:bio"`
-	Intro             string    `gorm:"size:1024;column:intro"`
-	PermissionGroupID *int64    `gorm:"column:permission_group_id"`
-	CreatedAt         time.Time `gorm:"column:created_at;not null;autoCreateTime"`
-	UpdatedAt         time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
+	ID                   int64      `gorm:"primaryKey;autoIncrement;column:id"`
+	Username             string     `gorm:"size:191;column:username;not null;uniqueIndex"`
+	Email                *string    `gorm:"size:191;column:email;uniqueIndex"`
+	QQ                   string     `gorm:"size:32;column:qq"`
+	PasswordHash         string     `gorm:"column:password_hash;not null"`
+	Role                 string     `gorm:"column:role;not null"`
+	Status               string     `gorm:"column:status;not null"`
+	Avatar               string     `gorm:"size:1024;column:avatar"`
+	Phone                string     `gorm:"size:32;column:phone"`
+	LastLoginIP          string     `gorm:"size:64;column:last_login_ip"`
+	LastLoginAt          *time.Time `gorm:"column:last_login_at"`
+	LastLoginCity        string     `gorm:"size:128;column:last_login_city"`
+	LastLoginTZ          string     `gorm:"size:64;column:last_login_tz"`
+	TOTPEnabled          int        `gorm:"column:totp_enabled;not null;default:0"`
+	TOTPSecretEnc        string     `gorm:"type:text;column:totp_secret_enc"`
+	TOTPPendingSecretEnc string     `gorm:"type:text;column:totp_pending_secret_enc"`
+	Bio                  string     `gorm:"size:512;column:bio"`
+	Intro                string     `gorm:"size:1024;column:intro"`
+	PermissionGroupID    *int64     `gorm:"column:permission_group_id"`
+	CreatedAt            time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt            time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
 
 func (userRow) TableName() string { return "users" }
@@ -538,6 +546,19 @@ type passwordResetTokenRow struct {
 }
 
 func (passwordResetTokenRow) TableName() string { return "password_reset_tokens" }
+
+type passwordResetTicketRow struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	UserID    int64     `gorm:"column:user_id;not null;index"`
+	Channel   string    `gorm:"size:32;column:channel;not null;index:idx_password_reset_tickets_token,priority:1"`
+	Receiver  string    `gorm:"size:191;column:receiver;not null"`
+	Token     string    `gorm:"size:191;column:token;not null;uniqueIndex:idx_password_reset_tickets_token,priority:2"`
+	ExpiresAt time.Time `gorm:"column:expires_at;not null;index"`
+	Used      int       `gorm:"column:used;not null;default:0"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (passwordResetTicketRow) TableName() string { return "password_reset_tickets" }
 
 type permissionRow struct {
 	ID           int64     `gorm:"primaryKey;autoIncrement;column:id"`

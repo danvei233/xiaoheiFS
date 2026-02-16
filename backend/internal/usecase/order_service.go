@@ -2209,6 +2209,11 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 		SpecJSON: mustJSON(specPayload),
 	}
 	if err := s.items.CreateOrderItems(ctx, []domain.OrderItem{refundItem}); err != nil {
+		// Keep refund creation atomic at service level: if item creation fails,
+		// remove the just-created order to avoid orphan orders.
+		if delErr := s.orders.DeleteOrder(ctx, order.ID); delErr != nil {
+			return domain.Order{}, 0, fmt.Errorf("create refund item failed: %w; rollback order failed: %v", err, delErr)
+		}
 		return domain.Order{}, 0, err
 	}
 	if s.events != nil {

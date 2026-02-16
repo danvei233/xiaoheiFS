@@ -81,24 +81,10 @@
         </div>
         <div class="info-list">
           <div class="info-item">
-            <MailOutlined class="item-icon" />
-            <div class="info-content">
-              <span class="info-label">邮箱</span>
-              <span class="info-value">{{ profile?.email || "-" }}</span>
-            </div>
-          </div>
-          <div class="info-item">
             <QqOutlined class="item-icon" />
             <div class="info-content">
               <span class="info-label">QQ</span>
               <span class="info-value">{{ profile?.qq || "-" }}</span>
-            </div>
-          </div>
-          <div class="info-item">
-            <PhoneOutlined class="item-icon" />
-            <div class="info-content">
-              <span class="info-label">手机号</span>
-              <span class="info-value">{{ profile?.phone || "-" }}</span>
             </div>
           </div>
         </div>
@@ -115,9 +101,7 @@
             <CheckCircleOutlined class="item-icon" :class="profile?.status === 'active' ? 'success' : 'default'" />
             <div class="info-content">
               <span class="info-label">状态</span>
-              <a-tag :color="profile?.status === 'active' ? 'success' : 'default'">
-                {{ profile?.status === 'active' ? '正常' : (profile?.status || '-') }}
-              </a-tag>
+              <a-badge :status="profile?.status === 'active' ? 'success' : 'default'" :text="profile?.status === 'active' ? '正常' : (profile?.status || '-')" />
             </div>
           </div>
           <div class="info-item">
@@ -130,26 +114,44 @@
         </div>
       </div>
 
-      <!-- Wallet Info -->
-      <div class="info-card wallet-card">
+      <!-- Security Settings -->
+      <div class="info-card">
         <div class="card-header">
-          <WalletOutlined class="card-icon" />
-          <h3 class="card-title">钱包信息</h3>
+          <LockOutlined class="card-icon" />
+          <h3 class="card-title">安全设置</h3>
         </div>
         <div class="info-list">
-          <div class="info-item info-item-balance">
-            <TransactionOutlined class="item-icon" />
+          <div class="info-item">
+            <KeyOutlined class="item-icon" />
             <div class="info-content">
-              <span class="info-label">账户余额</span>
-              <span class="info-value info-value-balance">{{ balanceText }}</span>
+              <span class="info-label">密码</span>
+              <span class="info-value">已设置</span>
             </div>
+            <a-button type="text" size="small" @click="openPasswordModal">修改</a-button>
           </div>
           <div class="info-item">
-            <DollarOutlined class="item-icon" />
+            <SafetyOutlined class="item-icon" />
             <div class="info-content">
-              <span class="info-label">币种</span>
-              <span class="info-value">{{ wallet?.currency || "CNY" }}</span>
+              <span class="info-label">双因素认证</span>
+              <a-badge :status="twoFAEnabled ? 'success' : 'default'" :text="twoFAEnabled ? '已启用' : '未启用'" />
             </div>
+            <a-button type="text" size="small" @click="openSecurityModal('twofa')">设置</a-button>
+          </div>
+          <div class="info-item">
+            <MailOutlined class="item-icon" />
+            <div class="info-content">
+              <span class="info-label">邮箱绑定</span>
+              <a-badge :status="securityContacts.email_bound ? 'success' : 'default'" :text="securityContacts.email_bound ? '已绑定' : '未绑定'" />
+            </div>
+            <a-button type="text" size="small" @click="openSecurityModal('email')">{{ securityContacts.email_bound ? '更新' : '绑定' }}</a-button>
+          </div>
+          <div class="info-item">
+            <PhoneOutlined class="item-icon" />
+            <div class="info-content">
+              <span class="info-label">手机绑定</span>
+              <a-badge :status="securityContacts.phone_bound ? 'success' : 'default'" :text="securityContacts.phone_bound ? '已绑定' : '未绑定'" />
+            </div>
+            <a-button type="text" size="small" @click="openSecurityModal('phone')">{{ securityContacts.phone_bound ? '更新' : '绑定' }}</a-button>
           </div>
         </div>
       </div>
@@ -184,18 +186,6 @@
             </template>
           </a-input>
         </a-form-item>
-        <a-form-item label="邮箱地址" name="email">
-          <a-input
-            v-model:value="form.email"
-            placeholder="请输入邮箱地址"
-            size="large"
-            :maxlength="INPUT_LIMITS.EMAIL"
-          >
-            <template #prefix>
-              <MailOutlined />
-            </template>
-          </a-input>
-        </a-form-item>
         <a-form-item label="QQ号码" name="qq">
           <a-input
             v-model:value="form.qq"
@@ -208,49 +198,217 @@
             </template>
           </a-input>
         </a-form-item>
-        <a-form-item label="手机号" name="phone">
-          <a-input v-model:value="form.phone" placeholder="请输入手机号" size="large" :maxlength="INPUT_LIMITS.PHONE">
-            <template #prefix>
-              <PhoneOutlined />
-            </template>
-          </a-input>
-        </a-form-item>
-        <a-divider class="form-divider">
-          <LockOutlined class="divider-icon" />
-          修改密码
-        </a-divider>
-        <a-form-item label="新密码" name="password">
-          <a-input-password
-            v-model:value="form.password"
-            placeholder="留空表示不修改密码"
-            size="large"
-            :maxlength="INPUT_LIMITS.PASSWORD"
-          >
-            <template #prefix>
-              <LockOutlined />
-            </template>
-          </a-input-password>
-        </a-form-item>
-        <a-form-item label="确认密码" name="confirmPassword" v-if="form.password">
-          <a-input-password
-            v-model:value="form.confirmPassword"
-            placeholder="请再次输入新密码"
-            size="large"
-            :maxlength="INPUT_LIMITS.PASSWORD"
-          >
-            <template #prefix>
-              <LockOutlined />
-            </template>
-          </a-input-password>
+        <a-form-item v-if="twoFAEnabled" label="2FA 验证码">
+          <a-input
+            v-model:value="securityForm.profile_totp"
+            placeholder="已启用2FA，修改用户名/邮箱/手机号必须输入6位验证码"
+            :maxlength="6"
+          />
         </a-form-item>
       </a-form>
+    </a-modal>
+
+    <a-modal
+      v-model:open="passwordModalVisible"
+      title="修改登录密码"
+      :width="460"
+      @ok="submitPasswordChange"
+      @cancel="resetPasswordForm"
+      :confirm-loading="securityLoading.password"
+    >
+      <a-form ref="passwordFormRef" layout="vertical" :model="securityForm" :rules="passwordRules">
+        <a-form-item label="当前密码" name="current_password">
+          <a-input-password
+            v-model:value="securityForm.current_password"
+            placeholder="请输入当前密码"
+            :maxlength="INPUT_LIMITS.PASSWORD"
+          />
+        </a-form-item>
+        <a-form-item label="新密码" name="new_password">
+          <a-input-password
+            v-model:value="securityForm.new_password"
+            placeholder="请输入新密码"
+            :maxlength="INPUT_LIMITS.PASSWORD"
+          />
+        </a-form-item>
+        <a-form-item label="确认新密码" name="confirm_new_password">
+          <a-input-password
+            v-model:value="securityForm.confirm_new_password"
+            placeholder="请再次输入新密码"
+            :maxlength="INPUT_LIMITS.PASSWORD"
+          />
+        </a-form-item>
+        <a-form-item v-if="twoFAEnabled" label="2FA 验证码">
+          <a-input
+            v-model:value="securityForm.password_totp"
+            placeholder="已启用2FA，修改密码必须输入6位验证码"
+            :maxlength="6"
+          />
+        </a-form-item>
+      </a-form>
+      <div class="subtle">
+        忘记当前密码？
+        <router-link to="/forgot-password">通过找回密码重置</router-link>
+      </div>
+    </a-modal>
+
+    <a-modal v-model:open="securityModalVisible" :title="securityModalTitle" :width="720" :footer="null">
+      <div v-if="securityModalType === 'twofa'" class="security-dialog">
+        <a-alert
+          :type="twoFAEnabled ? 'success' : 'info'"
+          show-icon
+          :message="twoFAEnabled ? '当前已启用 2FA' : '当前未启用 2FA'"
+          :description="twoFAEnabled ? '换绑流程：验证当前 2FA 后生成新绑定信息，再用新设备验证码确认。' : '首次绑定流程：验证登录密码后生成绑定信息，再输入验证码确认。'"
+        />
+        <div class="security-block">
+          <div class="twofa-flow">
+            <div>1. 验证身份并生成二维码</div>
+            <div>2. 打开验证器 App 扫描二维码</div>
+            <div>3. 输入 6 位动态验证码完成绑定</div>
+          </div>
+          <div class="field-grid single">
+            <a-input-password
+              v-if="!twoFAEnabled"
+              v-model:value="securityForm.twofa_password"
+              placeholder="当前登录密码"
+              :maxlength="INPUT_LIMITS.PASSWORD"
+            />
+            <a-input
+              v-else
+              v-model:value="securityForm.twofa_current_code"
+              placeholder="当前 2FA 验证码（6 位）"
+              :maxlength="6"
+            />
+            <a-button type="primary" :disabled="!canSubmitTwoFASetup" :loading="securityLoading.setup" @click="submitTwoFASetup">
+              {{ twoFAEnabled ? "重新生成绑定信息" : "生成绑定信息" }}
+            </a-button>
+          </div>
+        </div>
+        <div v-if="twoFASecret" class="twofa-setup">
+          <div class="twofa-qr">
+            <img v-if="twoFAQRCode" :src="twoFAQRCode" alt="2FA QRCode" />
+            <div v-else class="twofa-qr-placeholder">二维码生成失败</div>
+          </div>
+          <div class="twofa-meta">
+            <div class="twofa-meta-title">请用 Google / Microsoft Authenticator 扫码</div>
+            <div class="twofa-meta-subtitle">仅支持扫码绑定，不提供手动密钥兜底。</div>
+          </div>
+        </div>
+        <div v-if="twoFASecret" class="security-block confirm-block">
+          <div class="confirm-row">
+            <a-input
+              v-model:value="securityForm.twofa_code"
+              placeholder="输入验证器中的 6 位验证码"
+              :maxlength="6"
+            />
+            <a-button type="primary" :disabled="!canSubmitTwoFAConfirm" :loading="securityLoading.confirm" @click="submitTwoFAConfirm">
+              完成绑定
+            </a-button>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="securityModalType === 'email'" class="security-dialog">
+        <a-alert
+          :type="securityContacts.email_bound ? 'success' : 'info'"
+          show-icon
+          :message="securityContacts.email_bound ? `当前绑定：${securityContacts.email_masked || '-'}` : '当前未绑定邮箱'"
+          description="先完成一次身份校验，再发送邮箱验证码并确认绑定。"
+        />
+        <div class="security-block">
+          <div class="field-grid single">
+            <a-input
+              v-model:value="securityForm.bind_email_value"
+              placeholder="请输入要绑定的新邮箱"
+              :maxlength="INPUT_LIMITS.EMAIL"
+            />
+            <div v-if="twoFAEnabled" class="confirm-row">
+              <a-input
+                v-model:value="securityForm.bind_email_totp"
+                placeholder="2FA 验证码（6 位）"
+                :maxlength="6"
+              />
+              <a-button type="default" :disabled="!canVerifyEmail2FA" :loading="securityLoading.emailVerify2FA" @click="verifyEmailBind2FA">
+                {{ emailTicketReady ? "已验证" : "验证2FA" }}
+              </a-button>
+            </div>
+            <a-input-password
+              v-else
+              v-model:value="securityForm.bind_email_password"
+              placeholder="当前登录密码"
+              :maxlength="INPUT_LIMITS.PASSWORD"
+            />
+            <a-input
+              v-model:value="securityForm.bind_email_code"
+              placeholder="输入邮箱验证码（4-8 位）"
+              :maxlength="8"
+            />
+            <div class="confirm-row">
+              <a-button type="default" :disabled="!canSendEmailCode" :loading="securityLoading.emailSend" @click="sendEmailBindCode">
+                {{ emailCodeCooldown > 0 ? `${emailCodeCooldown}s 后重发` : "发送验证码" }}
+              </a-button>
+              <a-button type="primary" :disabled="!canConfirmEmailBind" :loading="securityLoading.emailConfirm" @click="submitEmailBind">
+                确认绑定
+              </a-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="security-dialog">
+        <a-alert
+          :type="securityContacts.phone_bound ? 'success' : 'info'"
+          show-icon
+          :message="securityContacts.phone_bound ? `当前绑定：${securityContacts.phone_masked || '-'}` : '当前未绑定手机号'"
+          description="先完成一次身份校验，再发送短信验证码并确认绑定。"
+        />
+        <div class="security-block">
+          <div class="field-grid single">
+            <a-input
+              v-model:value="securityForm.bind_phone_value"
+              placeholder="请输入要绑定的新手机号"
+              :maxlength="INPUT_LIMITS.PHONE"
+            />
+            <div v-if="twoFAEnabled" class="confirm-row">
+              <a-input
+                v-model:value="securityForm.bind_phone_totp"
+                placeholder="2FA 验证码（6 位）"
+                :maxlength="6"
+              />
+              <a-button type="default" :disabled="!canVerifyPhone2FA" :loading="securityLoading.phoneVerify2FA" @click="verifyPhoneBind2FA">
+                {{ phoneTicketReady ? "已验证" : "验证2FA" }}
+              </a-button>
+            </div>
+            <a-input-password
+              v-else
+              v-model:value="securityForm.bind_phone_password"
+              placeholder="当前登录密码"
+              :maxlength="INPUT_LIMITS.PASSWORD"
+            />
+            <a-input
+              v-model:value="securityForm.bind_phone_code"
+              placeholder="输入短信验证码（4-8 位）"
+              :maxlength="8"
+            />
+            <div class="confirm-row">
+              <a-button type="default" :disabled="!canSendPhoneCode" :loading="securityLoading.phoneSend" @click="sendPhoneBindCode">
+                {{ phoneCodeCooldown > 0 ? `${phoneCodeCooldown}s 后重发` : "发送验证码" }}
+              </a-button>
+              <a-button type="primary" :disabled="!canConfirmPhoneBind" :loading="securityLoading.phoneConfirm" @click="submitPhoneBind">
+                确认绑定
+              </a-button>
+            </div>
+          </div>
+        </div>
+      </div>
     </a-modal>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import dayjs from "dayjs";
+import QRCode from "qrcode";
 import {
   EditOutlined,
   MailOutlined,
@@ -268,10 +426,26 @@ import {
   DollarOutlined,
   SyncOutlined,
   CloseCircleOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  KeyOutlined,
+  LockOutlined
 } from "@ant-design/icons-vue";
 import { useAuthStore } from "@/stores/auth";
-import { getWallet, getRealNameStatus } from "@/services/user";
+import {
+  changeMyPassword,
+  confirmMyEmailBind,
+  confirmMyPhoneBind,
+  confirmTwoFA,
+  getMySecurityContacts,
+  getRealNameStatus,
+  getTwoFAStatus,
+  getWallet,
+  sendMyEmailBindCode,
+  sendMyPhoneBindCode,
+  verifyMyEmailBind2FA,
+  verifyMyPhoneBind2FA,
+  setupTwoFA
+} from "@/services/user";
 import { normalizeWallet } from "@/utils/wallet";
 import { message } from "ant-design-vue";
 import { INPUT_LIMITS } from "@/constants/inputLimits";
@@ -286,44 +460,89 @@ const profile = computed(() => auth.profile);
 const wallet = ref({ balance: 0, currency: "CNY" });
 const realname = ref(null);
 const editModalVisible = ref(false);
+const passwordModalVisible = ref(false);
+const securityModalVisible = ref(false);
+const securityModalType = ref("twofa");
 const submitting = ref(false);
 const formRef = ref();
+const passwordFormRef = ref();
 const form = reactive({
   username: "",
-  email: "",
-  qq: "",
-  phone: "",
-  password: "",
-  confirmPassword: ""
+  qq: ""
 });
+const securityForm = reactive({
+  current_password: "",
+  new_password: "",
+  confirm_new_password: "",
+  password_totp: "",
+  profile_totp: "",
+  twofa_password: "",
+  twofa_current_code: "",
+  twofa_code: "",
+  bind_email_value: "",
+  bind_email_code: "",
+  bind_email_password: "",
+  bind_email_totp: "",
+  bind_email_ticket: "",
+  bind_phone_value: "",
+  bind_phone_code: "",
+  bind_phone_password: "",
+  bind_phone_totp: "",
+  bind_phone_ticket: ""
+});
+const securityLoading = reactive({
+  password: false,
+  setup: false,
+  confirm: false,
+  emailVerify2FA: false,
+  emailSend: false,
+  emailConfirm: false,
+  phoneVerify2FA: false,
+  phoneSend: false,
+  phoneConfirm: false
+});
+const securityContacts = reactive({
+  email_bound: false,
+  phone_bound: false,
+  email_masked: "",
+  phone_masked: ""
+});
+const twoFAEnabled = ref(false);
+const twoFASecret = ref("");
+const twoFAUrl = ref("");
+const twoFAQRCode = ref("");
+const emailCodeCooldown = ref(0);
+const phoneCodeCooldown = ref(0);
+const emailCodeSent = ref(false);
+const phoneCodeSent = ref(false);
+let emailCodeTimer = null;
+let phoneCodeTimer = null;
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const phonePattern = /^[0-9+\-\s]{6,20}$/;
+const otpPattern = /^\d{6}$/;
 
 const rules = {
   username: [
     { required: true, message: "请输入用户名", trigger: "blur" },
     { min: 2, max: INPUT_LIMITS.USERNAME, message: `用户名长度应为2-${INPUT_LIMITS.USERNAME}个字符`, trigger: "blur" }
   ],
-  email: [
-    { type: "email", message: "请输入有效的邮箱地址", trigger: "blur" },
-    { max: INPUT_LIMITS.EMAIL, message: `邮箱长度不能超过${INPUT_LIMITS.EMAIL}个字符`, trigger: "blur" }
+  qq: []
+};
+
+const passwordRules = {
+  current_password: [
+    { required: true, message: "请输入当前密码", trigger: "blur" }
   ],
-  phone: [
-    {
-      validator: (rule, value) => {
-        const v = String(value || "").trim();
-        if (!v) return Promise.resolve();
-        if (!/^[0-9+\\-\\s]{6,20}$/.test(v)) {
-          return Promise.reject("请输入有效手机号");
-        }
-        return Promise.resolve();
-      },
-      trigger: "blur"
-    }
+  new_password: [
+    { required: true, message: "请输入新密码", trigger: "blur" },
+    { min: 6, max: INPUT_LIMITS.PASSWORD, message: `密码长度应为6-${INPUT_LIMITS.PASSWORD}位`, trigger: "blur" }
   ],
-  confirmPassword: [
+  confirm_new_password: [
     {
-      validator: (rule, value) => {
-        if (form.password && value !== form.password) {
-          return Promise.reject("两次输入的密码不一致");
+      validator: (_rule, value) => {
+        if (String(value || "") !== String(securityForm.new_password || "")) {
+          return Promise.reject("两次输入密码不一致");
         }
         return Promise.resolve();
       },
@@ -332,11 +551,156 @@ const rules = {
   ]
 };
 
+const normalizedTwoFACurrentCode = computed(() => String(securityForm.twofa_current_code || "").trim());
+const normalizedTwoFAConfirmCode = computed(() => String(securityForm.twofa_code || "").trim());
+const normalizedProfileTotp = computed(() => String(securityForm.profile_totp || "").trim());
+const normalizedPasswordTotp = computed(() => String(securityForm.password_totp || "").trim());
+const normalizedEmail = computed(() => String(securityForm.bind_email_value || "").trim());
+const normalizedPhone = computed(() => String(securityForm.bind_phone_value || "").trim());
+const normalizedEmailTotp = computed(() => String(securityForm.bind_email_totp || "").trim());
+const normalizedPhoneTotp = computed(() => String(securityForm.bind_phone_totp || "").trim());
+const normalizedEmailCode = computed(() => String(securityForm.bind_email_code || "").trim());
+const normalizedPhoneCode = computed(() => String(securityForm.bind_phone_code || "").trim());
+
+const isEmailValid = computed(() => emailPattern.test(normalizedEmail.value));
+const isPhoneValid = computed(() => phonePattern.test(normalizedPhone.value));
+const isEmailTotpValid = computed(() => otpPattern.test(normalizedEmailTotp.value));
+const isPhoneTotpValid = computed(() => otpPattern.test(normalizedPhoneTotp.value));
+const emailTicketReady = computed(() => String(securityForm.bind_email_ticket || "").trim().length > 0);
+const phoneTicketReady = computed(() => String(securityForm.bind_phone_ticket || "").trim().length > 0);
+
+const canSubmitTwoFASetup = computed(() => {
+  if (securityLoading.setup) return false;
+  if (twoFAEnabled.value) return otpPattern.test(normalizedTwoFACurrentCode.value);
+  return String(securityForm.twofa_password || "").trim().length > 0;
+});
+
+const canSubmitTwoFAConfirm = computed(() => {
+  if (!twoFASecret.value || !twoFAQRCode.value || securityLoading.confirm) return false;
+  return otpPattern.test(normalizedTwoFAConfirmCode.value);
+});
+
+const canSendEmailCode = computed(() => {
+  if (securityLoading.emailSend || emailCodeCooldown.value > 0) return false;
+  if (!isEmailValid.value) return false;
+  if (twoFAEnabled.value) return emailTicketReady.value;
+  return String(securityForm.bind_email_password || "").trim().length > 0;
+});
+
+const canSendPhoneCode = computed(() => {
+  if (securityLoading.phoneSend || phoneCodeCooldown.value > 0) return false;
+  if (!isPhoneValid.value) return false;
+  if (twoFAEnabled.value) return phoneTicketReady.value;
+  return String(securityForm.bind_phone_password || "").trim().length > 0;
+});
+
+const canVerifyEmail2FA = computed(() => {
+  if (!twoFAEnabled.value || securityLoading.emailVerify2FA) return false;
+  if (emailTicketReady.value) return false;
+  return isEmailTotpValid.value;
+});
+
+const canVerifyPhone2FA = computed(() => {
+  if (!twoFAEnabled.value || securityLoading.phoneVerify2FA) return false;
+  if (phoneTicketReady.value) return false;
+  return isPhoneTotpValid.value;
+});
+
+const canConfirmEmailBind = computed(() => {
+  if (securityLoading.emailConfirm) return false;
+  if (!emailCodeSent.value) return false;
+  if (!isEmailValid.value) return false;
+  return /^[0-9A-Za-z]{4,8}$/.test(normalizedEmailCode.value);
+});
+
+const canConfirmPhoneBind = computed(() => {
+  if (securityLoading.phoneConfirm) return false;
+  if (!phoneCodeSent.value) return false;
+  if (!isPhoneValid.value) return false;
+  return /^[0-9A-Za-z]{4,8}$/.test(normalizedPhoneCode.value);
+});
+
+const stopEmailCooldown = () => {
+  if (!emailCodeTimer) return;
+  clearInterval(emailCodeTimer);
+  emailCodeTimer = null;
+};
+
+const stopPhoneCooldown = () => {
+  if (!phoneCodeTimer) return;
+  clearInterval(phoneCodeTimer);
+  phoneCodeTimer = null;
+};
+
+const startEmailCooldown = (seconds = 60) => {
+  stopEmailCooldown();
+  emailCodeCooldown.value = seconds;
+  emailCodeTimer = setInterval(() => {
+    if (emailCodeCooldown.value <= 1) {
+      emailCodeCooldown.value = 0;
+      stopEmailCooldown();
+      return;
+    }
+    emailCodeCooldown.value -= 1;
+  }, 1000);
+};
+
+const startPhoneCooldown = (seconds = 60) => {
+  stopPhoneCooldown();
+  phoneCodeCooldown.value = seconds;
+  phoneCodeTimer = setInterval(() => {
+    if (phoneCodeCooldown.value <= 1) {
+      phoneCodeCooldown.value = 0;
+      stopPhoneCooldown();
+      return;
+    }
+    phoneCodeCooldown.value -= 1;
+  }, 1000);
+};
+
+const resetTwoFAState = () => {
+  securityForm.twofa_password = "";
+  securityForm.twofa_current_code = "";
+  securityForm.twofa_code = "";
+  twoFASecret.value = "";
+  twoFAUrl.value = "";
+  twoFAQRCode.value = "";
+};
+
+const resetEmailBindState = () => {
+  securityForm.bind_email_value = "";
+  securityForm.bind_email_code = "";
+  securityForm.bind_email_password = "";
+  securityForm.bind_email_totp = "";
+  securityForm.bind_email_ticket = "";
+  emailCodeSent.value = false;
+  emailCodeCooldown.value = 0;
+  stopEmailCooldown();
+};
+
+const resetPhoneBindState = () => {
+  securityForm.bind_phone_value = "";
+  securityForm.bind_phone_code = "";
+  securityForm.bind_phone_password = "";
+  securityForm.bind_phone_totp = "";
+  securityForm.bind_phone_ticket = "";
+  phoneCodeSent.value = false;
+  phoneCodeCooldown.value = 0;
+  stopPhoneCooldown();
+};
+
 onMounted(() => {
   if (!auth.profile) {
     auth.fetchMe();
   }
   fetchExtras();
+  fetchTwoFAStatus();
+  fetchSecurityContacts();
+});
+
+onBeforeUnmount(() => {
+  stopEmailCooldown();
+  stopPhoneCooldown();
 });
 
 watch(
@@ -344,45 +708,83 @@ watch(
   (val) => {
     if (!val) return;
     form.username = val.username || "";
-    form.email = val.email || "";
     form.qq = val.qq || "";
-    form.phone = val.phone || "";
   },
   { immediate: true }
 );
 
 const openEditModal = () => {
   form.username = profile.value?.username || "";
-  form.email = profile.value?.email || "";
   form.qq = profile.value?.qq || "";
-  form.phone = profile.value?.phone || "";
-  form.password = "";
-  form.confirmPassword = "";
+  securityForm.profile_totp = "";
   editModalVisible.value = true;
 };
 
 const resetForm = () => {
-  form.password = "";
-  form.confirmPassword = "";
+  securityForm.profile_totp = "";
   formRef.value?.clearValidate();
 };
+
+const openPasswordModal = () => {
+  securityForm.current_password = "";
+  securityForm.new_password = "";
+  securityForm.confirm_new_password = "";
+  securityForm.password_totp = "";
+  passwordModalVisible.value = true;
+};
+
+const resetPasswordForm = () => {
+  securityForm.current_password = "";
+  securityForm.new_password = "";
+  securityForm.confirm_new_password = "";
+  securityForm.password_totp = "";
+  passwordFormRef.value?.clearValidate();
+};
+
+const openSecurityModal = async (type) => {
+  securityModalType.value = type;
+  securityModalVisible.value = true;
+  if (type === "twofa") {
+    resetTwoFAState();
+    await fetchTwoFAStatus();
+    return;
+  }
+  if (type === "email") {
+    resetEmailBindState();
+    await Promise.all([fetchTwoFAStatus(), fetchSecurityContacts()]);
+    return;
+  }
+  resetPhoneBindState();
+  await Promise.all([fetchTwoFAStatus(), fetchSecurityContacts()]);
+};
+
+watch(securityModalVisible, (open) => {
+  if (open) return;
+  resetTwoFAState();
+  resetEmailBindState();
+  resetPhoneBindState();
+});
 
 const handleSubmit = async () => {
   try {
     await formRef.value?.validate();
   } catch { return; }
 
+  const currentUsername = String(profile.value?.username || "").trim();
+  const nextUsername = String(form.username || "").trim();
+  const sensitiveChanged = nextUsername && nextUsername !== currentUsername;
+  if (twoFAEnabled.value && sensitiveChanged && !otpPattern.test(normalizedProfileTotp.value)) {
+    message.warning("已启用2FA，修改账号需输入6位验证码");
+    return;
+  }
+
   submitting.value = true;
   try {
     const payload = {
       username: form.username,
-      email: form.email,
       qq: form.qq,
-      phone: form.phone
+      totp_code: twoFAEnabled.value && sensitiveChanged ? normalizedProfileTotp.value : undefined
     };
-    if (form.password) {
-      payload.password = form.password;
-    }
     await auth.updateProfile(payload);
     editModalVisible.value = false;
     resetForm();
@@ -401,6 +803,280 @@ const fetchExtras = async () => {
     realname.value = realnameRes.data || realname.value;
   } catch {
     // ignore
+  }
+};
+
+const fetchTwoFAStatus = async () => {
+  try {
+    const res = await getTwoFAStatus();
+    twoFAEnabled.value = !!res.data?.enabled;
+  } catch {
+    twoFAEnabled.value = false;
+  }
+};
+
+const fetchSecurityContacts = async () => {
+  try {
+    const res = await getMySecurityContacts();
+    const d = res.data || {};
+    securityContacts.email_bound = !!d.email_bound;
+    securityContacts.phone_bound = !!d.phone_bound;
+    securityContacts.email_masked = String(d.email_masked || "");
+    securityContacts.phone_masked = String(d.phone_masked || "");
+  } catch {
+    securityContacts.email_bound = false;
+    securityContacts.phone_bound = false;
+    securityContacts.email_masked = "";
+    securityContacts.phone_masked = "";
+  }
+};
+
+const submitPasswordChange = async () => {
+  try {
+    await passwordFormRef.value?.validate();
+  } catch {
+    return;
+  }
+  if (twoFAEnabled.value && !otpPattern.test(normalizedPasswordTotp.value)) {
+    message.warning("已启用2FA，修改密码需输入6位验证码");
+    return;
+  }
+  securityLoading.password = true;
+  try {
+    await changeMyPassword({
+      current_password: securityForm.current_password,
+      new_password: securityForm.new_password,
+      totp_code: twoFAEnabled.value ? normalizedPasswordTotp.value : undefined
+    });
+    resetPasswordForm();
+    passwordModalVisible.value = false;
+    message.success("密码已更新");
+  } catch (e) {
+    message.error(e?.response?.data?.error || "更新失败");
+  } finally {
+    securityLoading.password = false;
+  }
+};
+
+const submitTwoFASetup = async () => {
+  if (!canSubmitTwoFASetup.value) {
+    message.warning(twoFAEnabled.value ? "请输入 6 位当前 2FA 验证码" : "请输入当前登录密码");
+    return;
+  }
+  securityLoading.setup = true;
+  try {
+    const res = await setupTwoFA({
+      password: twoFAEnabled.value ? undefined : String(securityForm.twofa_password || "").trim(),
+      current_code: twoFAEnabled.value ? normalizedTwoFACurrentCode.value : undefined
+    });
+    twoFASecret.value = String(res.data?.secret || "");
+    twoFAUrl.value = String(res.data?.otpauth_url || "");
+    if (!twoFASecret.value) {
+      message.error("未获取到2FA信息");
+      return;
+    }
+    if (twoFAUrl.value) {
+      try {
+        twoFAQRCode.value = await QRCode.toDataURL(twoFAUrl.value, {
+          width: 180,
+          margin: 1
+        });
+      } catch {
+        twoFAQRCode.value = "";
+        twoFASecret.value = "";
+        twoFAUrl.value = "";
+        message.error("二维码生成失败，请重试");
+        return;
+      }
+    }
+    if (!twoFAQRCode.value) {
+      twoFASecret.value = "";
+      twoFAUrl.value = "";
+      message.error("二维码生成失败，请重试");
+      return;
+    }
+    message.success("已生成，请使用验证器添加后输入验证码确认");
+  } catch (e) {
+    const raw = String(e?.response?.data?.error || "").toLowerCase();
+    if (raw.includes("unauthorized")) {
+      message.error(twoFAEnabled.value ? "当前 2FA 验证码错误" : "登录密码错误");
+    } else {
+      message.error(e?.response?.data?.error || "生成失败");
+    }
+  } finally {
+    securityLoading.setup = false;
+  }
+};
+
+const submitTwoFAConfirm = async () => {
+  if (!canSubmitTwoFAConfirm.value) {
+    message.warning("请输入 6 位验证码完成确认");
+    return;
+  }
+  securityLoading.confirm = true;
+  try {
+    await confirmTwoFA({ code: normalizedTwoFAConfirmCode.value });
+    securityForm.twofa_code = "";
+    twoFASecret.value = "";
+    twoFAUrl.value = "";
+    twoFAQRCode.value = "";
+    await fetchTwoFAStatus();
+    message.success("2FA 已开启");
+  } catch (e) {
+    const raw = String(e?.response?.data?.error || "").toLowerCase();
+    if (raw.includes("unauthorized")) {
+      message.error("验证码错误，请检查验证器时间后重试");
+    } else {
+      message.error(e?.response?.data?.error || "确认失败");
+    }
+  } finally {
+    securityLoading.confirm = false;
+  }
+};
+
+const verifyEmailBind2FA = async () => {
+  if (!isEmailTotpValid.value) {
+    message.warning("2FA 验证码需为 6 位数字");
+    return;
+  }
+  securityLoading.emailVerify2FA = true;
+  try {
+    const res = await verifyMyEmailBind2FA({ totp_code: normalizedEmailTotp.value });
+    securityForm.bind_email_ticket = String(res.data?.security_ticket || "").trim();
+    if (!securityForm.bind_email_ticket) {
+      message.error("2FA 校验失败");
+      return;
+    }
+    message.success("2FA 已验证，请在窗口期内完成绑定");
+  } catch (e) {
+    message.error(e?.response?.data?.error || "2FA 校验失败");
+  } finally {
+    securityLoading.emailVerify2FA = false;
+  }
+};
+
+const sendEmailBindCode = async () => {
+  if (!isEmailValid.value) {
+    message.warning("请输入有效邮箱地址");
+    return;
+  }
+  if (twoFAEnabled.value && !emailTicketReady.value) {
+    message.warning("请先完成 2FA 校验");
+    return;
+  }
+  if (!twoFAEnabled.value && !String(securityForm.bind_email_password || "").trim()) {
+    message.warning("请输入当前登录密码");
+    return;
+  }
+  securityLoading.emailSend = true;
+  try {
+    await sendMyEmailBindCode({
+      value: normalizedEmail.value,
+      current_password: twoFAEnabled.value ? undefined : String(securityForm.bind_email_password || "").trim(),
+      security_ticket: twoFAEnabled.value ? String(securityForm.bind_email_ticket || "").trim() : undefined
+    });
+    emailCodeSent.value = true;
+    startEmailCooldown();
+    message.success("邮箱验证码已发送");
+  } catch (e) {
+    message.error(e?.response?.data?.error || "发送失败");
+  } finally {
+    securityLoading.emailSend = false;
+  }
+};
+
+const submitEmailBind = async () => {
+  if (!canConfirmEmailBind.value) {
+    message.warning("请输入邮箱和有效验证码后再提交");
+    return;
+  }
+  securityLoading.emailConfirm = true;
+  try {
+    await confirmMyEmailBind({
+      value: normalizedEmail.value,
+      code: normalizedEmailCode.value,
+      security_ticket: twoFAEnabled.value ? String(securityForm.bind_email_ticket || "").trim() : undefined
+    });
+    resetEmailBindState();
+    message.success("邮箱绑定已更新");
+    await Promise.all([auth.fetchMe(), fetchSecurityContacts()]);
+  } catch (e) {
+    message.error(e?.response?.data?.error || "提交失败");
+  } finally {
+    securityLoading.emailConfirm = false;
+  }
+};
+
+const verifyPhoneBind2FA = async () => {
+  if (!isPhoneTotpValid.value) {
+    message.warning("2FA 验证码需为 6 位数字");
+    return;
+  }
+  securityLoading.phoneVerify2FA = true;
+  try {
+    const res = await verifyMyPhoneBind2FA({ totp_code: normalizedPhoneTotp.value });
+    securityForm.bind_phone_ticket = String(res.data?.security_ticket || "").trim();
+    if (!securityForm.bind_phone_ticket) {
+      message.error("2FA 校验失败");
+      return;
+    }
+    message.success("2FA 已验证，请在窗口期内完成绑定");
+  } catch (e) {
+    message.error(e?.response?.data?.error || "2FA 校验失败");
+  } finally {
+    securityLoading.phoneVerify2FA = false;
+  }
+};
+
+const sendPhoneBindCode = async () => {
+  if (!isPhoneValid.value) {
+    message.warning("请输入有效手机号");
+    return;
+  }
+  if (twoFAEnabled.value && !phoneTicketReady.value) {
+    message.warning("请先完成 2FA 校验");
+    return;
+  }
+  if (!twoFAEnabled.value && !String(securityForm.bind_phone_password || "").trim()) {
+    message.warning("请输入当前登录密码");
+    return;
+  }
+  securityLoading.phoneSend = true;
+  try {
+    await sendMyPhoneBindCode({
+      value: normalizedPhone.value,
+      current_password: twoFAEnabled.value ? undefined : String(securityForm.bind_phone_password || "").trim(),
+      security_ticket: twoFAEnabled.value ? String(securityForm.bind_phone_ticket || "").trim() : undefined
+    });
+    phoneCodeSent.value = true;
+    startPhoneCooldown();
+    message.success("短信验证码已发送");
+  } catch (e) {
+    message.error(e?.response?.data?.error || "发送失败");
+  } finally {
+    securityLoading.phoneSend = false;
+  }
+};
+
+const submitPhoneBind = async () => {
+  if (!canConfirmPhoneBind.value) {
+    message.warning("请输入手机号和有效验证码后再提交");
+    return;
+  }
+  securityLoading.phoneConfirm = true;
+  try {
+    await confirmMyPhoneBind({
+      value: normalizedPhone.value,
+      code: normalizedPhoneCode.value,
+      security_ticket: twoFAEnabled.value ? String(securityForm.bind_phone_ticket || "").trim() : undefined
+    });
+    resetPhoneBindState();
+    message.success("手机号绑定已更新");
+    await Promise.all([auth.fetchMe(), fetchSecurityContacts()]);
+  } catch (e) {
+    message.error(e?.response?.data?.error || "提交失败");
+  } finally {
+    securityLoading.phoneConfirm = false;
   }
 };
 
@@ -441,6 +1117,12 @@ const avatarSrc = computed(() => {
   const qq = profile.value?.qq;
   if (!qq) return "";
   return `https://q1.qlogo.cn/g?b=qq&nk=${qq}&s=100`;
+});
+
+const securityModalTitle = computed(() => {
+  if (securityModalType.value === "email") return "邮箱绑定 / 换绑";
+  if (securityModalType.value === "phone") return "手机绑定 / 换绑";
+  return "双因素认证（2FA）";
 });
 </script>
 
@@ -756,6 +1438,121 @@ const avatarSrc = computed(() => {
   color: var(--success);
 }
 
+.info-item :deep(.ant-btn-text) {
+  padding: 0 8px;
+  height: auto;
+  font-size: 12px;
+}
+
+.security-dialog {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.security-block {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.field-grid.single {
+  gap: 12px;
+}
+
+.twofa-flow {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.confirm-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.confirm-row :deep(.ant-input),
+.confirm-row :deep(.ant-input-affix-wrapper) {
+  flex: 1;
+}
+
+.twofa-setup {
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.confirm-block {
+  margin-top: 0;
+}
+
+.twofa-qr {
+  width: 180px;
+  height: 180px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.twofa-qr img {
+  width: 100%;
+  height: 100%;
+}
+
+.twofa-qr-placeholder {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.twofa-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.twofa-meta-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.twofa-meta-subtitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.twofa-meta code {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(15, 23, 42, 0.04);
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border-light);
+}
+
 .info-item-balance {
   background: var(--success-bg);
   margin: 0 -16px;
@@ -851,6 +1648,19 @@ const avatarSrc = computed(() => {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
+  }
+
+  .confirm-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .twofa-setup {
+    grid-template-columns: 1fr;
+  }
+
+  .twofa-qr {
+    margin: 0 auto;
   }
 }
 </style>

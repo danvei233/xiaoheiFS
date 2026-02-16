@@ -9,6 +9,7 @@ use app\common\model\ServersArea;
 use app\common\model\ServersLine;
 use app\common\model\ServersNode;
 use app\common\model\ServersImageConfig;
+use app\common\model\ServersImageLine;
 use app\common\service\Ecs;
 use think\Exception;
 use think\Log;
@@ -20,7 +21,6 @@ use app\common\model\FirewallVps;
 use app\common\model\ForwardPortVps;
 use app\common\model\ServersIpv4Nat;
 use app\common\model\ServersIpv4Private;
-use app\common\util\BaseConst;
 
 /**
  * 首页接口
@@ -47,7 +47,7 @@ class Cloud extends ApiController
     public function product(){
         $productModel = new Product();
         $product = $productModel->select();
-        if(!empty($product)){
+        if($product && !$product->isEmpty()){
             $product = $product->toArray();
         }else{
             $this->error_qz('请先完善轻舟后台配置');
@@ -55,49 +55,11 @@ class Cloud extends ApiController
         $product = array_column($product,null,'id');
         $this->success_qz('succ',$product);
     }
-    /**
- * 获取所有 VPS 的简单信息列表（含 remark）
- */
-/**
- * 获取所有 VPS 的简单信息列表（含分页和备注搜索）
- *
- * 请求参数（均为 GET 或 POST）：
- * - limit        每页条数，默认为 16
- * - pages        页码（从 1 开始），默认为 1
- * - search_tag   按 remark 字段模糊搜索
- */
-public function hostList()
-{
-    // 1. 获取请求参数，并设置默认值
-    $limit    = $this->request->param('limit/d', 16);
-    $page     = $this->request->param('pages/d', 1);
-    $search   = $this->request->param('search_tag/s', '');
-
-    // 2. 构造查询：只选取 id、host_name、ip、remark
-    $query = (new HostVps())
-        ->field('id,host_name,ip,remark');
-
-    // 3. 如果提供了 search_tag，按 remark 做模糊查询
-if ($search !== '') {
-    $query->where(function ($q) use ($search) {
-        $q->where('remark', 'like', "%{$search}%")
-          ->whereOr('host_name', 'like', "%{$search}%");
-    });
-}
-    // 4. 分页查询
-    $hosts = $query
-        ->page($page, $limit)
-        ->select()
-        ->toArray();
-
-    // 5. 返回结果
-    $this->success_qz('succ', $hosts);
-}
 
     public function line(){
         $lineModel = new ServersLine(); //线路
         $line = $lineModel->where('state=1')->select();
-        if(!empty($line)){
+        if($line && !$line->isEmpty()){
             $line = $line->toArray();
         }else{
             $this->error_qz('请先完善轻舟后台配置');
@@ -105,27 +67,8 @@ if ($search !== '') {
         $this->success_qz('succ',$line);
     }
 
-    protected function getNodeidForCloud($line_id){
-        if (class_exists('\\qzcloud\\Kvm') && !method_exists('\\qzcloud\\Kvm', 'getMemoryAndDisk')) {
-            $nodeModel = new ServersNode();
-            $hostVpsModel = new HostVps();
-            $node_list = $nodeModel->where("line_id = '" . $line_id . "' and state=1 ")->order('weight desc')->select();
-            $ct = $hostVpsModel->field("count(*) ct,node_id")->group('node_id')->where('state!=11')->select();
-            $ct_ = [];
-            if(!empty($ct)){
-                $ct =$ct->toArray();
-                $ct_ =array_column($ct,'ct','node_id');
-            }
-            foreach ($node_list as $v){
-                if(isset($ct_[$v['id']])&&$v['max_vm_number']<=$ct_[$v['id']]){
-                    continue;
-                }
-                return $v;
-            }
-            return null;
-        }
-
-        return Ecs::getNodeid($line_id);
+    public function listpackages(){
+        $this->product();
     }
 
     public function openhost(){
@@ -158,7 +101,7 @@ if ($search !== '') {
 
             $hostVpsModel = new HostVps();
             //and vm_number<max_vm_number
-            $node = $this->getNodeidForCloud($line_id);
+            $node = Ecs::getNodeid($line_id);
             if (!$node) {
                 $this->wirteline("ret=No nodes available");
             }
@@ -253,7 +196,7 @@ if ($search !== '') {
         if(isset($post['nodes_id'])){
             $node = $nodeModel->where(['id'=>$post['nodes_id']])->find();
         }else{
-            $node = $this->getNodeidForCloud($post['line_id']);
+            $node = Ecs::getNodeid($post['line_id']);
             if (!$node) {
                 return  $this->json('No nodes available',-1);
             }
@@ -518,7 +461,7 @@ if ($search !== '') {
         echo  json_encode(['code'=>$code,'msg'=>$msg]);die;
     }
 
-    public function success_qz($msg,$data='',$code=1){
+    public function success_qz($msg,$data,$code=1){
         header('content-type:application/json');
         echo  json_encode(['code'=>$code,'msg'=>$msg,'data'=>$data]);die;
     }
@@ -528,54 +471,15 @@ if ($search !== '') {
         $list = $snapshotHostModel->where(['host_id'=>$host_id])->select();//
         $data = [];
         foreach ($list as $k=>$v){
-            $data[] = [
-                'id'=>$v['id'],
-                'virtuals_id'=>$v['host_id'],
-                'name'=>$v['name'],
-                'state'=>(int)$v['state'],
-                'created_at'=>$v['create_time']
-            ];
+            $data[] = ['id'=>$v['id'],'virtuals_id'=>$v['host_id'],'name'=>$v['name'],'created_at'=>$v['create_time']];
         }
         $this->success_qz('succ',$data);
-    }
-
-    /**
-     * 快照/备份任务触发后，主动短轮询真实状态并回写主机状态。
-     * 说明：底层任务异步执行，这里做有限次数轮询，尽量在操作后及时同步状态。
-     */
-    protected function syncHostStateAfterSnapshotOrBackup($host_id, $retry = 8, $sleepSeconds = 1){
-        $hostModel = new HostVps();
-        $host = $hostModel->where(['id' => $host_id])->find();
-        if (empty($host)) {
-            return;
-        }
-
-        // 仅对可实时采集的运行/关机场景执行同步
-        if (!in_array((int)$host->state, [2, 3], true)) {
-            return;
-        }
-
-        $logic = new \app\common\service\Ecs();
-        for ($i = 0; $i < $retry; $i++) {
-            $result = $logic->getStateHost(['hostid' => $host_id]);
-            if (isset($result['code']) && (int)$result['code'] === 200 && isset($result['data']['state'])) {
-                $isRunning = strtolower((string)$result['data']['state']) === 'running';
-                $targetState = $isRunning ? 2 : 3;
-                $hostModel->where(['id' => $host_id])->update([
-                    'state' => $targetState,
-                    'update_time' => date('Y-m-d H:i:s'),
-                ]);
-                return;
-            }
-            sleep($sleepSeconds);
-        }
     }
 
     public function backups_add($host_id){
         $post = $this->request->param();
         $data = Ecs::createBackupHost(['hostid'=>$host_id]);
         if($data['code']==200){
-            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -587,7 +491,6 @@ if ($search !== '') {
         $backupVps = $backupVpsModel->find($id);
         $data = Ecs::removeBackupHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
-            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -599,7 +502,6 @@ if ($search !== '') {
         $backupVps = $backupVpsModel->find($id);
         $data = Ecs::restoreBackupHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
-            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -611,30 +513,110 @@ if ($search !== '') {
         $list = $backupVpsModel->where(['host_id'=>$host_id])->select();//
         $data = [];
         foreach ($list as $k=>$v){
+            $data[] = ['id'=>$v['id'],'virtuals_id'=>$v['host_id'],'name'=>$v['name'],'created_at'=>$v['create_time']];
+        }
+        $this->success_qz('succ',$data);
+    }
+
+    private function getMirrorLineId(): int
+    {
+        $keys = ['line_id', 'idc', 'lineid', 'areas_id', 'lineId', 'line'];
+        foreach ($keys as $key) {
+            $value = $this->request->param($key, null);
+            if (is_numeric($value) && (int)$value > 0) {
+                return (int)$value;
+            }
+        }
+
+        $raw = file_get_contents('php://input');
+        if ($raw !== false && $raw !== '') {
+            $json = json_decode($raw, true);
+            if (is_array($json)) {
+                foreach ($keys as $key) {
+                    if (isset($json[$key]) && is_numeric($json[$key]) && (int)$json[$key] > 0) {
+                        return (int)$json[$key];
+                    }
+                }
+            }
+
+            $body = [];
+            parse_str($raw, $body);
+            if (is_array($body) && !empty($body)) {
+                foreach ($keys as $key) {
+                    if (isset($body[$key]) && is_numeric($body[$key]) && (int)$body[$key] > 0) {
+                        return (int)$body[$key];
+                    }
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    public function mirror_image(){
+        $lineId = $this->getMirrorLineId();
+        if ($this->request->isPost() && $lineId <= 0) {
+            $this->error_qz('line_id 错误');
+        }
+
+        $list = [];
+        if ($lineId > 0) {
+            $lineInfo = (new ServersLine())->where(['id' => $lineId])->find();
+            $lineImageUse = '';
+            if ($lineInfo && isset($lineInfo['line_image_use'])) {
+                $lineImageUse = (string)$lineInfo['line_image_use'];
+            }
+
+            if ($lineImageUse !== '') {
+                $imageIds = array_map('intval', explode(',', $lineImageUse));
+                $imageIds = array_values(array_unique(array_filter($imageIds)));
+                if (!empty($imageIds)) {
+                    $image_model = new ServersImageConfig();
+                    $imageList = $image_model->whereIn('id', $imageIds)->order('sort asc,id asc')->select();
+                    if ($imageList) {
+                        $list = $imageList->toArray();
+                    }
+                }
+            }
+
+            if (empty($list)) {
+                $lineImageModel = new ServersImageLine();
+                $lineImageList = $lineImageModel->where(['line_id' => $lineId])->order('sort asc,id asc')->select();
+                if ($lineImageList) {
+                    $lineImageList = $lineImageList->toArray();
+                    $configIds = array_column($lineImageList, 'config_id');
+                    $configIds = array_map('intval', $configIds);
+                    $configIds = array_values(array_unique(array_filter($configIds)));
+                    if (!empty($configIds)) {
+                        $image_model = new ServersImageConfig();
+                        $imageList = $image_model->whereIn('id', $configIds)->order('sort asc,id asc')->select();
+                        if ($imageList) {
+                            $list = $imageList->toArray();
+                        }
+                    } else {
+                        $list = $lineImageList;
+                    }
+                }
+            }
+        } else {
+            $image_model = new ServersImageConfig();
+            $list = $image_model->order('sort asc,id asc')->select()->toArray();
+        }
+
+        $data = [];
+        foreach ($list as $k=>$v){
             $data[] = [
-                'id'=>$v['id'],
-                'virtuals_id'=>$v['host_id'],
-                'name'=>$v['name'],
-                'state'=>(int)$v['state'],
-                'created_at'=>$v['create_time']
+                'id'=>isset($v['config_id']) && $v['config_id'] ? $v['config_id'] : $v['id'],
+                'name'=>$v['os_name'],
+                'type'=>isset(ServersImageConfig::$os_type[$v['os_type']]) ? ServersImageConfig::$os_type[$v['os_type']] : '未知',
+                'desc'=>$v['remark'],
             ];
         }
         $this->success_qz('succ',$data);
     }
 
-    public function mirror_image(){
-        $image_model = new ServersImageConfig();
-        $list = $image_model->select();
-        $data = [];
-        foreach ($list as $k=>$v){
-            $data[] = [
-                'id'=>$v['id'],
-                'name'=>$v['os_name'],
-                'type'=>$v['os_type_name'],
-                'desc'=>$v['remark'],
-            ];
-        }
-        $this->success_qz('succ',$data);
+    public function listimages(){
+        $this->mirror_image();
     }
 
     public function nat_acl_list($host_id){
@@ -691,31 +673,6 @@ if ($search !== '') {
         }
     }
 
-    //云主机实时运行状态
-    public function state_host($host_id){
-        $logic = new \app\common\service\Ecs();
-        $host = (new HostVps())->where(['id'=>$host_id])->find();
-        if(empty($host)){
-            $this->error_qz('云主机不存在');
-        }
-
-        if(!in_array((int)$host->state,[2,3],true)){
-            $label = isset(BaseConst::HOST_STATE[$host->state]) ? BaseConst::HOST_STATE[$host->state] : '';
-            $this->success_qz('succ',[(int)$host->state,$label]);
-        }
-
-        $data = $logic->getStateHost(['hostid'=>$host_id]);
-        if($data['code']!=200){
-            $msg = isset($data['msg']) ? $data['msg'] : '采集状态失败';
-            $this->error_qz($msg);
-        }
-
-        $isRunning = strtolower((string)$data['data']['state'])=='running';
-        $state = $isRunning?2:3;
-        $label = isset(BaseConst::HOST_STATE[$state]) ? BaseConst::HOST_STATE[$state] : '';
-        $this->success_qz('succ',[$state,$label]);
-    }
-
     public function reset_os($host_id,$template_id,$password){
         try{
             $hostModel = new HostVps();
@@ -746,7 +703,6 @@ if ($search !== '') {
     public function snapshot_add($host_id){
         $data = Ecs::createSnapshotHost(['hostid'=>$host_id]);
         if($data['code']==200){
-            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -758,7 +714,6 @@ if ($search !== '') {
         $snapshot = $snapshotHostModel->find($id);
         $data = Ecs::removeSnapshotHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
-            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -770,7 +725,6 @@ if ($search !== '') {
         $snapshot = $snapshotHostModel->find($id);
         $data = Ecs::restoreSnapshotHost(['hostid'=>$host_id,'id'=>$id]);
         if($data['code']==200){
-            $this->syncHostStateAfterSnapshotOrBackup($host_id);
             $this->success_qz('succ',$data);
         }else{
             $this->error_qz($data['msg']);
@@ -779,68 +733,6 @@ if ($search !== '') {
 
     public function security_acl_add(){
         $post = $this->request->param();
-
-        if(empty($post['hostid'])&&!empty($post['host_id'])){
-            $post['hostid'] = $post['host_id'];
-        }
-        if(!isset($post['port'])&&isset($post['start_port'])){
-            $post['port'] = $post['start_port'];
-        }
-        if(!isset($post['ip'])&&isset($post['start_ip'])){
-            $post['ip'] = $post['start_ip'];
-        }
-
-        if(!isset($post['direction'])&&isset($post['orientation'])){
-            $post['direction'] = $post['orientation'];
-        }
-        if(isset($post['direction'])){
-            $direction = strtolower((string)$post['direction']);
-            if(in_array($direction,['1','in','ingress'],true)){
-                $post['direction'] = 'in';
-            }elseif(in_array($direction,['2','out','egress'],true)){
-                $post['direction'] = 'out';
-            }
-        }
-
-        if(isset($post['protocol'])){
-            $protocol = strtoupper((string)$post['protocol']);
-            $post['protocol'] = in_array($protocol,['TCP','UDP','ICMP','ANY','ALL'],true) ? $protocol : 'ANY';
-            if($post['protocol']=='ALL'){
-                $post['protocol'] = 'ANY';
-            }
-        }else{
-            $post['protocol'] = 'ANY';
-        }
-
-        if(isset($post['method'])){
-            $method = strtolower((string)$post['method']);
-            if(in_array($method,['accept','allow'],true)){
-                $post['method'] = 'accept';
-            }elseif(in_array($method,['drop','deny','reject'],true)){
-                $post['method'] = 'drop';
-            }
-        }elseif(isset($post['tactics'])){
-            $post['method'] = ((string)$post['tactics']==='1') ? 'drop' : 'accept';
-        }else{
-            $post['method'] = 'accept';
-        }
-
-        if(!isset($post['port'])||$post['port']===''){
-            $post['port'] = -1;
-        }
-        if(!isset($post['ip'])||$post['ip']===''){
-            $post['ip'] = '0.0.0.0';
-        }
-
-        // 防止底层 Hyper-V 解析空字符串时报“输入字符串的格式不正确”
-        if(!isset($post['priority'])||$post['priority']===''){
-            $post['priority'] = 100;
-        }
-
-        if(empty($post['hostid'])||empty($post['direction'])||empty($post['method'])){
-            $this->error_qz('参数不完整，至少需要 hostid/host_id, direction, method');
-        }
-
         $data = Ecs::add_firewall_host($post);
         if($data['code']==200){
             $this->success_qz('succ',$data);
@@ -857,26 +749,14 @@ if ($search !== '') {
             $this->error_qz($data['msg']);
         }
     }
-    
-    
-    
-        public function findport(){
-        $keywords = $this->request->param('keywords');
-        $hostid = $this->request->param('hostid');
-        $data = \app\common\service\Ecs::find_port(['keywords'=>$keywords,'hostid'=>$hostid]);
-        //查找端口
-        return json(['code'=>0,'content'=>$data,'type'=>'success']);
-    }
 
     //添加一个端口
-public function add_port_host(){
+    public function add_port_host(){
         $logic = new \app\common\service\Ecs();
         $param = $this->request->param();
         if(!empty($param['sport'])){
             $info = $logic->find_port(['keywords'=>$param['sport'],'hostid'=>$param['host_id'],'like'=>2]);
-            if(empty($info)){
-                $this->error_qz('抱歉您添加的公网端口被占用，info=' . json_encode($info, JSON_UNESCAPED_UNICODE));
-            }
+            $this->error_qz('抱歉您添加的公网端口被占用');
         }else{
             $info = $logic->find_port(['hostid'=>$param['host_id'],'keywords'=>'']);
             if(empty($info)){
@@ -892,8 +772,6 @@ public function add_port_host(){
             $this->error_qz($data['msg']);
         }
     }
-
-
     //删除端口
     public function remove_port_host(){
         $logic = new \app\common\service\Ecs();
@@ -933,59 +811,30 @@ public function add_port_host(){
     }
 
     //自由选配升级
-public function elastic_update(){
-    try {
-        $post = $this->request->param();
-
-        // 必须传 host_id
-        if (empty($post['host_id'])) {
-            $this->error_qz('缺少 host_id');
-        }
-
-        $hostModel = new HostVps();
-        $hostinfo  = $hostModel->where(['id' => $post['host_id']])->find();
-        if (!$hostinfo) {
-            $this->error_qz('云主机不存在');
-        }
-
-        // 构造参数，只保证 id 是必须的，其它字段如果不传或为空就不改
-        $param = [
-            'id'        => $post['host_id'],
-            'host_name' => $hostinfo['host_name'],  // 始终带上
-        ];
-
-        if (isset($post['cpu']) && $post['cpu'] !== '') {
+    public function elastic_update(){
+        try{
+            $post = $this->request->param();
+            $hostModel = new HostVps();
+            $hostinfo = $hostModel->where(['id'=>$post['host_id']])->find();
+            if(!$hostinfo){
+                $this->error_qz("云主机不存在");
+            }
+            $param['id'] = $post['host_id'];
             $param['cpu'] = $post['cpu'];
-        }
-        if (isset($post['memory']) && $post['memory'] !== '') {
             $param['memory'] = $post['memory'];
-        }
-        if (isset($post['hard_disks']) && $post['hard_disks'] !== '') {
             $param['hard_disks'] = $post['hard_disks'];
-        }
-        if (isset($post['bandwidth']) && $post['bandwidth'] !== '') {
             $param['bandwidth'] = $post['bandwidth'];
-        }
-        if (isset($post['backups']) && $post['backups'] !== '') {
             $param['backup_num'] = $post['backups'];
-        }
-        if (isset($post['port_num']) && $post['port_num'] !== '') {
             $param['port_num'] = $post['port_num'];
-        }
-        if (isset($post['snapshot']) && $post['snapshot'] !== '') {
             $param['snapshot_num'] = $post['snapshot'];
+            $param['host_name'] = $hostinfo['host_name'];
+            if(isset($post['ip_num']))$param['ip_num'] = $post['ip_num']; //暂时不处理ip数量升级
+            Ecs::updateVps($param, $hostinfo);
+            $this->success_qz('升级成功','');
+        }catch (Exception $e){
+            $this->error_qz($e->getMessage());
         }
-        if (isset($post['ip_num']) && $post['ip_num'] !== '') {
-            $param['ip_num'] = $post['ip_num'];  // 可选，不传则不修改
-        }
-
-        Ecs::updateVps($param, $hostinfo);
-        $this->success_qz('升级成功');
-    } catch (\Exception $e) {
-        $this->error_qz($e->getMessage());
     }
-}
-
 
     public function hostinfo_byname($host_name){
 

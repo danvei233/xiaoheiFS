@@ -60,7 +60,7 @@
         <div class="section-title">短信模板</div>
         <a-button type="primary" @click="openTemplate()">新增模板</a-button>
       </div>
-      <a-table :columns="columns" :data-source="templates" row-key="id" :pagination="false">
+      <a-table :columns="columns" :data-source="templates" row-key="id" :pagination="false" :scroll="{ x: 980 }">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'enabled'">
             <a-tag :color="record.enabled ? 'green' : 'red'">{{ record.enabled ? '启用' : '停用' }}</a-tag>
@@ -148,7 +148,7 @@ const templateTestPhone = ref("");
 const columns = [
   { title: "ID", dataIndex: "id", key: "id", width: 70 },
   { title: "名称", dataIndex: "name", key: "name", width: 200 },
-  { title: "内容", dataIndex: "content", key: "content" },
+  { title: "内容", dataIndex: "content", key: "content", width: 470, ellipsis: true },
   { title: "启用", dataIndex: "enabled", key: "enabled", width: 90 },
   { title: "操作", key: "action", width: 150 },
 ];
@@ -279,17 +279,27 @@ const testTemplate = async () => {
     message.error("请输入测试手机号");
     return;
   }
-  await testSmsConfig({
+  const payload: Record<string, any> = {
     phone,
-    content: templateForm.content,
-    variables: {
-      code: previewCode.value || "123456",
-      phone: previewPhone.value || phone.split(",")[0],
-    },
     plugin_id: config.plugin_id,
     instance_id: config.instance_id || "default",
     provider_template_id: config.provider_template_id,
-  });
+  };
+  if (templateForm.id) {
+    payload.template_id = templateForm.id;
+  } else {
+    const content = templateForm.content.trim();
+    if (!content) {
+      message.error("请先填写模板内容或先保存模板");
+      return;
+    }
+    payload.content = content;
+  }
+  payload.variables = {
+    code: previewCode.value || "123456",
+    phone: previewPhone.value || phone.split(",")[0],
+  };
+  await testSmsConfig(payload);
   message.success("测试短信已发送");
 };
 
@@ -299,8 +309,17 @@ const quickTest = async () => {
     message.error("请输入测试手机号");
     return;
   }
+  const selectedTemplateID = Number(config.default_template_id || 0) || 0;
+  const fallbackTemplate = templates.value.find((item) => item.enabled !== false);
+  const fallbackTemplateID = Number(fallbackTemplate?.id || 0) || 0;
+  const templateID = selectedTemplateID || fallbackTemplateID;
+  if (!templateID) {
+    message.error("请先在短信设置中选择默认模板，或先新增并启用一个模板");
+    return;
+  }
   await testSmsConfig({
     phone,
+    template_id: templateID,
     plugin_id: config.plugin_id,
     instance_id: config.instance_id || "default",
     provider_template_id: config.provider_template_id,

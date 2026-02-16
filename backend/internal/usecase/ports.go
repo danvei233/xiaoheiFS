@@ -11,6 +11,7 @@ type UserRepository interface {
 	CreateUser(ctx context.Context, user *domain.User) error
 	GetUserByID(ctx context.Context, id int64) (domain.User, error)
 	GetUserByUsernameOrEmail(ctx context.Context, usernameOrEmail string) (domain.User, error)
+	GetUserByPhone(ctx context.Context, phone string) (domain.User, error)
 	ListUsers(ctx context.Context, limit, offset int) ([]domain.User, int, error)
 	ListUsersByRoleStatus(ctx context.Context, role string, status string, limit, offset int) ([]domain.User, int, error)
 	UpdateUserStatus(ctx context.Context, id int64, status domain.UserStatus) error
@@ -222,6 +223,13 @@ type PasswordResetTokenRepository interface {
 	GetPasswordResetToken(ctx context.Context, token string) (domain.PasswordResetToken, error)
 	MarkPasswordResetTokenUsed(ctx context.Context, tokenID int64) error
 	DeleteExpiredTokens(ctx context.Context) error
+}
+
+type PasswordResetTicketRepository interface {
+	CreatePasswordResetTicket(ctx context.Context, ticket *domain.PasswordResetTicket) error
+	GetPasswordResetTicket(ctx context.Context, token string) (domain.PasswordResetTicket, error)
+	MarkPasswordResetTicketUsed(ctx context.Context, ticketID int64) error
+	DeleteExpiredPasswordResetTickets(ctx context.Context) error
 }
 
 type PermissionRepository interface {

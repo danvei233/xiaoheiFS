@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"regexp"
 	"testing"
 	"time"
 
@@ -60,5 +61,26 @@ func TestAuthService_RegisterCaptchaFail(t *testing.T) {
 	})
 	if err != usecase.ErrCaptchaFailed {
 		t.Fatalf("expected captcha failed, got %v", err)
+	}
+}
+
+func TestAuthService_CodePolicy(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	svc := usecase.NewAuthService(repo, repo, repo)
+
+	_, smsCode, err := svc.CreateCaptchaWithPolicy(context.Background(), time.Minute, 6, usecase.CodeComplexityDigits)
+	if err != nil {
+		t.Fatalf("captcha with digits policy: %v", err)
+	}
+	if ok, _ := regexp.MatchString(`^[0-9]{6}$`, smsCode); !ok {
+		t.Fatalf("expected 6-digit captcha code, got %q", smsCode)
+	}
+
+	emailCode, err := svc.CreateVerificationCodeWithPolicy(context.Background(), "email", "u@example.com", "register", time.Minute, 8, usecase.CodeComplexityAlnum)
+	if err != nil {
+		t.Fatalf("verification with alnum policy: %v", err)
+	}
+	if ok, _ := regexp.MatchString(`^[A-Z0-9]{8}$`, emailCode); !ok {
+		t.Fatalf("expected 8-char alnum code, got %q", emailCode)
 	}
 }

@@ -92,10 +92,11 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 		before := time.Now().AddDate(0, 0, -cfg.retentionDays)
 		_ = c.autoLogs.PurgeAutomationLogs(ctx, before)
 	}
+	requestMeta := c.grpcRequestMeta(action)
 	reqPayload := map[string]any{
 		"method":  "GRPC",
-		"url":     action,
-		"headers": map[string]string{},
+		"url":     requestMeta.URL,
+		"headers": requestMeta.Headers,
 		"body":    sanitizePayload(toLogPayload(req)),
 	}
 	respPayload := map[string]any{
@@ -111,6 +112,7 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 			if traceReq != nil {
 				reqPayload = traceReq
 			}
+			reqPayload = mergeRequestMeta(reqPayload, requestMeta)
 			if traceResp != nil {
 				respPayload = traceResp
 			}
@@ -137,6 +139,69 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 		Message:      messageFromErr(err),
 	}
 	_ = c.autoLogs.CreateAutomationLog(ctx, &logEntry)
+}
+
+type grpcRequestMetadata struct {
+	URL     string
+	Headers map[string]string
+}
+
+func (c *PluginInstanceClient) grpcRequestMeta(action string) grpcRequestMetadata {
+	pluginID := strings.TrimSpace(c.pluginID)
+	if pluginID == "" {
+		pluginID = "-"
+	}
+	instanceID := strings.TrimSpace(c.instanceID)
+	if instanceID == "" {
+		instanceID = "-"
+	}
+	rpcAction := strings.TrimSpace(action)
+	if rpcAction == "" {
+		rpcAction = "unknown"
+	}
+	return grpcRequestMetadata{
+		URL: fmt.Sprintf("grpc://automation/%s/%s/%s", pluginID, instanceID, rpcAction),
+		Headers: map[string]string{
+			"x-transport":          "grpc",
+			"x-plugin-category":    "automation",
+			"x-plugin-id":          pluginID,
+			"x-plugin-instance-id": instanceID,
+			"x-rpc-action":         rpcAction,
+		},
+	}
+}
+
+func mergeRequestMeta(payload map[string]any, meta grpcRequestMetadata) map[string]any {
+	if payload == nil {
+		payload = map[string]any{}
+	}
+	method := strings.ToUpper(strings.TrimSpace(fmt.Sprint(payload["method"])))
+	if method == "" || method == "<NIL>" {
+		payload["method"] = "GRPC"
+	}
+	urlText := strings.TrimSpace(fmt.Sprint(payload["url"]))
+	if urlText == "" || strings.EqualFold(urlText, "<nil>") {
+		payload["url"] = meta.URL
+	}
+	headers := map[string]string{}
+	switch raw := payload["headers"].(type) {
+	case map[string]string:
+		for k, v := range raw {
+			headers[k] = v
+		}
+	case map[string]any:
+		for k, v := range raw {
+			headers[k] = strings.TrimSpace(fmt.Sprint(v))
+		}
+	}
+	for k, v := range meta.Headers {
+		if strings.TrimSpace(v) == "" {
+			continue
+		}
+		headers[k] = v
+	}
+	payload["headers"] = headers
+	return payload
 }
 
 func extractHTTPTrace(err error) (map[string]any, map[string]any, string, string, bool) {

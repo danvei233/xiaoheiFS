@@ -101,20 +101,27 @@ const (
 )
 
 type User struct {
-	ID                int64
-	Username          string
-	Email             string
-	QQ                string
-	Avatar            string
-	Phone             string
-	Bio               string
-	Intro             string
-	PermissionGroupID *int64
-	PasswordHash      string
-	Role              UserRole
-	Status            UserStatus
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                   int64
+	Username             string
+	Email                string
+	QQ                   string
+	Avatar               string
+	Phone                string
+	LastLoginIP          string
+	LastLoginAt          *time.Time
+	LastLoginCity        string
+	LastLoginTZ          string
+	TOTPEnabled          bool
+	TOTPSecretEnc        string
+	TOTPPendingSecretEnc string
+	Bio                  string
+	Intro                string
+	PermissionGroupID    *int64
+	PasswordHash         string
+	Role                 UserRole
+	Status               UserStatus
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 type Captcha struct {
@@ -446,6 +453,17 @@ type PermissionGroup struct {
 type PasswordResetToken struct {
 	ID        int64
 	UserID    int64
+	Token     string
+	ExpiresAt time.Time
+	Used      bool
+	CreatedAt time.Time
+}
+
+type PasswordResetTicket struct {
+	ID        int64
+	UserID    int64
+	Channel   string
+	Receiver  string
 	Token     string
 	ExpiresAt time.Time
 	Used      bool

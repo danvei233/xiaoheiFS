@@ -206,6 +206,10 @@ func SeedIfEmpty(gdb *gorm.DB) error {
 			{Name: "order_approved", Subject: "Order Approved: {{.order.no}}", Body: approvedBody, Enabled: 1},
 			{Name: "order_rejected", Subject: "Order Rejected: {{.order.no}}", Body: rejectedBody, Enabled: 1},
 			{Name: "password_reset", Subject: "Password Reset", Body: passwordResetBody, Enabled: 1},
+			{Name: "register_verify_code", Subject: "注册验证码", Body: "您好，您的注册验证码是：{{code}}，请在有效期内完成验证。", Enabled: 1},
+			{Name: "login_ip_change_alert", Subject: "登录提醒", Body: "您的账号于 {{time}} 在 {{city}} 登录（IP：{{ip}}）。如非本人操作请立即修改密码。", Enabled: 1},
+			{Name: "password_reset_verify_code", Subject: "找回密码验证码", Body: "您好，您正在进行找回密码操作，验证码：{{code}}，10分钟内有效。", Enabled: 1},
+			{Name: "email_bind_verify_code", Subject: "邮箱绑定验证码", Body: "您的邮箱绑定验证码：{{code}}，10分钟内有效。", Enabled: 1},
 		}
 		for i := range emailTemplates {
 			if err := tx.Clauses(clause.OnConflict{
@@ -237,128 +241,272 @@ func SeedIfEmpty(gdb *gorm.DB) error {
 
 func EnsureSettings(gdb *gorm.DB) error {
 	settings := map[string]string{
-		"default_line_id":                    "0",
-		"default_port_num":                   "30",
-		"payment_providers_enabled":          `{"approval":true,"balance":true}`,
-		"payment_providers_config":           `{}`,
-		"payment_plugins":                    "[]",
-		"payment_plugin_dir":                 "plugins/payment",
-		"payment_plugin_upload_password":     "qweasd123456",
-		"robot_webhook_url":                  "",
-		"robot_webhook_secret":               "",
-		"robot_webhook_enabled":              "false",
-		"robot_webhooks":                     "[]",
-		"realname_enabled":                   "false",
-		"realname_provider":                  "idcard_cn",
-		"realname_block_actions":             `["purchase_vps"]`,
-		"smtp_host":                          "",
-		"smtp_port":                          "",
-		"smtp_user":                          "",
-		"smtp_pass":                          "",
-		"smtp_from":                          "",
-		"smtp_enabled":                       "false",
-		"sms_enabled":                        "true",
-		"sms_plugin_id":                      "",
-		"sms_instance_id":                    "default",
-		"sms_default_template_id":            "",
-		"sms_provider_template_id":           "",
-		"sms_templates_json":                 "[]",
-		"email_enabled":                      "true",
-		"email_expire_enabled":               "true",
-		"expire_reminder_days":               "7",
-		"emergency_renew_enabled":            "true",
-		"emergency_renew_window_days":        "7",
-		"emergency_renew_days":               "1",
-		"emergency_renew_interval_hours":     "720",
-		"auto_delete_enabled":                "false",
-		"auto_delete_days":                   "7",
-		"refund_full_days":                   "1",
-		"refund_prorate_days":                "7",
-		"refund_no_refund_days":              "30",
-		"refund_full_hours":                  "0",
-		"refund_prorate_hours":               "0",
-		"refund_no_refund_hours":             "0",
-		"refund_curve_json":                  "[]",
-		"refund_requires_approval":           "true",
-		"refund_on_admin_delete":             "true",
-		"resize_price_mode":                  "remaining",
-		"resize_refund_ratio":                "1",
-		"resize_rounding":                    "round",
-		"resize_min_charge":                  "0",
-		"resize_min_refund":                  "0",
-		"resize_charge_curve_json":           "[]",
-		"resize_refund_to_wallet":            "true",
-		"debug_enabled":                      "false",
-		"automation_base_url":                "",
-		"automation_api_key":                 "",
-		"automation_enabled":                 "true",
-		"automation_timeout_sec":             "12",
-		"automation_retry":                   "0",
-		"automation_dry_run":                 "false",
-		"automation_log_retention_days":      "0",
-		"task.vps_refresh":                   `{"enabled":true,"strategy":"interval","interval_sec":300}`,
-		"task.order_provision_watchdog":      `{"enabled":true,"strategy":"interval","interval_sec":5}`,
-		"provision_watchdog_max_jobs":        "8",
-		"provision_watchdog_max_minutes":     "20",
-		"task.expire_reminder":               `{"enabled":true,"strategy":"daily","daily_at":"09:00"}`,
-		"task.vps_expire_cleanup":            `{"enabled":true,"strategy":"daily","daily_at":"03:00"}`,
-		"site_name":                          "Cloud Console",
-		"site_url":                           "",
-		"logo_url":                           "",
-		"favicon_url":                        "",
-		"site_description":                   "",
-		"site_keywords":                      "",
-		"company_name":                       "",
-		"contact_phone":                      "",
-		"contact_email":                      "",
-		"contact_qq":                         "",
-		"wechat_qrcode":                      "",
-		"icp_number":                         "",
-		"psbe_number":                        "",
-		"maintenance_mode":                   "false",
-		"maintenance_message":                "We are under maintenance, please check back later.",
-		"analytics_code":                     "",
-		"site_logo":                          "",
-		"site_icp":                           "",
-		"site_maintenance_mode":              "false",
-		"site_maintenance_message":           "We are under maintenance, please check back later.",
-		"site_nav_items":                     `[]`,
-		"auth_register_enabled":              "true",
-		"auth_register_required_fields":      `["username","email","password"]`,
-		"auth_password_min_len":              "6",
-		"auth_password_require_upper":        "false",
-		"auth_password_require_lower":        "false",
-		"auth_password_require_number":       "false",
-		"auth_password_require_symbol":       "false",
-		"auth_register_verify_type":          "none",
-		"auth_register_verify_ttl_sec":       "600",
-		"auth_register_captcha_enabled":      "true",
-		"auth_register_email_subject":        "Your verification code",
-		"auth_register_email_body":           "Your verification code is: {{code}}",
-		"auth_register_sms_plugin_id":        "",
-		"auth_register_sms_instance_id":      "default",
-		"auth_register_sms_template_id":      "",
-		"auth_login_captcha_enabled":         "false",
-		"auth_login_rate_limit_enabled":      "true",
-		"auth_login_rate_limit_window_sec":   "300",
-		"auth_login_rate_limit_max_attempts": "5",
-		"probe_heartbeat_interval_sec":       "20",
-		"probe_snapshot_interval_sec":        "60",
-		"probe_offline_grace_sec":            "90",
-		"probe_sla_window_days":              "7",
-		"probe_log_session_ttl_sec":          "600",
-		"probe_log_chunk_max_bytes":          "16384",
-		"probe_log_file_source":              "file:logs",
+		"default_line_id":                          "0",
+		"default_port_num":                         "30",
+		"payment_providers_enabled":                `{"approval":true,"balance":true}`,
+		"payment_providers_config":                 `{}`,
+		"payment_plugins":                          "[]",
+		"payment_plugin_dir":                       "plugins/payment",
+		"payment_plugin_upload_password":           "qweasd123456",
+		"robot_webhook_url":                        "",
+		"robot_webhook_secret":                     "",
+		"robot_webhook_enabled":                    "false",
+		"robot_webhooks":                           "[]",
+		"realname_enabled":                         "false",
+		"realname_provider":                        "idcard_cn",
+		"realname_block_actions":                   `["purchase_vps"]`,
+		"smtp_host":                                "",
+		"smtp_port":                                "",
+		"smtp_user":                                "",
+		"smtp_pass":                                "",
+		"smtp_from":                                "",
+		"smtp_enabled":                             "false",
+		"sms_enabled":                              "true",
+		"sms_plugin_id":                            "",
+		"sms_instance_id":                          "default",
+		"sms_default_template_id":                  "",
+		"sms_provider_template_id":                 "",
+		"sms_templates_json":                       `[{"id":1,"name":"register_verify_code","content":"【XXX】您正在注册XXX平台账号，验证码是：{{code}}，3分钟内有效，请及时输入。","enabled":true},{"id":2,"name":"login_ip_change_alert","content":"【XXX】登录提醒：您的账号于 {{time}} 在 {{city}} 发生登录（IP：{{ip}}）。如为本人操作，请忽略本消息；如非本人操作，请立即修改密码并开启二次验证，确保账号安全。","enabled":true},{"id":3,"name":"password_reset_verify_code","content":"【XXX】您好，您在XXX平台（APP）的账号正在进行找回密码操作，切勿将验证码泄露于他人，10分钟内有效。验证码：{{code}}。","enabled":true},{"id":4,"name":"phone_bind_verify_code","content":"【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。","enabled":true}]`,
+		"email_enabled":                            "true",
+		"email_expire_enabled":                     "true",
+		"expire_reminder_days":                     "7",
+		"emergency_renew_enabled":                  "true",
+		"emergency_renew_window_days":              "7",
+		"emergency_renew_days":                     "1",
+		"emergency_renew_interval_hours":           "720",
+		"auto_delete_enabled":                      "false",
+		"auto_delete_days":                         "7",
+		"refund_full_days":                         "1",
+		"refund_prorate_days":                      "7",
+		"refund_no_refund_days":                    "30",
+		"refund_full_hours":                        "0",
+		"refund_prorate_hours":                     "0",
+		"refund_no_refund_hours":                   "0",
+		"refund_curve_json":                        "[]",
+		"refund_requires_approval":                 "true",
+		"refund_on_admin_delete":                   "true",
+		"resize_price_mode":                        "remaining",
+		"resize_refund_ratio":                      "1",
+		"resize_rounding":                          "round",
+		"resize_min_charge":                        "0",
+		"resize_min_refund":                        "0",
+		"resize_charge_curve_json":                 "[]",
+		"resize_refund_to_wallet":                  "true",
+		"debug_enabled":                            "false",
+		"automation_base_url":                      "",
+		"automation_api_key":                       "",
+		"automation_enabled":                       "true",
+		"automation_timeout_sec":                   "12",
+		"automation_retry":                         "0",
+		"automation_dry_run":                       "false",
+		"automation_log_retention_days":            "0",
+		"task.vps_refresh":                         `{"enabled":true,"strategy":"interval","interval_sec":300}`,
+		"task.order_provision_watchdog":            `{"enabled":true,"strategy":"interval","interval_sec":5}`,
+		"provision_watchdog_max_jobs":              "8",
+		"provision_watchdog_max_minutes":           "20",
+		"task.expire_reminder":                     `{"enabled":true,"strategy":"daily","daily_at":"09:00"}`,
+		"task.vps_expire_cleanup":                  `{"enabled":true,"strategy":"daily","daily_at":"03:00"}`,
+		"site_name":                                "Cloud Console",
+		"site_url":                                 "",
+		"logo_url":                                 "",
+		"favicon_url":                              "",
+		"site_description":                         "",
+		"site_keywords":                            "",
+		"company_name":                             "",
+		"contact_phone":                            "",
+		"contact_email":                            "",
+		"contact_qq":                               "",
+		"wechat_qrcode":                            "",
+		"icp_number":                               "",
+		"psbe_number":                              "",
+		"maintenance_mode":                         "false",
+		"maintenance_message":                      "We are under maintenance, please check back later.",
+		"analytics_code":                           "",
+		"site_logo":                                "",
+		"site_icp":                                 "",
+		"site_maintenance_mode":                    "false",
+		"site_maintenance_message":                 "We are under maintenance, please check back later.",
+		"site_nav_items":                           `[]`,
+		"auth_register_enabled":                    "true",
+		"auth_register_required_fields":            `["username","email","password"]`,
+		"auth_password_min_len":                    "6",
+		"auth_password_require_upper":              "false",
+		"auth_password_require_lower":              "false",
+		"auth_password_require_number":             "false",
+		"auth_password_require_symbol":             "false",
+		"auth_register_verify_type":                "none",
+		"auth_register_verify_channels":            `["email","sms"]`,
+		"auth_register_email_required":             "true",
+		"auth_register_verify_ttl_sec":             "600",
+		"auth_register_captcha_enabled":            "true",
+		"auth_register_email_subject":              "Your verification code",
+		"auth_register_email_body":                 "Your verification code is: {{code}}",
+		"auth_register_sms_plugin_id":              "",
+		"auth_register_sms_instance_id":            "default",
+		"auth_register_sms_template_id":            "",
+		"auth_login_captcha_enabled":               "false",
+		"auth_login_rate_limit_enabled":            "true",
+		"auth_login_rate_limit_window_sec":         "300",
+		"auth_login_rate_limit_max_attempts":       "5",
+		"auth_login_notify_enabled":                "true",
+		"auth_login_notify_on_first_login":         "true",
+		"auth_login_notify_on_ip_change":           "true",
+		"auth_login_notify_channels":               `["email"]`,
+		"auth_geoip_mmdb_path":                     "",
+		"auth_password_reset_enabled":              "true",
+		"auth_password_reset_channels":             `["email"]`,
+		"auth_password_reset_verify_ttl_sec":       "600",
+		"auth_sms_code_len":                        "6",
+		"auth_sms_code_complexity":                 "digits",
+		"auth_email_code_len":                      "6",
+		"auth_email_code_complexity":               "alnum",
+		"auth_captcha_code_len":                    "5",
+		"auth_captcha_code_complexity":             "alnum",
+		"auth_email_bind_enabled":                  "true",
+		"auth_phone_bind_enabled":                  "true",
+		"auth_contact_bind_verify_ttl_sec":         "600",
+		"auth_bind_require_password_when_no_2fa":   "false",
+		"auth_rebind_require_password_when_no_2fa": "true",
+		"auth_2fa_enabled":                         "true",
+		"auth_2fa_bind_enabled":                    "true",
+		"auth_2fa_rebind_enabled":                  "true",
+		"probe_heartbeat_interval_sec":             "20",
+		"probe_snapshot_interval_sec":              "60",
+		"probe_offline_grace_sec":                  "90",
+		"probe_sla_window_days":                    "7",
+		"probe_log_session_ttl_sec":                "600",
+		"probe_log_chunk_max_bytes":                "16384",
+		"probe_log_file_source":                    "file:logs",
 	}
 
 	rows := make([]settingSeedRow, 0, len(settings))
 	for key, val := range settings {
 		rows = append(rows, settingSeedRow{Key: key, ValueJSON: val, UpdatedAt: time.Now()})
 	}
-	return gdb.Clauses(clause.OnConflict{
+	if err := gdb.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "key"}},
 		DoNothing: true,
-	}).Create(&rows).Error
+	}).Create(&rows).Error; err != nil {
+		return err
+	}
+	return EnsureMessageTemplateDefaults(gdb)
+}
+
+func EnsureMessageTemplateDefaults(gdb *gorm.DB) error {
+	if gdb == nil {
+		return nil
+	}
+	if err := ensureDefaultEmailTemplates(gdb); err != nil {
+		return err
+	}
+	return ensureDefaultSMSTemplates(gdb)
+}
+
+func ensureDefaultEmailTemplates(gdb *gorm.DB) error {
+	templates := []emailTemplateSeedRow{
+		{Name: "provision_success", Subject: "VPS Provisioned: Order {{.order.no}}", Body: `<!DOCTYPE html><html><body><h2>VPS Provisioned</h2><p>Hi {{.user.username}},</p><p>Your VPS for order <strong>{{.order.no}}</strong> is now active.</p></body></html>`, Enabled: 1},
+		{Name: "expire_reminder", Subject: "VPS Expiration Reminder: {{.vps.name}}", Body: `<!DOCTYPE html><html><body><h2>VPS Expiration Reminder</h2><p>Hi {{.user.username}},</p><p>Your VPS <strong>{{.vps.name}}</strong> will expire on <strong>{{.vps.expire_at}}</strong>.</p></body></html>`, Enabled: 1},
+		{Name: "order_approved", Subject: "Order Approved: {{.order.no}}", Body: `<!DOCTYPE html><html><body><h2>Order Approved</h2><p>Hi {{.user.username}},</p><p>Your order <strong>{{.order.no}}</strong> has been approved.</p></body></html>`, Enabled: 1},
+		{Name: "order_rejected", Subject: "Order Rejected: {{.order.no}}", Body: `<!DOCTYPE html><html><body><h2>Order Rejected</h2><p>Hi {{.user.username}},</p><p>Your order <strong>{{.order.no}}</strong> has been rejected.</p></body></html>`, Enabled: 1},
+		{Name: "password_reset", Subject: "Password Reset", Body: `<!DOCTYPE html><html><body><h2>Password Reset</h2><p>Hi {{.user.username}},</p><p>Your reset token is: <strong>{{.token}}</strong></p></body></html>`, Enabled: 1},
+		{Name: "register_verify_code", Subject: "注册验证码", Body: "您好，您的注册验证码是：{{code}}，请在有效期内完成验证。", Enabled: 1},
+		{Name: "login_ip_change_alert", Subject: "登录提醒", Body: "您的账号于 {{time}} 在 {{city}} 登录（IP：{{ip}}）。如非本人操作请立即修改密码。", Enabled: 1},
+		{Name: "password_reset_verify_code", Subject: "找回密码验证码", Body: "您好，您正在进行找回密码操作，验证码：{{code}}，10分钟内有效。", Enabled: 1},
+		{Name: "email_bind_verify_code", Subject: "邮箱绑定验证码", Body: "您的邮箱绑定验证码：{{code}}，10分钟内有效。", Enabled: 1},
+	}
+	for i := range templates {
+		if err := gdb.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "name"}},
+			DoNothing: true,
+		}).Create(&templates[i]).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureDefaultSMSTemplates(gdb *gorm.DB) error {
+	type smsTemplateSeed struct {
+		ID      int64  `json:"id"`
+		Name    string `json:"name"`
+		Content string `json:"content"`
+		Enabled bool   `json:"enabled"`
+	}
+	defaultItems := []smsTemplateSeed{
+		{ID: 1, Name: "register_verify_code", Content: "【XXX】您正在注册XXX平台账号，验证码是：{{code}}，3分钟内有效，请及时输入。", Enabled: true},
+		{ID: 2, Name: "login_ip_change_alert", Content: "【XXX】登录提醒：您的账号于 {{time}} 在 {{city}} 发生登录（IP：{{ip}}）。如为本人操作，请忽略本消息；如非本人操作，请立即修改密码并开启二次验证，确保账号安全。", Enabled: true},
+		{ID: 3, Name: "password_reset_verify_code", Content: "【XXX】您好，您在XXX平台（APP）的账号正在进行找回密码操作，切勿将验证码泄露于他人，10分钟内有效。验证码：{{code}}。", Enabled: true},
+		{ID: 4, Name: "phone_bind_verify_code", Content: "【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。", Enabled: true},
+	}
+	defaultRaw, _ := json.Marshal(defaultItems)
+
+	var row settingSeedRow
+	err := gdb.Where("`key` = ?", "sms_templates_json").Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return gdb.Create(&settingSeedRow{
+				Key:       "sms_templates_json",
+				ValueJSON: string(defaultRaw),
+				UpdatedAt: time.Now(),
+			}).Error
+		}
+		return err
+	}
+
+	raw := strings.TrimSpace(row.ValueJSON)
+	if raw == "" || raw == "[]" {
+		row.ValueJSON = string(defaultRaw)
+		row.UpdatedAt = time.Now()
+		return gdb.Model(&settingSeedRow{}).Where("`key` = ?", "sms_templates_json").Updates(map[string]any{
+			"value_json": row.ValueJSON,
+			"updated_at": row.UpdatedAt,
+		}).Error
+	}
+
+	var parsed []smsTemplateSeed
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil || len(parsed) == 0 {
+		row.ValueJSON = string(defaultRaw)
+		row.UpdatedAt = time.Now()
+		return gdb.Model(&settingSeedRow{}).Where("`key` = ?", "sms_templates_json").Updates(map[string]any{
+			"value_json": row.ValueJSON,
+			"updated_at": row.UpdatedAt,
+		}).Error
+	}
+	byName := map[string]bool{}
+	maxID := int64(0)
+	for _, item := range parsed {
+		name := strings.TrimSpace(item.Name)
+		if name == "" {
+			continue
+		}
+		byName[name] = true
+		if item.ID > maxID {
+			maxID = item.ID
+		}
+	}
+	changed := false
+	for _, item := range defaultItems {
+		if byName[item.Name] {
+			continue
+		}
+		maxID++
+		item.ID = maxID
+		parsed = append(parsed, item)
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	mergedRaw, err := json.Marshal(parsed)
+	if err != nil {
+		return err
+	}
+	row.ValueJSON = string(mergedRaw)
+	row.UpdatedAt = time.Now()
+	return gdb.Model(&settingSeedRow{}).Where("`key` = ?", "sms_templates_json").Updates(map[string]any{
+		"value_json": row.ValueJSON,
+		"updated_at": row.UpdatedAt,
+	}).Error
 }
 
 func EnsurePermissionDefaults(gdb *gorm.DB) error {

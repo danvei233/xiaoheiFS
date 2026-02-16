@@ -2,7 +2,7 @@ package usecase_test
 
 import (
 	"context"
-	"strings"
+	"regexp"
 	"testing"
 	"time"
 
@@ -26,11 +26,8 @@ func TestPasswordResetService_RequestAndReset(t *testing.T) {
 		t.Fatalf("expected email sent")
 	}
 	body := email.Sends[0].Body
-	colon := strings.LastIndex(body, ":")
-	if colon == -1 {
-		t.Fatalf("unexpected email body: %q", body)
-	}
-	token := strings.TrimSpace(body[colon+1:])
+	re := regexp.MustCompile(`[a-f0-9]{64}`)
+	token := re.FindString(body)
 	if token == "" {
 		t.Fatalf("token not found in email body")
 	}

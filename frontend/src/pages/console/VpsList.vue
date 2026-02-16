@@ -1153,6 +1153,7 @@ const openRefund = (record) => {
 };
 
 const submitRefund = async () => {
+  if (refunding.value) return;
   if (!refundReason.value.trim()) {
     message.warning("请填写退款原因");
     return;
@@ -1163,11 +1164,16 @@ const submitRefund = async () => {
   }
   refunding.value = true;
   try {
-    await requestVpsRefund(activeRecord.value.id, { reason: refundReason.value });
-    message.success("已提交退款申请");
+    const res = await requestVpsRefund(activeRecord.value.id, { reason: refundReason.value });
+    const orderId = res?.data?.order?.id ?? res?.data?.order?.ID;
+    if (orderId) {
+      message.success("已提交退款申请，订单ID: " + orderId);
+    } else {
+      message.success("已提交退款申请");
+    }
     refundOpen.value = false;
   } catch (e) {
-    message.error(e.response?.data?.error || "提交失败");
+    message.error(e?.response?.data?.error || e?.response?.data?.message || e?.message || "提交失败");
   } finally {
     refunding.value = false;
   }

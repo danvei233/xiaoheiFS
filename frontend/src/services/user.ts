@@ -38,7 +38,7 @@ import type {
 
 export const getCaptcha = () => http.get<CaptchaResponse>("/api/v1/captcha");
 export const getAuthSettings = () => http.get<AuthSettings>("/api/v1/auth/settings");
-export const requestRegisterCode = (payload: { email?: string; phone?: string; captcha_id?: string; captcha_code?: string }) =>
+export const requestRegisterCode = (payload: { channel?: "email" | "sms"; email?: string; phone?: string; captcha_id?: string; captcha_code?: string }) =>
   http.post("/api/v1/auth/register/code", payload);
 export const getInstallStatus = () => http.get<{ installed: boolean }>("/api/v1/install/status");
 export const checkInstallDB = (payload: Record<string, unknown>) =>
@@ -162,6 +162,32 @@ export const submitRealNameVerification = (payload: { real_name: string; id_numb
 export const forgotPassword = (email: string) => http.post("/api/v1/auth/forgot-password", { email });
 export const resetPassword = (token: string, new_password: string) =>
   http.post("/api/v1/auth/reset-password", { token, new_password });
+export const getPasswordResetOptions = (account: string) => http.post("/api/v1/auth/password-reset/options", { account });
+export const sendPasswordResetCode = (payload: { account: string; channel: "email" | "sms"; phone_full?: string }) =>
+  http.post("/api/v1/auth/password-reset/send-code", payload);
+export const verifyPasswordResetCode = (payload: { account: string; channel: "email" | "sms"; code: string }) =>
+  http.post<{ reset_ticket?: string; expires_in?: number }>("/api/v1/auth/password-reset/verify-code", payload);
+export const confirmPasswordReset = (payload: { reset_ticket: string; new_password: string }) =>
+  http.post("/api/v1/auth/password-reset/confirm", payload);
+export const changeMyPassword = (payload: { current_password: string; new_password: string; totp_code?: string }) =>
+  http.post("/api/v1/me/password/change", payload);
+export const getMySecurityContacts = () => http.get("/api/v1/me/security/contacts");
+export const verifyMyEmailBind2FA = (payload: { totp_code: string }) =>
+  http.post<{ security_ticket?: string; expires_in?: number }>("/api/v1/me/security/email/verify-2fa", payload);
+export const sendMyEmailBindCode = (payload: { value: string; current_password?: string; security_ticket?: string }) =>
+  http.post("/api/v1/me/security/email/send-code", payload);
+export const confirmMyEmailBind = (payload: { value: string; code: string; security_ticket?: string }) =>
+  http.post("/api/v1/me/security/email/confirm", payload);
+export const verifyMyPhoneBind2FA = (payload: { totp_code: string }) =>
+  http.post<{ security_ticket?: string; expires_in?: number }>("/api/v1/me/security/phone/verify-2fa", payload);
+export const sendMyPhoneBindCode = (payload: { value: string; current_password?: string; security_ticket?: string }) =>
+  http.post("/api/v1/me/security/phone/send-code", payload);
+export const confirmMyPhoneBind = (payload: { value: string; code: string; security_ticket?: string }) =>
+  http.post("/api/v1/me/security/phone/confirm", payload);
+export const getTwoFAStatus = () => http.get<{ enabled?: boolean }>("/api/v1/me/security/2fa/status");
+export const setupTwoFA = (payload: { password?: string; current_code?: string }) =>
+  http.post<{ secret?: string; otpauth_url?: string }>("/api/v1/me/security/2fa/setup", payload);
+export const confirmTwoFA = (payload: { code: string }) => http.post("/api/v1/me/security/2fa/confirm", payload);
 
 // 工单
 export const listTickets = (params?: Record<string, unknown>) => http.get<ApiList<Ticket>>("/api/v1/tickets", { params });
