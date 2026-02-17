@@ -2,14 +2,14 @@ package plugins
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"fmt"
+	appports "xiaoheiplay/internal/app/ports"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 const pluginsBootstrappedSettingKey = "plugins_bootstrapped"
@@ -23,9 +23,9 @@ type DiscoverItem struct {
 	Entry           EntryInfo                    `json:"entry"`
 }
 
-func (m *Manager) BootstrapFromDisk(ctx context.Context, settings usecase.SettingsRepository) error {
+func (m *Manager) BootstrapFromDisk(ctx context.Context, settings appports.SettingsRepository) error {
 	if m.repo == nil {
-		return errors.New("plugin repo missing")
+		return fmt.Errorf("plugin repo missing")
 	}
 
 	existing, err := m.repo.ListPluginInstallations(ctx)
@@ -108,7 +108,7 @@ func (m *Manager) BootstrapFromDisk(ctx context.Context, settings usecase.Settin
 
 func (m *Manager) DiscoverOnDisk(ctx context.Context) ([]DiscoverItem, error) {
 	if m.repo == nil {
-		return nil, errors.New("plugin repo missing")
+		return nil, fmt.Errorf("plugin repo missing")
 	}
 	existing, err := m.repo.ListPluginInstallations(ctx)
 	if err != nil {
@@ -148,16 +148,16 @@ func (m *Manager) DiscoverOnDisk(ctx context.Context) ([]DiscoverItem, error) {
 
 func (m *Manager) ImportFromDisk(ctx context.Context, category, pluginID string) (domain.PluginInstallation, error) {
 	if m.repo == nil {
-		return domain.PluginInstallation{}, errors.New("plugin repo missing")
+		return domain.PluginInstallation{}, fmt.Errorf("plugin repo missing")
 	}
 	category = strings.TrimSpace(category)
 	pluginID = strings.TrimSpace(pluginID)
 	if category == "" || pluginID == "" {
-		return domain.PluginInstallation{}, errors.New("invalid plugin")
+		return domain.PluginInstallation{}, fmt.Errorf("invalid plugin")
 	}
 	pluginDir := filepath.Join(m.baseDir, category, pluginID)
 	if _, err := os.Stat(pluginDir); err != nil {
-		return domain.PluginInstallation{}, errors.New("plugin dir not found")
+		return domain.PluginInstallation{}, fmt.Errorf("plugin dir not found")
 	}
 
 	manifest, err := ReadManifest(pluginDir)
@@ -165,13 +165,13 @@ func (m *Manager) ImportFromDisk(ctx context.Context, category, pluginID string)
 		return domain.PluginInstallation{}, err
 	}
 	if manifest.PluginID != pluginID {
-		return domain.PluginInstallation{}, errors.New("manifest plugin_id mismatch")
+		return domain.PluginInstallation{}, fmt.Errorf("manifest plugin_id mismatch")
 	}
 
 	entry, err := ResolveEntry(pluginDir, manifest)
 	if err != nil {
 		if len(entry.SupportedPlatforms) > 0 {
-			return domain.PluginInstallation{}, errors.New("unsupported platform " + entry.Platform + ", supported: " + strings.Join(entry.SupportedPlatforms, ", "))
+			return domain.PluginInstallation{}, fmt.Errorf("%s", "unsupported platform "+entry.Platform+", supported: "+strings.Join(entry.SupportedPlatforms, ", "))
 		}
 		return domain.PluginInstallation{}, err
 	}
@@ -210,11 +210,11 @@ func (m *Manager) SignatureStatusOnDisk(category, pluginID string) (domain.Plugi
 	category = strings.TrimSpace(category)
 	pluginID = strings.TrimSpace(pluginID)
 	if category == "" || pluginID == "" {
-		return domain.PluginSignatureUntrusted, errors.New("invalid plugin")
+		return domain.PluginSignatureUntrusted, fmt.Errorf("invalid plugin")
 	}
 	pluginDir := filepath.Join(m.baseDir, category, pluginID)
 	if _, err := os.Stat(filepath.Join(pluginDir, "manifest.json")); err != nil {
-		return domain.PluginSignatureUntrusted, errors.New("manifest.json not found")
+		return domain.PluginSignatureUntrusted, fmt.Errorf("manifest.json not found")
 	}
 	return VerifySignature(pluginDir, m.officialKeys)
 }
@@ -229,7 +229,7 @@ type diskPlugin struct {
 func scanDiskPlugins(baseDir string) ([]diskPlugin, error) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
-		return nil, errors.New("missing base dir")
+		return nil, fmt.Errorf("missing base dir")
 	}
 	st, err := os.Stat(baseDir)
 	if err != nil {
@@ -239,7 +239,7 @@ func scanDiskPlugins(baseDir string) ([]diskPlugin, error) {
 		return nil, err
 	}
 	if !st.IsDir() {
-		return nil, errors.New("plugins base dir is not a directory")
+		return nil, fmt.Errorf("plugins base dir is not a directory")
 	}
 
 	var out []diskPlugin

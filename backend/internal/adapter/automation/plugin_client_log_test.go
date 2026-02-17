@@ -4,17 +4,72 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
 
 type captureAutomationLogs struct {
 	last *domain.AutomationLog
+}
+
+type fakeSettings struct {
+	values map[string]string
+}
+
+func (f *fakeSettings) GetSetting(ctx context.Context, key string) (domain.Setting, error) {
+	_ = ctx
+	if f != nil && f.values != nil {
+		if v, ok := f.values[key]; ok {
+			return domain.Setting{Key: key, ValueJSON: v}, nil
+		}
+	}
+	return domain.Setting{}, appshared.ErrNotFound
+}
+
+func (f *fakeSettings) UpsertSetting(ctx context.Context, setting domain.Setting) error {
+	_ = ctx
+	if f.values == nil {
+		f.values = map[string]string{}
+	}
+	f.values[setting.Key] = setting.ValueJSON
+	return nil
+}
+
+func (f *fakeSettings) ListSettings(ctx context.Context) ([]domain.Setting, error) {
+	_ = ctx
+	out := make([]domain.Setting, 0, len(f.values))
+	for k, v := range f.values {
+		out = append(out, domain.Setting{Key: k, ValueJSON: v})
+	}
+	return out, nil
+}
+
+func (f *fakeSettings) ListEmailTemplates(ctx context.Context) ([]domain.EmailTemplate, error) {
+	_ = ctx
+	return nil, nil
+}
+
+func (f *fakeSettings) GetEmailTemplate(ctx context.Context, id int64) (domain.EmailTemplate, error) {
+	_ = ctx
+	_ = id
+	return domain.EmailTemplate{}, appshared.ErrNotFound
+}
+
+func (f *fakeSettings) UpsertEmailTemplate(ctx context.Context, tmpl *domain.EmailTemplate) error {
+	_ = ctx
+	_ = tmpl
+	return nil
+}
+
+func (f *fakeSettings) DeleteEmailTemplate(ctx context.Context, id int64) error {
+	_ = ctx
+	_ = id
+	return nil
 }
 
 func (c *captureAutomationLogs) CreateAutomationLog(ctx context.Context, log *domain.AutomationLog) error {
@@ -121,7 +176,7 @@ func TestPluginInstanceClient_LogRPC_PreservesHTTPTraceAndGRPCMeta(t *testing.T)
 		},
 		"message": "upstream ok",
 	})
-	err := errors.New("rpc failed http_trace=" + base64.StdEncoding.EncodeToString(traceRaw))
+	err := fmt.Errorf("%s", "rpc failed http_trace="+base64.StdEncoding.EncodeToString(traceRaw))
 
 	client.logRPC(
 		context.Background(),

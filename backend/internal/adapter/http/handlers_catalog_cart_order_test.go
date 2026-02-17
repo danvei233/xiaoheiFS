@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/testutilhttp"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestHandlers_CatalogCartOrderFlow(t *testing.T) {
@@ -133,7 +133,7 @@ func TestHandlers_PaymentNotifyIdempotent(t *testing.T) {
 	env.PaymentReg.RegisterProvider(&testutil.FakePaymentProvider{
 		KeyVal:    "fake",
 		NameVal:   "Fake",
-		VerifyRes: usecase.PaymentNotifyResult{TradeNo: "TN-1", Paid: true, Amount: 1000},
+		VerifyRes: shared.PaymentNotifyResult{TradeNo: "TN-1", Paid: true, Amount: 1000},
 	}, true, "")
 
 	form := "trade_no=TN-1"

@@ -2,9 +2,9 @@ package payment
 
 import (
 	"context"
-	"errors"
 
-	"xiaoheiplay/internal/usecase"
+	"fmt"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
 const approvalSchemaJSON = `{"title":"Approval Payment","type":"object","properties":{}}`
@@ -40,10 +40,10 @@ func (p *simpleProvider) SetConfig(configJSON string) error {
 	return nil
 }
 
-func (p *simpleProvider) CreatePayment(ctx context.Context, req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error) {
-	return usecase.PaymentCreateResult{}, errors.New("provider does not create payments")
+func (p *simpleProvider) CreatePayment(ctx context.Context, req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error) {
+	return appshared.PaymentCreateResult{}, fmt.Errorf("provider does not create payments")
 }
 
-func (p *simpleProvider) VerifyNotify(ctx context.Context, req usecase.RawHTTPRequest) (usecase.PaymentNotifyResult, error) {
-	return usecase.PaymentNotifyResult{}, errors.New("provider does not handle notify")
+func (p *simpleProvider) VerifyNotify(ctx context.Context, req appshared.RawHTTPRequest) (appshared.PaymentNotifyResult, error) {
+	return appshared.PaymentNotifyResult{}, fmt.Errorf("provider does not handle notify")
 }

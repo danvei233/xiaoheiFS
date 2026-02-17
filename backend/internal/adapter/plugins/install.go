@@ -6,13 +6,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"crypto/ed25519"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 
+	"fmt"
 	"xiaoheiplay/internal/domain"
 )
 
@@ -27,7 +27,7 @@ type InstallResult struct {
 func InstallPackage(baseDir string, filename string, r io.Reader, officialKeys []ed25519.PublicKey) (InstallResult, error) {
 	baseDir = strings.TrimSpace(baseDir)
 	if baseDir == "" {
-		return InstallResult{}, errors.New("missing base dir")
+		return InstallResult{}, fmt.Errorf("missing base dir")
 	}
 
 	tmpRoot, err := os.MkdirTemp("", "xiaoheiplay-plugin-install-*")
@@ -47,7 +47,7 @@ func InstallPackage(baseDir string, filename string, r io.Reader, officialKeys [
 			return InstallResult{}, err
 		}
 	default:
-		return InstallResult{}, errors.New("unsupported package type")
+		return InstallResult{}, fmt.Errorf("unsupported package type")
 	}
 
 	manifestPath, err := findSingleManifest(tmpRoot)
@@ -67,12 +67,12 @@ func InstallPackage(baseDir string, filename string, r io.Reader, officialKeys [
 		return InstallResult{}, err
 	}
 	if m.PluginID != pluginID {
-		return InstallResult{}, errors.New("manifest plugin_id mismatch")
+		return InstallResult{}, fmt.Errorf("manifest plugin_id mismatch")
 	}
 	entry, err := ResolveEntry(pluginDir, m)
 	if err != nil {
 		if len(entry.SupportedPlatforms) > 0 {
-			return InstallResult{}, errors.New("unsupported platform " + entry.Platform + ", supported: " + strings.Join(entry.SupportedPlatforms, ", "))
+			return InstallResult{}, fmt.Errorf("%s", "unsupported platform "+entry.Platform+", supported: "+strings.Join(entry.SupportedPlatforms, ", "))
 		}
 		return InstallResult{}, err
 	}
@@ -84,7 +84,7 @@ func InstallPackage(baseDir string, filename string, r io.Reader, officialKeys [
 
 	finalDir := filepath.Join(baseDir, category, pluginID)
 	if fileExists(finalDir) {
-		return InstallResult{}, errors.New("plugin already installed")
+		return InstallResult{}, fmt.Errorf("plugin already installed")
 	}
 	if err := os.MkdirAll(filepath.Dir(finalDir), 0o755); err != nil {
 		return InstallResult{}, err
@@ -116,13 +116,13 @@ func parsePluginDirFromRel(rel string) (category, pluginID string, err error) {
 		pluginID = strings.TrimSpace(parts[1])
 	}
 	if category == "" || pluginID == "" {
-		return "", "", errors.New("invalid plugin directory")
+		return "", "", fmt.Errorf("invalid plugin directory")
 	}
 	if strings.Contains(category, "..") || strings.Contains(pluginID, "..") {
-		return "", "", errors.New("invalid plugin directory")
+		return "", "", fmt.Errorf("invalid plugin directory")
 	}
 	if strings.Contains(category, ":") || strings.Contains(pluginID, ":") {
-		return "", "", errors.New("invalid plugin directory")
+		return "", "", fmt.Errorf("invalid plugin directory")
 	}
 	return category, pluginID, nil
 }
@@ -162,7 +162,7 @@ func extractZip(dst string, r io.Reader) error {
 func extractZipFile(dst string, f *zip.File) error {
 	name := filepath.ToSlash(f.Name)
 	if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "..") || strings.Contains(name, ":") {
-		return errors.New("invalid zip entry path")
+		return fmt.Errorf("invalid zip entry path")
 	}
 	target := filepath.Join(dst, filepath.FromSlash(name))
 	if f.FileInfo().IsDir() {
@@ -202,7 +202,7 @@ func extractTarGz(dst string, r io.Reader) error {
 		}
 		name := filepath.ToSlash(h.Name)
 		if name == "" || strings.HasPrefix(name, "/") || strings.Contains(name, "..") || strings.Contains(name, ":") {
-			return errors.New("invalid tar entry path")
+			return fmt.Errorf("invalid tar entry path")
 		}
 		target := filepath.Join(dst, filepath.FromSlash(name))
 		switch h.Typeflag {
@@ -244,7 +244,7 @@ func findSingleManifest(root string) (string, error) {
 		return nil
 	})
 	if len(found) != 1 {
-		return "", errors.New("package must contain exactly one manifest.json")
+		return "", fmt.Errorf("package must contain exactly one manifest.json")
 	}
 	return found[0], nil
 }

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"xiaoheiplay/internal/adapter/realname"
-	"xiaoheiplay/internal/usecase"
+	"xiaoheiplay/internal/app/shared"
 )
 
 type DemoProvider struct{}
@@ -49,5 +49,5 @@ func main() {
 	}
 	fmt.Printf("verified=%v reason=%q\n", ok, reason)
 
-	_ = usecase.RealNameProvider(provider)
+	_ = shared.RealNameProvider(provider)
 }

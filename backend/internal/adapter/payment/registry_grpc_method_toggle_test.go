@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"xiaoheiplay/internal/adapter/plugins"
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/cryptox"
 	"xiaoheiplay/internal/testutil"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestRegistry_GRPCPaymentMethodToggle_Disable(t *testing.T) {
@@ -66,7 +66,7 @@ func TestRegistry_GRPCPaymentMethodToggle_Disable(t *testing.T) {
 		t.Fatalf("upsert payment method: %v", err)
 	}
 
-	if _, err := reg.GetProvider(ctx, "ezpay.alipay"); err != usecase.ErrForbidden {
+	if _, err := reg.GetProvider(ctx, "ezpay.alipay"); err != shared.ErrForbidden {
 		t.Fatalf("expected forbidden, got %v", err)
 	}
 }

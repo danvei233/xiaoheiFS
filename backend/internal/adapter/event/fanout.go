@@ -3,8 +3,8 @@ package event
 import (
 	"context"
 
+	appports "xiaoheiplay/internal/app/ports"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 type EventSink interface {
@@ -12,11 +12,11 @@ type EventSink interface {
 }
 
 type FanoutPublisher struct {
-	primary usecase.EventPublisher
+	primary appports.EventPublisher
 	sinks   []EventSink
 }
 
-func NewFanoutPublisher(primary usecase.EventPublisher, sinks ...EventSink) *FanoutPublisher {
+func NewFanoutPublisher(primary appports.EventPublisher, sinks ...EventSink) *FanoutPublisher {
 	return &FanoutPublisher{primary: primary, sinks: sinks}
 }
 
@@ -34,4 +34,4 @@ func (p *FanoutPublisher) Publish(ctx context.Context, orderID int64, eventType 
 	return ev, nil
 }
 
-var _ usecase.EventPublisher = (*FanoutPublisher)(nil)
+var _ appports.EventPublisher = (*FanoutPublisher)(nil)

@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/testutilhttp"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestHandlers_UserOpsMore(t *testing.T) {
@@ -73,7 +73,7 @@ func TestHandlers_UserOpsMore(t *testing.T) {
 	if err := env.Repo.CreateInstance(context.Background(), &inst); err != nil {
 		t.Fatalf("create instance: %v", err)
 	}
-	env.Automation.HostInfo = map[int64]usecase.AutomationHostInfo{
+	env.Automation.HostInfo = map[int64]shared.AutomationHostInfo{
 		123: {HostID: 123, HostName: "vm-refresh", State: 2, PanelPassword: "pass"},
 	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/orders/"+testutil.Itoa(orderRefresh.ID)+"/refresh", nil, token)

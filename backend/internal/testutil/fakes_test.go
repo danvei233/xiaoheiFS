@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"xiaoheiplay/internal/usecase"
+	"xiaoheiplay/internal/app/shared"
 )
 
 func TestFakeAutomationClient(t *testing.T) {
 	f := &FakeAutomationClient{}
-	res, err := f.CreateHost(context.Background(), usecase.AutomationCreateHostRequest{LineID: 1, OS: "linux", CPU: 1, MemoryGB: 1, DiskGB: 10, Bandwidth: 10, PortNum: 30, HostName: "vm"})
+	res, err := f.CreateHost(context.Background(), shared.AutomationCreateHostRequest{LineID: 1, OS: "linux", CPU: 1, MemoryGB: 1, DiskGB: 10, Bandwidth: 10, PortNum: 30, HostName: "vm"})
 	if err != nil {
 		t.Fatalf("create host: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestFakeAutomationClient(t *testing.T) {
 	if _, err := f.ListHostSimple(context.Background(), "vm"); err != nil {
 		t.Fatalf("list host simple: %v", err)
 	}
-	if err := f.ElasticUpdate(context.Background(), usecase.AutomationElasticUpdateRequest{HostID: res.HostID}); err != nil {
+	if err := f.ElasticUpdate(context.Background(), shared.AutomationElasticUpdateRequest{HostID: res.HostID}); err != nil {
 		t.Fatalf("elastic update: %v", err)
 	}
 	if err := f.RenewHost(context.Background(), res.HostID, time.Now().Add(24*time.Hour)); err != nil {
@@ -78,10 +78,10 @@ func TestFakePaymentProvider(t *testing.T) {
 	if err := p.SetConfig(`{"k":"v"}`); err != nil {
 		t.Fatalf("set config: %v", err)
 	}
-	if _, err := p.CreatePayment(context.Background(), usecase.PaymentCreateRequest{}); err != nil {
+	if _, err := p.CreatePayment(context.Background(), shared.PaymentCreateRequest{}); err != nil {
 		t.Fatalf("create payment: %v", err)
 	}
-	if _, err := p.VerifyNotify(context.Background(), usecase.RawHTTPRequest{RawQuery: "trade_no=t"}); err != nil {
+	if _, err := p.VerifyNotify(context.Background(), shared.RawHTTPRequest{RawQuery: "trade_no=t"}); err != nil {
 		t.Fatalf("verify notify: %v", err)
 	}
 }
@@ -109,7 +109,7 @@ func TestFakeRegistriesAndNotifiers(t *testing.T) {
 	}
 
 	robot := &FakeRobotNotifier{}
-	if err := robot.NotifyOrderPending(context.Background(), usecase.RobotOrderPayload{OrderNo: "ORD-1", UserID: 1, Amount: 100, Currency: "CNY"}); err != nil {
+	if err := robot.NotifyOrderPending(context.Background(), shared.RobotOrderPayload{OrderNo: "ORD-1", UserID: 1, Amount: 100, Currency: "CNY"}); err != nil {
 		t.Fatalf("robot notify: %v", err)
 	}
 

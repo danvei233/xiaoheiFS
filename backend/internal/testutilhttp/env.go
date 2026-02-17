@@ -6,12 +6,36 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	adapteremail "xiaoheiplay/internal/adapter/email"
 	"xiaoheiplay/internal/adapter/http"
 	"xiaoheiplay/internal/adapter/repo"
 	"xiaoheiplay/internal/adapter/sse"
+	appadmin "xiaoheiplay/internal/app/admin"
+	appadminvps "xiaoheiplay/internal/app/adminvps"
+	appauth "xiaoheiplay/internal/app/auth"
+	appautomationlog "xiaoheiplay/internal/app/automationlog"
+	appcart "xiaoheiplay/internal/app/cart"
+	appcatalog "xiaoheiplay/internal/app/catalog"
+	appcms "xiaoheiplay/internal/app/cms"
+	appgoodstype "xiaoheiplay/internal/app/goodstype"
+	appintegration "xiaoheiplay/internal/app/integration"
+	appmessage "xiaoheiplay/internal/app/message"
+	appnotification "xiaoheiplay/internal/app/notification"
+	apporder "xiaoheiplay/internal/app/order"
+	apporderevent "xiaoheiplay/internal/app/orderevent"
+	apppayment "xiaoheiplay/internal/app/payment"
+	apppermission "xiaoheiplay/internal/app/permission"
+	apprealname "xiaoheiplay/internal/app/realname"
+	appreport "xiaoheiplay/internal/app/report"
+	appsecurityticket "xiaoheiplay/internal/app/securityticket"
+	appsettings "xiaoheiplay/internal/app/settings"
+	appticket "xiaoheiplay/internal/app/ticket"
+	appupload "xiaoheiplay/internal/app/upload"
+	appvps "xiaoheiplay/internal/app/vps"
+	appwallet "xiaoheiplay/internal/app/wallet"
+	appwalletorder "xiaoheiplay/internal/app/walletorder"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
-	"xiaoheiplay/internal/usecase"
 )
 
 type Env struct {
@@ -23,19 +47,19 @@ type Env struct {
 	Robot         *testutil.FakeRobotNotifier
 	RealnameReg   *testutil.FakeRealNameRegistry
 	Broker        *sse.Broker
-	AuthSvc       *usecase.AuthService
-	CatalogSvc    *usecase.CatalogService
-	CartSvc       *usecase.CartService
-	OrderSvc      *usecase.OrderService
-	VpsSvc        *usecase.VPSService
-	AdminSvc      *usecase.AdminService
-	AdminVPSSvc   *usecase.AdminVPSService
-	PermissionSvc *usecase.PermissionService
-	PaymentSvc    *usecase.PaymentService
-	MessageSvc    *usecase.MessageCenterService
-	WalletSvc     *usecase.WalletService
-	WalletOrder   *usecase.WalletOrderService
-	NotifySvc     *usecase.NotificationService
+	AuthSvc       *appauth.Service
+	CatalogSvc    *appcatalog.Service
+	CartSvc       *appcart.Service
+	OrderSvc      *apporder.Service
+	VpsSvc        *appvps.Service
+	AdminSvc      *appadmin.Service
+	AdminVPSSvc   *appadminvps.Service
+	PermissionSvc *apppermission.Service
+	PaymentSvc    *apppayment.Service
+	MessageSvc    *appmessage.Service
+	WalletSvc     *appwallet.Service
+	WalletOrder   *appwalletorder.Service
+	NotifySvc     *appnotification.Service
 	Handler       *http.Handler
 	Router        *gin.Engine
 }
@@ -55,35 +79,61 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 	realnameReg := testutil.NewFakeRealNameRegistry()
 	broker := sse.NewBroker(repoSQLite)
 
-	catalogSvc := usecase.NewCatalogService(repoSQLite, repoSQLite, repoSQLite)
-	goodsTypeSvc := usecase.NewGoodsTypeService(repoSQLite, repoSQLite)
-	cartSvc := usecase.NewCartService(repoSQLite, repoSQLite, repoSQLite)
-	messageSvc := usecase.NewMessageCenterService(repoSQLite, repoSQLite)
-	realnameSvc := usecase.NewRealNameService(repoSQLite, realnameReg, repoSQLite)
-	orderSvc := usecase.NewOrderService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, broker, automationResolver, robot, repoSQLite, repoSQLite, email, repoSQLite, repoSQLite, repoSQLite, repoSQLite, messageSvc, realnameSvc)
-	vpsSvc := usecase.NewVPSService(repoSQLite, automationResolver, repoSQLite)
-	adminSvc := usecase.NewAdminService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
-	adminVPSSvc := usecase.NewAdminVPSService(repoSQLite, automationResolver, repoSQLite, repoSQLite, repoSQLite, messageSvc)
-	authSvc := usecase.NewAuthService(repoSQLite, repoSQLite, repoSQLite)
-	permissionSvc := usecase.NewPermissionService(repoSQLite, repoSQLite, repoSQLite)
-	paymentSvc := usecase.NewPaymentService(repoSQLite, repoSQLite, repoSQLite, paymentReg, repoSQLite, orderSvc, broker)
-	walletSvc := usecase.NewWalletService(repoSQLite, repoSQLite)
-	walletOrderSvc := usecase.NewWalletOrderService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
-	notifySvc := usecase.NewNotificationService(repoSQLite, repoSQLite, repoSQLite, email, messageSvc)
-	integrationSvc := usecase.NewIntegrationService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
-	reportSvc := usecase.NewReportService(repoSQLite, repoSQLite, repoSQLite)
-	cmsSvc := usecase.NewCMSService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
-	ticketSvc := usecase.NewTicketService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
+	catalogSvc := appcatalog.NewService(repoSQLite, repoSQLite, repoSQLite)
+	goodsTypeSvc := appgoodstype.NewService(repoSQLite, repoSQLite)
+	cartSvc := appcart.NewService(repoSQLite, repoSQLite, repoSQLite)
+	messageSvc := appmessage.NewService(repoSQLite, repoSQLite)
+	realnameSvc := apprealname.NewService(repoSQLite, realnameReg, repoSQLite)
+	orderSvc := apporder.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, broker, automationResolver, robot, repoSQLite, repoSQLite, email, repoSQLite, repoSQLite, repoSQLite, repoSQLite, messageSvc, realnameSvc)
+	vpsSvc := appvps.NewService(repoSQLite, automationResolver, repoSQLite)
+	adminSvc := appadmin.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
+	adminVPSSvc := appadminvps.NewService(repoSQLite, automationResolver, repoSQLite, repoSQLite, repoSQLite, messageSvc)
+	authSvc := appauth.NewService(repoSQLite, repoSQLite, repoSQLite)
+	permissionSvc := apppermission.NewService(repoSQLite, repoSQLite, repoSQLite)
+	paymentSvc := apppayment.NewService(repoSQLite, repoSQLite, repoSQLite, paymentReg, repoSQLite, orderSvc, broker)
+	walletSvc := appwallet.NewService(repoSQLite, repoSQLite)
+	walletOrderSvc := appwalletorder.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
+	uploadSvc := appupload.NewService(repoSQLite)
+	autoLogSvc := appautomationlog.NewService(repoSQLite)
+	orderEventSvc := apporderevent.NewService(repoSQLite)
+	securityTicketSvc := appsecurityticket.NewService(repoSQLite)
+	settingsSvc := appsettings.NewService(repoSQLite)
+	notifySvc := appnotification.NewService(repoSQLite, repoSQLite, repoSQLite, email, messageSvc)
+	integrationSvc := appintegration.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
+	reportSvc := appreport.NewService(repoSQLite, repoSQLite, repoSQLite)
+	cmsSvc := appcms.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
+	ticketSvc := appticket.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
 	seedDefaultGoodsType(t, repoSQLite)
 
 	jwtSecret := "test-secret"
-	handler := http.NewHandler(
-		authSvc, catalogSvc, goodsTypeSvc, cartSvc, orderSvc, vpsSvc,
-		adminSvc, adminVPSSvc, integrationSvc, reportSvc, cmsSvc, ticketSvc, walletSvc, walletOrderSvc,
-		paymentSvc, messageSvc, nil, realnameSvc, repoSQLite, repoSQLite, repoSQLite,
-		repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite,
-		broker, jwtSecret, nil, permissionSvc, nil,
-	)
+	handler := http.NewHandler(http.HandlerDeps{
+		AuthSvc:           authSvc,
+		CatalogSvc:        catalogSvc,
+		GoodsTypes:        goodsTypeSvc,
+		CartSvc:           cartSvc,
+		OrderSvc:          orderSvc,
+		VPSSvc:            vpsSvc,
+		AdminSvc:          adminSvc,
+		AdminVPS:          adminVPSSvc,
+		Integration:       integrationSvc,
+		ReportSvc:         reportSvc,
+		CMSSvc:            cmsSvc,
+		TicketSvc:         ticketSvc,
+		WalletSvc:         walletSvc,
+		WalletOrder:       walletOrderSvc,
+		PaymentSvc:        paymentSvc,
+		MessageSvc:        messageSvc,
+		RealnameSvc:       realnameSvc,
+		OrderEventSvc:     orderEventSvc,
+		AutoLogSvc:        autoLogSvc,
+		SettingsSvc:       settingsSvc,
+		UploadSvc:         uploadSvc,
+		Broker:            broker,
+		JWTSecret:         jwtSecret,
+		SecurityTicketSvc: securityTicketSvc,
+		PermissionSvc:     permissionSvc,
+		EmailSender:       adapteremail.NewSender(repoSQLite),
+	})
 	middleware := http.NewMiddleware(jwtSecret, nil, permissionSvc)
 	server := http.NewServer(handler, middleware)
 

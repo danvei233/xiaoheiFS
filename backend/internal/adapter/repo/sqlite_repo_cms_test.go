@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestSQLiteRepo_CMSCrud(t *testing.T) {
@@ -45,7 +45,7 @@ func TestSQLiteRepo_CMSCrud(t *testing.T) {
 	if err := repo.UpdateCMSPost(ctx, post); err != nil {
 		t.Fatalf("update post: %v", err)
 	}
-	if list, _, err := repo.ListCMSPosts(ctx, usecase.CMSPostFilter{Lang: "zh-CN", Limit: 10}); err != nil || len(list) == 0 {
+	if list, _, err := repo.ListCMSPosts(ctx, shared.CMSPostFilter{Lang: "zh-CN", Limit: 10}); err != nil || len(list) == 0 {
 		t.Fatalf("list posts: %v", err)
 	}
 

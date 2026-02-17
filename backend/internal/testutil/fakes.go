@@ -2,27 +2,27 @@ package testutil
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
-	"xiaoheiplay/internal/usecase"
+	"fmt"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
 type FakeAutomationClient struct {
 	mu sync.Mutex
 
-	CreateHostRequests []usecase.AutomationCreateHostRequest
-	CreateHostResult   usecase.AutomationCreateHostResult
+	CreateHostRequests []appshared.AutomationCreateHostRequest
+	CreateHostResult   appshared.AutomationCreateHostResult
 	CreateHostErr      error
 
-	HostInfo    map[int64]usecase.AutomationHostInfo
+	HostInfo    map[int64]appshared.AutomationHostInfo
 	HostInfoErr error
 
-	ListHostSimpleItems []usecase.AutomationHostSimple
+	ListHostSimpleItems []appshared.AutomationHostSimple
 	ListHostSimpleErr   error
 
-	ElasticUpdates []usecase.AutomationElasticUpdateRequest
+	ElasticUpdates []appshared.AutomationElasticUpdateRequest
 	ElasticErr     error
 
 	RenewCalls []struct {
@@ -46,18 +46,18 @@ type FakeAutomationClient struct {
 		HostID   int64
 		Password string
 	}
-	SnapshotList []usecase.AutomationSnapshot
-	BackupList   []usecase.AutomationBackup
-	FirewallList []usecase.AutomationFirewallRule
-	PortList     []usecase.AutomationPortMapping
+	SnapshotList []appshared.AutomationSnapshot
+	BackupList   []appshared.AutomationBackup
+	FirewallList []appshared.AutomationFirewallRule
+	PortList     []appshared.AutomationPortMapping
 }
 
 type FakeAutomationResolver struct {
-	Client usecase.AutomationClient
+	Client appshared.AutomationClient
 	Err    error
 }
 
-func (r *FakeAutomationResolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (usecase.AutomationClient, error) {
+func (r *FakeAutomationResolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (appshared.AutomationClient, error) {
 	_ = ctx
 	_ = goodsTypeID
 	if r.Err != nil {
@@ -66,12 +66,12 @@ func (r *FakeAutomationResolver) ClientForGoodsType(ctx context.Context, goodsTy
 	return r.Client, nil
 }
 
-func (f *FakeAutomationClient) CreateHost(ctx context.Context, req usecase.AutomationCreateHostRequest) (usecase.AutomationCreateHostResult, error) {
+func (f *FakeAutomationClient) CreateHost(ctx context.Context, req appshared.AutomationCreateHostRequest) (appshared.AutomationCreateHostResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.CreateHostRequests = append(f.CreateHostRequests, req)
 	if f.CreateHostErr != nil {
-		return usecase.AutomationCreateHostResult{}, f.CreateHostErr
+		return appshared.AutomationCreateHostResult{}, f.CreateHostErr
 	}
 	if f.CreateHostResult.HostID == 0 {
 		f.CreateHostResult.HostID = 1001
@@ -79,29 +79,29 @@ func (f *FakeAutomationClient) CreateHost(ctx context.Context, req usecase.Autom
 	return f.CreateHostResult, nil
 }
 
-func (f *FakeAutomationClient) GetHostInfo(ctx context.Context, hostID int64) (usecase.AutomationHostInfo, error) {
+func (f *FakeAutomationClient) GetHostInfo(ctx context.Context, hostID int64) (appshared.AutomationHostInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.HostInfoErr != nil {
-		return usecase.AutomationHostInfo{}, f.HostInfoErr
+		return appshared.AutomationHostInfo{}, f.HostInfoErr
 	}
 	if f.HostInfo == nil {
-		return usecase.AutomationHostInfo{HostID: hostID, State: 2, HostName: "host"}, nil
+		return appshared.AutomationHostInfo{HostID: hostID, State: 2, HostName: "host"}, nil
 	}
 	if info, ok := f.HostInfo[hostID]; ok {
 		return info, nil
 	}
-	return usecase.AutomationHostInfo{}, errors.New("host not found")
+	return appshared.AutomationHostInfo{}, fmt.Errorf("host not found")
 }
 
-func (f *FakeAutomationClient) ListHostSimple(ctx context.Context, searchTag string) ([]usecase.AutomationHostSimple, error) {
+func (f *FakeAutomationClient) ListHostSimple(ctx context.Context, searchTag string) ([]appshared.AutomationHostSimple, error) {
 	if f.ListHostSimpleErr != nil {
 		return nil, f.ListHostSimpleErr
 	}
 	return f.ListHostSimpleItems, nil
 }
 
-func (f *FakeAutomationClient) ElasticUpdate(ctx context.Context, req usecase.AutomationElasticUpdateRequest) error {
+func (f *FakeAutomationClient) ElasticUpdate(ctx context.Context, req appshared.AutomationElasticUpdateRequest) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ElasticUpdates = append(f.ElasticUpdates, req)
@@ -181,7 +181,7 @@ func (f *FakeAutomationClient) ResetOSPassword(ctx context.Context, hostID int64
 	return nil
 }
 
-func (f *FakeAutomationClient) ListSnapshots(ctx context.Context, hostID int64) ([]usecase.AutomationSnapshot, error) {
+func (f *FakeAutomationClient) ListSnapshots(ctx context.Context, hostID int64) ([]appshared.AutomationSnapshot, error) {
 	return f.SnapshotList, nil
 }
 
@@ -197,7 +197,7 @@ func (f *FakeAutomationClient) RestoreSnapshot(ctx context.Context, hostID int64
 	return nil
 }
 
-func (f *FakeAutomationClient) ListBackups(ctx context.Context, hostID int64) ([]usecase.AutomationBackup, error) {
+func (f *FakeAutomationClient) ListBackups(ctx context.Context, hostID int64) ([]appshared.AutomationBackup, error) {
 	return f.BackupList, nil
 }
 
@@ -213,11 +213,11 @@ func (f *FakeAutomationClient) RestoreBackup(ctx context.Context, hostID int64, 
 	return nil
 }
 
-func (f *FakeAutomationClient) ListFirewallRules(ctx context.Context, hostID int64) ([]usecase.AutomationFirewallRule, error) {
+func (f *FakeAutomationClient) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, error) {
 	return f.FirewallList, nil
 }
 
-func (f *FakeAutomationClient) AddFirewallRule(ctx context.Context, req usecase.AutomationFirewallRuleCreate) error {
+func (f *FakeAutomationClient) AddFirewallRule(ctx context.Context, req appshared.AutomationFirewallRuleCreate) error {
 	return nil
 }
 
@@ -225,11 +225,11 @@ func (f *FakeAutomationClient) DeleteFirewallRule(ctx context.Context, hostID in
 	return nil
 }
 
-func (f *FakeAutomationClient) ListPortMappings(ctx context.Context, hostID int64) ([]usecase.AutomationPortMapping, error) {
+func (f *FakeAutomationClient) ListPortMappings(ctx context.Context, hostID int64) ([]appshared.AutomationPortMapping, error) {
 	return f.PortList, nil
 }
 
-func (f *FakeAutomationClient) AddPortMapping(ctx context.Context, req usecase.AutomationPortMappingCreate) error {
+func (f *FakeAutomationClient) AddPortMapping(ctx context.Context, req appshared.AutomationPortMappingCreate) error {
 	return nil
 }
 
@@ -245,24 +245,24 @@ func (f *FakeAutomationClient) GetPanelURL(ctx context.Context, hostName string,
 	return "https://panel.local/" + hostName, nil
 }
 
-func (f *FakeAutomationClient) ListAreas(ctx context.Context) ([]usecase.AutomationArea, error) {
-	return []usecase.AutomationArea{}, nil
+func (f *FakeAutomationClient) ListAreas(ctx context.Context) ([]appshared.AutomationArea, error) {
+	return []appshared.AutomationArea{}, nil
 }
 
-func (f *FakeAutomationClient) ListImages(ctx context.Context, lineID int64) ([]usecase.AutomationImage, error) {
-	return []usecase.AutomationImage{}, nil
+func (f *FakeAutomationClient) ListImages(ctx context.Context, lineID int64) ([]appshared.AutomationImage, error) {
+	return []appshared.AutomationImage{}, nil
 }
 
-func (f *FakeAutomationClient) ListLines(ctx context.Context) ([]usecase.AutomationLine, error) {
-	return []usecase.AutomationLine{}, nil
+func (f *FakeAutomationClient) ListLines(ctx context.Context) ([]appshared.AutomationLine, error) {
+	return []appshared.AutomationLine{}, nil
 }
 
-func (f *FakeAutomationClient) ListProducts(ctx context.Context, lineID int64) ([]usecase.AutomationProduct, error) {
-	return []usecase.AutomationProduct{}, nil
+func (f *FakeAutomationClient) ListProducts(ctx context.Context, lineID int64) ([]appshared.AutomationProduct, error) {
+	return []appshared.AutomationProduct{}, nil
 }
 
-func (f *FakeAutomationClient) GetMonitor(ctx context.Context, hostID int64) (usecase.AutomationMonitor, error) {
-	return usecase.AutomationMonitor{CPUPercent: 10, MemoryPercent: 20}, nil
+func (f *FakeAutomationClient) GetMonitor(ctx context.Context, hostID int64) (appshared.AutomationMonitor, error) {
+	return appshared.AutomationMonitor{CPUPercent: 10, MemoryPercent: 20}, nil
 }
 
 func (f *FakeAutomationClient) GetVNCURL(ctx context.Context, hostID int64) (string, error) {
@@ -273,11 +273,11 @@ type FakePaymentProvider struct {
 	KeyVal     string
 	NameVal    string
 	Schema     string
-	CreateRes  usecase.PaymentCreateResult
+	CreateRes  appshared.PaymentCreateResult
 	CreateErr  error
-	VerifyRes  usecase.PaymentNotifyResult
+	VerifyRes  appshared.PaymentNotifyResult
 	VerifyErr  error
-	VerifyFunc func(req usecase.RawHTTPRequest) (usecase.PaymentNotifyResult, error)
+	VerifyFunc func(req appshared.RawHTTPRequest) (appshared.PaymentNotifyResult, error)
 }
 
 func (f *FakePaymentProvider) Key() string        { return f.KeyVal }
@@ -286,18 +286,18 @@ func (f *FakePaymentProvider) SchemaJSON() string { return f.Schema }
 func (f *FakePaymentProvider) SetConfig(configJSON string) error {
 	return nil
 }
-func (f *FakePaymentProvider) CreatePayment(ctx context.Context, req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error) {
+func (f *FakePaymentProvider) CreatePayment(ctx context.Context, req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error) {
 	if f.CreateErr != nil {
-		return usecase.PaymentCreateResult{}, f.CreateErr
+		return appshared.PaymentCreateResult{}, f.CreateErr
 	}
 	return f.CreateRes, nil
 }
-func (f *FakePaymentProvider) VerifyNotify(ctx context.Context, req usecase.RawHTTPRequest) (usecase.PaymentNotifyResult, error) {
+func (f *FakePaymentProvider) VerifyNotify(ctx context.Context, req appshared.RawHTTPRequest) (appshared.PaymentNotifyResult, error) {
 	if f.VerifyFunc != nil {
 		return f.VerifyFunc(req)
 	}
 	if f.VerifyErr != nil {
-		return usecase.PaymentNotifyResult{}, f.VerifyErr
+		return appshared.PaymentNotifyResult{}, f.VerifyErr
 	}
 	return f.VerifyRes, nil
 }
@@ -306,21 +306,21 @@ type FakePaymentRegistry struct {
 	mu      sync.Mutex
 	enabled map[string]bool
 	config  map[string]string
-	prov    map[string]usecase.PaymentProvider
+	prov    map[string]appshared.PaymentProvider
 }
 
 func NewFakePaymentRegistry() *FakePaymentRegistry {
 	return &FakePaymentRegistry{
 		enabled: map[string]bool{},
 		config:  map[string]string{},
-		prov:    map[string]usecase.PaymentProvider{},
+		prov:    map[string]appshared.PaymentProvider{},
 	}
 }
 
-func (r *FakePaymentRegistry) ListProviders(ctx context.Context, includeDisabled bool) ([]usecase.PaymentProvider, error) {
+func (r *FakePaymentRegistry) ListProviders(ctx context.Context, includeDisabled bool) ([]appshared.PaymentProvider, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]usecase.PaymentProvider, 0, len(r.prov))
+	out := make([]appshared.PaymentProvider, 0, len(r.prov))
 	for key, provider := range r.prov {
 		enabled := r.enabled[key]
 		if !enabled && !includeDisabled {
@@ -331,15 +331,15 @@ func (r *FakePaymentRegistry) ListProviders(ctx context.Context, includeDisabled
 	return out, nil
 }
 
-func (r *FakePaymentRegistry) GetProvider(ctx context.Context, key string) (usecase.PaymentProvider, error) {
+func (r *FakePaymentRegistry) GetProvider(ctx context.Context, key string) (appshared.PaymentProvider, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	provider, ok := r.prov[key]
 	if !ok {
-		return nil, usecase.ErrNotFound
+		return nil, appshared.ErrNotFound
 	}
 	if !r.enabled[key] {
-		return nil, usecase.ErrForbidden
+		return nil, appshared.ErrForbidden
 	}
 	return provider, nil
 }
@@ -360,7 +360,7 @@ func (r *FakePaymentRegistry) UpdateProviderConfig(ctx context.Context, key stri
 	return nil
 }
 
-func (r *FakePaymentRegistry) RegisterProvider(provider usecase.PaymentProvider, enabled bool, configJSON string) {
+func (r *FakePaymentRegistry) RegisterProvider(provider appshared.PaymentProvider, enabled bool, configJSON string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.prov[provider.Key()] = provider
@@ -391,11 +391,11 @@ func (f *FakeEmailSender) Send(ctx context.Context, to string, subject string, b
 
 type FakeRobotNotifier struct {
 	mu      sync.Mutex
-	Payload []usecase.RobotOrderPayload
+	Payload []appshared.RobotOrderPayload
 	Err     error
 }
 
-func (f *FakeRobotNotifier) NotifyOrderPending(ctx context.Context, payload usecase.RobotOrderPayload) error {
+func (f *FakeRobotNotifier) NotifyOrderPending(ctx context.Context, payload appshared.RobotOrderPayload) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.Payload = append(f.Payload, payload)
@@ -418,43 +418,43 @@ func (f *FakeRealNameProvider) Verify(ctx context.Context, realName string, idNu
 
 type FakeRealNameRegistry struct {
 	mu        sync.Mutex
-	providers map[string]usecase.RealNameProvider
+	providers map[string]appshared.RealNameProvider
 }
 
 func NewFakeRealNameRegistry() *FakeRealNameRegistry {
-	reg := &FakeRealNameRegistry{providers: map[string]usecase.RealNameProvider{}}
+	reg := &FakeRealNameRegistry{providers: map[string]appshared.RealNameProvider{}}
 	reg.providers["fake"] = &FakeRealNameProvider{KeyVal: "fake", NameVal: "Fake", OK: true}
 	return reg
 }
 
-func (r *FakeRealNameRegistry) GetProvider(key string) (usecase.RealNameProvider, error) {
+func (r *FakeRealNameRegistry) GetProvider(key string) (appshared.RealNameProvider, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if p, ok := r.providers[key]; ok {
 		return p, nil
 	}
-	return nil, usecase.ErrNotFound
+	return nil, appshared.ErrNotFound
 }
 
-func (r *FakeRealNameRegistry) ListProviders() []usecase.RealNameProvider {
+func (r *FakeRealNameRegistry) ListProviders() []appshared.RealNameProvider {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := make([]usecase.RealNameProvider, 0, len(r.providers))
+	out := make([]appshared.RealNameProvider, 0, len(r.providers))
 	for _, p := range r.providers {
 		out = append(out, p)
 	}
 	return out
 }
 
-func (r *FakeRealNameRegistry) Register(provider usecase.RealNameProvider) {
+func (r *FakeRealNameRegistry) Register(provider appshared.RealNameProvider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers[provider.Key()] = provider
 }
 
-var _ usecase.AutomationClient = (*FakeAutomationClient)(nil)
-var _ usecase.PaymentProviderRegistry = (*FakePaymentRegistry)(nil)
-var _ usecase.EmailSender = (*FakeEmailSender)(nil)
-var _ usecase.RobotNotifier = (*FakeRobotNotifier)(nil)
-var _ usecase.RealNameProviderRegistry = (*FakeRealNameRegistry)(nil)
-var _ usecase.RealNameProvider = (*FakeRealNameProvider)(nil)
+var _ appshared.AutomationClient = (*FakeAutomationClient)(nil)
+var _ appshared.PaymentProviderRegistry = (*FakePaymentRegistry)(nil)
+var _ appshared.EmailSender = (*FakeEmailSender)(nil)
+var _ appshared.RobotNotifier = (*FakeRobotNotifier)(nil)
+var _ appshared.RealNameProviderRegistry = (*FakeRealNameRegistry)(nil)
+var _ appshared.RealNameProvider = (*FakeRealNameProvider)(nil)

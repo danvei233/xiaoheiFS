@@ -11,7 +11,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -475,12 +474,12 @@ func rawToHTTPRequest(raw *pluginv1.RawHttpRequest) *http.Request {
 func parseRSAPrivateKeyPEM(pemStr string) (*rsa.PrivateKey, error) {
 	pemStr = strings.TrimSpace(pemStr)
 	if pemStr == "" {
-		return nil, errors.New("empty private key")
+		return nil, fmt.Errorf("empty private key")
 	}
 	tryParse := func(s string) (*rsa.PrivateKey, error) {
 		block, _ := pem.Decode([]byte(s))
 		if block == nil {
-			return nil, errors.New("invalid pem")
+			return nil, fmt.Errorf("invalid pem")
 		}
 		if k, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
 			if rk, ok := k.(*rsa.PrivateKey); ok {
@@ -490,7 +489,7 @@ func parseRSAPrivateKeyPEM(pemStr string) (*rsa.PrivateKey, error) {
 		if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 			return k, nil
 		}
-		return nil, errors.New("unsupported key type")
+		return nil, fmt.Errorf("unsupported key type")
 	}
 
 	// First try direct PEM parsing (BEGIN/END provided).
@@ -520,10 +519,10 @@ func parseRSAPrivateKeyPEM(pemStr string) (*rsa.PrivateKey, error) {
 		compact = strings.ReplaceAll(compact, " ", "")
 	}
 	if compact == "" {
-		return nil, errors.New("empty private key")
+		return nil, fmt.Errorf("empty private key")
 	}
 	if _, err := base64.StdEncoding.DecodeString(compact); err != nil {
-		return nil, errors.New("invalid private key pem/base64")
+		return nil, fmt.Errorf("invalid private key pem/base64")
 	}
 	wrap := func(typ string) string {
 		var b strings.Builder
@@ -544,7 +543,7 @@ func parseRSAPrivateKeyPEM(pemStr string) (*rsa.PrivateKey, error) {
 	if k, err := tryParse(wrap("RSA PRIVATE KEY")); err == nil {
 		return k, nil
 	}
-	return nil, errors.New("invalid merchant_private_key_pem")
+	return nil, fmt.Errorf("invalid merchant_private_key_pem")
 }
 
 func signWechatJSAPI(priv *rsa.PrivateKey, appID, timeStamp, nonceStr, pkg string) (string, error) {

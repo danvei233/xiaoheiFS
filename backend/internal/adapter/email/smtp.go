@@ -9,14 +9,14 @@ import (
 	"strings"
 	"time"
 
-	"xiaoheiplay/internal/usecase"
+	appports "xiaoheiplay/internal/app/ports"
 )
 
 type Sender struct {
-	settings usecase.SettingsRepository
+	settings appports.SettingsRepository
 }
 
-func NewSender(settings usecase.SettingsRepository) *Sender {
+func NewSender(settings appports.SettingsRepository) *Sender {
 	return &Sender{settings: settings}
 }
 

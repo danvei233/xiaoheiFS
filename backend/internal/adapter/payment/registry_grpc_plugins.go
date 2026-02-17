@@ -2,13 +2,12 @@ package payment
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	plugins "xiaoheiplay/internal/adapter/plugins"
-	"xiaoheiplay/internal/usecase"
+	appshared "xiaoheiplay/internal/app/shared"
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
 
@@ -33,13 +32,13 @@ func (p *grpcPaymentProvider) Name() string {
 
 func (p *grpcPaymentProvider) SchemaJSON() string { return "" }
 
-func (p *grpcPaymentProvider) CreatePayment(ctx context.Context, req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error) {
+func (p *grpcPaymentProvider) CreatePayment(ctx context.Context, req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error) {
 	if p.mgr == nil {
-		return usecase.PaymentCreateResult{}, errors.New("plugin manager missing")
+		return appshared.PaymentCreateResult{}, fmt.Errorf("plugin manager missing")
 	}
 	client, ok := p.mgr.GetPaymentClient(p.category, p.pluginID, plugins.DefaultInstanceID)
 	if !ok {
-		return usecase.PaymentCreateResult{}, usecase.ErrForbidden
+		return appshared.PaymentCreateResult{}, appshared.ErrForbidden
 	}
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -57,28 +56,28 @@ func (p *grpcPaymentProvider) CreatePayment(ctx context.Context, req usecase.Pay
 		},
 	})
 	if err != nil {
-		return usecase.PaymentCreateResult{}, err
+		return appshared.PaymentCreateResult{}, err
 	}
 	if resp != nil && !resp.Ok {
 		if resp.Error != "" {
-			return usecase.PaymentCreateResult{}, errors.New(resp.Error)
+			return appshared.PaymentCreateResult{}, fmt.Errorf("%s", resp.Error)
 		}
-		return usecase.PaymentCreateResult{}, errors.New("create payment failed")
+		return appshared.PaymentCreateResult{}, fmt.Errorf("create payment failed")
 	}
-	return usecase.PaymentCreateResult{
+	return appshared.PaymentCreateResult{
 		TradeNo: resp.TradeNo,
 		PayURL:  resp.PayUrl,
 		Extra:   resp.Extra,
 	}, nil
 }
 
-func (p *grpcPaymentProvider) VerifyNotify(ctx context.Context, req usecase.RawHTTPRequest) (usecase.PaymentNotifyResult, error) {
+func (p *grpcPaymentProvider) VerifyNotify(ctx context.Context, req appshared.RawHTTPRequest) (appshared.PaymentNotifyResult, error) {
 	if p.mgr == nil {
-		return usecase.PaymentNotifyResult{}, errors.New("plugin manager missing")
+		return appshared.PaymentNotifyResult{}, fmt.Errorf("plugin manager missing")
 	}
 	client, ok := p.mgr.GetPaymentClient(p.category, p.pluginID, plugins.DefaultInstanceID)
 	if !ok {
-		return usecase.PaymentNotifyResult{}, usecase.ErrForbidden
+		return appshared.PaymentNotifyResult{}, appshared.ErrForbidden
 	}
 	headers := map[string]*pluginv1.StringList{}
 	for k, v := range req.Headers {
@@ -99,20 +98,20 @@ func (p *grpcPaymentProvider) VerifyNotify(ctx context.Context, req usecase.RawH
 		},
 	})
 	if err != nil {
-		return usecase.PaymentNotifyResult{}, err
+		return appshared.PaymentNotifyResult{}, err
 	}
 	if resp != nil && !resp.Ok {
 		if resp.Error != "" {
-			return usecase.PaymentNotifyResult{}, errors.New(resp.Error)
+			return appshared.PaymentNotifyResult{}, fmt.Errorf("%s", resp.Error)
 		}
-		return usecase.PaymentNotifyResult{}, errors.New("verify notify failed")
+		return appshared.PaymentNotifyResult{}, fmt.Errorf("verify notify failed")
 	}
 	paid := resp.Status == pluginv1.PaymentStatus_PAYMENT_STATUS_PAID
 	raw := map[string]string{
 		"order_no": resp.OrderNo,
 		"raw_json": resp.RawJson,
 	}
-	return usecase.PaymentNotifyResult{
+	return appshared.PaymentNotifyResult{
 		OrderNo: resp.OrderNo,
 		TradeNo: resp.TradeNo,
 		Paid:    paid,
@@ -122,12 +121,12 @@ func (p *grpcPaymentProvider) VerifyNotify(ctx context.Context, req usecase.RawH
 	}, nil
 }
 
-func (r *Registry) grpcProviders(ctx context.Context) []usecase.PaymentProvider {
+func (r *Registry) grpcProviders(ctx context.Context) []appshared.PaymentProvider {
 	items, err := r.grpcPlugins.List(ctx)
 	if err != nil {
 		return nil
 	}
-	var out []usecase.PaymentProvider
+	var out []appshared.PaymentProvider
 	for _, it := range items {
 		if !it.Enabled || !it.Loaded || it.InstanceID != plugins.DefaultInstanceID || it.Capabilities.Capabilities.Payment == nil {
 			continue
@@ -157,7 +156,7 @@ func (r *Registry) grpcProviders(ctx context.Context) []usecase.PaymentProvider 
 	return out
 }
 
-func (r *Registry) grpcProviderByKey(ctx context.Context, key string) usecase.PaymentProvider {
+func (r *Registry) grpcProviderByKey(ctx context.Context, key string) appshared.PaymentProvider {
 	parts := strings.SplitN(strings.TrimSpace(key), ".", 2)
 	if len(parts) != 2 {
 		return nil

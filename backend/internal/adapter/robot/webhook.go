@@ -10,16 +10,17 @@ import (
 	"net/http"
 	"time"
 
+	appports "xiaoheiplay/internal/app/ports"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 type WebhookNotifier struct {
-	settings usecase.SettingsRepository
+	settings appports.SettingsRepository
 	http     *http.Client
 }
 
-func NewWebhookNotifier(settings usecase.SettingsRepository) *WebhookNotifier {
+func NewWebhookNotifier(settings appports.SettingsRepository) *WebhookNotifier {
 	return &WebhookNotifier{
 		settings: settings,
 		http:     &http.Client{Timeout: 8 * time.Second},
@@ -71,10 +72,10 @@ func signHMACSHA256Hex(body []byte, secret string) string {
 	return fmt.Sprintf("%x", mac.Sum(nil))
 }
 
-func (n *WebhookNotifier) loadWebhooks(ctx context.Context) []usecase.RobotWebhookConfig {
+func (n *WebhookNotifier) loadWebhooks(ctx context.Context) []appshared.RobotWebhookConfig {
 	setting, err := n.settings.GetSetting(ctx, "robot_webhooks")
 	if err == nil && setting.ValueJSON != "" {
-		if hooks := usecase.ParseRobotWebhookConfigs(setting.ValueJSON); len(hooks) > 0 {
+		if hooks := appshared.ParseRobotWebhookConfigs(setting.ValueJSON); len(hooks) > 0 {
 			return hooks
 		}
 	}
@@ -87,7 +88,7 @@ func (n *WebhookNotifier) loadWebhooks(ctx context.Context) []usecase.RobotWebho
 		return nil
 	}
 	secretSetting, _ := n.settings.GetSetting(ctx, "robot_webhook_secret")
-	return []usecase.RobotWebhookConfig{
+	return []appshared.RobotWebhookConfig{
 		{
 			Name:    "default",
 			URL:     urlSetting.ValueJSON,

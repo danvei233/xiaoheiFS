@@ -8,7 +8,7 @@ import (
 	"github.com/hashicorp/go-plugin"
 
 	paymentplugin "xiaoheiplay/internal/adapter/payment/plugin"
-	"xiaoheiplay/internal/usecase"
+	"xiaoheiplay/internal/app/shared"
 )
 
 type demoConfig struct {
@@ -50,9 +50,9 @@ func (p *DemoPaymentProvider) SetConfig(configJSON string) error {
 	return json.Unmarshal([]byte(configJSON), &p.cfg)
 }
 
-func (p *DemoPaymentProvider) CreatePayment(req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error) {
+func (p *DemoPaymentProvider) CreatePayment(req shared.PaymentCreateRequest) (shared.PaymentCreateResult, error) {
 	tradeNo := fmt.Sprintf("demo-%d-%d", req.OrderID, req.UserID)
-	return usecase.PaymentCreateResult{
+	return shared.PaymentCreateResult{
 		TradeNo: tradeNo,
 		PayURL:  fmt.Sprintf("%s/pay?trade_no=%s", p.cfg.BaseURL, tradeNo),
 		Extra: map[string]string{
@@ -61,10 +61,10 @@ func (p *DemoPaymentProvider) CreatePayment(req usecase.PaymentCreateRequest) (u
 	}, nil
 }
 
-func (p *DemoPaymentProvider) VerifyNotify(params map[string]string) (usecase.PaymentNotifyResult, error) {
+func (p *DemoPaymentProvider) VerifyNotify(params map[string]string) (shared.PaymentNotifyResult, error) {
 	tradeNo := params["trade_no"]
 	paid := params["status"] == "paid"
-	return usecase.PaymentNotifyResult{
+	return shared.PaymentNotifyResult{
 		TradeNo: tradeNo,
 		Paid:    paid,
 		Amount:  0,

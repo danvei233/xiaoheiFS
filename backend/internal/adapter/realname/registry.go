@@ -5,20 +5,21 @@ import (
 	"strings"
 
 	plugins "xiaoheiplay/internal/adapter/plugins"
-	"xiaoheiplay/internal/usecase"
+	appports "xiaoheiplay/internal/app/ports"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
 type Registry struct {
-	providers map[string]usecase.RealNameProvider
+	providers map[string]appshared.RealNameProvider
 	pluginMgr *plugins.Manager
 }
 
-func NewRegistry(settings ...usecase.SettingsRepository) *Registry {
-	var settingRepo usecase.SettingsRepository
+func NewRegistry(settings ...appports.SettingsRepository) *Registry {
+	var settingRepo appports.SettingsRepository
 	if len(settings) > 0 {
 		settingRepo = settings[0]
 	}
-	reg := &Registry{providers: map[string]usecase.RealNameProvider{}}
+	reg := &Registry{providers: map[string]appshared.RealNameProvider{}}
 	reg.Register(&IDCardCNProvider{})
 	_ = settingRepo
 	return reg
@@ -28,14 +29,14 @@ func (r *Registry) SetPluginManager(mgr *plugins.Manager) {
 	r.pluginMgr = mgr
 }
 
-func (r *Registry) Register(provider usecase.RealNameProvider) {
+func (r *Registry) Register(provider appshared.RealNameProvider) {
 	if provider == nil {
 		return
 	}
 	r.providers[provider.Key()] = provider
 }
 
-func (r *Registry) GetProvider(key string) (usecase.RealNameProvider, error) {
+func (r *Registry) GetProvider(key string) (appshared.RealNameProvider, error) {
 	if provider, ok := r.providers[key]; ok {
 		return provider, nil
 	}
@@ -46,11 +47,11 @@ func (r *Registry) GetProvider(key string) (usecase.RealNameProvider, error) {
 			}
 		}
 	}
-	return nil, usecase.ErrNotFound
+	return nil, appshared.ErrNotFound
 }
 
-func (r *Registry) ListProviders() []usecase.RealNameProvider {
-	out := make([]usecase.RealNameProvider, 0, len(r.providers))
+func (r *Registry) ListProviders() []appshared.RealNameProvider {
+	out := make([]appshared.RealNameProvider, 0, len(r.providers))
 	for _, provider := range r.providers {
 		out = append(out, provider)
 	}
@@ -60,12 +61,12 @@ func (r *Registry) ListProviders() []usecase.RealNameProvider {
 	return out
 }
 
-func (r *Registry) pluginProviders(ctx context.Context) []usecase.RealNameProvider {
+func (r *Registry) pluginProviders(ctx context.Context) []appshared.RealNameProvider {
 	items, err := r.pluginMgr.List(ctx)
 	if err != nil {
 		return nil
 	}
-	out := make([]usecase.RealNameProvider, 0)
+	out := make([]appshared.RealNameProvider, 0)
 	for _, it := range items {
 		if strings.TrimSpace(it.Category) != "kyc" || !it.Enabled || !it.Loaded {
 			continue
@@ -87,7 +88,7 @@ func (r *Registry) pluginProviders(ctx context.Context) []usecase.RealNameProvid
 	return out
 }
 
-func (r *Registry) pluginProviderByID(ctx context.Context, pluginID, instanceID string) usecase.RealNameProvider {
+func (r *Registry) pluginProviderByID(ctx context.Context, pluginID, instanceID string) appshared.RealNameProvider {
 	pluginID = strings.TrimSpace(pluginID)
 	instanceID = strings.TrimSpace(instanceID)
 	if instanceID == "" {

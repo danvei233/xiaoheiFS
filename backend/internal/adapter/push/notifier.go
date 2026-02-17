@@ -3,16 +3,17 @@ package push
 import (
 	"context"
 
+	appports "xiaoheiplay/internal/app/ports"
+	apppush "xiaoheiplay/internal/app/push"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 type OrderPushNotifier struct {
-	orders usecase.OrderRepository
-	push   *usecase.PushService
+	orders appports.OrderRepository
+	push   *apppush.Service
 }
 
-func NewOrderPushNotifier(orders usecase.OrderRepository, push *usecase.PushService) *OrderPushNotifier {
+func NewOrderPushNotifier(orders appports.OrderRepository, push *apppush.Service) *OrderPushNotifier {
 	return &OrderPushNotifier{
 		orders: orders,
 		push:   push,

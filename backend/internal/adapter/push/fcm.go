@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/oauth2/google"
 
-	"xiaoheiplay/internal/usecase"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
 const (
@@ -31,7 +31,7 @@ func NewFCMSender() *FCMSender {
 	}
 }
 
-func (s *FCMSender) Send(ctx context.Context, config usecase.PushConfig, tokens []string, payload usecase.PushPayload) error {
+func (s *FCMSender) Send(ctx context.Context, config appshared.PushConfig, tokens []string, payload appshared.PushPayload) error {
 	if len(tokens) == 0 {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (s *FCMSender) Send(ctx context.Context, config usecase.PushConfig, tokens 
 	return nil
 }
 
-func (s *FCMSender) sendLegacyBatch(ctx context.Context, serverKey string, tokens []string, payload usecase.PushPayload) error {
+func (s *FCMSender) sendLegacyBatch(ctx context.Context, serverKey string, tokens []string, payload appshared.PushPayload) error {
 	body := map[string]any{
 		"registration_ids": tokens,
 		"priority":         "high",
@@ -97,7 +97,7 @@ func (s *FCMSender) sendLegacyBatch(ctx context.Context, serverKey string, token
 	return nil
 }
 
-func (s *FCMSender) sendV1(ctx context.Context, projectID, serviceAccountJSON, token string, payload usecase.PushPayload) error {
+func (s *FCMSender) sendV1(ctx context.Context, projectID, serviceAccountJSON, token string, payload appshared.PushPayload) error {
 	creds, err := google.CredentialsFromJSON(ctx, []byte(serviceAccountJSON), fcmOAuthScope)
 	if err != nil {
 		return fmt.Errorf("fcm v1 credentials invalid: %w", err)

@@ -15,10 +15,10 @@ import (
 
 	"xiaoheiplay/internal/adapter/repo"
 	"xiaoheiplay/internal/adapter/seed"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
-	"xiaoheiplay/internal/usecase"
 
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"gopkg.in/yaml.v3"
@@ -60,7 +60,7 @@ func (h *Handler) InstallDBCheck(c *gin.Context) {
 			DSN  string `json:"dsn"`
 		} `json:"db"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
@@ -134,7 +134,7 @@ func (h *Handler) InstallRun(c *gin.Context) {
 			Password string `json:"password"`
 		} `json:"admin"`
 	}
-	if err := c.ShouldBindJSON(&payload); err != nil {
+	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
@@ -225,7 +225,7 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	}
 
 	existingAdmin, adminLookupErr := repoAny.GetUserByUsernameOrEmail(ctx, adminUser)
-	if adminLookupErr != nil && !errors.Is(adminLookupErr, usecase.ErrNotFound) {
+	if adminLookupErr != nil && !errors.Is(adminLookupErr, appshared.ErrNotFound) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "query admin failed: " + adminLookupErr.Error()})
 		return
 	}

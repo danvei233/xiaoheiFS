@@ -16,12 +16,13 @@ import (
 	"strings"
 	"time"
 
+	appports "xiaoheiplay/internal/app/ports"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/cryptox"
-	"xiaoheiplay/internal/usecase"
 
 	"github.com/hashicorp/go-plugin"
 
+	"fmt"
 	"xiaoheiplay/pkg/pluginsdk"
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
@@ -30,11 +31,11 @@ type Manager struct {
 	baseDir      string
 	officialKeys []ed25519.PublicKey
 	cipher       *cryptox.AESGCM
-	repo         usecase.PluginInstallationRepository
+	repo         appports.PluginInstallationRepository
 	runtime      *Runtime
 }
 
-func NewManager(baseDir string, repo usecase.PluginInstallationRepository, cipher *cryptox.AESGCM, officialKeys []ed25519.PublicKey) *Manager {
+func NewManager(baseDir string, repo appports.PluginInstallationRepository, cipher *cryptox.AESGCM, officialKeys []ed25519.PublicKey) *Manager {
 	return &Manager{
 		baseDir:      strings.TrimSpace(baseDir),
 		officialKeys: officialKeys,
@@ -62,20 +63,20 @@ func (m *Manager) PluginDir(category, pluginID string) string {
 
 func (m *Manager) EnsureRunning(ctx context.Context, category, pluginID, instanceID string) (*pluginv1.Manifest, error) {
 	if m.repo == nil {
-		return nil, errors.New("plugin repo missing")
+		return nil, fmt.Errorf("plugin repo missing")
 	}
 	category = strings.TrimSpace(category)
 	pluginID = strings.TrimSpace(pluginID)
 	instanceID = strings.TrimSpace(instanceID)
 	if category == "" || pluginID == "" || instanceID == "" {
-		return nil, errors.New("invalid input")
+		return nil, fmt.Errorf("invalid input")
 	}
 	inst, err := m.repo.GetPluginInstallation(ctx, category, pluginID, instanceID)
 	if err != nil {
 		return nil, err
 	}
 	if !inst.Enabled {
-		return nil, errors.New("plugin instance disabled")
+		return nil, fmt.Errorf("plugin instance disabled")
 	}
 	cfg, err := m.decryptConfig(inst.ConfigCipher)
 	if err != nil {
@@ -94,10 +95,10 @@ func (m *Manager) GetAutomationClient(ctx context.Context, pluginID, instanceID 
 	}
 	rp, ok := m.runtime.GetRunning("automation", pluginID, instanceID)
 	if !ok || rp == nil {
-		return nil, nil, errors.New("plugin instance not running")
+		return nil, nil, fmt.Errorf("plugin instance not running")
 	}
 	if rp.automation == nil {
-		return nil, nil, errors.New("automation capability not supported")
+		return nil, nil, fmt.Errorf("automation capability not supported")
 	}
 	return rp.automation, manifest, nil
 }
@@ -151,7 +152,7 @@ func AsConfigValidationError(err error) (*ConfigValidationError, bool) {
 
 func (m *Manager) List(ctx context.Context) ([]ListItem, error) {
 	if m.repo == nil {
-		return nil, errors.New("plugin repo missing")
+		return nil, fmt.Errorf("plugin repo missing")
 	}
 	installations, err := m.repo.ListPluginInstallations(ctx)
 	if err != nil {
@@ -205,7 +206,7 @@ func (m *Manager) List(ctx context.Context) ([]ListItem, error) {
 
 func (m *Manager) Install(ctx context.Context, filename string, r io.Reader) (domain.PluginInstallation, error) {
 	if m.repo == nil {
-		return domain.PluginInstallation{}, errors.New("plugin repo missing")
+		return domain.PluginInstallation{}, fmt.Errorf("plugin repo missing")
 	}
 	res, err := InstallPackage(m.baseDir, filename, r, m.officialKeys)
 	if err != nil {
@@ -331,7 +332,7 @@ func (m *Manager) UpdateConfig(ctx context.Context, category, pluginID string, c
 
 func (m *Manager) EnableInstance(ctx context.Context, category, pluginID, instanceID string) error {
 	if m.repo == nil {
-		return errors.New("plugin repo missing")
+		return fmt.Errorf("plugin repo missing")
 	}
 	inst, err := m.repo.GetPluginInstallation(ctx, category, pluginID, instanceID)
 	if err != nil {
@@ -360,7 +361,7 @@ func (m *Manager) EnableInstance(ctx context.Context, category, pluginID, instan
 
 func (m *Manager) DisableInstance(ctx context.Context, category, pluginID, instanceID string) error {
 	if m.repo == nil {
-		return errors.New("plugin repo missing")
+		return fmt.Errorf("plugin repo missing")
 	}
 	m.runtime.Stop(category, pluginID, instanceID)
 	inst, err := m.repo.GetPluginInstallation(ctx, category, pluginID, instanceID)
@@ -373,7 +374,7 @@ func (m *Manager) DisableInstance(ctx context.Context, category, pluginID, insta
 
 func (m *Manager) GetConfigInstance(ctx context.Context, category, pluginID, instanceID string) (string, error) {
 	if m.repo == nil {
-		return "", errors.New("plugin repo missing")
+		return "", fmt.Errorf("plugin repo missing")
 	}
 	inst, err := m.repo.GetPluginInstallation(ctx, category, pluginID, instanceID)
 	if err != nil {
@@ -395,7 +396,7 @@ func (m *Manager) GetConfigInstance(ctx context.Context, category, pluginID, ins
 
 func (m *Manager) UpdateConfigInstance(ctx context.Context, category, pluginID, instanceID string, configJSON string) error {
 	if m.repo == nil {
-		return errors.New("plugin repo missing")
+		return fmt.Errorf("plugin repo missing")
 	}
 	inst, err := m.repo.GetPluginInstallation(ctx, category, pluginID, instanceID)
 	if err != nil {
@@ -422,7 +423,7 @@ func (m *Manager) UpdateConfigInstance(ctx context.Context, category, pluginID, 
 			return err
 		}
 	} else if !json.Valid([]byte(merged)) {
-		return errors.New("invalid config json")
+		return fmt.Errorf("invalid config json")
 	}
 	cipherText, err := m.encryptConfig(merged)
 	if err != nil {
@@ -442,9 +443,9 @@ func (m *Manager) UpdateConfigInstance(ctx context.Context, category, pluginID, 
 			}
 			if resp != nil && !resp.Ok {
 				if resp.Error != "" {
-					return errors.New(resp.Error)
+					return fmt.Errorf("%s", resp.Error)
 				}
-				return errors.New("plugin reload failed")
+				return fmt.Errorf("plugin reload failed")
 			}
 		}
 	}
@@ -453,7 +454,7 @@ func (m *Manager) UpdateConfigInstance(ctx context.Context, category, pluginID, 
 
 func (m *Manager) CreateInstance(ctx context.Context, category, pluginID, instanceID string) (domain.PluginInstallation, error) {
 	if m.repo == nil {
-		return domain.PluginInstallation{}, errors.New("plugin repo missing")
+		return domain.PluginInstallation{}, fmt.Errorf("plugin repo missing")
 	}
 	category = strings.TrimSpace(category)
 	pluginID = strings.TrimSpace(pluginID)
@@ -462,7 +463,7 @@ func (m *Manager) CreateInstance(ctx context.Context, category, pluginID, instan
 		instanceID = newInstanceID(category, pluginID)
 	}
 	if category == "" || pluginID == "" || instanceID == "" {
-		return domain.PluginInstallation{}, errors.New("invalid input")
+		return domain.PluginInstallation{}, fmt.Errorf("invalid input")
 	}
 
 	pluginDir := filepath.Join(m.baseDir, category, pluginID)
@@ -471,7 +472,7 @@ func (m *Manager) CreateInstance(ctx context.Context, category, pluginID, instan
 		return domain.PluginInstallation{}, err
 	}
 	if manifest.PluginID != pluginID {
-		return domain.PluginInstallation{}, errors.New("manifest plugin_id mismatch")
+		return domain.PluginInstallation{}, fmt.Errorf("manifest plugin_id mismatch")
 	}
 	if _, err := ResolveEntry(pluginDir, manifest); err != nil {
 		return domain.PluginInstallation{}, err
@@ -482,7 +483,7 @@ func (m *Manager) CreateInstance(ctx context.Context, category, pluginID, instan
 	}
 
 	if _, err := m.repo.GetPluginInstallation(ctx, category, pluginID, instanceID); err == nil {
-		return domain.PluginInstallation{}, errors.New("instance already exists")
+		return domain.PluginInstallation{}, fmt.Errorf("instance already exists")
 	}
 
 	inst := domain.PluginInstallation{
@@ -503,13 +504,13 @@ func (m *Manager) CreateInstance(ctx context.Context, category, pluginID, instan
 
 func (m *Manager) DeleteInstance(ctx context.Context, category, pluginID, instanceID string) error {
 	if m.repo == nil {
-		return errors.New("plugin repo missing")
+		return fmt.Errorf("plugin repo missing")
 	}
 	category = strings.TrimSpace(category)
 	pluginID = strings.TrimSpace(pluginID)
 	instanceID = strings.TrimSpace(instanceID)
 	if category == "" || pluginID == "" || instanceID == "" {
-		return errors.New("invalid input")
+		return fmt.Errorf("invalid input")
 	}
 	m.runtime.Stop(category, pluginID, instanceID)
 	if err := m.repo.DeletePluginInstallation(ctx, category, pluginID, instanceID); err != nil {
@@ -531,12 +532,12 @@ func (m *Manager) DeleteInstance(ctx context.Context, category, pluginID, instan
 
 func (m *Manager) DeletePluginFiles(ctx context.Context, category, pluginID string) error {
 	if m.repo == nil {
-		return errors.New("plugin repo missing")
+		return fmt.Errorf("plugin repo missing")
 	}
 	category = strings.TrimSpace(category)
 	pluginID = strings.TrimSpace(pluginID)
 	if category == "" || pluginID == "" {
-		return errors.New("invalid input")
+		return fmt.Errorf("invalid input")
 	}
 	items, err := m.repo.ListPluginInstallations(ctx)
 	if err != nil {
@@ -544,7 +545,7 @@ func (m *Manager) DeletePluginFiles(ctx context.Context, category, pluginID stri
 	}
 	for _, inst := range items {
 		if inst.Category == category && inst.PluginID == pluginID {
-			return errors.New("cannot delete plugin files: instances still exist")
+			return fmt.Errorf("cannot delete plugin files: instances still exist")
 		}
 	}
 	_ = os.RemoveAll(filepath.Join(m.baseDir, category, pluginID))
@@ -578,7 +579,7 @@ func (m *Manager) mergeSecretFields(ctx context.Context, category, pluginID stri
 	}
 	var newObj any
 	if err := json.Unmarshal([]byte(newConfigJSON), &newObj); err != nil {
-		return "", errors.New("invalid config json")
+		return "", fmt.Errorf("invalid config json")
 	}
 
 	for _, path := range secretPaths {
@@ -712,7 +713,7 @@ func (m *Manager) decryptConfig(cipherText string) (string, error) {
 		return "", nil
 	}
 	if m.cipher == nil {
-		return "", errors.New("plugin cipher missing")
+		return "", fmt.Errorf("plugin cipher missing")
 	}
 	plain, err := m.cipher.DecryptString(cipherText)
 	if err != nil {
@@ -723,7 +724,7 @@ func (m *Manager) decryptConfig(cipherText string) (string, error) {
 
 func (m *Manager) encryptConfig(configJSON string) (string, error) {
 	if m.cipher == nil {
-		return "", errors.New("plugin cipher missing")
+		return "", fmt.Errorf("plugin cipher missing")
 	}
 	return m.cipher.EncryptToString([]byte(configJSON))
 }
@@ -760,7 +761,7 @@ func (m *Manager) dialCore(ctx context.Context, category, pluginID string) (*plu
 	entry, err := ResolveEntry(pluginDir, manifestJSON)
 	if err != nil {
 		if len(entry.SupportedPlatforms) > 0 {
-			return nil, nil, nil, errors.New("unsupported platform " + entry.Platform + ", supported: " + strings.Join(entry.SupportedPlatforms, ", "))
+			return nil, nil, nil, fmt.Errorf("%s", "unsupported platform "+entry.Platform+", supported: "+strings.Join(entry.SupportedPlatforms, ", "))
 		}
 		return nil, nil, nil, err
 	}
@@ -789,7 +790,7 @@ func (m *Manager) dialCore(ctx context.Context, category, pluginID string) (*plu
 	core, ok := rawCore.(pluginv1.CoreServiceClient)
 	if !ok {
 		client.Kill()
-		return nil, nil, nil, errors.New("invalid core client")
+		return nil, nil, nil, fmt.Errorf("invalid core client")
 	}
 	cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -800,7 +801,7 @@ func (m *Manager) dialCore(ctx context.Context, category, pluginID string) (*plu
 	}
 	if manifest.GetPluginId() == "" {
 		client.Kill()
-		return nil, nil, nil, errors.New("invalid manifest")
+		return nil, nil, nil, fmt.Errorf("invalid manifest")
 	}
 	return client, core, manifest, nil
 }

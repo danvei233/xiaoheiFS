@@ -5,7 +5,7 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"errors"
+	"fmt"
 	"io"
 )
 
@@ -15,14 +15,14 @@ type AESGCM struct {
 
 func NewAESGCM(base64Key string) (*AESGCM, error) {
 	if base64Key == "" {
-		return nil, errors.New("missing key")
+		return nil, fmt.Errorf("missing key")
 	}
 	key, err := base64.RawURLEncoding.DecodeString(base64Key)
 	if err != nil {
 		return nil, err
 	}
 	if len(key) != 32 {
-		return nil, errors.New("invalid key length")
+		return nil, fmt.Errorf("invalid key length")
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -54,7 +54,7 @@ func (c *AESGCM) DecryptString(ciphertext string) ([]byte, error) {
 	}
 	ns := c.aead.NonceSize()
 	if len(b) < ns {
-		return nil, errors.New("ciphertext too short")
+		return nil, fmt.Errorf("ciphertext too short")
 	}
 	nonce := b[:ns]
 	ct := b[ns:]

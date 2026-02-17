@@ -3,7 +3,6 @@ package payment
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,10 +15,12 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/hashicorp/go-plugin"
 
+	"fmt"
 	paymentplugin "xiaoheiplay/internal/adapter/payment/plugin"
 	plugins "xiaoheiplay/internal/adapter/plugins"
+	appports "xiaoheiplay/internal/app/ports"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 const (
@@ -32,23 +33,23 @@ type providerMeta struct {
 	key            string
 	defaultEnabled bool
 	defaultConfig  string
-	factory        func() usecase.PaymentProvider
+	factory        func() appshared.PaymentProvider
 }
 
 type Registry struct {
-	settings    usecase.SettingsRepository
+	settings    appports.SettingsRepository
 	pluginDir   string
 	dirSpecs    []pluginSpec
 	mu          sync.Mutex
 	plugins     pluginState
 	grpcPlugins *plugins.Manager
-	methodRepo  usecase.PluginPaymentMethodRepository
+	methodRepo  appports.PluginPaymentMethodRepository
 }
 
 type pluginState struct {
 	hash      string
 	clients   map[string]*plugin.Client
-	providers map[string]usecase.PaymentProvider
+	providers map[string]appshared.PaymentProvider
 }
 
 type pluginSpec struct {
@@ -56,7 +57,7 @@ type pluginSpec struct {
 	Path string `json:"path"`
 }
 
-func NewRegistry(settings usecase.SettingsRepository) *Registry {
+func NewRegistry(settings appports.SettingsRepository) *Registry {
 	return &Registry{settings: settings}
 }
 
@@ -64,7 +65,7 @@ func (r *Registry) SetPluginManager(mgr *plugins.Manager) {
 	r.grpcPlugins = mgr
 }
 
-func (r *Registry) SetPluginPaymentMethodRepo(repo usecase.PluginPaymentMethodRepository) {
+func (r *Registry) SetPluginPaymentMethodRepo(repo appports.PluginPaymentMethodRepository) {
 	r.methodRepo = repo
 }
 
@@ -108,12 +109,12 @@ func (r *Registry) StartWatcher(ctx context.Context, dir string) error {
 	return nil
 }
 
-func (r *Registry) ListProviders(ctx context.Context, includeDisabled bool) ([]usecase.PaymentProvider, error) {
+func (r *Registry) ListProviders(ctx context.Context, includeDisabled bool) ([]appshared.PaymentProvider, error) {
 	enabledMap, configMap, err := r.loadSettings(ctx)
 	if err != nil {
 		return nil, err
 	}
-	providers := make([]usecase.PaymentProvider, 0)
+	providers := make([]appshared.PaymentProvider, 0)
 	for _, meta := range r.builtins() {
 		enabled := meta.defaultEnabled
 		if val, ok := enabledMap[meta.key]; ok {
@@ -128,7 +129,7 @@ func (r *Registry) ListProviders(ctx context.Context, includeDisabled bool) ([]u
 			cfg = string(val)
 		}
 		if cfg != "" {
-			if configurable, ok := provider.(usecase.ConfigurablePaymentProvider); ok {
+			if configurable, ok := provider.(appshared.ConfigurablePaymentProvider); ok {
 				_ = configurable.SetConfig(cfg)
 			}
 		}
@@ -148,7 +149,7 @@ func (r *Registry) ListProviders(ctx context.Context, includeDisabled bool) ([]u
 	return providers, nil
 }
 
-func (r *Registry) GetProvider(ctx context.Context, key string) (usecase.PaymentProvider, error) {
+func (r *Registry) GetProvider(ctx context.Context, key string) (appshared.PaymentProvider, error) {
 	enabledMap, configMap, err := r.loadSettings(ctx)
 	if err != nil {
 		return nil, err
@@ -162,7 +163,7 @@ func (r *Registry) GetProvider(ctx context.Context, key string) (usecase.Payment
 			enabled = val
 		}
 		if !enabled {
-			return nil, usecase.ErrForbidden
+			return nil, appshared.ErrForbidden
 		}
 		provider := meta.factory()
 		cfg := meta.defaultConfig
@@ -170,7 +171,7 @@ func (r *Registry) GetProvider(ctx context.Context, key string) (usecase.Payment
 			cfg = string(val)
 		}
 		if cfg != "" {
-			if configurable, ok := provider.(usecase.ConfigurablePaymentProvider); ok {
+			if configurable, ok := provider.(appshared.ConfigurablePaymentProvider); ok {
 				_ = configurable.SetConfig(cfg)
 			}
 		}
@@ -189,19 +190,19 @@ func (r *Registry) GetProvider(ctx context.Context, key string) (usecase.Payment
 			enabled = val
 		}
 		if !enabled {
-			return nil, usecase.ErrForbidden
+			return nil, appshared.ErrForbidden
 		}
 		return provider, nil
 	}
 	if r.grpcPlugins != nil {
 		if disabled, known := r.grpcPaymentMethodDisabled(ctx, key); known && disabled {
-			return nil, usecase.ErrForbidden
+			return nil, appshared.ErrForbidden
 		}
 		if p := r.grpcProviderByKey(ctx, key); p != nil {
 			return p, nil
 		}
 	}
-	return nil, usecase.ErrNotFound
+	return nil, appshared.ErrNotFound
 }
 
 func (r *Registry) grpcPaymentMethodDisabled(ctx context.Context, key string) (disabled bool, known bool) {
@@ -280,10 +281,10 @@ func (r *Registry) GetProviderConfig(ctx context.Context, key string) (string, b
 
 func (r *Registry) UpdateProviderConfig(ctx context.Context, key string, enabled bool, configJSON string) error {
 	if r.settings == nil {
-		return usecase.ErrInvalidInput
+		return appshared.ErrInvalidInput
 	}
 	if r.grpcPlugins != nil && strings.Contains(key, ".") {
-		return usecase.ErrInvalidInput
+		return appshared.ErrInvalidInput
 	}
 	enabledMap, configMap, err := r.loadSettings(ctx)
 	if err != nil {
@@ -306,23 +307,15 @@ func (r *Registry) builtins() []providerMeta {
 		{
 			key:            "approval",
 			defaultEnabled: true,
-			factory: func() usecase.PaymentProvider {
+			factory: func() appshared.PaymentProvider {
 				return newApprovalProvider()
 			},
 		},
 		{
 			key:            "balance",
 			defaultEnabled: true,
-			factory: func() usecase.PaymentProvider {
+			factory: func() appshared.PaymentProvider {
 				return newBalanceProvider()
-			},
-		},
-		{
-			key:            "yipay",
-			defaultEnabled: false,
-			defaultConfig:  `{"base_url":"https://pays.org.cn/submit.php","pid":"","key":"","pay_type":"","notify_url":"","return_url":"","sign_type":"MD5"}`,
-			factory: func() usecase.PaymentProvider {
-				return newYipayProvider()
 			},
 		},
 	}
@@ -347,7 +340,7 @@ func (r *Registry) upsertJSON(ctx context.Context, key string, value any) error 
 	return r.settings.UpsertSetting(ctx, domain.Setting{Key: key, ValueJSON: string(raw)})
 }
 
-func loadBoolMap(ctx context.Context, repo usecase.SettingsRepository, key string) map[string]bool {
+func loadBoolMap(ctx context.Context, repo appports.SettingsRepository, key string) map[string]bool {
 	setting, err := repo.GetSetting(ctx, key)
 	if err != nil || setting.ValueJSON == "" {
 		return map[string]bool{}
@@ -359,7 +352,7 @@ func loadBoolMap(ctx context.Context, repo usecase.SettingsRepository, key strin
 	return out
 }
 
-func loadRawMap(ctx context.Context, repo usecase.SettingsRepository, key string) map[string]json.RawMessage {
+func loadRawMap(ctx context.Context, repo appports.SettingsRepository, key string) map[string]json.RawMessage {
 	setting, err := repo.GetSetting(ctx, key)
 	if err != nil || setting.ValueJSON == "" {
 		return map[string]json.RawMessage{}
@@ -371,7 +364,7 @@ func loadRawMap(ctx context.Context, repo usecase.SettingsRepository, key string
 	return out
 }
 
-func (r *Registry) loadPluginProviders(ctx context.Context, includeDisabled bool, enabledMap map[string]bool, configMap map[string]json.RawMessage) ([]usecase.PaymentProvider, error) {
+func (r *Registry) loadPluginProviders(ctx context.Context, includeDisabled bool, enabledMap map[string]bool, configMap map[string]json.RawMessage) ([]appshared.PaymentProvider, error) {
 	specs := r.loadPluginSpecs(ctx)
 	if len(specs) == 0 {
 		return nil, nil
@@ -380,7 +373,7 @@ func (r *Registry) loadPluginProviders(ctx context.Context, includeDisabled bool
 	if err != nil {
 		return nil, err
 	}
-	out := make([]usecase.PaymentProvider, 0, len(state.providers))
+	out := make([]appshared.PaymentProvider, 0, len(state.providers))
 	for key, provider := range state.providers {
 		enabled := false
 		if val, ok := enabledMap[key]; ok {
@@ -390,7 +383,7 @@ func (r *Registry) loadPluginProviders(ctx context.Context, includeDisabled bool
 			continue
 		}
 		if cfg, ok := configMap[key]; ok && len(cfg) > 0 {
-			if configurable, ok := provider.(usecase.ConfigurablePaymentProvider); ok {
+			if configurable, ok := provider.(appshared.ConfigurablePaymentProvider); ok {
 				_ = configurable.SetConfig(string(cfg))
 			}
 		}
@@ -421,7 +414,7 @@ func (r *Registry) ensurePlugins(specs []pluginSpec) (*pluginState, error) {
 		client.Kill()
 	}
 	clients := map[string]*plugin.Client{}
-	providers := map[string]usecase.PaymentProvider{}
+	providers := map[string]appshared.PaymentProvider{}
 	for _, spec := range specs {
 		if spec.Path == "" {
 			continue
@@ -447,7 +440,7 @@ func (r *Registry) ensurePlugins(specs []pluginSpec) (*pluginState, error) {
 		provider, ok := raw.(paymentplugin.Provider)
 		if !ok {
 			client.Kill()
-			return nil, errors.New("invalid payment provider plugin")
+			return nil, fmt.Errorf("invalid payment provider plugin")
 		}
 		wrapped := &pluginProvider{provider: provider}
 		providers[wrapped.Key()] = wrapped
@@ -585,10 +578,10 @@ func (p *pluginProvider) SetConfig(configJSON string) error {
 	return p.provider.SetConfig(configJSON)
 }
 
-func (p *pluginProvider) CreatePayment(ctx context.Context, req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error) {
+func (p *pluginProvider) CreatePayment(ctx context.Context, req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error) {
 	return p.provider.CreatePayment(req)
 }
 
-func (p *pluginProvider) VerifyNotify(ctx context.Context, req usecase.RawHTTPRequest) (usecase.PaymentNotifyResult, error) {
+func (p *pluginProvider) VerifyNotify(ctx context.Context, req appshared.RawHTTPRequest) (appshared.PaymentNotifyResult, error) {
 	return p.provider.VerifyNotify(rawToParams(req))
 }

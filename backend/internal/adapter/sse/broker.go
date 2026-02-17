@@ -8,17 +8,17 @@ import (
 	"sync"
 	"time"
 
+	appports "xiaoheiplay/internal/app/ports"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 type Broker struct {
-	events usecase.EventRepository
+	events appports.EventRepository
 	mu     sync.RWMutex
 	subs   map[int64]map[chan domain.OrderEvent]struct{}
 }
 
-func NewBroker(events usecase.EventRepository) *Broker {
+func NewBroker(events appports.EventRepository) *Broker {
 	return &Broker{events: events, subs: make(map[int64]map[chan domain.OrderEvent]struct{})}
 }
 

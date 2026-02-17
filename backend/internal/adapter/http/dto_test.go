@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestDTO_Mappings(t *testing.T) {
@@ -106,7 +106,7 @@ func TestDTO_Mappings(t *testing.T) {
 		t.Fatalf("order event dto list mismatch: %+v", got)
 	}
 
-	providers := []usecase.PaymentProviderInfo{{
+	providers := []shared.PaymentProviderInfo{{
 		Key:        "fake",
 		Name:       "FakePay",
 		Enabled:    true,
@@ -118,7 +118,7 @@ func TestDTO_Mappings(t *testing.T) {
 		t.Fatalf("provider dto list mismatch: %+v", providerDTOs)
 	}
 
-	methods := []usecase.PaymentMethodInfo{{
+	methods := []shared.PaymentMethodInfo{{
 		Key:        "balance",
 		Name:       "Balance",
 		SchemaJSON: `{}`,
@@ -270,7 +270,7 @@ func TestDTO_Mappings(t *testing.T) {
 }
 
 func TestDTO_ServerStatus_CompatFields(t *testing.T) {
-	status := usecase.ServerStatus{
+	status := shared.ServerStatus{
 		Hostname:        "h",
 		CPUUsagePercent: 12.34,
 		MemUsedPercent:  56.78,

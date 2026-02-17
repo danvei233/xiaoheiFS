@@ -1,13 +1,13 @@
 package money
 
 import (
-	"errors"
+	"fmt"
 	"math/big"
 	"strconv"
 	"strings"
 )
 
-var ErrInvalidAmount = errors.New("invalid amount")
+var ErrInvalidAmount = fmt.Errorf("invalid amount")
 
 func ParseAmountToCents(input string) (int64, error) {
 	s := strings.TrimSpace(input)

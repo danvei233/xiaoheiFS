@@ -5,12 +5,12 @@ import (
 	"net/rpc"
 	"testing"
 
-	"xiaoheiplay/internal/usecase"
+	"xiaoheiplay/internal/app/shared"
 )
 
 type fakeProvider struct {
 	config string
-	req    usecase.PaymentCreateRequest
+	req    shared.PaymentCreateRequest
 	notify map[string]string
 }
 
@@ -21,13 +21,13 @@ func (f *fakeProvider) SetConfig(configJSON string) error {
 	f.config = configJSON
 	return nil
 }
-func (f *fakeProvider) CreatePayment(req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error) {
+func (f *fakeProvider) CreatePayment(req shared.PaymentCreateRequest) (shared.PaymentCreateResult, error) {
 	f.req = req
-	return usecase.PaymentCreateResult{PayURL: "https://pay", TradeNo: "TN"}, nil
+	return shared.PaymentCreateResult{PayURL: "https://pay", TradeNo: "TN"}, nil
 }
-func (f *fakeProvider) VerifyNotify(params map[string]string) (usecase.PaymentNotifyResult, error) {
+func (f *fakeProvider) VerifyNotify(params map[string]string) (shared.PaymentNotifyResult, error) {
 	f.notify = params
-	return usecase.PaymentNotifyResult{TradeNo: "TN", Paid: true, Amount: 1000}, nil
+	return shared.PaymentNotifyResult{TradeNo: "TN", Paid: true, Amount: 1000}, nil
 }
 
 func TestProviderRPC(t *testing.T) {
@@ -53,7 +53,7 @@ func TestProviderRPC(t *testing.T) {
 	if fake.config == "" {
 		t.Fatalf("expected config set")
 	}
-	req := usecase.PaymentCreateRequest{OrderID: 1, Amount: 990}
+	req := shared.PaymentCreateRequest{OrderID: 1, Amount: 990}
 	if _, err := p.CreatePayment(req); err != nil {
 		t.Fatalf("create payment: %v", err)
 	}

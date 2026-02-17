@@ -2,7 +2,6 @@ package plugins
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
@@ -96,7 +95,7 @@ func normalizeAutomationNotSupportedReasons(m map[string]string) map[int32]strin
 
 func validateManifestConsistency(jsonM Manifest, grpcM *pluginv1.Manifest) error {
 	if grpcM == nil {
-		return errors.New("invalid manifest")
+		return fmt.Errorf("invalid manifest")
 	}
 	jPluginID := strings.TrimSpace(jsonM.PluginID)
 	jName := strings.TrimSpace(jsonM.Name)
@@ -118,17 +117,17 @@ func validateManifestConsistency(jsonM Manifest, grpcM *pluginv1.Manifest) error
 
 	// sms
 	if (jsonM.Capabilities.SMS != nil) != (grpcM.Sms != nil) {
-		return errors.New("manifest mismatch: sms capability presence")
+		return fmt.Errorf("manifest mismatch: sms capability presence")
 	}
 	if jsonM.Capabilities.SMS != nil && grpcM.Sms != nil {
 		if grpcM.Sms.GetSend() != jsonM.Capabilities.SMS.Send {
-			return errors.New("manifest mismatch: sms.send")
+			return fmt.Errorf("manifest mismatch: sms.send")
 		}
 	}
 
 	// payment
 	if (jsonM.Capabilities.Payment != nil) != (grpcM.Payment != nil) {
-		return errors.New("manifest mismatch: payment capability presence")
+		return fmt.Errorf("manifest mismatch: payment capability presence")
 	}
 	if jsonM.Capabilities.Payment != nil && grpcM.Payment != nil {
 		jm := append([]string{}, jsonM.Capabilities.Payment.Methods...)
@@ -136,23 +135,23 @@ func validateManifestConsistency(jsonM Manifest, grpcM *pluginv1.Manifest) error
 		sort.Strings(jm)
 		sort.Strings(gm)
 		if !slices.Equal(jm, gm) {
-			return errors.New("manifest mismatch: payment.methods")
+			return fmt.Errorf("manifest mismatch: payment.methods")
 		}
 	}
 
 	// kyc
 	if (jsonM.Capabilities.KYC != nil) != (grpcM.Kyc != nil) {
-		return errors.New("manifest mismatch: kyc capability presence")
+		return fmt.Errorf("manifest mismatch: kyc capability presence")
 	}
 	if jsonM.Capabilities.KYC != nil && grpcM.Kyc != nil {
 		if grpcM.Kyc.GetStart() != jsonM.Capabilities.KYC.Start || grpcM.Kyc.GetQueryResult() != jsonM.Capabilities.KYC.QueryResult {
-			return errors.New("manifest mismatch: kyc flags")
+			return fmt.Errorf("manifest mismatch: kyc flags")
 		}
 	}
 
 	// automation
 	if (jsonM.Capabilities.Automation != nil) != (grpcM.Automation != nil) {
-		return errors.New("manifest mismatch: automation capability presence")
+		return fmt.Errorf("manifest mismatch: automation capability presence")
 	}
 	if jsonM.Capabilities.Automation != nil && grpcM.Automation != nil {
 		want := map[pluginv1.AutomationFeature]bool{}
@@ -168,21 +167,21 @@ func validateManifestConsistency(jsonM Manifest, grpcM *pluginv1.Manifest) error
 			got[f] = true
 		}
 		if len(want) != len(got) {
-			return errors.New("manifest mismatch: automation.features")
+			return fmt.Errorf("manifest mismatch: automation.features")
 		}
 		for f := range want {
 			if !got[f] {
-				return errors.New("manifest mismatch: automation.features")
+				return fmt.Errorf("manifest mismatch: automation.features")
 			}
 		}
 		jReasons := normalizeAutomationNotSupportedReasons(jsonM.Capabilities.Automation.NotSupportedReason)
 		gReasons := grpcM.Automation.GetNotSupportedReasons()
 		if len(jReasons) != len(gReasons) {
-			return errors.New("manifest mismatch: automation.not_supported_reasons")
+			return fmt.Errorf("manifest mismatch: automation.not_supported_reasons")
 		}
 		for k, v := range jReasons {
 			if gReasons[k] != v {
-				return errors.New("manifest mismatch: automation.not_supported_reasons")
+				return fmt.Errorf("manifest mismatch: automation.not_supported_reasons")
 			}
 		}
 	}
@@ -196,7 +195,7 @@ func (r *Runtime) key(category, pluginID, instanceID string) string {
 
 func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, configJSON string) (*pluginv1.Manifest, error) {
 	if category == "" || pluginID == "" || instanceID == "" {
-		return nil, errors.New("invalid input")
+		return nil, fmt.Errorf("invalid input")
 	}
 	k := r.key(category, pluginID, instanceID)
 
@@ -215,7 +214,7 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 	entry, err := ResolveEntry(pluginDir, manifestJSON)
 	if err != nil {
 		if len(entry.SupportedPlatforms) > 0 {
-			return nil, errors.New("unsupported platform " + entry.Platform + ", supported: " + strings.Join(entry.SupportedPlatforms, ", "))
+			return nil, fmt.Errorf("%s", "unsupported platform "+entry.Platform+", supported: "+strings.Join(entry.SupportedPlatforms, ", "))
 		}
 		return nil, err
 	}
@@ -251,7 +250,7 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 	core, ok := rawCore.(pluginv1.CoreServiceClient)
 	if !ok {
 		client.Kill()
-		return nil, errors.New("invalid core client")
+		return nil, fmt.Errorf("invalid core client")
 	}
 
 	ctxm, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -263,7 +262,7 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 	}
 	if manifest.GetPluginId() == "" {
 		client.Kill()
-		return nil, errors.New("invalid manifest")
+		return nil, fmt.Errorf("invalid manifest")
 	}
 	if err := validateManifestConsistency(manifestJSON, manifest); err != nil {
 		client.Kill()
@@ -284,7 +283,7 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 		c, ok := raw.(pluginv1.SmsServiceClient)
 		if !ok {
 			client.Kill()
-			return nil, errors.New("invalid sms client")
+			return nil, fmt.Errorf("invalid sms client")
 		}
 		sms = c
 	}
@@ -297,7 +296,7 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 		c, ok := raw.(pluginv1.PaymentServiceClient)
 		if !ok {
 			client.Kill()
-			return nil, errors.New("invalid payment client")
+			return nil, fmt.Errorf("invalid payment client")
 		}
 		payment = c
 	}
@@ -310,7 +309,7 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 		c, ok := raw.(pluginv1.KycServiceClient)
 		if !ok {
 			client.Kill()
-			return nil, errors.New("invalid kyc client")
+			return nil, fmt.Errorf("invalid kyc client")
 		}
 		kyc = c
 	}
@@ -323,7 +322,7 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 		c, ok := raw.(pluginv1.AutomationServiceClient)
 		if !ok {
 			client.Kill()
-			return nil, errors.New("invalid automation client")
+			return nil, fmt.Errorf("invalid automation client")
 		}
 		automation = c
 	}
@@ -338,9 +337,9 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 	if initResp != nil && !initResp.Ok {
 		client.Kill()
 		if initResp.Error != "" {
-			return nil, errors.New(initResp.Error)
+			return nil, fmt.Errorf("%s", initResp.Error)
 		}
-		return nil, errors.New("plugin init failed")
+		return nil, fmt.Errorf("plugin init failed")
 	}
 
 	hbCtx, hbCancel := context.WithCancel(context.Background())

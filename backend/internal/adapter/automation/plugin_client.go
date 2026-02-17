@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"regexp"
@@ -18,8 +17,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"xiaoheiplay/internal/adapter/plugins"
+	appports "xiaoheiplay/internal/app/ports"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
 
@@ -28,11 +28,11 @@ type PluginInstanceClient struct {
 	pluginID   string
 	instanceID string
 	timeout    time.Duration
-	settings   usecase.SettingsRepository
-	autoLogs   usecase.AutomationLogRepository
+	settings   appports.SettingsRepository
+	autoLogs   appports.AutomationLogRepository
 }
 
-func NewPluginInstanceClient(mgr *plugins.Manager, pluginID, instanceID string, settings usecase.SettingsRepository, autoLogs usecase.AutomationLogRepository) *PluginInstanceClient {
+func NewPluginInstanceClient(mgr *plugins.Manager, pluginID, instanceID string, settings appports.SettingsRepository, autoLogs appports.AutomationLogRepository) *PluginInstanceClient {
 	return &PluginInstanceClient{
 		mgr:        mgr,
 		pluginID:   strings.TrimSpace(pluginID),
@@ -52,7 +52,7 @@ func (c *PluginInstanceClient) withTimeout(ctx context.Context) (context.Context
 
 func (c *PluginInstanceClient) client(ctx context.Context) (pluginv1.AutomationServiceClient, error) {
 	if c.mgr == nil {
-		return nil, errors.New("plugin manager missing")
+		return nil, fmt.Errorf("plugin manager missing")
 	}
 	cli, _, err := c.mgr.GetAutomationClient(ctx, c.pluginID, c.instanceID)
 	return cli, err
@@ -87,7 +87,7 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 	if !cfg.debugEnabled && err == nil {
 		return
 	}
-	trace, _ := usecase.GetAutomationLogContext(ctx)
+	trace, _ := appshared.GetAutomationLogContext(ctx)
 	if cfg.retentionDays > 0 {
 		before := time.Now().AddDate(0, 0, -cfg.retentionDays)
 		_ = c.autoLogs.PurgeAutomationLogs(ctx, before)
@@ -120,7 +120,7 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 				action = traceAction
 			}
 			if strings.TrimSpace(traceMsg) != "" {
-				err = errors.New(traceMsg)
+				err = fmt.Errorf("%s", traceMsg)
 			}
 		}
 	} else {
@@ -332,7 +332,7 @@ func mapUnimplemented(err error) error {
 		if msg == "" {
 			msg = "not supported"
 		}
-		return fmt.Errorf("%w: %s", usecase.ErrNotSupported, msg)
+		return fmt.Errorf("%w: %s", appshared.ErrNotSupported, msg)
 	}
 	return err
 }
@@ -345,7 +345,7 @@ func mapRPCBusinessError(err error) error {
 	if strings.TrimSpace(msg) == "" || msg == err.Error() {
 		return err
 	}
-	return errors.New(msg)
+	return fmt.Errorf("%s", msg)
 }
 
 func extractRPCErrorMessage(raw string) string {
@@ -409,10 +409,10 @@ func ensureOpOK(resp proto.Message) error {
 	if other := strings.TrimSpace(empty.GetOther()); other != "" {
 		return fmt.Errorf("%s (%s)", msg, other)
 	}
-	return errors.New(msg)
+	return fmt.Errorf("%s", msg)
 }
 
-func (c *PluginInstanceClient) CreateHost(ctx context.Context, req usecase.AutomationCreateHostRequest) (usecase.AutomationCreateHostResult, error) {
+func (c *PluginInstanceClient) CreateHost(ctx context.Context, req appshared.AutomationCreateHostRequest) (appshared.AutomationCreateHostResult, error) {
 	pb := &pluginv1.CreateInstanceRequest{
 		LineId:        req.LineID,
 		Os:            req.OS,
@@ -430,19 +430,19 @@ func (c *PluginInstanceClient) CreateHost(ctx context.Context, req usecase.Autom
 		return cli.CreateInstance(cctx, pb)
 	})
 	if err != nil {
-		return usecase.AutomationCreateHostResult{}, err
+		return appshared.AutomationCreateHostResult{}, err
 	}
 	resp := respAny.(*pluginv1.CreateInstanceResponse)
-	return usecase.AutomationCreateHostResult{HostID: resp.GetInstanceId(), Raw: map[string]any{"instance_id": resp.GetInstanceId()}}, nil
+	return appshared.AutomationCreateHostResult{HostID: resp.GetInstanceId(), Raw: map[string]any{"instance_id": resp.GetInstanceId()}}, nil
 }
 
-func (c *PluginInstanceClient) GetHostInfo(ctx context.Context, hostID int64) (usecase.AutomationHostInfo, error) {
+func (c *PluginInstanceClient) GetHostInfo(ctx context.Context, hostID int64) (appshared.AutomationHostInfo, error) {
 	pb := &pluginv1.GetInstanceRequest{InstanceId: hostID}
 	respAny, err := c.call(ctx, "automation.GetInstance", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.GetInstance(cctx, pb)
 	})
 	if err != nil {
-		return usecase.AutomationHostInfo{}, err
+		return appshared.AutomationHostInfo{}, err
 	}
 	resp := respAny.(*pluginv1.GetInstanceResponse)
 	inst := resp.GetInstance()
@@ -451,7 +451,7 @@ func (c *PluginInstanceClient) GetHostInfo(ctx context.Context, hostID int64) (u
 		t := time.Unix(inst.GetExpireAtUnix(), 0)
 		expire = &t
 	}
-	return usecase.AutomationHostInfo{
+	return appshared.AutomationHostInfo{
 		HostID:        inst.GetId(),
 		HostName:      inst.GetName(),
 		State:         int(inst.GetState()),
@@ -467,7 +467,7 @@ func (c *PluginInstanceClient) GetHostInfo(ctx context.Context, hostID int64) (u
 	}, nil
 }
 
-func (c *PluginInstanceClient) ListHostSimple(ctx context.Context, searchTag string) ([]usecase.AutomationHostSimple, error) {
+func (c *PluginInstanceClient) ListHostSimple(ctx context.Context, searchTag string) ([]appshared.AutomationHostSimple, error) {
 	pb := &pluginv1.ListInstancesSimpleRequest{SearchTag: strings.TrimSpace(searchTag)}
 	respAny, err := c.call(ctx, "automation.ListInstancesSimple", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListInstancesSimple(cctx, pb)
@@ -476,14 +476,14 @@ func (c *PluginInstanceClient) ListHostSimple(ctx context.Context, searchTag str
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListInstancesSimpleResponse)
-	out := make([]usecase.AutomationHostSimple, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationHostSimple, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationHostSimple{ID: it.GetId(), HostName: it.GetName(), IP: it.GetIp()})
+		out = append(out, appshared.AutomationHostSimple{ID: it.GetId(), HostName: it.GetName(), IP: it.GetIp()})
 	}
 	return out, nil
 }
 
-func (c *PluginInstanceClient) ElasticUpdate(ctx context.Context, req usecase.AutomationElasticUpdateRequest) error {
+func (c *PluginInstanceClient) ElasticUpdate(ctx context.Context, req appshared.AutomationElasticUpdateRequest) error {
 	pb := &pluginv1.ElasticUpdateRequest{InstanceId: req.HostID}
 	if req.CPU != nil {
 		pb.Cpu = ptrInt32(int32(*req.CPU))
@@ -610,7 +610,7 @@ func (c *PluginInstanceClient) ResetOSPassword(ctx context.Context, hostID int64
 	return ensureOpOK(respAny)
 }
 
-func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) ([]usecase.AutomationSnapshot, error) {
+func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) ([]appshared.AutomationSnapshot, error) {
 	pb := &pluginv1.ListSnapshotsRequest{InstanceId: hostID}
 	respAny, err := c.call(ctx, "automation.ListSnapshots", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListSnapshots(cctx, pb)
@@ -619,9 +619,9 @@ func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) 
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListSnapshotsResponse)
-	out := make([]usecase.AutomationSnapshot, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationSnapshot, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationSnapshot{
+		out = append(out, appshared.AutomationSnapshot{
 			"id":              it.GetId(),
 			"name":            it.GetName(),
 			"created_at_unix": it.GetCreatedAtUnix(),
@@ -665,7 +665,7 @@ func (c *PluginInstanceClient) RestoreSnapshot(ctx context.Context, hostID int64
 	return ensureOpOK(respAny)
 }
 
-func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([]usecase.AutomationBackup, error) {
+func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([]appshared.AutomationBackup, error) {
 	pb := &pluginv1.ListBackupsRequest{InstanceId: hostID}
 	respAny, err := c.call(ctx, "automation.ListBackups", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListBackups(cctx, pb)
@@ -674,9 +674,9 @@ func (c *PluginInstanceClient) ListBackups(ctx context.Context, hostID int64) ([
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListBackupsResponse)
-	out := make([]usecase.AutomationBackup, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationBackup, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationBackup{
+		out = append(out, appshared.AutomationBackup{
 			"id":              it.GetId(),
 			"name":            it.GetName(),
 			"created_at_unix": it.GetCreatedAtUnix(),
@@ -720,7 +720,7 @@ func (c *PluginInstanceClient) RestoreBackup(ctx context.Context, hostID int64, 
 	return ensureOpOK(respAny)
 }
 
-func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int64) ([]usecase.AutomationFirewallRule, error) {
+func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, error) {
 	pb := &pluginv1.ListFirewallRulesRequest{InstanceId: hostID}
 	respAny, err := c.call(ctx, "automation.ListFirewallRules", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListFirewallRules(cctx, pb)
@@ -729,9 +729,9 @@ func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListFirewallRulesResponse)
-	out := make([]usecase.AutomationFirewallRule, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationFirewallRule, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationFirewallRule{
+		out = append(out, appshared.AutomationFirewallRule{
 			"id":        it.GetId(),
 			"direction": it.GetDirection(),
 			"protocol":  it.GetProtocol(),
@@ -744,7 +744,7 @@ func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int
 	return out, nil
 }
 
-func (c *PluginInstanceClient) AddFirewallRule(ctx context.Context, req usecase.AutomationFirewallRuleCreate) error {
+func (c *PluginInstanceClient) AddFirewallRule(ctx context.Context, req appshared.AutomationFirewallRuleCreate) error {
 	pb := &pluginv1.AddFirewallRuleRequest{
 		InstanceId: req.HostID,
 		Direction:  req.Direction,
@@ -774,7 +774,7 @@ func (c *PluginInstanceClient) DeleteFirewallRule(ctx context.Context, hostID in
 	return ensureOpOK(respAny)
 }
 
-func (c *PluginInstanceClient) ListPortMappings(ctx context.Context, hostID int64) ([]usecase.AutomationPortMapping, error) {
+func (c *PluginInstanceClient) ListPortMappings(ctx context.Context, hostID int64) ([]appshared.AutomationPortMapping, error) {
 	pb := &pluginv1.ListPortMappingsRequest{InstanceId: hostID}
 	respAny, err := c.call(ctx, "automation.ListPortMappings", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListPortMappings(cctx, pb)
@@ -783,9 +783,9 @@ func (c *PluginInstanceClient) ListPortMappings(ctx context.Context, hostID int6
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListPortMappingsResponse)
-	out := make([]usecase.AutomationPortMapping, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationPortMapping, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationPortMapping{
+		out = append(out, appshared.AutomationPortMapping{
 			"id":    it.GetId(),
 			"name":  it.GetName(),
 			"sport": it.GetSport(),
@@ -795,7 +795,7 @@ func (c *PluginInstanceClient) ListPortMappings(ctx context.Context, hostID int6
 	return out, nil
 }
 
-func (c *PluginInstanceClient) AddPortMapping(ctx context.Context, req usecase.AutomationPortMappingCreate) error {
+func (c *PluginInstanceClient) AddPortMapping(ctx context.Context, req appshared.AutomationPortMappingCreate) error {
 	pb := &pluginv1.AddPortMappingRequest{
 		InstanceId: req.HostID,
 		Name:       req.Name,
@@ -846,7 +846,7 @@ func (c *PluginInstanceClient) GetPanelURL(ctx context.Context, hostName string,
 	return resp.GetUrl(), nil
 }
 
-func (c *PluginInstanceClient) ListAreas(ctx context.Context) ([]usecase.AutomationArea, error) {
+func (c *PluginInstanceClient) ListAreas(ctx context.Context) ([]appshared.AutomationArea, error) {
 	pb := &pluginv1.Empty{}
 	respAny, err := c.call(ctx, "automation.ListAreas", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListAreas(cctx, pb)
@@ -855,14 +855,14 @@ func (c *PluginInstanceClient) ListAreas(ctx context.Context) ([]usecase.Automat
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListAreasResponse)
-	out := make([]usecase.AutomationArea, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationArea, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationArea{ID: it.GetId(), Name: it.GetName(), State: int(it.GetState())})
+		out = append(out, appshared.AutomationArea{ID: it.GetId(), Name: it.GetName(), State: int(it.GetState())})
 	}
 	return out, nil
 }
 
-func (c *PluginInstanceClient) ListImages(ctx context.Context, lineID int64) ([]usecase.AutomationImage, error) {
+func (c *PluginInstanceClient) ListImages(ctx context.Context, lineID int64) ([]appshared.AutomationImage, error) {
 	pb := &pluginv1.ListImagesRequest{LineId: lineID}
 	respAny, err := c.call(ctx, "automation.ListImages", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListImages(cctx, pb)
@@ -871,14 +871,14 @@ func (c *PluginInstanceClient) ListImages(ctx context.Context, lineID int64) ([]
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListImagesResponse)
-	out := make([]usecase.AutomationImage, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationImage, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationImage{ImageID: it.GetId(), Name: it.GetName(), Type: it.GetType()})
+		out = append(out, appshared.AutomationImage{ImageID: it.GetId(), Name: it.GetName(), Type: it.GetType()})
 	}
 	return out, nil
 }
 
-func (c *PluginInstanceClient) ListLines(ctx context.Context) ([]usecase.AutomationLine, error) {
+func (c *PluginInstanceClient) ListLines(ctx context.Context) ([]appshared.AutomationLine, error) {
 	pb := &pluginv1.Empty{}
 	respAny, err := c.call(ctx, "automation.ListLines", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListLines(cctx, pb)
@@ -887,14 +887,14 @@ func (c *PluginInstanceClient) ListLines(ctx context.Context) ([]usecase.Automat
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListLinesResponse)
-	out := make([]usecase.AutomationLine, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationLine, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationLine{ID: it.GetId(), Name: it.GetName(), AreaID: it.GetAreaId(), State: int(it.GetState())})
+		out = append(out, appshared.AutomationLine{ID: it.GetId(), Name: it.GetName(), AreaID: it.GetAreaId(), State: int(it.GetState())})
 	}
 	return out, nil
 }
 
-func (c *PluginInstanceClient) ListProducts(ctx context.Context, lineID int64) ([]usecase.AutomationProduct, error) {
+func (c *PluginInstanceClient) ListProducts(ctx context.Context, lineID int64) ([]appshared.AutomationProduct, error) {
 	pb := &pluginv1.ListPackagesRequest{LineId: lineID}
 	respAny, err := c.call(ctx, "automation.ListPackages", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListPackages(cctx, pb)
@@ -903,9 +903,9 @@ func (c *PluginInstanceClient) ListProducts(ctx context.Context, lineID int64) (
 		return nil, err
 	}
 	resp := respAny.(*pluginv1.ListPackagesResponse)
-	out := make([]usecase.AutomationProduct, 0, len(resp.GetItems()))
+	out := make([]appshared.AutomationProduct, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, usecase.AutomationProduct{
+		out = append(out, appshared.AutomationProduct{
 			ID:        it.GetId(),
 			Name:      it.GetName(),
 			CPU:       int(it.GetCpu()),
@@ -919,17 +919,17 @@ func (c *PluginInstanceClient) ListProducts(ctx context.Context, lineID int64) (
 	return out, nil
 }
 
-func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (usecase.AutomationMonitor, error) {
+func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (appshared.AutomationMonitor, error) {
 	pb := &pluginv1.GetMonitorRequest{InstanceId: hostID}
 	respAny, err := c.call(ctx, "automation.GetMonitor", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.GetMonitor(cctx, pb)
 	})
 	if err != nil {
-		return usecase.AutomationMonitor{}, err
+		return appshared.AutomationMonitor{}, err
 	}
 	resp := respAny.(*pluginv1.GetMonitorResponse)
 	if strings.TrimSpace(resp.GetRawJson()) == "" {
-		return usecase.AutomationMonitor{}, nil
+		return appshared.AutomationMonitor{}, nil
 	}
 	var raw struct {
 		StorageStats float64         `json:"StorageStats"`
@@ -938,10 +938,10 @@ func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (us
 		MemoryStats  float64         `json:"MemoryStats"`
 	}
 	if err := json.Unmarshal([]byte(resp.GetRawJson()), &raw); err != nil {
-		return usecase.AutomationMonitor{}, err
+		return appshared.AutomationMonitor{}, err
 	}
 	bytesIn, bytesOut := parseNetworkStats(raw.NetworkStats)
-	return usecase.AutomationMonitor{
+	return appshared.AutomationMonitor{
 		CPUPercent:     int(math.Round(raw.CpuStats)),
 		MemoryPercent:  int(math.Round(raw.MemoryStats)),
 		StoragePercent: int(math.Round(raw.StorageStats)),
@@ -960,4 +960,40 @@ func (c *PluginInstanceClient) GetVNCURL(ctx context.Context, hostID int64) (str
 	}
 	resp := respAny.(*pluginv1.GetVNCURLResponse)
 	return resp.GetUrl(), nil
+}
+
+func parseNetworkStats(raw json.RawMessage) (int64, int64) {
+	if len(raw) == 0 {
+		return 0, 0
+	}
+	var legacy struct {
+		BytesSentPersec     int64 `json:"BytesSentPersec"`
+		BytesReceivedPersec int64 `json:"BytesReceivedPersec"`
+	}
+	if err := json.Unmarshal(raw, &legacy); err == nil && (legacy.BytesSentPersec != 0 || legacy.BytesReceivedPersec != 0) {
+		return legacy.BytesReceivedPersec, legacy.BytesSentPersec
+	}
+	var series [][]any
+	if err := json.Unmarshal(raw, &series); err != nil || len(series) == 0 {
+		return 0, 0
+	}
+	last := series[len(series)-1]
+	if len(last) < 3 {
+		return 0, 0
+	}
+	return parseInt64(last[1]), parseInt64(last[2])
+}
+
+func parseInt64(v any) int64 {
+	switch t := v.(type) {
+	case float64:
+		return int64(t)
+	case int64:
+		return t
+	case string:
+		id, _ := strconv.ParseInt(strings.TrimSpace(t), 10, 64)
+		return id
+	default:
+		return 0
+	}
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/testutil"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestRegistry_ListAndUpdate(t *testing.T) {
@@ -21,33 +21,32 @@ func TestRegistry_ListAndUpdate(t *testing.T) {
 		t.Fatalf("expected providers")
 	}
 
-	cfg, enabled, err := reg.GetProviderConfig(ctx, "yipay")
+	cfg, enabled, err := reg.GetProviderConfig(ctx, "approval")
 	if err != nil {
 		t.Fatalf("get provider config: %v", err)
 	}
-	if cfg == "" || enabled {
-		t.Fatalf("expected yipay default config and disabled status")
+	if cfg != "" || !enabled {
+		t.Fatalf("expected approval default config empty and enabled status")
 	}
 
-	if err := reg.UpdateProviderConfig(ctx, "yipay", true, `{"base_url":"https://pay.local","pid":"100","key":"k","pay_type":"alipay","notify_url":"","return_url":"","sign_type":"MD5"}`); err != nil {
+	if err := reg.UpdateProviderConfig(ctx, "approval", true, ``); err != nil {
 		t.Fatalf("update provider config: %v", err)
 	}
-	provider, err := reg.GetProvider(ctx, "yipay")
+	provider, err := reg.GetProvider(ctx, "approval")
 	if err != nil {
 		t.Fatalf("get provider: %v", err)
 	}
-	result, err := provider.CreatePayment(ctx, usecase.PaymentCreateRequest{OrderID: 1, UserID: 2, Amount: 1000, Subject: "test"})
-	if err != nil {
-		t.Fatalf("create payment: %v", err)
+	if provider.Key() != "approval" {
+		t.Fatalf("unexpected provider key: %s", provider.Key())
 	}
-	if result.PayURL == "" {
-		t.Fatalf("expected pay url")
+	if _, err := provider.CreatePayment(ctx, shared.PaymentCreateRequest{OrderID: 1, UserID: 2, Amount: 1000, Subject: "test"}); err == nil {
+		t.Fatalf("expected approval provider create payment unsupported")
 	}
 
-	if err := reg.UpdateProviderConfig(ctx, "yipay", false, ``); err != nil {
+	if err := reg.UpdateProviderConfig(ctx, "approval", false, ``); err != nil {
 		t.Fatalf("disable provider: %v", err)
 	}
-	if _, err := reg.GetProvider(ctx, "yipay"); err == nil {
+	if _, err := reg.GetProvider(ctx, "approval"); err == nil {
 		t.Fatalf("expected forbidden")
 	}
 }

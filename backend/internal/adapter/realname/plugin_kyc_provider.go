@@ -6,7 +6,7 @@ import (
 	"time"
 
 	plugins "xiaoheiplay/internal/adapter/plugins"
-	"xiaoheiplay/internal/usecase"
+	appshared "xiaoheiplay/internal/app/shared"
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
 
@@ -30,13 +30,13 @@ func (p *kycPluginProvider) Name() string {
 }
 
 func (p *kycPluginProvider) Verify(ctx context.Context, realName string, idNumber string) (bool, string, error) {
-	return p.VerifyWithInput(ctx, usecase.RealNameVerifyInput{
+	return p.VerifyWithInput(ctx, appshared.RealNameVerifyInput{
 		RealName: realName,
 		IDNumber: idNumber,
 	})
 }
 
-func (p *kycPluginProvider) VerifyWithInput(ctx context.Context, in usecase.RealNameVerifyInput) (bool, string, error) {
+func (p *kycPluginProvider) VerifyWithInput(ctx context.Context, in appshared.RealNameVerifyInput) (bool, string, error) {
 	if p.mgr == nil {
 		return false, "plugin manager missing", nil
 	}
@@ -155,6 +155,6 @@ func parsePluginProviderKey(key string) (pluginID, instanceID string, ok bool) {
 	return pluginID, instanceID, true
 }
 
-var _ usecase.RealNameProvider = (*kycPluginProvider)(nil)
-var _ usecase.RealNameProviderWithInput = (*kycPluginProvider)(nil)
-var _ usecase.RealNameProviderPendingPoller = (*kycPluginProvider)(nil)
+var _ appshared.RealNameProvider = (*kycPluginProvider)(nil)
+var _ appshared.RealNameProviderWithInput = (*kycPluginProvider)(nil)
+var _ appshared.RealNameProviderPendingPoller = (*kycPluginProvider)(nil)

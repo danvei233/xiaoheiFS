@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"testing"
@@ -46,7 +45,7 @@ func TestParseMissingFieldsFromError(t *testing.T) {
 
 func TestAsConfigValidationError(t *testing.T) {
 	err := &ConfigValidationError{Code: "missing_required_config", Message: "base_url required"}
-	wrapped := errors.New("wrap: " + err.Error())
+	wrapped := fmt.Errorf("%s", "wrap: "+err.Error())
 	if _, ok := AsConfigValidationError(wrapped); ok {
 		t.Fatal("expected false for non-wrapped error type")
 	}
@@ -65,7 +64,7 @@ type fakePluginInstallationRepo struct {
 
 func (f *fakePluginInstallationRepo) UpsertPluginInstallation(_ context.Context, inst *domain.PluginInstallation) error {
 	if inst == nil {
-		return errors.New("nil installation")
+		return fmt.Errorf("nil installation")
 	}
 	f.inst = *inst
 	return nil
@@ -75,7 +74,7 @@ func (f *fakePluginInstallationRepo) GetPluginInstallation(_ context.Context, ca
 	if f.inst.Category == category && f.inst.PluginID == pluginID && f.inst.InstanceID == instanceID {
 		return f.inst, nil
 	}
-	return domain.PluginInstallation{}, errors.New("not found")
+	return domain.PluginInstallation{}, fmt.Errorf("not found")
 }
 
 func (f *fakePluginInstallationRepo) ListPluginInstallations(context.Context) ([]domain.PluginInstallation, error) {

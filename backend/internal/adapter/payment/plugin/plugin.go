@@ -5,7 +5,7 @@ import (
 
 	"github.com/hashicorp/go-plugin"
 
-	"xiaoheiplay/internal/usecase"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
 const (
@@ -25,8 +25,8 @@ type Provider interface {
 	Name() string
 	SchemaJSON() string
 	SetConfig(configJSON string) error
-	CreatePayment(req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error)
-	VerifyNotify(params map[string]string) (usecase.PaymentNotifyResult, error)
+	CreatePayment(req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error)
+	VerifyNotify(params map[string]string) (appshared.PaymentNotifyResult, error)
 }
 
 type ProviderPlugin struct {
@@ -49,7 +49,7 @@ type ConfigArgs struct {
 }
 
 type CreateArgs struct {
-	Request usecase.PaymentCreateRequest
+	Request appshared.PaymentCreateRequest
 }
 
 type NotifyArgs struct {
@@ -83,14 +83,14 @@ func (p *providerRPC) SetConfig(configJSON string) error {
 	return p.client.Call("Plugin.SetConfig", ConfigArgs{ConfigJSON: configJSON}, &resp)
 }
 
-func (p *providerRPC) CreatePayment(req usecase.PaymentCreateRequest) (usecase.PaymentCreateResult, error) {
-	var resp usecase.PaymentCreateResult
+func (p *providerRPC) CreatePayment(req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error) {
+	var resp appshared.PaymentCreateResult
 	err := p.client.Call("Plugin.CreatePayment", CreateArgs{Request: req}, &resp)
 	return resp, err
 }
 
-func (p *providerRPC) VerifyNotify(params map[string]string) (usecase.PaymentNotifyResult, error) {
-	var resp usecase.PaymentNotifyResult
+func (p *providerRPC) VerifyNotify(params map[string]string) (appshared.PaymentNotifyResult, error) {
+	var resp appshared.PaymentNotifyResult
 	err := p.client.Call("Plugin.VerifyNotify", NotifyArgs{Params: params}, &resp)
 	return resp, err
 }
@@ -119,7 +119,7 @@ func (p *providerRPCServer) SetConfig(args ConfigArgs, resp *bool) error {
 	return p.Impl.SetConfig(args.ConfigJSON)
 }
 
-func (p *providerRPCServer) CreatePayment(args CreateArgs, resp *usecase.PaymentCreateResult) error {
+func (p *providerRPCServer) CreatePayment(args CreateArgs, resp *appshared.PaymentCreateResult) error {
 	result, err := p.Impl.CreatePayment(args.Request)
 	if err != nil {
 		return err
@@ -128,7 +128,7 @@ func (p *providerRPCServer) CreatePayment(args CreateArgs, resp *usecase.Payment
 	return nil
 }
 
-func (p *providerRPCServer) VerifyNotify(args NotifyArgs, resp *usecase.PaymentNotifyResult) error {
+func (p *providerRPCServer) VerifyNotify(args NotifyArgs, resp *appshared.PaymentNotifyResult) error {
 	result, err := p.Impl.VerifyNotify(args.Params)
 	if err != nil {
 		return err

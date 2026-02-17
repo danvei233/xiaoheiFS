@@ -4,19 +4,21 @@ import (
 	"context"
 	"testing"
 
+	apppluginadmin "xiaoheiplay/internal/app/pluginadmin"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 )
 
-func TestGetSettingValue(t *testing.T) {
+func TestResolvePluginUploadDir(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
-	if err := repo.UpsertSetting(context.Background(), domain.Setting{Key: "site_name", ValueJSON: "Example"}); err != nil {
+	svc := apppluginadmin.NewService(nil, nil, repo)
+	if got := svc.ResolveUploadDir(context.Background(), ""); got != "plugins/payment" {
+		t.Fatalf("unexpected default upload dir: %s", got)
+	}
+	if err := repo.UpsertSetting(context.Background(), domain.Setting{Key: "payment_plugin_dir", ValueJSON: "plugins/custom"}); err != nil {
 		t.Fatalf("upsert setting: %v", err)
 	}
-	if got := getSettingValue(repo, "site_name"); got != "Example" {
-		t.Fatalf("unexpected setting value: %s", got)
-	}
-	if got := getSettingValue(repo, "missing"); got != "" {
-		t.Fatalf("expected empty value")
+	if got := svc.ResolveUploadDir(context.Background(), ""); got != "plugins/custom" {
+		t.Fatalf("unexpected setting upload dir: %s", got)
 	}
 }

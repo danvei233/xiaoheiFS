@@ -21,11 +21,41 @@ import (
 	"xiaoheiplay/internal/adapter/seed"
 	"xiaoheiplay/internal/adapter/sse"
 	"xiaoheiplay/internal/adapter/system"
+	appadmin "xiaoheiplay/internal/app/admin"
+	appadminvps "xiaoheiplay/internal/app/adminvps"
+	appapikey "xiaoheiplay/internal/app/apikey"
+	appauth "xiaoheiplay/internal/app/auth"
+	appautomationlog "xiaoheiplay/internal/app/automationlog"
+	appcart "xiaoheiplay/internal/app/cart"
+	appcatalog "xiaoheiplay/internal/app/catalog"
+	appcms "xiaoheiplay/internal/app/cms"
+	appgoodstype "xiaoheiplay/internal/app/goodstype"
+	appintegration "xiaoheiplay/internal/app/integration"
+	appmessage "xiaoheiplay/internal/app/message"
+	appnotification "xiaoheiplay/internal/app/notification"
+	apporder "xiaoheiplay/internal/app/order"
+	apporderevent "xiaoheiplay/internal/app/orderevent"
+	apppasswordreset "xiaoheiplay/internal/app/passwordreset"
+	apppayment "xiaoheiplay/internal/app/payment"
+	apppermission "xiaoheiplay/internal/app/permission"
+	apppluginadmin "xiaoheiplay/internal/app/pluginadmin"
+	appprobe "xiaoheiplay/internal/app/probe"
+	apppush "xiaoheiplay/internal/app/push"
+	apprealname "xiaoheiplay/internal/app/realname"
+	appreport "xiaoheiplay/internal/app/report"
+	appscheduledtask "xiaoheiplay/internal/app/scheduledtask"
+	appsecurityticket "xiaoheiplay/internal/app/securityticket"
+	appsettings "xiaoheiplay/internal/app/settings"
+	appsystemstatus "xiaoheiplay/internal/app/systemstatus"
+	appticket "xiaoheiplay/internal/app/ticket"
+	appupload "xiaoheiplay/internal/app/upload"
+	appvps "xiaoheiplay/internal/app/vps"
+	appwallet "xiaoheiplay/internal/app/wallet"
+	appwalletorder "xiaoheiplay/internal/app/walletorder"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/cryptox"
 	"xiaoheiplay/internal/pkg/db"
 	"xiaoheiplay/internal/pkg/permissions"
-	"xiaoheiplay/internal/usecase"
 )
 
 func main() {
@@ -89,65 +119,99 @@ func main() {
 		log.Fatalf("plugins_dir is empty in config")
 	}
 	pluginMgr := plugins.NewManager(cfg.PluginsDir, repoSQLite, pluginCipher, plugins.ParseEd25519PublicKeys(cfg.PluginOfficialKeys))
+	pluginSMSSender := plugins.NewSMSSender(pluginMgr)
+	pluginAdminSvc := apppluginadmin.NewService(plugins.NewAdminManager(pluginMgr), repoSQLite, repoSQLite)
 	_ = pluginMgr.BootstrapFromDisk(context.Background(), repoSQLite)
 	pluginMgr.StartEnabled(context.Background())
 
-	catalogSvc := usecase.NewCatalogService(repoSQLite, repoSQLite, repoSQLite)
-	goodsTypeSvc := usecase.NewGoodsTypeService(repoSQLite, repoSQLite)
-	cartSvc := usecase.NewCartService(repoSQLite, repoSQLite, repoSQLite)
+	catalogSvc := appcatalog.NewService(repoSQLite, repoSQLite, repoSQLite)
+	goodsTypeSvc := appgoodstype.NewService(repoSQLite, repoSQLite)
+	cartSvc := appcart.NewService(repoSQLite, repoSQLite, repoSQLite)
 	broker := sse.NewBroker(repoSQLite)
 	automationResolver := automation.NewResolver(repoSQLite, pluginMgr, repoSQLite, repoSQLite)
 	emailSender := email.NewSender(repoSQLite)
 	robotNotifier := robot.NewWebhookNotifier(repoSQLite)
 	pushSender := push.NewFCMSender()
-	pushSvc := usecase.NewPushService(repoSQLite, repoSQLite, repoSQLite, pushSender)
+	pushSvc := apppush.NewService(repoSQLite, repoSQLite, repoSQLite, pushSender)
 	pushNotifier := push.NewOrderPushNotifier(repoSQLite, pushSvc)
 	eventBus := event.NewFanoutPublisher(broker, robotNotifier, pushNotifier)
 	realnameRegistry := realname.NewRegistry(repoSQLite)
 	realnameRegistry.SetPluginManager(pluginMgr)
-	realnameSvc := usecase.NewRealNameService(repoSQLite, realnameRegistry, repoSQLite)
-	messageSvc := usecase.NewMessageCenterService(repoSQLite, repoSQLite)
-	orderSvc := usecase.NewOrderService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, eventBus, automationResolver, nil, repoSQLite, repoSQLite, emailSender, repoSQLite, repoSQLite, repoSQLite, repoSQLite, messageSvc, realnameSvc)
-	vpsSvc := usecase.NewVPSService(repoSQLite, automationResolver, repoSQLite)
-	adminSvc := usecase.NewAdminService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
-	adminVPSSvc := usecase.NewAdminVPSService(repoSQLite, automationResolver, repoSQLite, repoSQLite, repoSQLite, messageSvc)
-	apiKeySvc := usecase.NewAPIKeyService(repoSQLite)
-	authSvc := usecase.NewAuthService(repoSQLite, repoSQLite, repoSQLite)
-	notifySvc := usecase.NewNotificationService(repoSQLite, repoSQLite, repoSQLite, emailSender, messageSvc)
-	integrationSvc := usecase.NewIntegrationService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
-	reportSvc := usecase.NewReportService(repoSQLite, repoSQLite, repoSQLite)
-	cmsSvc := usecase.NewCMSService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
-	ticketSvc := usecase.NewTicketService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
-	permissionSvc := usecase.NewPermissionService(repoSQLite, repoSQLite, repoSQLite)
-	passwordResetSvc := usecase.NewPasswordResetService(repoSQLite, repoSQLite, emailSender, repoSQLite)
-	walletSvc := usecase.NewWalletService(repoSQLite, repoSQLite)
-	walletOrderSvc := usecase.NewWalletOrderService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
+	realnameSvc := apprealname.NewService(repoSQLite, realnameRegistry, repoSQLite)
+	messageSvc := appmessage.NewService(repoSQLite, repoSQLite)
+	orderSvc := apporder.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, eventBus, automationResolver, nil, repoSQLite, repoSQLite, emailSender, repoSQLite, repoSQLite, repoSQLite, repoSQLite, messageSvc, realnameSvc)
+	vpsSvc := appvps.NewService(repoSQLite, automationResolver, repoSQLite)
+	adminSvc := appadmin.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
+	adminVPSSvc := appadminvps.NewService(repoSQLite, automationResolver, repoSQLite, repoSQLite, repoSQLite, messageSvc)
+	apiKeySvc := appapikey.NewService(repoSQLite)
+	authSvc := appauth.NewService(repoSQLite, repoSQLite, repoSQLite)
+	notifySvc := appnotification.NewService(repoSQLite, repoSQLite, repoSQLite, emailSender, messageSvc)
+	integrationSvc := appintegration.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
+	reportSvc := appreport.NewService(repoSQLite, repoSQLite, repoSQLite)
+	cmsSvc := appcms.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
+	ticketSvc := appticket.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
+	permissionSvc := apppermission.NewService(repoSQLite, repoSQLite, repoSQLite)
+	passwordResetSvc := apppasswordreset.NewService(repoSQLite, repoSQLite, emailSender, repoSQLite)
+	walletSvc := appwallet.NewService(repoSQLite, repoSQLite)
+	walletOrderSvc := appwalletorder.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
+	uploadSvc := appupload.NewService(repoSQLite)
+	autoLogSvc := appautomationlog.NewService(repoSQLite)
+	orderEventSvc := apporderevent.NewService(repoSQLite)
+	securityTicketSvc := appsecurityticket.NewService(repoSQLite)
+	settingsSvc := appsettings.NewService(repoSQLite)
 
 	paymentRegistry := payment.NewRegistry(repoSQLite)
 	paymentRegistry.SetPluginManager(pluginMgr)
 	paymentRegistry.SetPluginPaymentMethodRepo(repoSQLite)
-	paymentSvc := usecase.NewPaymentService(repoSQLite, repoSQLite, repoSQLite, paymentRegistry, repoSQLite, orderSvc, eventBus)
-	statusSvc := usecase.NewServerStatusService(system.NewProvider())
-	taskSvc := usecase.NewScheduledTaskService(repoSQLite, vpsSvc, orderSvc, notifySvc, repoSQLite, realnameSvc)
-	probeHub := usecase.NewProbeHub()
-	probeSvc := usecase.NewProbeService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
+	paymentSvc := apppayment.NewService(repoSQLite, repoSQLite, repoSQLite, paymentRegistry, repoSQLite, orderSvc, eventBus)
+	statusSvc := appsystemstatus.NewService(system.NewProvider())
+	taskSvc := appscheduledtask.NewService(repoSQLite, vpsSvc, orderSvc, notifySvc, repoSQLite, realnameSvc)
+	probeHub := appprobe.NewHub()
+	probeSvc := appprobe.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	go taskSvc.Start(context.Background())
 	go probeSvc.StartOfflineWatcher(context.Background())
 
-	pluginDir := getSettingValue(repoSQLite, "payment_plugin_dir")
-	if pluginDir == "" {
-		pluginDir = "plugins/payment"
-	}
-	pluginPassword := getSettingValue(repoSQLite, "payment_plugin_upload_password")
+	pluginDir := pluginAdminSvc.ResolveUploadDir(context.Background(), "")
 	_ = os.MkdirAll(pluginDir, 0o755)
 	_ = paymentRegistry.StartWatcher(context.Background(), pluginDir)
 
-	handler := http.NewHandlerWithServices(authSvc, catalogSvc, goodsTypeSvc, cartSvc, orderSvc, vpsSvc, adminSvc, adminVPSSvc, integrationSvc, reportSvc, cmsSvc, ticketSvc, walletSvc, walletOrderSvc, paymentSvc, messageSvc, statusSvc, realnameSvc, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, broker, cfg.JWTSecret, passwordResetSvc, permissionSvc, taskSvc)
-	handler.SetPaymentPluginConfig(pluginDir, pluginPassword)
-	handler.SetPushService(pushSvc)
-	handler.SetPluginManager(pluginMgr)
-	handler.SetPluginPaymentMethodRepo(repoSQLite)
-	handler.SetProbeService(probeSvc, probeHub)
+	handler := http.NewHandler(http.HandlerDeps{
+		AuthSvc:           authSvc,
+		CatalogSvc:        catalogSvc,
+		GoodsTypes:        goodsTypeSvc,
+		CartSvc:           cartSvc,
+		OrderSvc:          orderSvc,
+		VPSSvc:            vpsSvc,
+		AdminSvc:          adminSvc,
+		AdminVPS:          adminVPSSvc,
+		Integration:       integrationSvc,
+		ReportSvc:         reportSvc,
+		CMSSvc:            cmsSvc,
+		TicketSvc:         ticketSvc,
+		WalletSvc:         walletSvc,
+		WalletOrder:       walletOrderSvc,
+		PaymentSvc:        paymentSvc,
+		MessageSvc:        messageSvc,
+		PushSvc:           pushSvc,
+		StatusSvc:         statusSvc,
+		RealnameSvc:       realnameSvc,
+		OrderEventSvc:     orderEventSvc,
+		AutoLogSvc:        autoLogSvc,
+		SettingsSvc:       settingsSvc,
+		UploadSvc:         uploadSvc,
+		Broker:            broker,
+		JWTSecret:         cfg.JWTSecret,
+		PasswordReset:     passwordResetSvc,
+		SecurityTicketSvc: securityTicketSvc,
+		PermissionSvc:     permissionSvc,
+		PluginAdmin:       pluginAdminSvc,
+		SMSSender:         pluginSMSSender,
+		TaskSvc:           taskSvc,
+		ProbeSvc:          probeSvc,
+		ProbeHub:          probeHub,
+		EmailSender:       emailSender,
+		RobotNotifier:     robotNotifier,
+	})
 	middleware := http.NewMiddleware(cfg.JWTSecret, apiKeySvc, permissionSvc)
 	server := http.NewServer(handler, middleware)
 
@@ -161,12 +225,4 @@ func main() {
 	if err := server.Engine.Run(cfg.Addr); err != nil {
 		log.Fatalf("server: %v", err)
 	}
-}
-
-func getSettingValue(repo *repo.GormRepo, key string) string {
-	setting, err := repo.GetSetting(context.Background(), key)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(setting.ValueJSON)
 }

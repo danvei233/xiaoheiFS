@@ -1,7 +1,7 @@
 package plugins
 
 import (
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -32,7 +32,7 @@ func ResolveEntry(pluginDir string, manifest Manifest) (EntryInfo, error) {
 				EntryPath:          "",
 				EntrySupported:     false,
 				SupportedPlatforms: supported,
-			}, errors.New("plugin binary not available for current platform")
+			}, fmt.Errorf("plugin binary not available for current platform")
 		}
 		full, err := safeJoin(pluginDir, rel)
 		if err != nil {
@@ -51,7 +51,7 @@ func ResolveEntry(pluginDir string, manifest Manifest) (EntryInfo, error) {
 			EntryPath:          full,
 			EntrySupported:     false,
 			SupportedPlatforms: supported,
-		}, errors.New("plugin binary not found for current platform")
+		}, fmt.Errorf("plugin binary not found for current platform")
 	}
 
 	// Backward-compatible fallback: root plugin(.exe)
@@ -65,7 +65,7 @@ func ResolveEntry(pluginDir string, manifest Manifest) (EntryInfo, error) {
 	if fileExists(p) {
 		return EntryInfo{Platform: platform, EntryPath: p, EntrySupported: true, SupportedPlatforms: []string{platform}}, nil
 	}
-	return EntryInfo{Platform: platform, EntrySupported: false, SupportedPlatforms: supported}, errors.New("plugin binary not found")
+	return EntryInfo{Platform: platform, EntrySupported: false, SupportedPlatforms: supported}, fmt.Errorf("plugin binary not found")
 }
 
 func supportedPlatformsFromManifest(manifest Manifest) []string {
@@ -83,10 +83,10 @@ func supportedPlatformsFromManifest(manifest Manifest) []string {
 func safeJoin(rootDir string, relSlash string) (string, error) {
 	rel := filepath.FromSlash(filepath.ToSlash(strings.TrimSpace(relSlash)))
 	if rel == "" {
-		return "", errors.New("invalid entry path")
+		return "", fmt.Errorf("invalid entry path")
 	}
 	if strings.HasPrefix(filepath.ToSlash(rel), "/") || strings.Contains(filepath.ToSlash(rel), "..") || strings.Contains(filepath.ToSlash(rel), ":") {
-		return "", errors.New("invalid entry path")
+		return "", fmt.Errorf("invalid entry path")
 	}
 	full := filepath.Join(rootDir, rel)
 	fullAbs, err1 := filepath.Abs(full)
@@ -95,7 +95,7 @@ func safeJoin(rootDir string, relSlash string) (string, error) {
 		ra := filepath.Clean(rootAbs) + string(os.PathSeparator)
 		fa := filepath.Clean(fullAbs)
 		if !strings.HasPrefix(fa, ra) && fa != strings.TrimSuffix(ra, string(os.PathSeparator)) {
-			return "", errors.New("invalid entry path")
+			return "", fmt.Errorf("invalid entry path")
 		}
 	}
 	return full, nil

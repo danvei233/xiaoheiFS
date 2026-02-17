@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestSQLiteRepo_UniqueConstraints(t *testing.T) {
@@ -107,7 +107,7 @@ func TestSQLiteRepo_AdjustWalletBalance(t *testing.T) {
 	if _, err := repo.AdjustWalletBalance(ctx, user.ID, 50, "credit", "seed", 1, "init"); err != nil {
 		t.Fatalf("credit balance: %v", err)
 	}
-	if _, err := repo.AdjustWalletBalance(ctx, user.ID, -100, "debit", "order", 2, "charge"); err != usecase.ErrInsufficientBalance {
+	if _, err := repo.AdjustWalletBalance(ctx, user.ID, -100, "debit", "order", 2, "charge"); err != shared.ErrInsufficientBalance {
 		t.Fatalf("expected insufficient balance, got %v", err)
 	}
 }

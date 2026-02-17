@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -186,7 +186,7 @@ func main() {
 
 func newAliyunDysmsapiClient(cfg config) (*dysmsapi.Client, error) {
 	if strings.TrimSpace(cfg.AccessKeyID) == "" || strings.TrimSpace(cfg.AccessKeySecret) == "" {
-		return nil, errors.New("access_key_id/access_key_secret required")
+		return nil, fmt.Errorf("access_key_id/access_key_secret required")
 	}
 	conf := &openapi.Config{
 		AccessKeyId:     tea.String(strings.TrimSpace(cfg.AccessKeyID)),

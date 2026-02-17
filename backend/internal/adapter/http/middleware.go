@@ -10,17 +10,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 
+	appapikey "xiaoheiplay/internal/app/apikey"
+	apppermission "xiaoheiplay/internal/app/permission"
+	appshared "xiaoheiplay/internal/app/shared"
+	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/permissions"
-	"xiaoheiplay/internal/usecase"
 )
 
 type Middleware struct {
 	jwtSecret     []byte
-	apiKeys       *usecase.APIKeyService
-	permissionSvc *usecase.PermissionService
+	apiKeys       *appapikey.Service
+	permissionSvc *apppermission.Service
 }
 
-func NewMiddleware(jwtSecret string, apiKeys *usecase.APIKeyService, permissionSvc *usecase.PermissionService) *Middleware {
+func NewMiddleware(jwtSecret string, apiKeys *appapikey.Service, permissionSvc *apppermission.Service) *Middleware {
 	return &Middleware{jwtSecret: []byte(jwtSecret), apiKeys: apiKeys, permissionSvc: permissionSvc}
 }
 
@@ -149,7 +152,7 @@ func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey strin
 	key, err := m.apiKeys.Validate(c, rawKey)
 	if err != nil {
 		status := http.StatusUnauthorized
-		if errors.Is(err, usecase.ErrForbidden) {
+		if errors.Is(err, appshared.ErrForbidden) {
 			status = http.StatusForbidden
 		}
 		c.AbortWithStatusJSON(status, gin.H{"error": "invalid api key"})
@@ -204,7 +207,7 @@ func (m *Middleware) RequireAPIKey() gin.HandlerFunc {
 		_, err := m.apiKeys.Validate(c, key)
 		if err != nil {
 			status := http.StatusUnauthorized
-			if errors.Is(err, usecase.ErrForbidden) {
+			if errors.Is(err, appshared.ErrForbidden) {
 				status = http.StatusForbidden
 			}
 			c.AbortWithStatusJSON(status, gin.H{"error": "invalid api key"})
@@ -273,17 +276,17 @@ func (m *Middleware) parseToken(c *gin.Context) (jwt.MapClaims, error) {
 		tokenStr = m.tokenFromQuery(c)
 	}
 	if tokenStr == "" {
-		return nil, errors.New("missing token")
+		return nil, domain.ErrEmptyToken
 	}
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (any, error) {
 		if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return nil, errors.New("unexpected signing method")
+			return nil, domain.ErrUnexpectedSigningMethod
 		}
 		return m.jwtSecret, nil
 	})
 	if err != nil || !token.Valid {
-		return nil, errors.New("invalid token")
+		return nil, domain.ErrInvalidToken
 	}
 	return claims, nil
 }

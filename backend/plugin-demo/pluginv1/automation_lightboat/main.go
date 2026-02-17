@@ -3,14 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
-	"xiaoheiplay/internal/adapter/automation"
-	"xiaoheiplay/internal/usecase"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/pkg/pluginsdk"
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
@@ -128,22 +126,22 @@ func (s *coreServer) Health(ctx context.Context, req *pluginv1.HealthCheckReques
 	}, nil
 }
 
-func (s *coreServer) newClient() (*automation.Client, error) {
+func (s *coreServer) newClient() (*Client, error) {
 	cfg := s.cfg
 	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.APIKey) == "" {
-		return nil, errors.New("missing config")
+		return nil, fmt.Errorf("missing config")
 	}
 	timeout := time.Duration(cfg.TimeoutSec) * time.Second
-	return automation.NewClient(cfg.BaseURL, cfg.APIKey, timeout), nil
+	return NewClient(cfg.BaseURL, cfg.APIKey, timeout), nil
 }
 
-func (s *coreServer) newClientWithTrace() (*automation.Client, *automation.HTTPLogEntry, error) {
+func (s *coreServer) newClientWithTrace() (*Client, *HTTPLogEntry, error) {
 	client, err := s.newClient()
 	if err != nil {
 		return nil, nil, err
 	}
-	var last automation.HTTPLogEntry
-	client.WithLogger(func(_ context.Context, entry automation.HTTPLogEntry) {
+	var last HTTPLogEntry
+	client.WithLogger(func(_ context.Context, entry HTTPLogEntry) {
 		last = entry
 	})
 	return client, &last, nil
@@ -163,7 +161,7 @@ func (s *coreServer) retry(fn func() error) error {
 	return err
 }
 
-func wrapHTTPTraceErr(err error, last *automation.HTTPLogEntry) error {
+func wrapHTTPTraceErr(err error, last *HTTPLogEntry) error {
 	if err == nil {
 		return nil
 	}
@@ -183,7 +181,7 @@ func wrapHTTPTraceErr(err error, last *automation.HTTPLogEntry) error {
 	}
 	raw, marshalErr := json.Marshal(trace)
 	if marshalErr != nil {
-		return errors.New(msg)
+		return fmt.Errorf("%s", msg)
 	}
 	return fmt.Errorf("%s | http_trace=%s", msg, string(raw))
 }
@@ -215,7 +213,7 @@ func (a *automationServer) ListAreas(ctx context.Context, _ *pluginv1.Empty) (*p
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationArea
+	var items []appshared.AutomationArea
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListAreas(ctx)
@@ -236,7 +234,7 @@ func (a *automationServer) ListLines(ctx context.Context, _ *pluginv1.Empty) (*p
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationLine
+	var items []appshared.AutomationLine
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListLines(ctx)
@@ -257,7 +255,7 @@ func (a *automationServer) ListPackages(ctx context.Context, req *pluginv1.ListP
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationProduct
+	var items []appshared.AutomationProduct
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListProducts(ctx, req.GetLineId())
@@ -287,7 +285,7 @@ func (a *automationServer) ListImages(ctx context.Context, req *pluginv1.ListIma
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationImage
+	var items []appshared.AutomationImage
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListImages(ctx, req.GetLineId())
@@ -315,7 +313,7 @@ func (a *automationServer) CreateInstance(ctx context.Context, req *pluginv1.Cre
 	if req.GetExpireAtUnix() > 0 {
 		expire = time.Unix(req.GetExpireAtUnix(), 0)
 	}
-	r := usecase.AutomationCreateHostRequest{
+	r := appshared.AutomationCreateHostRequest{
 		LineID:     req.GetLineId(),
 		OS:         req.GetOs(),
 		CPU:        int(req.GetCpu()),
@@ -340,7 +338,7 @@ func (a *automationServer) GetInstance(ctx context.Context, req *pluginv1.GetIns
 	if err != nil {
 		return nil, err
 	}
-	var info usecase.AutomationHostInfo
+	var info appshared.AutomationHostInfo
 	err = a.core.retry(func() error {
 		var callErr error
 		info, callErr = c.GetHostInfo(ctx, req.GetInstanceId())
@@ -376,7 +374,7 @@ func (a *automationServer) ListInstancesSimple(ctx context.Context, req *pluginv
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationHostSimple
+	var items []appshared.AutomationHostSimple
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListHostSimple(ctx, req.GetSearchTag())
@@ -475,7 +473,7 @@ func (a *automationServer) ElasticUpdate(ctx context.Context, req *pluginv1.Elas
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
-	r := usecase.AutomationElasticUpdateRequest{HostID: req.GetInstanceId()}
+	r := appshared.AutomationElasticUpdateRequest{HostID: req.GetInstanceId()}
 	if req.Cpu != nil {
 		v := int(req.GetCpu())
 		r.CPU = &v
@@ -603,7 +601,7 @@ func (a *automationServer) GetMonitor(ctx context.Context, req *pluginv1.GetMoni
 	if err != nil {
 		return nil, err
 	}
-	var mon usecase.AutomationMonitor
+	var mon appshared.AutomationMonitor
 	err = a.core.retry(func() error {
 		var callErr error
 		mon, callErr = c.GetMonitor(ctx, req.GetInstanceId())
@@ -630,7 +628,7 @@ func (a *automationServer) ListPortMappings(ctx context.Context, req *pluginv1.L
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationPortMapping
+	var items []appshared.AutomationPortMapping
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListPortMappings(ctx, req.GetInstanceId())
@@ -663,7 +661,7 @@ func (a *automationServer) AddPortMapping(ctx context.Context, req *pluginv1.Add
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
-	err = c.AddPortMapping(ctx, usecase.AutomationPortMappingCreate{
+	err = c.AddPortMapping(ctx, appshared.AutomationPortMappingCreate{
 		HostID: req.GetInstanceId(),
 		Name:   req.GetName(),
 		Sport:  req.GetSport(),
@@ -712,7 +710,7 @@ func (a *automationServer) ListBackups(ctx context.Context, req *pluginv1.ListBa
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationBackup
+	var items []appshared.AutomationBackup
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListBackups(ctx, req.GetInstanceId())
@@ -783,7 +781,7 @@ func (a *automationServer) ListSnapshots(ctx context.Context, req *pluginv1.List
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationSnapshot
+	var items []appshared.AutomationSnapshot
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListSnapshots(ctx, req.GetInstanceId())
@@ -854,7 +852,7 @@ func (a *automationServer) ListFirewallRules(ctx context.Context, req *pluginv1.
 	if err != nil {
 		return nil, err
 	}
-	var items []usecase.AutomationFirewallRule
+	var items []appshared.AutomationFirewallRule
 	err = a.core.retry(func() error {
 		var callErr error
 		items, callErr = c.ListFirewallRules(ctx, req.GetInstanceId())
@@ -886,7 +884,7 @@ func (a *automationServer) AddFirewallRule(ctx context.Context, req *pluginv1.Ad
 	if a.core.cfg.DryRun {
 		return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
 	}
-	err = c.AddFirewallRule(ctx, usecase.AutomationFirewallRuleCreate{
+	err = c.AddFirewallRule(ctx, appshared.AutomationFirewallRuleCreate{
 		HostID:    req.GetInstanceId(),
 		Direction: req.GetDirection(),
 		Protocol:  req.GetProtocol(),
@@ -914,23 +912,6 @@ func (a *automationServer) DeleteFirewallRule(ctx context.Context, req *pluginv1
 		return nil, wrapHTTPTraceErr(err, last)
 	}
 	return &pluginv1.Empty{Status: "success", Msg: "ok"}, nil
-}
-
-func toInt64(v any) int64 {
-	switch t := v.(type) {
-	case int64:
-		return t
-	case int:
-		return int64(t)
-	case float64:
-		return int64(t)
-	case json.Number:
-		i, _ := t.Int64()
-		return i
-	default:
-		i, _ := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(v)), 10, 64)
-		return i
-	}
 }
 
 func toString(v any) string {

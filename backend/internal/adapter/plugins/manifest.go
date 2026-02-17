@@ -2,7 +2,7 @@ package plugins
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,7 +45,7 @@ func ReadManifest(dir string) (Manifest, error) {
 	m.Name = strings.TrimSpace(m.Name)
 	m.Version = strings.TrimSpace(m.Version)
 	if m.PluginID == "" || m.Name == "" || m.Version == "" {
-		return Manifest{}, errors.New("invalid manifest")
+		return Manifest{}, fmt.Errorf("invalid manifest")
 	}
 	if len(m.Binaries) > 0 {
 		clean := map[string]string{}
@@ -53,18 +53,18 @@ func ReadManifest(dir string) (Manifest, error) {
 			key := strings.TrimSpace(k)
 			val := filepath.ToSlash(strings.TrimSpace(v))
 			if key == "" || val == "" {
-				return Manifest{}, errors.New("invalid manifest binaries")
+				return Manifest{}, fmt.Errorf("invalid manifest binaries")
 			}
 			if strings.HasPrefix(val, "/") || strings.Contains(val, "..") || strings.Contains(val, ":") {
-				return Manifest{}, errors.New("invalid manifest binaries path")
+				return Manifest{}, fmt.Errorf("invalid manifest binaries path")
 			}
 			prefix := "bin/" + key + "/"
 			if !strings.HasPrefix(val, prefix) {
-				return Manifest{}, errors.New("invalid manifest binaries path (must be " + prefix + "...)")
+				return Manifest{}, fmt.Errorf("%s", "invalid manifest binaries path (must be "+prefix+"...)")
 			}
 			base := filepath.Base(filepath.FromSlash(val))
 			if base != "plugin" && base != "plugin.exe" {
-				return Manifest{}, errors.New("invalid manifest binaries filename (must be plugin or plugin.exe)")
+				return Manifest{}, fmt.Errorf("invalid manifest binaries filename (must be plugin or plugin.exe)")
 			}
 			clean[key] = val
 		}

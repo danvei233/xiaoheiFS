@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -63,12 +63,12 @@ func normalizeKeyPEMOrBase64(raw string) string {
 func parseRSAPublicKeyPEMOrBase64(raw string) (*rsa.PublicKey, error) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
-		return nil, errors.New("empty public key")
+		return nil, fmt.Errorf("empty public key")
 	}
 	if strings.Contains(s, "BEGIN") {
 		block, _ := pem.Decode([]byte(s))
 		if block == nil {
-			return nil, errors.New("invalid public key pem")
+			return nil, fmt.Errorf("invalid public key pem")
 		}
 		pubAny, err := x509.ParsePKIXPublicKey(block.Bytes)
 		if err != nil {
@@ -76,7 +76,7 @@ func parseRSAPublicKeyPEMOrBase64(raw string) (*rsa.PublicKey, error) {
 		}
 		pub, ok := pubAny.(*rsa.PublicKey)
 		if !ok {
-			return nil, errors.New("public key is not rsa")
+			return nil, fmt.Errorf("public key is not rsa")
 		}
 		return pub, nil
 	}
@@ -86,7 +86,7 @@ func parseRSAPublicKeyPEMOrBase64(raw string) (*rsa.PublicKey, error) {
 	compact = strings.ReplaceAll(compact, " ", "")
 	der, err := base64.StdEncoding.DecodeString(compact)
 	if err != nil {
-		return nil, errors.New("invalid public key base64")
+		return nil, fmt.Errorf("invalid public key base64")
 	}
 	pubAny, err := x509.ParsePKIXPublicKey(der)
 	if err != nil {
@@ -94,7 +94,7 @@ func parseRSAPublicKeyPEMOrBase64(raw string) (*rsa.PublicKey, error) {
 	}
 	pub, ok := pubAny.(*rsa.PublicKey)
 	if !ok {
-		return nil, errors.New("public key is not rsa")
+		return nil, fmt.Errorf("public key is not rsa")
 	}
 	return pub, nil
 }

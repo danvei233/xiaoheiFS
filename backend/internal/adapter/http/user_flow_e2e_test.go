@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/testutilhttp"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestUserFlow_E2E(t *testing.T) {
@@ -292,12 +292,12 @@ func payWithProvider(t *testing.T, env *testutilhttp.Env, token string, orderID 
 	env.PaymentReg.RegisterProvider(&testutil.FakePaymentProvider{
 		KeyVal:  provider,
 		NameVal: "Fake",
-		CreateRes: usecase.PaymentCreateResult{
+		CreateRes: shared.PaymentCreateResult{
 			PayURL:  "https://pay.local",
 			TradeNo: "TN-E2E",
 		},
-		VerifyFunc: func(req usecase.RawHTTPRequest) (usecase.PaymentNotifyResult, error) {
-			return usecase.PaymentNotifyResult{TradeNo: "TN-E2E", Paid: true, Amount: 1000}, nil
+		VerifyFunc: func(req shared.RawHTTPRequest) (shared.PaymentNotifyResult, error) {
+			return shared.PaymentNotifyResult{TradeNo: "TN-E2E", Paid: true, Amount: 1000}, nil
 		},
 	}, true, "")
 	pay := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/orders/"+testutil.Itoa(orderID)+"/pay", map[string]any{

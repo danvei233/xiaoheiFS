@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"xiaoheiplay/internal/usecase"
+	"xiaoheiplay/internal/app/shared"
 )
 
 func TestDemoPaymentProvider(t *testing.T) {
@@ -18,7 +18,7 @@ func TestDemoPaymentProvider(t *testing.T) {
 	if err := p.SetConfig(`{"base_url":"https://pay.local","api_key":"k","note":"hello"}`); err != nil {
 		t.Fatalf("set config: %v", err)
 	}
-	result, err := p.CreatePayment(usecase.PaymentCreateRequest{OrderID: 10, UserID: 20})
+	result, err := p.CreatePayment(shared.PaymentCreateRequest{OrderID: 10, UserID: 20})
 	if err != nil {
 		t.Fatalf("create payment: %v", err)
 	}
@@ -43,6 +43,6 @@ func TestDemoPaymentProvider(t *testing.T) {
 	if err := p.SetConfig(""); err != nil {
 		t.Fatalf("set empty config: %v", err)
 	}
-	_, _ = p.CreatePayment(usecase.PaymentCreateRequest{OrderID: 1, UserID: 1})
+	_, _ = p.CreatePayment(shared.PaymentCreateRequest{OrderID: 1, UserID: 1})
 	_, _ = p.VerifyNotify(map[string]string{"trade_no": "t2", "status": "paid"})
 }

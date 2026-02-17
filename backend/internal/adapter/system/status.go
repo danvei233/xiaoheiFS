@@ -12,7 +12,7 @@ import (
 	"github.com/shirou/gopsutil/v3/host"
 	"github.com/shirou/gopsutil/v3/mem"
 
-	"xiaoheiplay/internal/usecase"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
 type Provider struct{}
@@ -21,7 +21,7 @@ func NewProvider() *Provider {
 	return &Provider{}
 }
 
-func (p *Provider) Status(ctx context.Context) (usecase.ServerStatus, error) {
+func (p *Provider) Status(ctx context.Context) (appshared.ServerStatus, error) {
 	info, _ := host.InfoWithContext(ctx)
 	cpuInfo, _ := cpu.InfoWithContext(ctx)
 	cpuCores, _ := cpu.CountsWithContext(ctx, true)
@@ -32,7 +32,7 @@ func (p *Provider) Status(ctx context.Context) (usecase.ServerStatus, error) {
 	diskPath := defaultDiskPath()
 	du, _ := disk.UsageWithContext(ctx, diskPath)
 
-	status := usecase.ServerStatus{
+	status := appshared.ServerStatus{
 		Hostname:        info.Hostname,
 		OS:              info.OS,
 		Platform:        info.Platform,

@@ -34,9 +34,6 @@ func TestHandlers_AdminPaymentPluginUpload(t *testing.T) {
 	admin := testutil.CreateAdmin(t, env.Repo, "adminplugin", "adminplugin@example.com", "pass", groupID)
 	token := testutil.IssueJWT(t, env.JWTSecret, admin.ID, "admin", time.Hour)
 
-	dir := t.TempDir()
-	env.Handler.SetPaymentPluginConfig(dir, "qweasd123456")
-
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	_ = writer.WriteField("password", "qweasd123456")

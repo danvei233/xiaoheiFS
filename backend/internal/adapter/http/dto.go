@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 type UserDTO struct {
@@ -110,15 +110,15 @@ type BillingCycleDTO struct {
 }
 
 type CartItemDTO struct {
-	ID        int64            `json:"id"`
-	UserID    int64            `json:"user_id"`
-	PackageID int64            `json:"package_id"`
-	SystemID  int64            `json:"system_id"`
-	Spec      usecase.CartSpec `json:"spec"`
-	Qty       int              `json:"qty"`
-	Amount    float64          `json:"amount"`
-	CreatedAt time.Time        `json:"created_at"`
-	UpdatedAt time.Time        `json:"updated_at"`
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"user_id"`
+	PackageID int64              `json:"package_id"`
+	SystemID  int64              `json:"system_id"`
+	Spec      appshared.CartSpec `json:"spec"`
+	Qty       int                `json:"qty"`
+	Amount    float64            `json:"amount"`
+	CreatedAt time.Time          `json:"created_at"`
+	UpdatedAt time.Time          `json:"updated_at"`
 }
 
 type OrderDTO struct {
@@ -568,7 +568,7 @@ func toOrderPaymentDTO(payment domain.OrderPayment) OrderPaymentDTO {
 	}
 }
 
-func toPaymentProviderDTO(info usecase.PaymentProviderInfo) PaymentProviderDTO {
+func toPaymentProviderDTO(info appshared.PaymentProviderInfo) PaymentProviderDTO {
 	return PaymentProviderDTO{
 		Key:        info.Key,
 		Name:       info.Name,
@@ -578,7 +578,7 @@ func toPaymentProviderDTO(info usecase.PaymentProviderInfo) PaymentProviderDTO {
 	}
 }
 
-func toPaymentProviderDTOs(items []usecase.PaymentProviderInfo) []PaymentProviderDTO {
+func toPaymentProviderDTOs(items []appshared.PaymentProviderInfo) []PaymentProviderDTO {
 	out := make([]PaymentProviderDTO, 0, len(items))
 	for _, item := range items {
 		out = append(out, toPaymentProviderDTO(item))
@@ -586,7 +586,7 @@ func toPaymentProviderDTOs(items []usecase.PaymentProviderInfo) []PaymentProvide
 	return out
 }
 
-func toPaymentMethodDTO(info usecase.PaymentMethodInfo) PaymentMethodDTO {
+func toPaymentMethodDTO(info appshared.PaymentMethodInfo) PaymentMethodDTO {
 	return PaymentMethodDTO{
 		Key:        info.Key,
 		Name:       info.Name,
@@ -596,7 +596,7 @@ func toPaymentMethodDTO(info usecase.PaymentMethodInfo) PaymentMethodDTO {
 	}
 }
 
-func toPaymentMethodDTOs(items []usecase.PaymentMethodInfo) []PaymentMethodDTO {
+func toPaymentMethodDTOs(items []appshared.PaymentMethodInfo) []PaymentMethodDTO {
 	out := make([]PaymentMethodDTO, 0, len(items))
 	for _, item := range items {
 		out = append(out, toPaymentMethodDTO(item))
@@ -604,7 +604,7 @@ func toPaymentMethodDTOs(items []usecase.PaymentMethodInfo) []PaymentMethodDTO {
 	return out
 }
 
-func toPaymentSelectDTO(result usecase.PaymentSelectResult) PaymentSelectDTO {
+func toPaymentSelectDTO(result appshared.PaymentSelectResult) PaymentSelectDTO {
 	return PaymentSelectDTO{
 		Method:  result.Method,
 		Status:  result.Status,
@@ -697,7 +697,7 @@ func toRealNameVerificationDTO(item domain.RealNameVerification) RealNameVerific
 	}
 }
 
-func toServerStatusDTO(status usecase.ServerStatus) ServerStatusDTO {
+func toServerStatusDTO(status appshared.ServerStatus) ServerStatusDTO {
 	return ServerStatusDTO{
 		Hostname:         status.Hostname,
 		OS:               status.OS,
@@ -979,13 +979,13 @@ func maskIDNumber(idNumber string) string {
 	return idNumber[:4] + "****" + idNumber[len(idNumber)-4:]
 }
 
-func parseCartSpec(specJSON string) usecase.CartSpec {
+func parseCartSpec(specJSON string) appshared.CartSpec {
 	if specJSON == "" {
-		return usecase.CartSpec{}
+		return appshared.CartSpec{}
 	}
-	var spec usecase.CartSpec
+	var spec appshared.CartSpec
 	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
-		return usecase.CartSpec{}
+		return appshared.CartSpec{}
 	}
 	return spec
 }

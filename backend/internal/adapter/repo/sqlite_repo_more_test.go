@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
-	"xiaoheiplay/internal/usecase"
 )
 
 func TestSQLiteRepo_ListUsersByRoleStatus(t *testing.T) {
@@ -66,15 +66,15 @@ func TestSQLiteRepo_ListOrdersPaymentsFilters(t *testing.T) {
 		t.Fatalf("update order2: %v", err)
 	}
 
-	items, total, err := repo.ListOrders(ctx, usecase.OrderFilter{UserID: user.ID}, 10, 0)
+	items, total, err := repo.ListOrders(ctx, shared.OrderFilter{UserID: user.ID}, 10, 0)
 	if err != nil || total != 2 || len(items) != 2 {
 		t.Fatalf("list orders: %v %d %d", err, total, len(items))
 	}
-	items, total, err = repo.ListOrders(ctx, usecase.OrderFilter{Status: string(domain.OrderStatusApproved), UserID: user.ID}, 10, 0)
+	items, total, err = repo.ListOrders(ctx, shared.OrderFilter{Status: string(domain.OrderStatusApproved), UserID: user.ID}, 10, 0)
 	if err != nil || total != 1 || len(items) != 1 {
 		t.Fatalf("list orders by status: %v %d %d", err, total, len(items))
 	}
-	items, _, err = repo.ListOrders(ctx, usecase.OrderFilter{UserID: user.ID}, 1, 1)
+	items, _, err = repo.ListOrders(ctx, shared.OrderFilter{UserID: user.ID}, 1, 1)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list orders paging: %v %d", err, len(items))
 	}
@@ -88,7 +88,7 @@ func TestSQLiteRepo_ListOrdersPaymentsFilters(t *testing.T) {
 		t.Fatalf("create payment2: %v", err)
 	}
 
-	pays, total, err := repo.ListPayments(ctx, usecase.PaymentFilter{Status: string(domain.PaymentStatusApproved)}, 10, 0)
+	pays, total, err := repo.ListPayments(ctx, shared.PaymentFilter{Status: string(domain.PaymentStatusApproved)}, 10, 0)
 	if err != nil || total != 1 || len(pays) != 1 {
 		t.Fatalf("list payments by status: %v %d %d", err, total, len(pays))
 	}
@@ -108,7 +108,7 @@ func TestSQLiteRepo_NotificationsAndTickets(t *testing.T) {
 		t.Fatalf("create read: %v", err)
 	}
 
-	filter := usecase.NotificationFilter{UserID: &user.ID, Status: "unread", Limit: 10}
+	filter := shared.NotificationFilter{UserID: &user.ID, Status: "unread", Limit: 10}
 	items, total, err := repo.ListNotifications(ctx, filter)
 	if err != nil || total != 1 || len(items) != 1 {
 		t.Fatalf("list unread: %v %d %d", err, total, len(items))
@@ -133,7 +133,7 @@ func TestSQLiteRepo_NotificationsAndTickets(t *testing.T) {
 	if err := repo.CreateTicketWithDetails(ctx, &ticket, &msg, nil); err != nil {
 		t.Fatalf("create ticket: %v", err)
 	}
-	list, total, err := repo.ListTickets(ctx, usecase.TicketFilter{UserID: &user.ID, Status: "open", Limit: 10})
+	list, total, err := repo.ListTickets(ctx, shared.TicketFilter{UserID: &user.ID, Status: "open", Limit: 10})
 	if err != nil || total != 1 || len(list) != 1 {
 		t.Fatalf("list tickets: %v %d %d", err, total, len(list))
 	}

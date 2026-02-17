@@ -4,10 +4,10 @@ import (
 	"net/url"
 	"strings"
 
-	"xiaoheiplay/internal/usecase"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
-func rawToParams(req usecase.RawHTTPRequest) map[string]string {
+func rawToParams(req appshared.RawHTTPRequest) map[string]string {
 	out := map[string]string{}
 	if req.RawQuery != "" {
 		if q, err := url.ParseQuery(req.RawQuery); err == nil {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"xiaoheiplay/internal/usecase"
+	"xiaoheiplay/internal/app/shared"
 )
 
 func TestSimpleProviders(t *testing.T) {
@@ -12,10 +12,10 @@ func TestSimpleProviders(t *testing.T) {
 		if err := provider.SetConfig(""); err != nil {
 			t.Fatalf("set config: %v", err)
 		}
-		if _, err := provider.CreatePayment(context.Background(), usecase.PaymentCreateRequest{}); err == nil {
+		if _, err := provider.CreatePayment(context.Background(), shared.PaymentCreateRequest{}); err == nil {
 			t.Fatalf("expected create payment error")
 		}
-		if _, err := provider.VerifyNotify(context.Background(), usecase.RawHTTPRequest{}); err == nil {
+		if _, err := provider.VerifyNotify(context.Background(), shared.RawHTTPRequest{}); err == nil {
 			t.Fatalf("expected verify notify error")
 		}
 	}

@@ -2,37 +2,38 @@ package automation
 
 import (
 	"context"
-	"errors"
 	"strings"
 
+	"fmt"
 	"xiaoheiplay/internal/adapter/plugins"
+	appports "xiaoheiplay/internal/app/ports"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
 type Resolver struct {
-	goodsTypes usecase.GoodsTypeRepository
+	goodsTypes appports.GoodsTypeRepository
 	pluginMgr  *plugins.Manager
-	settings   usecase.SettingsRepository
-	autoLogs   usecase.AutomationLogRepository
+	settings   appports.SettingsRepository
+	autoLogs   appports.AutomationLogRepository
 }
 
-func NewResolver(goodsTypes usecase.GoodsTypeRepository, pluginMgr *plugins.Manager, settings usecase.SettingsRepository, autoLogs usecase.AutomationLogRepository) *Resolver {
+func NewResolver(goodsTypes appports.GoodsTypeRepository, pluginMgr *plugins.Manager, settings appports.SettingsRepository, autoLogs appports.AutomationLogRepository) *Resolver {
 	return &Resolver{goodsTypes: goodsTypes, pluginMgr: pluginMgr, settings: settings, autoLogs: autoLogs}
 }
 
-func (r *Resolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (usecase.AutomationClient, error) {
+func (r *Resolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (appshared.AutomationClient, error) {
 	if r.goodsTypes == nil {
-		return nil, errors.New("goods type repo missing")
+		return nil, fmt.Errorf("goods type repo missing")
 	}
 	if goodsTypeID <= 0 {
 		items, err := r.goodsTypes.ListGoodsTypes(ctx)
 		if err != nil {
-			return nil, errors.New("goods_type_id required")
+			return nil, fmt.Errorf("goods_type_id required")
 		}
 		def := DefaultGoodsType(items)
 		if def == nil || def.ID <= 0 {
-			return nil, errors.New("goods_type_id required")
+			return nil, fmt.Errorf("goods_type_id required")
 		}
 		goodsTypeID = def.ID
 	}
@@ -45,10 +46,10 @@ func (r *Resolver) ClientForGoodsType(ctx context.Context, goodsTypeID int64) (u
 		cat = "automation"
 	}
 	if cat != "automation" || strings.TrimSpace(gt.AutomationPluginID) == "" || strings.TrimSpace(gt.AutomationInstanceID) == "" {
-		return nil, errors.New("invalid automation binding")
+		return nil, fmt.Errorf("invalid automation binding")
 	}
 	if r.pluginMgr == nil {
-		return nil, errors.New("plugin manager missing")
+		return nil, fmt.Errorf("plugin manager missing")
 	}
 	return NewPluginInstanceClient(r.pluginMgr, gt.AutomationPluginID, gt.AutomationInstanceID, r.settings, r.autoLogs), nil
 }

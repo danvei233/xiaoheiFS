@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	appports "xiaoheiplay/internal/app/ports"
 	"xiaoheiplay/internal/domain"
-	"xiaoheiplay/internal/usecase"
 )
 
-func MigrateLegacyAutomationToPlugins(ctx context.Context, settings usecase.SettingsRepository, goodsTypes usecase.GoodsTypeRepository, mgr *Manager) error {
+func MigrateLegacyAutomationToPlugins(ctx context.Context, settings appports.SettingsRepository, goodsTypes appports.GoodsTypeRepository, mgr *Manager) error {
 	if settings == nil || mgr == nil {
 		return nil
 	}
@@ -81,7 +81,7 @@ func MigrateLegacyAutomationToPlugins(ctx context.Context, settings usecase.Sett
 	return nil
 }
 
-func getSettingValue(ctx context.Context, settings usecase.SettingsRepository, key string) string {
+func getSettingValue(ctx context.Context, settings appports.SettingsRepository, key string) string {
 	if settings == nil {
 		return ""
 	}
