@@ -4,7 +4,8 @@ import (
 	"context"
 	"strings"
 
-	plugins "xiaoheiplay/internal/adapter/plugins"
+	plugins "xiaoheiplay/internal/adapter/plugins/core"
+	realnameplugin "xiaoheiplay/internal/adapter/plugins/realname"
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 )
@@ -41,7 +42,7 @@ func (r *Registry) GetProvider(key string) (appshared.RealNameProvider, error) {
 		return provider, nil
 	}
 	if r.pluginMgr != nil {
-		if pluginID, instanceID, ok := parsePluginProviderKey(key); ok {
+		if pluginID, instanceID, ok := realnameplugin.ParseProviderKey(key); ok {
 			if p := r.pluginProviderByID(context.Background(), pluginID, instanceID); p != nil {
 				return p, nil
 			}
@@ -77,13 +78,7 @@ func (r *Registry) pluginProviders(ctx context.Context) []appshared.RealNameProv
 		if _, ok := r.pluginMgr.GetKYCClient(it.Category, it.PluginID, it.InstanceID); !ok {
 			continue
 		}
-		out = append(out, &kycPluginProvider{
-			mgr:        r.pluginMgr,
-			pluginID:   it.PluginID,
-			instanceID: it.InstanceID,
-			name:       it.Name,
-			canQuery:   it.Capabilities.Capabilities.KYC.QueryResult,
-		})
+		out = append(out, realnameplugin.NewProvider(r.pluginMgr, it.PluginID, it.InstanceID, it.Name, it.Capabilities.Capabilities.KYC.QueryResult))
 	}
 	return out
 }
@@ -114,13 +109,7 @@ func (r *Registry) pluginProviderByID(ctx context.Context, pluginID, instanceID 
 		if _, ok := r.pluginMgr.GetKYCClient(it.Category, it.PluginID, it.InstanceID); !ok {
 			return nil
 		}
-		return &kycPluginProvider{
-			mgr:        r.pluginMgr,
-			pluginID:   it.PluginID,
-			instanceID: it.InstanceID,
-			name:       it.Name,
-			canQuery:   it.Capabilities.Capabilities.KYC.QueryResult,
-		}
+		return realnameplugin.NewProvider(r.pluginMgr, it.PluginID, it.InstanceID, it.Name, it.Capabilities.Capabilities.KYC.QueryResult)
 	}
 	return nil
 }

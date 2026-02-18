@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
 )
@@ -63,6 +63,33 @@ func TestEnsureDefaultsAndCMS(t *testing.T) {
 	}
 	if count == 0 {
 		t.Fatalf("expected cms categories")
+	}
+}
+
+func TestEnsureSettings_BackfillBlankSiteNavItems(t *testing.T) {
+	gdb := newSeedDB(t)
+	now := time.Now()
+	if err := gdb.Table("settings").Create(map[string]any{
+		"key":        "site_nav_items",
+		"value_json": "   ",
+		"updated_at": now,
+	}).Error; err != nil {
+		t.Fatalf("insert blank site_nav_items: %v", err)
+	}
+
+	if err := EnsureSettings(gdb); err != nil {
+		t.Fatalf("ensure settings: %v", err)
+	}
+
+	var value string
+	if err := gdb.Table("settings").
+		Select("value_json").
+		Where("`key` = ?", "site_nav_items").
+		Scan(&value).Error; err != nil {
+		t.Fatalf("query site_nav_items: %v", err)
+	}
+	if value != "[]" {
+		t.Fatalf("expected site_nav_items backfilled to [], got %q", value)
 	}
 }
 

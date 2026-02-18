@@ -15,7 +15,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	"xiaoheiplay/internal/adapter/seed"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/config"

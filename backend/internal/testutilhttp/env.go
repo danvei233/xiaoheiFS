@@ -8,7 +8,7 @@ import (
 
 	adapteremail "xiaoheiplay/internal/adapter/email"
 	"xiaoheiplay/internal/adapter/http"
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	"xiaoheiplay/internal/adapter/sse"
 	appadmin "xiaoheiplay/internal/app/admin"
 	appadminvps "xiaoheiplay/internal/app/adminvps"
@@ -71,6 +71,7 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 	// Keep test flows deterministic: disable register verification unless tests opt in.
 	_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "auth_register_verify_type", ValueJSON: "none"})
 	_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "auth_register_verify_channels", ValueJSON: `[]`})
+	_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "auth_2fa_enabled", ValueJSON: "false"})
 	automation := &testutil.FakeAutomationClient{}
 	automationResolver := &testutil.FakeAutomationResolver{Client: automation}
 	paymentReg := testutil.NewFakePaymentRegistry()
@@ -134,7 +135,7 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 		PermissionSvc:     permissionSvc,
 		EmailSender:       adapteremail.NewSender(repoSQLite),
 	})
-	middleware := http.NewMiddleware(jwtSecret, nil, permissionSvc)
+	middleware := http.NewMiddleware(jwtSecret, nil, permissionSvc, authSvc, settingsSvc)
 	server := http.NewServer(handler, middleware)
 
 	return &Env{

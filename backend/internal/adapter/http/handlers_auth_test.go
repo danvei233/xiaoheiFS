@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/testutilhttp"
 )
@@ -483,6 +482,88 @@ func TestHandlers_PasswordReset_PhoneFullValidationAndTicketLifecycle(t *testing
 	}, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login with new password expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandlers_PasswordReset_InvalidatesOldTokensAndReturnsNewTokens(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	ctx := context.Background()
+	if err := env.AdminSvc.UpdateSetting(ctx, 1, "auth_password_reset_enabled", "true"); err != nil {
+		t.Fatalf("enable password reset: %v", err)
+	}
+	if err := env.AdminSvc.UpdateSetting(ctx, 1, "auth_password_reset_channels", `["email"]`); err != nil {
+		t.Fatalf("set password reset channels: %v", err)
+	}
+	_ = testutil.CreateUser(t, env.Repo, "reset-token-user", "reset-token-user@example.com", "pass123")
+
+	loginRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": "reset-token-user",
+		"password": "pass123",
+	}, "")
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login expected 200, got %d: %s", loginRec.Code, loginRec.Body.String())
+	}
+	loginBody := parseJSONBody(t, loginRec)
+	oldAccess, _ := loginBody["access_token"].(string)
+	oldRefresh, _ := loginBody["refresh_token"].(string)
+	if strings.TrimSpace(oldAccess) == "" || strings.TrimSpace(oldRefresh) == "" {
+		t.Fatalf("login tokens missing")
+	}
+
+	code, err := env.AuthSvc.CreateVerificationCode(ctx, "email", "reset-token-user@example.com", "password_reset", time.Minute)
+	if err != nil {
+		t.Fatalf("create verify code: %v", err)
+	}
+	verifyRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/password-reset/verify-code", map[string]any{
+		"account": "reset-token-user",
+		"channel": "email",
+		"code":    code,
+	}, "")
+	if verifyRec.Code != http.StatusOK {
+		t.Fatalf("verify-code expected 200, got %d: %s", verifyRec.Code, verifyRec.Body.String())
+	}
+	verifyBody := parseJSONBody(t, verifyRec)
+	resetTicket, _ := verifyBody["reset_ticket"].(string)
+	if strings.TrimSpace(resetTicket) == "" {
+		t.Fatalf("reset ticket missing")
+	}
+
+	confirmRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/password-reset/confirm", map[string]any{
+		"reset_ticket": resetTicket,
+		"new_password": "newpass123",
+	}, "")
+	if confirmRec.Code != http.StatusOK {
+		t.Fatalf("confirm expected 200, got %d: %s", confirmRec.Code, confirmRec.Body.String())
+	}
+	confirmBody := parseJSONBody(t, confirmRec)
+	newAccess, _ := confirmBody["access_token"].(string)
+	newRefresh, _ := confirmBody["refresh_token"].(string)
+	if strings.TrimSpace(newAccess) == "" || strings.TrimSpace(newRefresh) == "" {
+		t.Fatalf("new tokens missing in reset confirm response")
+	}
+
+	oldMe := testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/me", nil, oldAccess)
+	if oldMe.Code != http.StatusUnauthorized {
+		t.Fatalf("old access token should be invalid, got %d: %s", oldMe.Code, oldMe.Body.String())
+	}
+
+	newMe := testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/me", nil, newAccess)
+	if newMe.Code != http.StatusOK {
+		t.Fatalf("new access token should work, got %d: %s", newMe.Code, newMe.Body.String())
+	}
+
+	oldRefreshRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token": oldRefresh,
+	}, "")
+	if oldRefreshRec.Code != http.StatusUnauthorized {
+		t.Fatalf("old refresh token should be invalid, got %d: %s", oldRefreshRec.Code, oldRefreshRec.Body.String())
+	}
+
+	newRefreshRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token": newRefresh,
+	}, "")
+	if newRefreshRec.Code != http.StatusOK {
+		t.Fatalf("new refresh token should work, got %d: %s", newRefreshRec.Code, newRefreshRec.Body.String())
 	}
 }
 

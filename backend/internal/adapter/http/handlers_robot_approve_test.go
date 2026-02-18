@@ -3,13 +3,11 @@ package http_test
 import (
 	"bytes"
 	"context"
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
-
-	"github.com/gin-gonic/gin"
-
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutilhttp"
 )

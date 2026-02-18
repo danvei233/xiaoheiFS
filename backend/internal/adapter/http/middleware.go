@@ -1,15 +1,14 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-
 	appapikey "xiaoheiplay/internal/app/apikey"
 	apppermission "xiaoheiplay/internal/app/permission"
 	appshared "xiaoheiplay/internal/app/shared"
@@ -21,22 +20,30 @@ type Middleware struct {
 	jwtSecret     []byte
 	apiKeys       *appapikey.Service
 	permissionSvc *apppermission.Service
+	authSvc       AuthService
+	settingsSvc   SettingsService
 }
 
-func NewMiddleware(jwtSecret string, apiKeys *appapikey.Service, permissionSvc *apppermission.Service) *Middleware {
-	return &Middleware{jwtSecret: []byte(jwtSecret), apiKeys: apiKeys, permissionSvc: permissionSvc}
+func NewMiddleware(jwtSecret string, apiKeys *appapikey.Service, permissionSvc *apppermission.Service, authSvc AuthService, settingsSvc SettingsService) *Middleware {
+	return &Middleware{
+		jwtSecret:     []byte(jwtSecret),
+		apiKeys:       apiKeys,
+		permissionSvc: permissionSvc,
+		authSvc:       authSvc,
+		settingsSvc:   settingsSvc,
+	}
 }
 
 func (m *Middleware) RequireUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := m.parseToken(c)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 		userID, ok := toInt64Claim(claims["user_id"])
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 		c.Set("user_id", userID)
@@ -49,17 +56,17 @@ func (m *Middleware) RequireAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := m.parseToken(c)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 		role, _ := claims["role"].(string)
 		if role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin required"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminRequired.Error()})
 			return
 		}
 		userID, ok := toInt64Claim(claims["user_id"])
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 		c.Set("user_id", userID)
@@ -70,35 +77,48 @@ func (m *Middleware) RequireAdmin() gin.HandlerFunc {
 
 func (m *Middleware) RequireAdminPermissionAuto() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		path := c.FullPath()
+		if path == "" {
+			path = c.Request.URL.Path
+		}
+		perm, permOK := permissions.InferPermissionCode(c.Request.Method, path)
+
 		auth := c.GetHeader("Authorization")
 		if strings.HasPrefix(auth, "Bearer ") {
 			token := strings.TrimPrefix(auth, "Bearer ")
 			if !looksLikeJWT(token) {
-				m.requireAdminPermissionByAPIKey(c, token)
+				m.requireAdminPermissionByAPIKey(c, token, perm, permOK)
 				return
 			}
 		} else if key := c.GetHeader("X-API-Key"); key != "" {
-			m.requireAdminPermissionByAPIKey(c, key)
+			m.requireAdminPermissionByAPIKey(c, key, perm, permOK)
 			return
 		}
 
 		claims, err := m.parseToken(c)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 		role, _ := claims["role"].(string)
 		if role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin required"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminRequired.Error()})
 			return
 		}
 		userID, ok := toInt64Claim(claims["user_id"])
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 		c.Set("user_id", userID)
 		c.Set("role", role)
+
+		if !m.isAdmin2FAAllowlisted(path) {
+			m.enforceAdmin2FAGate(c, userID, claims)
+			if c.IsAborted() {
+				return
+			}
+		}
 
 		if m.permissionSvc == nil {
 			c.Next()
@@ -106,7 +126,7 @@ func (m *Middleware) RequireAdminPermissionAuto() gin.HandlerFunc {
 		}
 		isPrimary, err := m.permissionSvc.IsPrimaryAdmin(c, userID)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "permission check failed"})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 			return
 		}
 		if isPrimary {
@@ -114,13 +134,8 @@ func (m *Middleware) RequireAdminPermissionAuto() gin.HandlerFunc {
 			return
 		}
 
-		path := c.FullPath()
-		if path == "" {
-			path = c.Request.URL.Path
-		}
-		perm, ok := permissions.InferPermissionCode(c.Request.Method, path)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "permission denied"})
+		if !permOK {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
 			return
 		}
 		if isAdminSelfPass(c, perm, userID) {
@@ -129,24 +144,24 @@ func (m *Middleware) RequireAdminPermissionAuto() gin.HandlerFunc {
 		}
 		has, err := m.permissionSvc.HasPermission(c, userID, perm)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "permission check failed"})
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 			return
 		}
 		if !has {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "permission denied"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
 			return
 		}
 		c.Next()
 	}
 }
 
-func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey string) {
+func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey string, perm string, permOK bool) {
 	if strings.TrimSpace(rawKey) == "" {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing api key"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrMissingApiKey.Error()})
 		return
 	}
 	if m.apiKeys == nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "api key disabled"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrApiKeyDisabled.Error()})
 		return
 	}
 	key, err := m.apiKeys.Validate(c, rawKey)
@@ -155,7 +170,7 @@ func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey strin
 		if errors.Is(err, appshared.ErrForbidden) {
 			status = http.StatusForbidden
 		}
-		c.AbortWithStatusJSON(status, gin.H{"error": "invalid api key"})
+		c.AbortWithStatusJSON(status, gin.H{"error": domain.ErrInvalidApiKey.Error()})
 		return
 	}
 
@@ -168,26 +183,21 @@ func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey strin
 		return
 	}
 	if key.PermissionGroupID == nil || *key.PermissionGroupID <= 0 {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "permission denied"})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
 		return
 	}
 
-	path := c.FullPath()
-	if path == "" {
-		path = c.Request.URL.Path
-	}
-	perm, ok := permissions.InferPermissionCode(c.Request.Method, path)
-	if !ok {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "permission denied"})
+	if !permOK {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
 		return
 	}
 	has, err := m.permissionSvc.HasPermissionForGroup(c, *key.PermissionGroupID, perm)
 	if err != nil {
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "permission check failed"})
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 		return
 	}
 	if !has {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "permission denied"})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
 		return
 	}
 	c.Next()
@@ -197,11 +207,11 @@ func (m *Middleware) RequireAPIKey() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := extractAPIKey(c)
 		if key == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing api key"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrMissingApiKey.Error()})
 			return
 		}
 		if m.apiKeys == nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "api key disabled"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrApiKeyDisabled.Error()})
 			return
 		}
 		_, err := m.apiKeys.Validate(c, key)
@@ -210,7 +220,7 @@ func (m *Middleware) RequireAPIKey() gin.HandlerFunc {
 			if errors.Is(err, appshared.ErrForbidden) {
 				status = http.StatusForbidden
 			}
-			c.AbortWithStatusJSON(status, gin.H{"error": "invalid api key"})
+			c.AbortWithStatusJSON(status, gin.H{"error": domain.ErrInvalidApiKey.Error()})
 			return
 		}
 		c.Next()
@@ -221,17 +231,17 @@ func (m *Middleware) RequirePermission(permissions ...string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims, err := m.parseToken(c)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 		role, _ := claims["role"].(string)
 		if role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin required"})
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminRequired.Error()})
 			return
 		}
 		userID, ok := toInt64Claim(claims["user_id"])
 		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 			return
 		}
 
@@ -252,7 +262,7 @@ func (m *Middleware) RequirePermission(permissions ...string) gin.HandlerFunc {
 		for _, perm := range permissions {
 			has, err := m.permissionSvc.HasPermission(c, userID, perm)
 			if err != nil {
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "permission check failed"})
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 				return
 			}
 			if has {
@@ -263,7 +273,7 @@ func (m *Middleware) RequirePermission(permissions ...string) gin.HandlerFunc {
 			}
 		}
 
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "permission denied"})
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
 	}
 }
 
@@ -287,6 +297,25 @@ func (m *Middleware) parseToken(c *gin.Context) (jwt.MapClaims, error) {
 	})
 	if err != nil || !token.Valid {
 		return nil, domain.ErrInvalidToken
+	}
+	if m.authSvc != nil {
+		userID, ok := toInt64Claim(claims["user_id"])
+		if ok && userID > 0 {
+			user, userErr := m.authSvc.GetUser(c, userID)
+			if userErr != nil {
+				return nil, domain.ErrInvalidToken
+			}
+			if user.PasswordChangedAt != nil {
+				iatSeconds, hasIAT := toFloat64Claim(claims["iat"])
+				if !hasIAT || iatSeconds <= 0 {
+					return nil, domain.ErrInvalidToken
+				}
+				changedAt := float64(user.PasswordChangedAt.UnixNano()) / 1e9
+				if iatSeconds <= changedAt {
+					return nil, domain.ErrInvalidToken
+				}
+			}
+		}
 	}
 	return claims, nil
 }
@@ -319,6 +348,69 @@ func looksLikeJWT(token string) bool {
 	return strings.Count(token, ".") >= 2
 }
 
+func (m *Middleware) isAdmin2FAAllowlisted(path string) bool {
+	switch path {
+	case "/admin/api/v1/auth/login",
+		"/admin/api/v1/auth/refresh",
+		"/admin/api/v1/auth/2fa/setup",
+		"/admin/api/v1/auth/2fa/confirm",
+		"/admin/api/v1/auth/2fa/unlock",
+		"/admin/api/v1/avatar/qq/:qq":
+		return true
+	default:
+		return false
+	}
+}
+
+func (m *Middleware) enforceAdmin2FAGate(c *gin.Context, userID int64, claims jwt.MapClaims) {
+	if m.settingsSvc == nil || m.authSvc == nil {
+		return
+	}
+
+	auth2faEnabled := m.getSettingBool(c.Request.Context(), "auth_2fa_enabled", true)
+	if !auth2faEnabled {
+		return
+	}
+
+	mfa := 0
+	if v, ok := toInt64Claim(claims["mfa"]); ok && v > 0 {
+		mfa = 1
+	}
+	if mfa > 0 {
+		return
+	}
+
+	user, err := m.authSvc.GetUser(c, userID)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
+		return
+	}
+	if !user.TOTPEnabled {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.Err2faBindRequired.Error(), "code": "admin_2fa_bind_required"})
+		return
+	}
+	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.Err2faRequired.Error(), "code": "admin_2fa_required"})
+}
+
+func (m *Middleware) getSettingValue(ctx context.Context, key string) string {
+	if m.settingsSvc == nil {
+		return ""
+	}
+	item, err := m.settingsSvc.Get(ctx, key)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(item.ValueJSON)
+}
+
+func (m *Middleware) getSettingBool(ctx context.Context, key string, def bool) bool {
+	val := strings.ToLower(strings.TrimSpace(m.getSettingValue(ctx, key)))
+	if val == "" {
+		return def
+	}
+	return val == "true" || val == "1" || val == "yes"
+}
+
 func getUserID(c *gin.Context) int64 {
 	val, _ := c.Get("user_id")
 	id, _ := val.(int64)
@@ -334,6 +426,26 @@ func toInt64Claim(v any) (int64, bool) {
 	case json.Number:
 		if i, err := t.Int64(); err == nil {
 			return i, true
+		}
+	}
+	return 0, false
+}
+
+func toFloat64Claim(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case int64:
+		return float64(t), true
+	case int:
+		return float64(t), true
+	case json.Number:
+		if f, err := t.Float64(); err == nil {
+			return f, true
+		}
+	case string:
+		if f, err := strconv.ParseFloat(strings.TrimSpace(t), 64); err == nil {
+			return f, true
 		}
 	}
 	return 0, false

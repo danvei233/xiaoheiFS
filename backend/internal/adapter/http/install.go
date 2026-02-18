@@ -4,24 +4,21 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/gin-gonic/gin"
+	mysqlDriver "github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v3"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
-
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	"xiaoheiplay/internal/adapter/seed"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
-
-	mysqlDriver "github.com/go-sql-driver/mysql"
-	"gopkg.in/yaml.v3"
 )
 
 const installConfigPath = "app.config.yaml"
@@ -61,24 +58,24 @@ func (h *Handler) InstallDBCheck(c *gin.Context) {
 		} `json:"db"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 
 	dbType := strings.ToLower(strings.TrimSpace(payload.DB.Type))
 	switch dbType {
 	case "":
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db.type required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbTypeRequired.Error()})
 		return
 	case "sqlite":
 		// ok
 	case "mysql":
 		// ok
 	case "postgres", "postgresql":
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db type not supported yet (postgresql disabled temporarily)"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbTypeNotSupportedYetPostgresqlDisabledTemporarily.Error()})
 		return
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown db type"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrUnknownDbType.Error()})
 		return
 	}
 
@@ -88,11 +85,11 @@ func (h *Handler) InstallDBCheck(c *gin.Context) {
 		DBDSN:  strings.TrimSpace(payload.DB.DSN),
 	}
 	if cfg.DBType == "sqlite" && cfg.DBPath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db.path required for sqlite"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbPathRequiredForSqlite.Error()})
 		return
 	}
 	if cfg.DBType == "mysql" && cfg.DBDSN == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db.dsn required for mysql"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbDsnRequiredForMysql.Error()})
 		return
 	}
 
@@ -115,7 +112,7 @@ func (h *Handler) InstallDBCheck(c *gin.Context) {
 
 func (h *Handler) InstallRun(c *gin.Context) {
 	if h.IsInstalled() {
-		c.JSON(http.StatusConflict, gin.H{"error": "already installed"})
+		c.JSON(http.StatusConflict, gin.H{"error": domain.ErrAlreadyInstalled.Error()})
 		return
 	}
 
@@ -135,24 +132,24 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		} `json:"admin"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 
 	dbType := strings.ToLower(strings.TrimSpace(payload.DB.Type))
 	switch dbType {
 	case "":
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db.type required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbTypeRequired.Error()})
 		return
 	case "sqlite":
 		// ok
 	case "mysql":
 		// ok
 	case "postgres", "postgresql":
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db type not supported yet (postgresql disabled temporarily)"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbTypeNotSupportedYetPostgresqlDisabledTemporarily.Error()})
 		return
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown db type"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrUnknownDbType.Error()})
 		return
 	}
 
@@ -161,11 +158,11 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	adminUser := strings.TrimSpace(payload.Admin.Username)
 	adminPass := strings.TrimSpace(payload.Admin.Password)
 	if siteName == "" || adminUser == "" || adminPass == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "site.name, admin.username, admin.password required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrSiteNameAdminUsernameAdminPasswordRequired.Error()})
 		return
 	}
 	if len(adminPass) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "admin.password too short"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAdminPasswordTooShort.Error()})
 		return
 	}
 
@@ -175,11 +172,11 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		DBDSN:  strings.TrimSpace(payload.DB.DSN),
 	}
 	if cfg.DBType == "sqlite" && cfg.DBPath == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db.path required for sqlite"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbPathRequiredForSqlite.Error()})
 		return
 	}
 	if cfg.DBType == "mysql" && cfg.DBDSN == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "db.dsn required for mysql"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrDbDsnRequiredForMysql.Error()})
 		return
 	}
 
@@ -191,28 +188,28 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	defer conn.SQL.Close()
 
 	if err := repo.Migrate(conn.Gorm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "migrate: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrMigrate.Error() + err.Error()})
 		return
 	}
 	if err := seed.EnsureSettings(conn.Gorm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed settings: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSeedSettings.Error() + err.Error()})
 		return
 	}
 	if err := seed.EnsurePermissionDefaults(conn.Gorm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed permission defaults: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSeedPermissionDefaults.Error() + err.Error()})
 		return
 	}
 	if err := seed.EnsurePermissionGroups(conn.Gorm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed permission groups: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSeedPermissionGroups.Error() + err.Error()})
 		return
 	}
 	// CMS defaults and base seed (only if empty) to keep install snappy and idempotent.
 	if err := seed.EnsureCMSDefaults(conn.Gorm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed cms defaults: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSeedCmsDefaults.Error() + err.Error()})
 		return
 	}
 	if err := seed.SeedIfEmpty(conn.Gorm); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "seed: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSeed.Error() + err.Error()})
 		return
 	}
 
@@ -226,24 +223,24 @@ func (h *Handler) InstallRun(c *gin.Context) {
 
 	existingAdmin, adminLookupErr := repoAny.GetUserByUsernameOrEmail(ctx, adminUser)
 	if adminLookupErr != nil && !errors.Is(adminLookupErr, appshared.ErrNotFound) {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "query admin failed: " + adminLookupErr.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrQueryAdminFailed.Error() + adminLookupErr.Error()})
 		return
 	}
 
 	groups, err := repoAny.ListPermissionGroups(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "permission group query failed: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionGroupQueryFailed.Error() + err.Error()})
 		return
 	}
 	superAdminGroupID, ok := findSuperAdminGroupID(groups)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "permission group missing"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionGroupMissing.Error()})
 		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(adminPass), bcrypt.DefaultCost)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "hash failed"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrHashFailed.Error()})
 		return
 	}
 	if adminLookupErr == nil {
@@ -255,11 +252,11 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		existingAdmin.Status = domain.UserStatusActive
 		existingAdmin.PermissionGroupID = &superAdminGroupID
 		if err := repoAny.UpdateUser(ctx, existingAdmin); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "update admin failed: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrUpdateAdminFailed.Error() + err.Error()})
 			return
 		}
 		if err := repoAny.UpdateUserPassword(ctx, existingAdmin.ID, string(hash)); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "update admin password failed: " + err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrUpdateAdminPasswordFailed.Error() + err.Error()})
 			return
 		}
 	} else {
@@ -334,12 +331,12 @@ persistConfig:
 	lockPath := installLockPath()
 	if dir := filepath.Dir(lockPath); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "lock dir error"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrLockDirError.Error()})
 			return
 		}
 	}
 	if err := os.WriteFile(lockPath, []byte(time.Now().Format(time.RFC3339)), 0o644); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "write lock failed"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrWriteLockFailed.Error()})
 		return
 	}
 

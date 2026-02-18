@@ -2,6 +2,7 @@ package event
 
 import (
 	"context"
+	"time"
 
 	appports "xiaoheiplay/internal/app/ports"
 	"xiaoheiplay/internal/domain"
@@ -29,7 +30,12 @@ func (p *FanoutPublisher) Publish(ctx context.Context, orderID int64, eventType 
 		if sink == nil {
 			continue
 		}
-		_ = sink.NotifyOrderEvent(ctx, ev)
+		// Do not block request path on external sinks (webhook/push); keep best-effort delivery.
+		go func(s EventSink, event domain.OrderEvent) {
+			sinkCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = s.NotifyOrderEvent(sinkCtx, event)
+		}(sink, ev)
 	}
 	return ev, nil
 }

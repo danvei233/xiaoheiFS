@@ -62,7 +62,9 @@ export interface PluginDiscoverItem {
 }
 
 export interface CaptchaResponse {
+  captcha_provider?: "image" | "geetest";
   captcha_id?: string;
+  api_server?: string;
   image_base64?: string;
 }
 
@@ -72,8 +74,12 @@ export interface RegisterRequest {
   qq?: string;
   phone?: string;
   password: string;
-  captcha_id: string;
-  captcha_code: string;
+  captcha_id?: string;
+  captcha_code?: string;
+  lot_number?: string;
+  captcha_output?: string;
+  pass_token?: string;
+  gen_time?: string;
   verify_code?: string;
   verify_channel?: "email" | "sms";
 }
@@ -83,6 +89,10 @@ export interface LoginRequest {
   password: string;
   captcha_id?: string;
   captcha_code?: string;
+  lot_number?: string;
+  captcha_output?: string;
+  pass_token?: string;
+  gen_time?: string;
 }
 
 export interface AuthSettings {
@@ -99,6 +109,9 @@ export interface AuthSettings {
   register_verify_ttl_sec?: number;
   register_captcha_enabled?: boolean;
   login_captcha_enabled?: boolean;
+  captcha_provider?: "image" | "geetest";
+  auth_geetest_captcha_id?: string;
+  auth_geetest_api_server?: string;
   auth_login_notify_enabled?: boolean;
   auth_login_notify_on_first_login?: boolean;
   auth_login_notify_on_ip_change?: boolean;
@@ -114,6 +127,7 @@ export interface AuthSettings {
   auth_captcha_code_complexity?: "digits" | "letters" | "alnum";
   auth_email_bind_enabled?: boolean;
   auth_phone_bind_enabled?: boolean;
+  auth_contact_change_notify_old_enabled?: boolean;
   auth_contact_bind_verify_ttl_sec?: number;
   auth_bind_require_password_when_no_2fa?: boolean;
   auth_rebind_require_password_when_no_2fa?: boolean;
@@ -132,8 +146,13 @@ export interface User {
   id?: number;
   username?: string;
   email?: string;
+  email_masked?: string;
+  email_bound?: boolean;
   qq?: string;
   phone?: string;
+  phone_masked?: string;
+  phone_bound?: boolean;
+  totp_enabled?: boolean;
   avatar?: string;
   avatar_url?: string;
   bio?: string;

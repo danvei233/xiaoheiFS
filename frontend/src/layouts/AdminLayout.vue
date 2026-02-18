@@ -109,17 +109,70 @@
       </a-layout>
     </a-layout>
   </a-layout>
+  <a-modal
+    :open="mfaModalOpen"
+    :title="mfaTitle"
+    :closable="false"
+    :maskClosable="false"
+    :footer="null"
+    width="420px"
+  >
+    <a-alert
+      v-if="admin.mfaBindRequired"
+      type="warning"
+      show-icon
+      message="需要绑定 2FA 才能继续使用后台功能"
+      style="margin-bottom: 16px"
+    />
+    <a-alert
+      v-else
+      type="info"
+      show-icon
+      message="请输入 2FA 验证码以解锁后台操作"
+      style="margin-bottom: 16px"
+    />
+    <a-form layout="vertical">
+      <a-form-item v-if="admin.mfaBindRequired" label="登录密码">
+        <a-input-password v-model:value="mfaForm.password" placeholder="用于生成绑定信息" />
+      </a-form-item>
+      <a-form-item v-if="admin.mfaBindRequired" label="生成绑定信息">
+        <a-button type="default" :loading="mfaLoading.setup" @click="handleSetup2FA">
+          生成 2FA 绑定信息
+        </a-button>
+      </a-form-item>
+      <div v-if="mfaSecret" class="twofa-setup">
+        <div class="twofa-qr">
+          <img v-if="mfaQRCode" :src="mfaQRCode" alt="2FA QRCode" />
+        </div>
+        <div class="twofa-meta">
+          <div class="twofa-label">手动密钥</div>
+          <div class="twofa-secret">{{ mfaSecret }}</div>
+        </div>
+      </div>
+      <a-form-item label="2FA 验证码">
+        <a-input v-model:value="mfaForm.totpCode" placeholder="请输入 6 位验证码" maxlength="6" />
+      </a-form-item>
+      <a-space>
+        <a-button type="primary" :loading="mfaLoading.confirm" @click="handleConfirmOrUnlock">
+          {{ admin.mfaBindRequired ? "完成绑定并解锁" : "解锁" }}
+        </a-button>
+      </a-space>
+    </a-form>
+  </a-modal>
   </a-config-provider>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted, nextTick } from "vue";
+import { computed, ref, onMounted, onUnmounted, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAdminAuthStore } from "@/stores/adminAuth";
 import { useSiteStore } from "@/stores/site";
+import { admin2FAUnlock } from "@/services/admin";
+import { adminSetupTwoFA, adminConfirmTwoFA } from "@/services/admin";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
 import AdminMenuNode from "@/components/admin/AdminMenuNode.vue";
-import { Grid, theme } from "ant-design-vue";
+import { Grid, theme, message } from "ant-design-vue";
+import QRCode from "qrcode";
 import {
   BellOutlined,
   QuestionCircleOutlined,
@@ -268,6 +321,7 @@ const menuTree = [
         children: [
           { key: "/admin/settings/email", label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
           { key: "/admin/settings/sms", label: "短信设置", icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
+          { key: "/admin/settings/captcha", label: "验证码设置", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
           { key: "/admin/settings/payments", label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
           { key: "/admin/settings/fcm", label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] },
           { key: "/admin/settings/pricing", label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },
@@ -356,6 +410,85 @@ const adminAvatar = computed(() => {
   return `https://q1.qlogo.cn/g?b=qq&nk=${qq}&s=100`;
 });
 
+const mfaForm = ref({
+  password: "",
+  totpCode: ""
+});
+const mfaSecret = ref("");
+const mfaQRCode = ref("");
+const mfaLoading = ref({
+  setup: false,
+  confirm: false
+});
+
+const mfaModalOpen = computed(() => (admin.mfaBindRequired || admin.mfaRequired) && !admin.mfaUnlocked);
+const mfaTitle = computed(() => (admin.mfaBindRequired ? "管理员 2FA 绑定" : "管理员 2FA 解锁"));
+
+const resetMfaForm = () => {
+  mfaForm.value.password = "";
+  mfaForm.value.totpCode = "";
+  mfaSecret.value = "";
+  mfaQRCode.value = "";
+};
+
+const handleSetup2FA = async () => {
+  if (!admin.mfaBindRequired || mfaLoading.value.setup) return;
+  mfaLoading.value.setup = true;
+  try {
+    const password = String(mfaForm.value.password || "").trim();
+    const res = await adminSetupTwoFA({ password: password || undefined });
+    mfaSecret.value = String(res.data?.secret || "");
+    const url = String(res.data?.otpauth_url || "");
+    if (!mfaSecret.value || !url) {
+      message.error("生成绑定信息失败");
+      resetMfaForm();
+      return;
+    }
+    mfaQRCode.value = await QRCode.toDataURL(url, { width: 200, margin: 1 });
+  } catch (error) {
+    message.error(error?.response?.data?.error || "生成绑定信息失败");
+  } finally {
+    mfaLoading.value.setup = false;
+  }
+};
+
+const handleConfirmOrUnlock = async () => {
+  if (mfaLoading.value.confirm) return;
+  const code = String(mfaForm.value.totpCode || "").trim();
+  if (!/^\d{6}$/.test(code)) {
+    message.warning("请输入 6 位 2FA 验证码");
+    return;
+  }
+  mfaLoading.value.confirm = true;
+  try {
+    if (admin.mfaBindRequired) {
+      if (!mfaSecret.value) {
+        message.warning("请先生成绑定信息");
+        return;
+      }
+      await adminConfirmTwoFA({ code });
+    }
+    const res = await admin2FAUnlock({ totp_code: code });
+    const token = res.data?.access_token || "";
+    if (token) {
+      admin.setToken(token);
+    }
+    admin.setMfaGateState({
+      mfaRequired: false,
+      mfaBindRequired: false,
+      mfaUnlocked: true,
+      totpEnabled: true
+    });
+    await admin.fetchProfile();
+    resetMfaForm();
+    message.success("2FA 已解锁");
+  } catch (error) {
+    message.error(error?.response?.data?.error || "2FA 校验失败");
+  } finally {
+    mfaLoading.value.confirm = false;
+  }
+};
+
 const onMenu = async ({ key }) => {
   const target = String(key);
   if (target === route.path) {
@@ -424,6 +557,15 @@ onMounted(() => {
   }
   site.fetchSettings();
 });
+
+watch(
+  () => mfaModalOpen.value,
+  (open) => {
+    if (open) {
+      resetMfaForm();
+    }
+  }
+);
 
 onUnmounted(() => {
   document.body.classList.remove("admin-theme");
@@ -926,5 +1068,39 @@ onUnmounted(() => {
 
 .content :deep(.ant-breadcrumb-separator) {
   color: var(--text3);
+}
+
+.twofa-setup {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.twofa-qr img {
+  width: 140px;
+  height: 140px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.twofa-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.twofa-label {
+  font-size: 12px;
+  color: rgba(15, 23, 42, 0.6);
+}
+
+.twofa-secret {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+  padding: 6px 10px;
+  background: #f5f7fb;
+  border-radius: 6px;
+  word-break: break-all;
 }
 </style>

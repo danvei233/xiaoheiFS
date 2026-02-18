@@ -44,9 +44,19 @@ http.interceptors.response.use(
   (res) => res,
   (error) => {
     const status = error?.response?.status;
+    const errCode = error?.response?.data?.code;
     const msg = error?.response?.data?.error || error?.response?.data?.message || error?.message || "Request failed";
     const url = error?.config?.url || "";
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    if (status === 403 && url.startsWith("/admin/") && (errCode === "admin_2fa_required" || errCode === "admin_2fa_bind_required")) {
+      const admin = useAdminAuthStore();
+      admin.setMfaGateState({
+        mfaRequired: errCode === "admin_2fa_required",
+        mfaBindRequired: errCode === "admin_2fa_bind_required",
+        mfaUnlocked: false
+      });
+      return Promise.reject(error);
+    }
     if (status === 401) {
       if (isAuthLoginRequest(url)) {
         return Promise.reject(error);

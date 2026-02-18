@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -42,7 +43,7 @@ func TestHTTPAdapterDependencyBoundary(t *testing.T) {
 	root := projectRoot(t)
 	target := filepath.Join(root, "internal", "adapter", "http")
 	violations := collectImportViolations(t, target, []string{
-		"xiaoheiplay/internal/adapter/repo",
+		"xiaoheiplay/internal/adapter/repo/core",
 		"xiaoheiplay/internal/adapter/email",
 		"xiaoheiplay/internal/adapter/robot",
 		"xiaoheiplay/internal/adapter/push",
@@ -148,8 +149,8 @@ func TestHTTPProductionNoDirectPluginV1Import(t *testing.T) {
 func TestSMSEntryHandlersNoPluginManagerUsage(t *testing.T) {
 	root := projectRoot(t)
 	files := []string{
-		filepath.Join(root, "internal", "adapter", "http", "handlersadminmessaging.go"),
-		filepath.Join(root, "internal", "adapter", "http", "handlerssiteauth.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_admin_messaging.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_site_auth.go"),
 	}
 	for _, path := range files {
 		b, err := os.ReadFile(path)
@@ -164,7 +165,7 @@ func TestSMSEntryHandlersNoPluginManagerUsage(t *testing.T) {
 
 func TestAutomationSettingsHandlerNoPluginManagerUsage(t *testing.T) {
 	root := projectRoot(t)
-	path := filepath.Join(root, "internal", "adapter", "http", "handlersadminsettingsautomation.go")
+	path := filepath.Join(root, "internal", "adapter", "http", "handlers_admin_settings_automation.go")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -177,8 +178,8 @@ func TestAutomationSettingsHandlerNoPluginManagerUsage(t *testing.T) {
 func TestOrderDetailHandlersNoDirectOrderRepos(t *testing.T) {
 	root := projectRoot(t)
 	files := []string{
-		filepath.Join(root, "internal", "adapter", "http", "handlersadminorderstickets.go"),
-		filepath.Join(root, "internal", "adapter", "http", "handlerssiteorderswallet.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_admin_orders_tickets.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_site_orders_wallet.go"),
 	}
 	for _, path := range files {
 		b, err := os.ReadFile(path)
@@ -195,8 +196,8 @@ func TestOrderDetailHandlersNoDirectOrderRepos(t *testing.T) {
 func TestAuthSecurityHandlerNoDirectUsersRepoUsage(t *testing.T) {
 	root := projectRoot(t)
 	files := []string{
-		filepath.Join(root, "internal", "adapter", "http", "handlersauthsecurity.go"),
-		filepath.Join(root, "internal", "adapter", "http", "handlerssiteauth.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_auth_security.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_site_auth.go"),
 	}
 	for _, path := range files {
 		b, err := os.ReadFile(path)
@@ -211,7 +212,7 @@ func TestAuthSecurityHandlerNoDirectUsersRepoUsage(t *testing.T) {
 
 func TestSiteVPSTicketHandlerNoDirectVPSRepoUsage(t *testing.T) {
 	root := projectRoot(t)
-	path := filepath.Join(root, "internal", "adapter", "http", "handlerssitevpsticket.go")
+	path := filepath.Join(root, "internal", "adapter", "http", "handlers_site_vps_ticket.go")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -224,10 +225,10 @@ func TestSiteVPSTicketHandlerNoDirectVPSRepoUsage(t *testing.T) {
 func TestSelectedHandlersNoDirectSettingsRepoUsage(t *testing.T) {
 	root := projectRoot(t)
 	files := []string{
-		filepath.Join(root, "internal", "adapter", "http", "handlerssiteauth.go"),
-		filepath.Join(root, "internal", "adapter", "http", "handlerssitevps.go"),
-		filepath.Join(root, "internal", "adapter", "http", "handlersprobe.go"),
-		filepath.Join(root, "internal", "adapter", "http", "handlersadminmessaging.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_site_auth.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_site_vps.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_probe.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_admin_messaging.go"),
 	}
 	for _, path := range files {
 		b, err := os.ReadFile(path)
@@ -242,7 +243,7 @@ func TestSelectedHandlersNoDirectSettingsRepoUsage(t *testing.T) {
 
 func TestAdminGoodsUploadsPermissionsHandlerNoDirectRepos(t *testing.T) {
 	root := projectRoot(t)
-	path := filepath.Join(root, "internal", "adapter", "http", "handlersadmingoodsuploadpermissions.go")
+	path := filepath.Join(root, "internal", "adapter", "http", "handlers_admin_goods_upload_permissions.go")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -255,7 +256,7 @@ func TestAdminGoodsUploadsPermissionsHandlerNoDirectRepos(t *testing.T) {
 
 func TestAdminPluginsHandlerNoDirectPluginManagerOrRepoUsage(t *testing.T) {
 	root := projectRoot(t)
-	path := filepath.Join(root, "internal", "adapter", "http", "handlersadminplugins.go")
+	path := filepath.Join(root, "internal", "adapter", "http", "handlers_admin_plugins.go")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -343,7 +344,7 @@ func TestHandlerStructsNoLegacyDirectBusinessRepoFields(t *testing.T) {
 
 func TestAuthSecurityHandlerNoDirectResetTicketRepoUsage(t *testing.T) {
 	root := projectRoot(t)
-	path := filepath.Join(root, "internal", "adapter", "http", "handlersauthsecurity.go")
+	path := filepath.Join(root, "internal", "adapter", "http", "handlers_auth_security.go")
 	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -364,7 +365,7 @@ func TestHTTPHandlersNoDirectSettingsRepoUsageOutsideUtilities(t *testing.T) {
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		if filepath.Base(path) == "handlersutilities.go" {
+		if filepath.Base(path) == "handlers_utilities.go" {
 			return nil
 		}
 		b, err := os.ReadFile(path)
@@ -387,8 +388,8 @@ func TestHTTPHandlersNoDirectSettingsRepoUsageOutsideUtilities(t *testing.T) {
 func TestAdminOrderAndDebugHandlersNoDirectEventOrAutomationLogRepo(t *testing.T) {
 	root := projectRoot(t)
 	files := []string{
-		filepath.Join(root, "internal", "adapter", "http", "handlersadminorderstickets.go"),
-		filepath.Join(root, "internal", "adapter", "http", "handlersadminsettingsautomation.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_admin_orders_tickets.go"),
+		filepath.Join(root, "internal", "adapter", "http", "handlers_admin_settings_automation.go"),
 	}
 	for _, path := range files {
 		b, err := os.ReadFile(path)
@@ -470,6 +471,161 @@ func TestShouldBindJSONOnlyAllowedInHTTPValidator(t *testing.T) {
 	}
 	if len(violations) > 0 {
 		t.Fatalf("ShouldBindJSON is forbidden outside validator.go: %s", strings.Join(violations, ", "))
+	}
+}
+
+func TestGoFileNameConventionInCoreDirs(t *testing.T) {
+	root := projectRoot(t)
+	dirs := []string{
+		filepath.Join(root, "internal", "adapter", "http"),
+		filepath.Join(root, "internal", "adapter", "repo", "core"),
+		filepath.Join(root, "internal", "adapter", "plugins", "core"),
+		filepath.Join(root, "internal", "adapter", "plugins", "automation"),
+		filepath.Join(root, "internal", "adapter", "plugins", "payment"),
+		filepath.Join(root, "internal", "adapter", "plugins", "realname"),
+		filepath.Join(root, "internal", "domain"),
+	}
+	rule := regexp.MustCompile(`^[a-z0-9]+(_[a-z0-9]+)*(_test)?\.go$`)
+	var violations []string
+	for _, dir := range dirs {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() || !strings.HasSuffix(d.Name(), ".go") {
+				return nil
+			}
+			if !rule.MatchString(d.Name()) {
+				rel, err := filepath.Rel(root, path)
+				if err != nil {
+					rel = path
+				}
+				violations = append(violations, filepath.ToSlash(rel))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", dir, err)
+		}
+	}
+	if len(violations) > 0 {
+		t.Fatalf("go file name must be snake_case in core dirs: %s", strings.Join(violations, ", "))
+	}
+}
+
+func TestNoDeprecatedAdapterImportPaths(t *testing.T) {
+	root := projectRoot(t)
+	deprecated := []string{
+		"xiaoheiplay/internal/adapter/automation",
+		"xiaoheiplay/internal/adapter/payment/plugin",
+		"xiaoheiplay/internal/adapter/repo",
+		"xiaoheiplay/internal/adapter/plugins",
+	}
+	allowed := map[string]bool{
+		"xiaoheiplay/internal/adapter/repo/core":          true,
+		"xiaoheiplay/internal/adapter/plugins/core":       true,
+		"xiaoheiplay/internal/adapter/plugins/automation": true,
+		"xiaoheiplay/internal/adapter/plugins/payment":    true,
+		"xiaoheiplay/internal/adapter/plugins/realname":   true,
+	}
+	fset := token.NewFileSet()
+	var violations []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") {
+			return nil
+		}
+		file, parseErr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if parseErr != nil {
+			return parseErr
+		}
+		for _, imp := range file.Imports {
+			importPath := strings.Trim(imp.Path.Value, "\"")
+			if allowed[importPath] {
+				continue
+			}
+			for _, rule := range deprecated {
+				if importPath == rule || strings.HasPrefix(importPath, rule+"/") {
+					rel, rerr := filepath.Rel(root, path)
+					if rerr != nil {
+						rel = path
+					}
+					violations = append(violations, filepath.ToSlash(rel)+": "+importPath)
+					break
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk project: %v", err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("deprecated adapter import path found: %s", strings.Join(violations, ", "))
+	}
+}
+
+func TestDeprecatedAdapterDirsMustNotContainGoFiles(t *testing.T) {
+	root := projectRoot(t)
+	dirs := []string{
+		filepath.Join(root, "internal", "adapter", "automation"),
+		filepath.Join(root, "internal", "adapter", "payment", "plugin"),
+	}
+	var violations []string
+	for _, dir := range dirs {
+		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				if os.IsNotExist(walkErr) {
+					return nil
+				}
+				return walkErr
+			}
+			if d.IsDir() || !strings.HasSuffix(path, ".go") {
+				return nil
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				rel = path
+			}
+			violations = append(violations, filepath.ToSlash(rel))
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("walk %s: %v", dir, err)
+		}
+	}
+	if len(violations) > 0 {
+		t.Fatalf("deprecated adapter dirs must stay empty of go files: %s", strings.Join(violations, ", "))
+	}
+}
+
+func TestRepoCoreDeprecatedMixedFilesMustNotReappear(t *testing.T) {
+	root := projectRoot(t)
+	repoCore := filepath.Join(root, "internal", "adapter", "repo", "core")
+	deprecated := []string{
+		"gorm_repo_catalog.go",
+		"gorm_repo_content_cms_upload.go",
+		"gorm_repo_ticket_notification.go",
+		"gorm_repo_scan_models.go",
+		"migrate_models_ops.go",
+	}
+	var violations []string
+	for _, name := range deprecated {
+		path := filepath.Join(repoCore, name)
+		if _, err := os.Stat(path); err == nil {
+			rel, rerr := filepath.Rel(root, path)
+			if rerr != nil {
+				rel = path
+			}
+			violations = append(violations, filepath.ToSlash(rel))
+		} else if err != nil && !os.IsNotExist(err) {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+	}
+	if len(violations) > 0 {
+		t.Fatalf("deprecated mixed repo files must not reappear: %s", strings.Join(violations, ", "))
 	}
 }
 

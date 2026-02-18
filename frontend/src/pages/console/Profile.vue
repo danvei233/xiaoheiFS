@@ -7,7 +7,7 @@
         <p class="page-subtitle">管理您的账户信息和偏好设置</p>
       </div>
       <div class="header-actions">
-        <a-button type="primary" @click="openEditModal">
+        <a-button type="primary" @click="openProtectedFlow('edit')">
           <EditOutlined />
           编辑资料
         </a-button>
@@ -127,7 +127,7 @@
               <span class="info-label">密码</span>
               <span class="info-value">已设置</span>
             </div>
-            <a-button type="text" size="small" @click="openPasswordModal">修改</a-button>
+            <a-button type="text" size="small" @click="openProtectedFlow('password')">修改</a-button>
           </div>
           <div class="info-item">
             <SafetyOutlined class="item-icon" />
@@ -135,7 +135,7 @@
               <span class="info-label">双因素认证</span>
               <a-badge :status="twoFAEnabled ? 'success' : 'default'" :text="twoFAEnabled ? '已启用' : '未启用'" />
             </div>
-            <a-button type="text" size="small" @click="openSecurityModal('twofa')">设置</a-button>
+            <a-button type="text" size="small" @click="openProtectedFlow('twofa')">设置</a-button>
           </div>
           <div class="info-item">
             <MailOutlined class="item-icon" />
@@ -143,7 +143,7 @@
               <span class="info-label">邮箱绑定</span>
               <a-badge :status="securityContacts.email_bound ? 'success' : 'default'" :text="securityContacts.email_bound ? '已绑定' : '未绑定'" />
             </div>
-            <a-button type="text" size="small" @click="openSecurityModal('email')">{{ securityContacts.email_bound ? '更新' : '绑定' }}</a-button>
+            <a-button type="text" size="small" @click="openProtectedFlow('email')">{{ securityContacts.email_bound ? '更新' : '绑定' }}</a-button>
           </div>
           <div class="info-item">
             <PhoneOutlined class="item-icon" />
@@ -151,7 +151,7 @@
               <span class="info-label">手机绑定</span>
               <a-badge :status="securityContacts.phone_bound ? 'success' : 'default'" :text="securityContacts.phone_bound ? '已绑定' : '未绑定'" />
             </div>
-            <a-button type="text" size="small" @click="openSecurityModal('phone')">{{ securityContacts.phone_bound ? '更新' : '绑定' }}</a-button>
+            <a-button type="text" size="small" @click="openProtectedFlow('phone')">{{ securityContacts.phone_bound ? '更新' : '绑定' }}</a-button>
           </div>
         </div>
       </div>
@@ -198,13 +198,6 @@
             </template>
           </a-input>
         </a-form-item>
-        <a-form-item v-if="twoFAEnabled" label="2FA 验证码">
-          <a-input
-            v-model:value="securityForm.profile_totp"
-            placeholder="已启用2FA，修改用户名/邮箱/手机号必须输入6位验证码"
-            :maxlength="6"
-          />
-        </a-form-item>
       </a-form>
     </a-modal>
 
@@ -236,13 +229,6 @@
             v-model:value="securityForm.confirm_new_password"
             placeholder="请再次输入新密码"
             :maxlength="INPUT_LIMITS.PASSWORD"
-          />
-        </a-form-item>
-        <a-form-item v-if="twoFAEnabled" label="2FA 验证码">
-          <a-input
-            v-model:value="securityForm.password_totp"
-            placeholder="已启用2FA，修改密码必须输入6位验证码"
-            :maxlength="6"
           />
         </a-form-item>
       </a-form>
@@ -322,16 +308,7 @@
               placeholder="请输入要绑定的新邮箱"
               :maxlength="INPUT_LIMITS.EMAIL"
             />
-            <div v-if="twoFAEnabled" class="confirm-row">
-              <a-input
-                v-model:value="securityForm.bind_email_totp"
-                placeholder="2FA 验证码（6 位）"
-                :maxlength="6"
-              />
-              <a-button type="default" :disabled="!canVerifyEmail2FA" :loading="securityLoading.emailVerify2FA" @click="verifyEmailBind2FA">
-                {{ emailTicketReady ? "已验证" : "验证2FA" }}
-              </a-button>
-            </div>
+            <a-alert v-if="twoFAEnabled" type="success" show-icon message="已完成 2FA 身份校验，可继续绑定流程" />
             <a-input-password
               v-else
               v-model:value="securityForm.bind_email_password"
@@ -369,16 +346,7 @@
               placeholder="请输入要绑定的新手机号"
               :maxlength="INPUT_LIMITS.PHONE"
             />
-            <div v-if="twoFAEnabled" class="confirm-row">
-              <a-input
-                v-model:value="securityForm.bind_phone_totp"
-                placeholder="2FA 验证码（6 位）"
-                :maxlength="6"
-              />
-              <a-button type="default" :disabled="!canVerifyPhone2FA" :loading="securityLoading.phoneVerify2FA" @click="verifyPhoneBind2FA">
-                {{ phoneTicketReady ? "已验证" : "验证2FA" }}
-              </a-button>
-            </div>
+            <a-alert v-if="twoFAEnabled" type="success" show-icon message="已完成 2FA 身份校验，可继续绑定流程" />
             <a-input-password
               v-else
               v-model:value="securityForm.bind_phone_password"
@@ -401,6 +369,29 @@
           </div>
         </div>
       </div>
+    </a-modal>
+
+    <a-modal
+      v-model:open="precheckVisible"
+      :title="precheckTitle"
+      :confirm-loading="precheckLoading"
+      ok-text="验证并继续"
+      cancel-text="取消"
+      @ok="submitPrecheck"
+      @cancel="resetPrecheck"
+    >
+      <a-alert
+        type="info"
+        show-icon
+        message="先验证 2FA，再进入下一步"
+        description="请输入当前验证器中的 6 位动态验证码。"
+        class="modal-alert"
+      />
+      <a-input
+        v-model:value="precheckCode"
+        :maxlength="6"
+        placeholder="请输入 6 位 2FA 验证码"
+      />
     </a-modal>
   </div>
 </template>
@@ -455,6 +446,14 @@ const formatTime = (value) => {
   return dayjs(value).format("YYYY-MM-DD HH:mm:ss");
 };
 
+const extractPayload = (res) => {
+  const body = res?.data;
+  if (body && typeof body === "object" && body.data && typeof body.data === "object") {
+    return body.data;
+  }
+  return body || {};
+};
+
 const auth = useAuthStore();
 const profile = computed(() => auth.profile);
 const wallet = ref({ balance: 0, currency: "CNY" });
@@ -463,6 +462,10 @@ const editModalVisible = ref(false);
 const passwordModalVisible = ref(false);
 const securityModalVisible = ref(false);
 const securityModalType = ref("twofa");
+const precheckVisible = ref(false);
+const precheckTarget = ref("");
+const precheckCode = ref("");
+const precheckLoading = ref(false);
 const submitting = ref(false);
 const formRef = ref();
 const passwordFormRef = ref();
@@ -494,10 +497,8 @@ const securityLoading = reactive({
   password: false,
   setup: false,
   confirm: false,
-  emailVerify2FA: false,
   emailSend: false,
   emailConfirm: false,
-  phoneVerify2FA: false,
   phoneSend: false,
   phoneConfirm: false
 });
@@ -557,15 +558,11 @@ const normalizedProfileTotp = computed(() => String(securityForm.profile_totp ||
 const normalizedPasswordTotp = computed(() => String(securityForm.password_totp || "").trim());
 const normalizedEmail = computed(() => String(securityForm.bind_email_value || "").trim());
 const normalizedPhone = computed(() => String(securityForm.bind_phone_value || "").trim());
-const normalizedEmailTotp = computed(() => String(securityForm.bind_email_totp || "").trim());
-const normalizedPhoneTotp = computed(() => String(securityForm.bind_phone_totp || "").trim());
 const normalizedEmailCode = computed(() => String(securityForm.bind_email_code || "").trim());
 const normalizedPhoneCode = computed(() => String(securityForm.bind_phone_code || "").trim());
 
 const isEmailValid = computed(() => emailPattern.test(normalizedEmail.value));
 const isPhoneValid = computed(() => phonePattern.test(normalizedPhone.value));
-const isEmailTotpValid = computed(() => otpPattern.test(normalizedEmailTotp.value));
-const isPhoneTotpValid = computed(() => otpPattern.test(normalizedPhoneTotp.value));
 const emailTicketReady = computed(() => String(securityForm.bind_email_ticket || "").trim().length > 0);
 const phoneTicketReady = computed(() => String(securityForm.bind_phone_ticket || "").trim().length > 0);
 
@@ -592,18 +589,6 @@ const canSendPhoneCode = computed(() => {
   if (!isPhoneValid.value) return false;
   if (twoFAEnabled.value) return phoneTicketReady.value;
   return String(securityForm.bind_phone_password || "").trim().length > 0;
-});
-
-const canVerifyEmail2FA = computed(() => {
-  if (!twoFAEnabled.value || securityLoading.emailVerify2FA) return false;
-  if (emailTicketReady.value) return false;
-  return isEmailTotpValid.value;
-});
-
-const canVerifyPhone2FA = computed(() => {
-  if (!twoFAEnabled.value || securityLoading.phoneVerify2FA) return false;
-  if (phoneTicketReady.value) return false;
-  return isPhoneTotpValid.value;
 });
 
 const canConfirmEmailBind = computed(() => {
@@ -690,8 +675,10 @@ const resetPhoneBindState = () => {
 };
 
 onMounted(() => {
-  if (!auth.profile) {
-    auth.fetchMe();
+  if (auth.token) {
+    auth.fetchMe().catch(() => {});
+  } else if (!auth.profile) {
+    auth.fetchMe().catch(() => {});
   }
   fetchExtras();
   fetchTwoFAStatus();
@@ -716,7 +703,6 @@ watch(
 const openEditModal = () => {
   form.username = profile.value?.username || "";
   form.qq = profile.value?.qq || "";
-  securityForm.profile_totp = "";
   editModalVisible.value = true;
 };
 
@@ -729,7 +715,6 @@ const openPasswordModal = () => {
   securityForm.current_password = "";
   securityForm.new_password = "";
   securityForm.confirm_new_password = "";
-  securityForm.password_totp = "";
   passwordModalVisible.value = true;
 };
 
@@ -741,7 +726,8 @@ const resetPasswordForm = () => {
   passwordFormRef.value?.clearValidate();
 };
 
-const openSecurityModal = async (type) => {
+const openSecurityModal = async (type, options = {}) => {
+  const keepTicket = !!options.keepTicket;
   securityModalType.value = type;
   securityModalVisible.value = true;
   if (type === "twofa") {
@@ -750,12 +736,93 @@ const openSecurityModal = async (type) => {
     return;
   }
   if (type === "email") {
+    const ticket = keepTicket ? String(securityForm.bind_email_ticket || "").trim() : "";
     resetEmailBindState();
+    if (ticket) securityForm.bind_email_ticket = ticket;
     await Promise.all([fetchTwoFAStatus(), fetchSecurityContacts()]);
     return;
   }
+  const ticket = keepTicket ? String(securityForm.bind_phone_ticket || "").trim() : "";
   resetPhoneBindState();
+  if (ticket) securityForm.bind_phone_ticket = ticket;
   await Promise.all([fetchTwoFAStatus(), fetchSecurityContacts()]);
+};
+
+const precheckTitle = computed(() => {
+  if (precheckTarget.value === "edit") return "验证 2FA 后编辑资料";
+  if (precheckTarget.value === "password") return "验证 2FA 后修改密码";
+  if (precheckTarget.value === "email") return "验证 2FA 后绑定邮箱";
+  if (precheckTarget.value === "phone") return "验证 2FA 后绑定手机";
+  return "验证 2FA 后进入设置";
+});
+
+const resetPrecheck = () => {
+  precheckCode.value = "";
+  precheckLoading.value = false;
+  precheckVisible.value = false;
+  precheckTarget.value = "";
+};
+
+const openProtectedFlow = async (target) => {
+  await fetchTwoFAStatus();
+  if (!twoFAEnabled.value) {
+    if (target === "edit") return openEditModal();
+    if (target === "password") return openPasswordModal();
+    if (target === "twofa" || target === "email" || target === "phone") return openSecurityModal(target);
+    return;
+  }
+  precheckTarget.value = target;
+  precheckCode.value = "";
+  precheckVisible.value = true;
+};
+
+const submitPrecheck = async () => {
+  const code = String(precheckCode.value || "").trim();
+  if (!otpPattern.test(code)) {
+    message.warning("请输入 6 位 2FA 验证码");
+    return;
+  }
+  precheckLoading.value = true;
+  try {
+    if (precheckTarget.value === "email") {
+      const res = await verifyMyEmailBind2FA({ totp_code: code });
+      const d = extractPayload(res);
+      securityForm.bind_email_ticket = String(d.security_ticket || "").trim();
+      if (!securityForm.bind_email_ticket) {
+        message.error("2FA 校验失败");
+        return;
+      }
+    } else if (precheckTarget.value === "phone") {
+      const res = await verifyMyPhoneBind2FA({ totp_code: code });
+      const d = extractPayload(res);
+      securityForm.bind_phone_ticket = String(d.security_ticket || "").trim();
+      if (!securityForm.bind_phone_ticket) {
+        message.error("2FA 校验失败");
+        return;
+      }
+    } else if (precheckTarget.value === "edit") {
+      securityForm.profile_totp = code;
+    } else if (precheckTarget.value === "password") {
+      securityForm.password_totp = code;
+    } else if (precheckTarget.value === "twofa") {
+      securityForm.twofa_current_code = code;
+    }
+
+    const target = precheckTarget.value;
+    precheckVisible.value = false;
+    precheckCode.value = "";
+    precheckTarget.value = "";
+    message.success("2FA 验证通过");
+
+    if (target === "edit") return openEditModal();
+    if (target === "password") return openPasswordModal();
+    if (target === "email" || target === "phone") return openSecurityModal(target, { keepTicket: true });
+    if (target === "twofa") return openSecurityModal(target);
+  } catch (e) {
+    message.error(e?.response?.data?.error || "2FA 校验失败");
+  } finally {
+    precheckLoading.value = false;
+  }
 };
 
 watch(securityModalVisible, (open) => {
@@ -809,25 +876,70 @@ const fetchExtras = async () => {
 const fetchTwoFAStatus = async () => {
   try {
     const res = await getTwoFAStatus();
-    twoFAEnabled.value = !!res.data?.enabled;
+    const d = extractPayload(res);
+    if (typeof d.enabled !== "undefined") {
+      twoFAEnabled.value = !!d.enabled;
+      return;
+    }
+    if (typeof d.totp_enabled !== "undefined") {
+      twoFAEnabled.value = !!d.totp_enabled;
+    }
   } catch {
-    twoFAEnabled.value = false;
+    const profileTotp = (auth.profile || {})?.totp_enabled;
+    if (typeof profileTotp !== "undefined") {
+      twoFAEnabled.value = !!profileTotp;
+      return;
+    }
+    const fromProfile = Boolean((auth.profile || {})?.totp_enabled);
+    if (fromProfile) {
+      twoFAEnabled.value = true;
+    }
   }
 };
 
 const fetchSecurityContacts = async () => {
   try {
     const res = await getMySecurityContacts();
-    const d = res.data || {};
+    const d = extractPayload(res);
     securityContacts.email_bound = !!d.email_bound;
     securityContacts.phone_bound = !!d.phone_bound;
     securityContacts.email_masked = String(d.email_masked || "");
     securityContacts.phone_masked = String(d.phone_masked || "");
+    if (typeof d.totp_enabled !== "undefined") {
+      twoFAEnabled.value = !!d.totp_enabled;
+    }
   } catch {
-    securityContacts.email_bound = false;
-    securityContacts.phone_bound = false;
-    securityContacts.email_masked = "";
-    securityContacts.phone_masked = "";
+    const profileEmailBound = (auth.profile || {})?.email_bound;
+    const profilePhoneBound = (auth.profile || {})?.phone_bound;
+    const profileEmailMasked = String((auth.profile || {})?.email_masked || "").trim();
+    const profilePhoneMasked = String((auth.profile || {})?.phone_masked || "").trim();
+    if (typeof profileEmailBound !== "undefined") {
+      securityContacts.email_bound = !!profileEmailBound;
+    }
+    if (typeof profilePhoneBound !== "undefined") {
+      securityContacts.phone_bound = !!profilePhoneBound;
+    }
+    if (!securityContacts.email_masked && profileEmailMasked) {
+      securityContacts.email_masked = profileEmailMasked;
+    }
+    if (!securityContacts.phone_masked && profilePhoneMasked) {
+      securityContacts.phone_masked = profilePhoneMasked;
+    }
+
+    const profileEmail = String((auth.profile || {})?.email || "").trim();
+    const profilePhone = String((auth.profile || {})?.phone || "").trim();
+    if (!securityContacts.email_masked && profileEmail) {
+      securityContacts.email_masked = profileEmail;
+    }
+    if (!securityContacts.phone_masked && profilePhone) {
+      securityContacts.phone_masked = profilePhone;
+    }
+    if (!securityContacts.email_bound && profileEmail) {
+      securityContacts.email_bound = true;
+    }
+    if (!securityContacts.phone_bound && profilePhone) {
+      securityContacts.phone_bound = true;
+    }
   }
 };
 
@@ -869,8 +981,9 @@ const submitTwoFASetup = async () => {
       password: twoFAEnabled.value ? undefined : String(securityForm.twofa_password || "").trim(),
       current_code: twoFAEnabled.value ? normalizedTwoFACurrentCode.value : undefined
     });
-    twoFASecret.value = String(res.data?.secret || "");
-    twoFAUrl.value = String(res.data?.otpauth_url || "");
+    const d = extractPayload(res);
+    twoFASecret.value = String(d.secret || "");
+    twoFAUrl.value = String(d.otpauth_url || "");
     if (!twoFASecret.value) {
       message.error("未获取到2FA信息");
       return;
@@ -934,27 +1047,6 @@ const submitTwoFAConfirm = async () => {
   }
 };
 
-const verifyEmailBind2FA = async () => {
-  if (!isEmailTotpValid.value) {
-    message.warning("2FA 验证码需为 6 位数字");
-    return;
-  }
-  securityLoading.emailVerify2FA = true;
-  try {
-    const res = await verifyMyEmailBind2FA({ totp_code: normalizedEmailTotp.value });
-    securityForm.bind_email_ticket = String(res.data?.security_ticket || "").trim();
-    if (!securityForm.bind_email_ticket) {
-      message.error("2FA 校验失败");
-      return;
-    }
-    message.success("2FA 已验证，请在窗口期内完成绑定");
-  } catch (e) {
-    message.error(e?.response?.data?.error || "2FA 校验失败");
-  } finally {
-    securityLoading.emailVerify2FA = false;
-  }
-};
-
 const sendEmailBindCode = async () => {
   if (!isEmailValid.value) {
     message.warning("请输入有效邮箱地址");
@@ -1004,27 +1096,6 @@ const submitEmailBind = async () => {
     message.error(e?.response?.data?.error || "提交失败");
   } finally {
     securityLoading.emailConfirm = false;
-  }
-};
-
-const verifyPhoneBind2FA = async () => {
-  if (!isPhoneTotpValid.value) {
-    message.warning("2FA 验证码需为 6 位数字");
-    return;
-  }
-  securityLoading.phoneVerify2FA = true;
-  try {
-    const res = await verifyMyPhoneBind2FA({ totp_code: normalizedPhoneTotp.value });
-    securityForm.bind_phone_ticket = String(res.data?.security_ticket || "").trim();
-    if (!securityForm.bind_phone_ticket) {
-      message.error("2FA 校验失败");
-      return;
-    }
-    message.success("2FA 已验证，请在窗口期内完成绑定");
-  } catch (e) {
-    message.error(e?.response?.data?.error || "2FA 校验失败");
-  } finally {
-    securityLoading.phoneVerify2FA = false;
   }
 };
 

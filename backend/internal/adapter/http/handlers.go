@@ -1,11 +1,9 @@
 package http
 
 import (
+	"github.com/microcosm-cc/bluemonday"
 	"regexp"
 	"time"
-
-	"github.com/microcosm-cc/bluemonday"
-
 	appadmin "xiaoheiplay/internal/app/admin"
 	appadminvps "xiaoheiplay/internal/app/adminvps"
 	appcart "xiaoheiplay/internal/app/cart"
@@ -136,6 +134,10 @@ type authSettings struct {
 	RegisterVerifyChannels []string
 	RegisterVerifyTTL      time.Duration
 	RegisterCaptchaEnabled bool
+	CaptchaProvider        string
+	GeeTestCaptchaID       string
+	GeeTestCaptchaKey      string
+	GeeTestAPIServer       string
 	RegisterEmailSubject   string
 	RegisterEmailBody      string
 	RegisterSMSPluginID    string
@@ -163,6 +165,7 @@ type authSettings struct {
 
 	EmailBindEnabled               bool
 	PhoneBindEnabled               bool
+	ContactChangeNotifyOldEnabled  bool
 	ContactBindVerifyTTL           time.Duration
 	BindRequirePasswordWhenNo2FA   bool
 	RebindRequirePasswordWhenNo2FA bool

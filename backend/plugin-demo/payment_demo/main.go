@@ -7,7 +7,7 @@ import (
 
 	"github.com/hashicorp/go-plugin"
 
-	paymentplugin "xiaoheiplay/internal/adapter/payment/plugin"
+	paymentplugin "xiaoheiplay/internal/adapter/plugins/payment"
 	"xiaoheiplay/internal/app/shared"
 )
 

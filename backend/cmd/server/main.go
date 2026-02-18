@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"xiaoheiplay/internal/adapter/automation"
 	"xiaoheiplay/internal/adapter/email"
 	"xiaoheiplay/internal/adapter/event"
 	"xiaoheiplay/internal/adapter/http"
 	"xiaoheiplay/internal/adapter/payment"
-	"xiaoheiplay/internal/adapter/plugins"
+	"xiaoheiplay/internal/adapter/plugins/automation"
+	"xiaoheiplay/internal/adapter/plugins/core"
 	"xiaoheiplay/internal/adapter/push"
 	"xiaoheiplay/internal/adapter/realname"
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	"xiaoheiplay/internal/adapter/robot"
 	"xiaoheiplay/internal/adapter/seed"
 	"xiaoheiplay/internal/adapter/sse"
@@ -212,7 +212,7 @@ func main() {
 		EmailSender:       emailSender,
 		RobotNotifier:     robotNotifier,
 	})
-	middleware := http.NewMiddleware(cfg.JWTSecret, apiKeySvc, permissionSvc)
+	middleware := http.NewMiddleware(cfg.JWTSecret, apiKeySvc, permissionSvc, authSvc, settingsSvc)
 	server := http.NewServer(handler, middleware)
 
 	routeDefinitions := permissions.BuildFromRoutes(server.Engine.Routes())

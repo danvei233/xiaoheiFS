@@ -106,6 +106,7 @@ const router = createRouter({
         { path: "systems", name: "admin-systems", component: () => import("@/pages/admin/Systems.vue") },
         { path: "settings/site", name: "admin-settings-site", component: () => import("@/pages/admin/settings/Site.vue") },
         { path: "settings/auth", name: "admin-settings-auth", component: () => import("@/pages/admin/settings/Auth.vue") },
+        { path: "settings/captcha", name: "admin-settings-captcha", component: () => import("@/pages/admin/settings/Captcha.vue") },
         { path: "settings/email", name: "admin-settings-email", component: () => import("@/pages/admin/settings/Email.vue") },
         { path: "settings/sms", name: "admin-settings-sms", component: () => import("@/pages/admin/settings/SMS.vue") },
         { path: "settings/apikey", name: "admin-settings-apikey", component: () => import("@/pages/admin/settings/ApiKey.vue") },

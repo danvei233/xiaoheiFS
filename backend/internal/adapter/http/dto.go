@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
@@ -17,8 +16,12 @@ type UserDTO struct {
 	ID                int64      `json:"id"`
 	Username          string     `json:"username"`
 	Email             string     `json:"email"`
+	EmailMasked       string     `json:"email_masked,omitempty"`
+	EmailBound        bool       `json:"email_bound,omitempty"`
 	QQ                string     `json:"qq"`
 	Phone             string     `json:"phone"`
+	PhoneMasked       string     `json:"phone_masked,omitempty"`
+	PhoneBound        bool       `json:"phone_bound,omitempty"`
 	TOTPEnabled       bool       `json:"totp_enabled"`
 	LastLoginIP       string     `json:"last_login_ip"`
 	LastLoginAt       *time.Time `json:"last_login_at"`
@@ -400,6 +403,10 @@ func toUserSelfDTO(user domain.User) UserDTO {
 	dto := toUserDTO(user)
 	dto.Email = ""
 	dto.Phone = ""
+	dto.EmailMasked = maskEmail(user.Email)
+	dto.PhoneMasked = maskPhone(user.Phone)
+	dto.EmailBound = strings.TrimSpace(user.Email) != ""
+	dto.PhoneBound = strings.TrimSpace(user.Phone) != ""
 	return dto
 }
 

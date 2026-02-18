@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	appshared "xiaoheiplay/internal/app/shared"
 	appvps "xiaoheiplay/internal/app/vps"
 	"xiaoheiplay/internal/domain"

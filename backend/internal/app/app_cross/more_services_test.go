@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	"xiaoheiplay/internal/adapter/seed"
 	appauth "xiaoheiplay/internal/app/auth"
 	appcart "xiaoheiplay/internal/app/cart"

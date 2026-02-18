@@ -3,20 +3,18 @@ package http_test
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
-
-	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
-
 	httpadapter "xiaoheiplay/internal/adapter/http"
 )
 
 func TestMiddleware_RequireUser_Unauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mw := httpadapter.NewMiddleware("secret", nil, nil)
+	mw := httpadapter.NewMiddleware("secret", nil, nil, nil, nil)
 	r := gin.New()
 	r.GET("/me", mw.RequireUser(), func(c *gin.Context) { c.Status(http.StatusOK) })
 
@@ -30,7 +28,7 @@ func TestMiddleware_RequireUser_Unauthorized(t *testing.T) {
 
 func TestMiddleware_RequireAdmin_Forbidden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mw := httpadapter.NewMiddleware("secret", nil, nil)
+	mw := httpadapter.NewMiddleware("secret", nil, nil, nil, nil)
 	r := gin.New()
 	r.GET("/admin", mw.RequireAdmin(), func(c *gin.Context) { c.Status(http.StatusOK) })
 
@@ -52,7 +50,7 @@ func TestMiddleware_RequireAdmin_Forbidden(t *testing.T) {
 
 func TestMiddleware_RejectsNoneAlg(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mw := httpadapter.NewMiddleware("secret", nil, nil)
+	mw := httpadapter.NewMiddleware("secret", nil, nil, nil, nil)
 	r := gin.New()
 	r.GET("/me", mw.RequireUser(), func(c *gin.Context) { c.Status(http.StatusOK) })
 

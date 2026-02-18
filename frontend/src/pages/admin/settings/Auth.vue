@@ -4,7 +4,7 @@
       <div>
         <div class="page-kicker">账号与安全</div>
         <h1 class="page-title">注册与登录设置</h1>
-        <p class="page-subtitle">统一管理注册入口、密码规则、验证码与登录风控。</p>
+        <p class="page-subtitle">统一管理注册入口、密码规则与登录风控。</p>
       </div>
       <a-button type="primary" @click="handleSave" :loading="saving">保存设置</a-button>
     </div>
@@ -65,9 +65,6 @@
             <a-form-item label="验证码有效期（秒）">
               <a-input-number v-model:value="form.register_verify_ttl_sec" :min="60" :max="3600" style="width: 100%" />
             </a-form-item>
-            <a-form-item label="启用图形验证码">
-              <a-switch v-model:checked="form.register_captcha_enabled" />
-            </a-form-item>
             <a-divider style="margin: 10px 0 14px">验证码策略</a-divider>
             <a-row :gutter="12">
               <a-col :span="12">
@@ -93,19 +90,6 @@
                 </a-form-item>
               </a-col>
             </a-row>
-            <a-row :gutter="12">
-              <a-col :span="12">
-                <a-form-item label="图形长度">
-                  <a-input-number v-model:value="form.auth_captcha_code_len" :min="4" :max="12" style="width: 100%" />
-                </a-form-item>
-              </a-col>
-              <a-col :span="12">
-                <a-form-item label="图形复杂度">
-                  <a-select v-model:value="form.auth_captcha_code_complexity" :options="codeComplexityOptions" />
-                </a-form-item>
-              </a-col>
-            </a-row>
-
             <a-alert
               type="info"
               show-icon
@@ -117,9 +101,6 @@
         <a-card :bordered="false" class="section-card">
           <div class="section-title">登录保护</div>
           <a-form layout="vertical">
-            <a-form-item label="启用登录图形验证码">
-              <a-switch v-model:checked="form.login_captcha_enabled" />
-            </a-form-item>
             <a-form-item label="登录提醒开关">
               <a-switch v-model:checked="form.auth_login_notify_enabled" />
             </a-form-item>
@@ -143,6 +124,9 @@
             </a-form-item>
             <a-form-item label="手机号绑定功能">
               <a-switch v-model:checked="form.auth_phone_bind_enabled" />
+            </a-form-item>
+            <a-form-item label="换绑后通知旧联系方式">
+              <a-switch v-model:checked="form.auth_contact_change_notify_old_enabled" />
             </a-form-item>
             <a-form-item label="绑定验证码有效期（秒）">
               <a-input-number v-model:value="form.auth_contact_bind_verify_ttl_sec" :min="60" :max="3600" style="width: 100%" />
@@ -203,8 +187,6 @@ const form = reactive({
   register_verify_type: "none",
   register_verify_channels: ["email"],
   register_verify_ttl_sec: 600,
-  register_captcha_enabled: true,
-  login_captcha_enabled: false,
   login_rate_limit_enabled: true,
   login_rate_limit_window_sec: 300,
   login_rate_limit_max_attempts: 5,
@@ -218,10 +200,9 @@ const form = reactive({
   auth_sms_code_complexity: "digits",
   auth_email_code_len: 6,
   auth_email_code_complexity: "alnum",
-  auth_captcha_code_len: 5,
-  auth_captcha_code_complexity: "alnum",
   auth_email_bind_enabled: true,
   auth_phone_bind_enabled: true,
+  auth_contact_change_notify_old_enabled: true,
   auth_contact_bind_verify_ttl_sec: 600,
   auth_bind_require_password_when_no_2fa: false,
   auth_rebind_require_password_when_no_2fa: true,
@@ -308,8 +289,6 @@ const fetchData = async () => {
     form.register_verify_type = String(map.get("auth_register_verify_type") || "none");
     form.register_verify_channels = parseList(map.get("auth_register_verify_channels"), form.register_verify_type === "none" ? [] : [form.register_verify_type]);
     form.register_verify_ttl_sec = parseIntValue(map.get("auth_register_verify_ttl_sec"), 600);
-    form.register_captcha_enabled = parseBool(map.get("auth_register_captcha_enabled"), true);
-    form.login_captcha_enabled = parseBool(map.get("auth_login_captcha_enabled"), false);
     form.login_rate_limit_enabled = parseBool(map.get("auth_login_rate_limit_enabled"), true);
     form.login_rate_limit_window_sec = parseIntValue(map.get("auth_login_rate_limit_window_sec"), 300);
     form.login_rate_limit_max_attempts = parseIntValue(map.get("auth_login_rate_limit_max_attempts"), 5);
@@ -325,10 +304,9 @@ const fetchData = async () => {
     form.auth_sms_code_complexity = normalizeComplexity(map.get("auth_sms_code_complexity"), "digits");
     form.auth_email_code_len = parseIntValue(map.get("auth_email_code_len"), 6);
     form.auth_email_code_complexity = normalizeComplexity(map.get("auth_email_code_complexity"), "alnum");
-    form.auth_captcha_code_len = parseIntValue(map.get("auth_captcha_code_len"), 5);
-    form.auth_captcha_code_complexity = normalizeComplexity(map.get("auth_captcha_code_complexity"), "alnum");
     form.auth_email_bind_enabled = parseBool(map.get("auth_email_bind_enabled"), true);
     form.auth_phone_bind_enabled = parseBool(map.get("auth_phone_bind_enabled"), true);
+    form.auth_contact_change_notify_old_enabled = parseBool(map.get("auth_contact_change_notify_old_enabled"), true);
     form.auth_contact_bind_verify_ttl_sec = parseIntValue(map.get("auth_contact_bind_verify_ttl_sec"), 600);
     form.auth_bind_require_password_when_no_2fa = parseBool(map.get("auth_bind_require_password_when_no_2fa"), false);
     form.auth_rebind_require_password_when_no_2fa = parseBool(map.get("auth_rebind_require_password_when_no_2fa"), true);
@@ -364,8 +342,6 @@ const handleSave = async () => {
       { key: "auth_register_verify_type", value: form.register_verify_type },
       { key: "auth_register_verify_channels", value: JSON.stringify(form.register_verify_channels || []) },
       { key: "auth_register_verify_ttl_sec", value: String(form.register_verify_ttl_sec ?? 600) },
-      { key: "auth_register_captcha_enabled", value: form.register_captcha_enabled ? "true" : "false" },
-      { key: "auth_login_captcha_enabled", value: form.login_captcha_enabled ? "true" : "false" },
       { key: "auth_login_rate_limit_enabled", value: form.login_rate_limit_enabled ? "true" : "false" },
       { key: "auth_login_rate_limit_window_sec", value: String(form.login_rate_limit_window_sec ?? 300) },
       { key: "auth_login_rate_limit_max_attempts", value: String(form.login_rate_limit_max_attempts ?? 5) },
@@ -380,10 +356,9 @@ const handleSave = async () => {
       { key: "auth_sms_code_complexity", value: normalizeComplexity(form.auth_sms_code_complexity, "digits") },
       { key: "auth_email_code_len", value: String(form.auth_email_code_len ?? 6) },
       { key: "auth_email_code_complexity", value: normalizeComplexity(form.auth_email_code_complexity, "alnum") },
-      { key: "auth_captcha_code_len", value: String(form.auth_captcha_code_len ?? 5) },
-      { key: "auth_captcha_code_complexity", value: normalizeComplexity(form.auth_captcha_code_complexity, "alnum") },
       { key: "auth_email_bind_enabled", value: form.auth_email_bind_enabled ? "true" : "false" },
       { key: "auth_phone_bind_enabled", value: form.auth_phone_bind_enabled ? "true" : "false" },
+      { key: "auth_contact_change_notify_old_enabled", value: form.auth_contact_change_notify_old_enabled ? "true" : "false" },
       { key: "auth_contact_bind_verify_ttl_sec", value: String(form.auth_contact_bind_verify_ttl_sec ?? 600) },
       { key: "auth_bind_require_password_when_no_2fa", value: form.auth_bind_require_password_when_no_2fa ? "true" : "false" },
       { key: "auth_rebind_require_password_when_no_2fa", value: form.auth_rebind_require_password_when_no_2fa ? "true" : "false" },

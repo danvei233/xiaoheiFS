@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"xiaoheiplay/internal/adapter/plugins"
+	"xiaoheiplay/internal/adapter/plugins/core"
 	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/cryptox"

@@ -732,37 +732,7 @@ func (c *Client) ListImages(ctx context.Context, lineID int64) ([]appshared.Auto
 	for _, item := range items {
 		out = append(out, appshared.AutomationImage{ImageID: item.ID, Name: item.Name, Type: item.Type})
 	}
-	if lineID <= 0 {
-		return out, nil
-	}
-	allowedImageIDs, foundLine, hasImageIDs, err := c.getLineImageIDs(ctx, lineID)
-	if err != nil {
-		return nil, err
-	}
-	if !foundLine {
-		return nil, fmt.Errorf("automation line not found: %d", lineID)
-	}
-	if !hasImageIDs {
-		// Some upstream automation services already honor line_id on /mirror_image
-		// but do not expose line.image_ids in /line.
-		return out, nil
-	}
-	allowed := make(map[int64]struct{}, len(allowedImageIDs))
-	for _, id := range allowedImageIDs {
-		if id > 0 {
-			allowed[id] = struct{}{}
-		}
-	}
-	if len(allowed) == 0 {
-		return []appshared.AutomationImage{}, nil
-	}
-	filtered := make([]appshared.AutomationImage, 0, len(out))
-	for _, img := range out {
-		if _, ok := allowed[img.ImageID]; ok {
-			filtered = append(filtered, img)
-		}
-	}
-	return filtered, nil
+	return out, nil
 }
 
 func (c *Client) getLineImageIDs(ctx context.Context, lineID int64) ([]int64, bool, bool, error) {

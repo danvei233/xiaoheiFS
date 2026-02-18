@@ -995,13 +995,36 @@ const vpsInfo = computed(() => {
   return null;
 });
 
+const copyToClipboard = async (text) => {
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "readonly");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const ok = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!ok) {
+    throw new Error("copy failed");
+  }
+};
+
 const copyVpsInfo = async () => {
   if (!vpsInfo.value) return;
   const text = Object.entries(vpsInfo.value)
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
-  await navigator.clipboard.writeText(text);
-  message.success("已复制 VPS 信息");
+  try {
+    await copyToClipboard(text);
+    message.success("已复制 VPS 信息");
+  } catch {
+    message.error("当前环境不支持复制，请手动复制");
+  }
 };
 
 const stopPolling = () => {

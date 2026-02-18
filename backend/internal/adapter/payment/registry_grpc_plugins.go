@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	plugins "xiaoheiplay/internal/adapter/plugins"
+	plugins "xiaoheiplay/internal/adapter/plugins/core"
 	appshared "xiaoheiplay/internal/app/shared"
 	pluginv1 "xiaoheiplay/plugin/v1"
 )

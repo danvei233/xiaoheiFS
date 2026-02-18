@@ -16,8 +16,8 @@ import (
 	"github.com/hashicorp/go-plugin"
 
 	"fmt"
-	paymentplugin "xiaoheiplay/internal/adapter/payment/plugin"
-	plugins "xiaoheiplay/internal/adapter/plugins"
+	plugins "xiaoheiplay/internal/adapter/plugins/core"
+	paymentplugin "xiaoheiplay/internal/adapt
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"

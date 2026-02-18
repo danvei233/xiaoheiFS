@@ -210,6 +210,7 @@ func SeedIfEmpty(gdb *gorm.DB) error {
 			{Name: "login_ip_change_alert", Subject: "登录提醒", Body: "您的账号于 {{time}} 在 {{city}} 登录（IP：{{ip}}）。如非本人操作请立即修改密码。", Enabled: 1},
 			{Name: "password_reset_verify_code", Subject: "找回密码验证码", Body: "您好，您正在进行找回密码操作，验证码：{{code}}，10分钟内有效。", Enabled: 1},
 			{Name: "email_bind_verify_code", Subject: "邮箱绑定验证码", Body: "您的邮箱绑定验证码：{{code}}，10分钟内有效。", Enabled: 1},
+			{Name: "email_change_alert_old_contact", Subject: "邮箱变更安全提醒", Body: "您的账号邮箱已于 {{time}} 从 {{old_email}} 修改为 {{new_email}}。如非本人操作，请立即修改密码并检查账号安全。", Enabled: 1},
 		}
 		for i := range emailTemplates {
 			if err := tx.Clauses(clause.OnConflict{
@@ -266,7 +267,7 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"sms_instance_id":                          "default",
 		"sms_default_template_id":                  "",
 		"sms_provider_template_id":                 "",
-		"sms_templates_json":                       `[{"id":1,"name":"register_verify_code","content":"【XXX】您正在注册XXX平台账号，验证码是：{{code}}，3分钟内有效，请及时输入。","enabled":true},{"id":2,"name":"login_ip_change_alert","content":"【XXX】登录提醒：您的账号于 {{time}} 在 {{city}} 发生登录（IP：{{ip}}）。如为本人操作，请忽略本消息；如非本人操作，请立即修改密码并开启二次验证，确保账号安全。","enabled":true},{"id":3,"name":"password_reset_verify_code","content":"【XXX】您好，您在XXX平台（APP）的账号正在进行找回密码操作，切勿将验证码泄露于他人，10分钟内有效。验证码：{{code}}。","enabled":true},{"id":4,"name":"phone_bind_verify_code","content":"【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。","enabled":true}]`,
+		"sms_templates_json":                       `[{"id":1,"name":"register_verify_code","content":"【XXX】您正在注册XXX平台账号，验证码是：{{code}}，3分钟内有效，请及时输入。","enabled":true},{"id":2,"name":"login_ip_change_alert","content":"【XXX】登录提醒：您的账号于 {{time}} 在 {{city}} 发生登录（IP：{{ip}}）。如为本人操作，请忽略本消息；如非本人操作，请立即修改密码并开启二次验证，确保账号安全。","enabled":true},{"id":3,"name":"password_reset_verify_code","content":"【XXX】您好，您在XXX平台（APP）的账号正在进行找回密码操作，切勿将验证码泄露于他人，10分钟内有效。验证码：{{code}}。","enabled":true},{"id":4,"name":"phone_bind_verify_code","content":"【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。","enabled":true},{"id":5,"name":"phone_change_alert_old_contact","content":"【XXX】安全提醒：您的账号手机号已于 {{time}} 从 {{old_phone}} 修改为 {{new_phone}}。如非本人操作，请立即修改密码并联系管理员。","enabled":true}]`,
 		"email_enabled":                            "true",
 		"email_expire_enabled":                     "true",
 		"expire_reminder_days":                     "7",
@@ -339,6 +340,10 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"auth_register_email_required":             "true",
 		"auth_register_verify_ttl_sec":             "600",
 		"auth_register_captcha_enabled":            "true",
+		"auth_captcha_provider":                    "image",
+		"auth_geetest_captcha_id":                  "",
+		"auth_geetest_captcha_key":                 "",
+		"auth_geetest_api_server":                  "https://gcaptcha4.geetest.com",
 		"auth_register_email_subject":              "Your verification code",
 		"auth_register_email_body":                 "Your verification code is: {{code}}",
 		"auth_register_sms_plugin_id":              "",
@@ -364,6 +369,7 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"auth_captcha_code_complexity":             "alnum",
 		"auth_email_bind_enabled":                  "true",
 		"auth_phone_bind_enabled":                  "true",
+		"auth_contact_change_notify_old_enabled":   "true",
 		"auth_contact_bind_verify_ttl_sec":         "600",
 		"auth_bind_require_password_when_no_2fa":   "false",
 		"auth_rebind_require_password_when_no_2fa": "true",
@@ -389,7 +395,33 @@ func EnsureSettings(gdb *gorm.DB) error {
 	}).Create(&rows).Error; err != nil {
 		return err
 	}
+	// Backfill historical empty values to avoid frontend falling back to display defaults.
+	if err := ensureSettingNotBlank(gdb, "site_nav_items", `[]`); err != nil {
+		return err
+	}
 	return EnsureMessageTemplateDefaults(gdb)
+}
+
+func ensureSettingNotBlank(gdb *gorm.DB, key, defaultValue string) error {
+	var row settingSeedRow
+	err := gdb.Where("`key` = ?", key).Take(&row).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return gdb.Create(&settingSeedRow{
+				Key:       key,
+				ValueJSON: defaultValue,
+				UpdatedAt: time.Now(),
+			}).Error
+		}
+		return err
+	}
+	if strings.TrimSpace(row.ValueJSON) != "" {
+		return nil
+	}
+	return gdb.Model(&settingSeedRow{}).Where("`key` = ?", key).Updates(map[string]any{
+		"value_json": defaultValue,
+		"updated_at": time.Now(),
+	}).Error
 }
 
 func EnsureMessageTemplateDefaults(gdb *gorm.DB) error {
@@ -413,6 +445,7 @@ func ensureDefaultEmailTemplates(gdb *gorm.DB) error {
 		{Name: "login_ip_change_alert", Subject: "登录提醒", Body: "您的账号于 {{time}} 在 {{city}} 登录（IP：{{ip}}）。如非本人操作请立即修改密码。", Enabled: 1},
 		{Name: "password_reset_verify_code", Subject: "找回密码验证码", Body: "您好，您正在进行找回密码操作，验证码：{{code}}，10分钟内有效。", Enabled: 1},
 		{Name: "email_bind_verify_code", Subject: "邮箱绑定验证码", Body: "您的邮箱绑定验证码：{{code}}，10分钟内有效。", Enabled: 1},
+		{Name: "email_change_alert_old_contact", Subject: "邮箱变更安全提醒", Body: "您的账号邮箱已于 {{time}} 从 {{old_email}} 修改为 {{new_email}}。如非本人操作，请立即修改密码并检查账号安全。", Enabled: 1},
 	}
 	for i := range templates {
 		if err := gdb.Clauses(clause.OnConflict{
@@ -437,6 +470,7 @@ func ensureDefaultSMSTemplates(gdb *gorm.DB) error {
 		{ID: 2, Name: "login_ip_change_alert", Content: "【XXX】登录提醒：您的账号于 {{time}} 在 {{city}} 发生登录（IP：{{ip}}）。如为本人操作，请忽略本消息；如非本人操作，请立即修改密码并开启二次验证，确保账号安全。", Enabled: true},
 		{ID: 3, Name: "password_reset_verify_code", Content: "【XXX】您好，您在XXX平台（APP）的账号正在进行找回密码操作，切勿将验证码泄露于他人，10分钟内有效。验证码：{{code}}。", Enabled: true},
 		{ID: 4, Name: "phone_bind_verify_code", Content: "【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。", Enabled: true},
+		{ID: 5, Name: "phone_change_alert_old_contact", Content: "【XXX】安全提醒：您的账号手机号已于 {{time}} 从 {{old_phone}} 修改为 {{new_phone}}。如非本人操作，请立即修改密码并联系管理员。", Enabled: true},
 	}
 	defaultRaw, _ := json.Marshal(defaultItems)
 

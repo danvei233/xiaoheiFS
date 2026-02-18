@@ -3,7 +3,7 @@ package admin_test
 import (
 	"testing"
 
-	"xiaoheiplay/internal/adapter/repo"
+	"xiaoheiplay/internal/adapter/repo/core"
 	"xiaoheiplay/internal/testutil"
 )
 

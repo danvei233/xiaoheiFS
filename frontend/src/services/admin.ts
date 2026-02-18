@@ -51,6 +51,11 @@ import type {
 } from "./types";
 
 export const adminLogin = (payload: Record<string, unknown>) => http.post("/admin/api/v1/auth/login", payload);
+export const admin2FAUnlock = (payload: { totp_code: string }) => http.post("/admin/api/v1/auth/2fa/unlock", payload);
+export const adminSetupTwoFA = (payload: { password?: string; current_code?: string }) =>
+  http.post("/admin/api/v1/auth/2fa/setup", payload);
+export const adminConfirmTwoFA = (payload: { code: string }) =>
+  http.post("/admin/api/v1/auth/2fa/confirm", payload);
 
 export const listAdminUsers = (params?: Record<string, unknown>) => http.get<ApiList<User>>("/admin/api/v1/users", { params });
 export const getAdminUserDetail = (id: number | string) => http.get<User>(`/admin/api/v1/users/${id}`);

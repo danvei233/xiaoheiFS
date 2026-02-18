@@ -1,12 +1,12 @@
 package http
 
 import (
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/gin-gonic/gin"
+	"xiaoheiplay/internal/domain"
 )
 
 type Server struct {
@@ -87,7 +87,7 @@ func installGateMiddleware(handler *Handler) gin.HandlerFunc {
 			return
 		}
 		if strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/admin/api/") {
-			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "not installed"})
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": domain.ErrNotInstalled.Error()})
 			return
 		}
 
@@ -168,7 +168,7 @@ func spaIndexFallbackHandler(staticDir string, excludedPrefixes []string) gin.Ha
 		reqPath := c.Request.URL.Path
 		for _, p := range excludedPrefixes {
 			if strings.HasPrefix(reqPath, p) {
-				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "not found"})
+				c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 				return
 			}
 		}

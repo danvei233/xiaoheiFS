@@ -38,7 +38,17 @@ import type {
 
 export const getCaptcha = () => http.get<CaptchaResponse>("/api/v1/captcha");
 export const getAuthSettings = () => http.get<AuthSettings>("/api/v1/auth/settings");
-export const requestRegisterCode = (payload: { channel?: "email" | "sms"; email?: string; phone?: string; captcha_id?: string; captcha_code?: string }) =>
+export const requestRegisterCode = (payload: {
+  channel?: "email" | "sms";
+  email?: string;
+  phone?: string;
+  captcha_id?: string;
+  captcha_code?: string;
+  lot_number?: string;
+  captcha_output?: string;
+  pass_token?: string;
+  gen_time?: string;
+}) =>
   http.post("/api/v1/auth/register/code", payload);
 export const getInstallStatus = () => http.get<{ installed: boolean }>("/api/v1/install/status");
 export const checkInstallDB = (payload: Record<string, unknown>) =>

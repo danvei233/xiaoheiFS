@@ -2,11 +2,10 @@ package http
 
 import (
 	"errors"
-	"io"
-	"reflect"
-
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"io"
+	"reflect"
 )
 
 var httpPayloadValidator = validator.New()

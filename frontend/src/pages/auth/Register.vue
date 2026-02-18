@@ -73,16 +73,22 @@
           </a-form-item>
           <a-form-item
             v-if="settings.register_captcha_enabled"
-            label="图形验证码"
+            :label="settings.captcha_provider === 'geetest' ? '行为验证码' : '图形验证码'"
             name="captcha_code"
-            :rules="[{ required: true, message: '请输入验证码' }]"
+            :rules="settings.captcha_provider === 'geetest' ? [] : [{ required: true, message: '请输入验证码' }]"
           >
-            <div class="captcha form-inline">
+            <div v-if="settings.captcha_provider !== 'geetest'" class="captcha form-inline">
               <a-input v-model:value="form.captcha_code" placeholder="验证码" />
               <div class="captcha-img" @click="refreshCaptcha">
                 <img v-if="captchaImage" :src="captchaImage" alt="captcha" />
                 <span v-else>点击刷新</span>
               </div>
+            </div>
+            <div v-else class="captcha-geetest">
+              <a-button @click="verifyGeeTest" :disabled="!geetest.ready" :loading="geetest.loading">
+                {{ geetest.passed ? "已通过验证，点击重试" : "点击完成极验验证" }}
+              </a-button>
+              <span class="captcha-geetest-status">{{ geetest.passed ? "验证通过" : "未验证" }}</span>
             </div>
           </a-form-item>
           <a-form-item
@@ -140,7 +146,18 @@ const settings = reactive({
   register_email_required: true,
   register_verify_type: "none",
   register_verify_channels: [],
-  register_captcha_enabled: true
+  register_captcha_enabled: true,
+  captcha_provider: "image"
+});
+const geetest = reactive({
+  widget: null,
+  ready: false,
+  loading: false,
+  passed: false,
+  lot_number: "",
+  captcha_output: "",
+  pass_token: "",
+  gen_time: ""
 });
 const verifyChannels = computed(() => {
   let list = Array.isArray(settings.register_verify_channels) ? [...settings.register_verify_channels] : [];
@@ -169,12 +186,96 @@ const canSendCode = computed(() => {
   return false;
 });
 
+const resetGeeTestResult = () => {
+  geetest.passed = false;
+  geetest.lot_number = "";
+  geetest.captcha_output = "";
+  geetest.pass_token = "";
+  geetest.gen_time = "";
+};
+
+const ensureGeeTestScript = async () => {
+  if (window.initGeetest4) return;
+  await new Promise((resolve, reject) => {
+    const existed = document.querySelector("script[data-geetest='gt4']");
+    if (existed) {
+      existed.addEventListener("load", resolve, { once: true });
+      existed.addEventListener("error", reject, { once: true });
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://static.geetest.com/v4/gt4.js";
+    script.async = true;
+    script.defer = true;
+    script.dataset.geetest = "gt4";
+    script.onload = resolve;
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+};
+
+const initGeeTest = async (captchaID) => {
+  resetGeeTestResult();
+  geetest.ready = false;
+  geetest.widget = null;
+  if (!captchaID) return;
+  await ensureGeeTestScript();
+  await new Promise((resolve) => {
+    window.initGeetest4(
+      { captchaId: captchaID, product: "bind", language: "zho" },
+      (captchaObj) => {
+        geetest.widget = captchaObj;
+        geetest.ready = true;
+        captchaObj.onSuccess(() => {
+          const result = captchaObj.getValidate ? captchaObj.getValidate() : null;
+          geetest.lot_number = String(result?.lot_number || "");
+          geetest.captcha_output = String(result?.captcha_output || "");
+          geetest.pass_token = String(result?.pass_token || "");
+          geetest.gen_time = String(result?.gen_time || "");
+          geetest.passed = Boolean(
+            geetest.lot_number && geetest.captcha_output && geetest.pass_token && geetest.gen_time
+          );
+        });
+        captchaObj.onError(() => {
+          resetGeeTestResult();
+          message.error("极验初始化失败");
+        });
+        resolve(true);
+      }
+    );
+  }).catch(() => {
+    message.error("极验脚本加载失败");
+  });
+};
+
+const verifyGeeTest = async () => {
+  if (!geetest.widget || !geetest.ready) {
+    message.warning("极验尚未就绪，请稍后");
+    return;
+  }
+  geetest.loading = true;
+  try {
+    resetGeeTestResult();
+    geetest.widget.showCaptcha();
+  } finally {
+    geetest.loading = false;
+  }
+};
+
 const refreshCaptcha = async () => {
   if (!settings.register_captcha_enabled) return;
   const res = await getCaptcha();
-  captchaId.value = res.data?.captcha_id || "";
-  const base64 = res.data?.image_base64 || "";
+  const provider = String(res.data?.captcha_provider || settings.captcha_provider || "image").toLowerCase();
+  settings.captcha_provider = provider === "geetest" ? "geetest" : "image";
+  captchaId.value = String(res.data?.captcha_id || "");
+  if (settings.captcha_provider === "geetest") {
+    captchaImage.value = "";
+    await initGeeTest(captchaId.value);
+    return;
+  }
+  const base64 = String(res.data?.image_base64 || "");
   captchaImage.value = base64 ? `data:image/png;base64,${base64}` : "";
+  resetGeeTestResult();
 };
 
 const loadSettings = async () => {
@@ -207,6 +308,10 @@ watch(verifyChannel, (v) => {
 
 const sendCode = async () => {
   if (!canSendCode.value || sendCooling.value) return;
+  if (settings.register_captcha_enabled && settings.captcha_provider === "geetest" && !geetest.passed) {
+    message.warning("请先完成极验验证");
+    return;
+  }
   sendCooling.value = true;
   sendCount.value = 60;
   try {
@@ -215,7 +320,11 @@ const sendCode = async () => {
       email: verifyChannel.value === "email" ? form.email : "",
       phone: verifyChannel.value === "sms" ? form.phone : "",
       captcha_id: captchaId.value,
-      captcha_code: form.captcha_code
+      captcha_code: form.captcha_code,
+      lot_number: geetest.lot_number,
+      captcha_output: geetest.captcha_output,
+      pass_token: geetest.pass_token,
+      gen_time: geetest.gen_time
     });
     message.success("验证码已发送");
     form.captcha_code = "";
@@ -231,6 +340,7 @@ const sendCode = async () => {
   } catch (error) {
     message.error("发送失败，请稍后重试");
     sendCooling.value = false;
+    await refreshCaptcha();
   }
 };
 
@@ -261,6 +371,10 @@ const onSubmit = async () => {
       message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
       return;
     }
+    if (settings.register_captcha_enabled && settings.captcha_provider === "geetest" && !geetest.passed) {
+      message.warning("请先完成极验验证");
+      return;
+    }
     await userRegister({
       username: form.username,
       email: verifyChannel.value === "email" ? form.email : "",
@@ -270,6 +384,10 @@ const onSubmit = async () => {
       verify_channel: verifyChannel.value,
       captcha_id: captchaId.value,
       captcha_code: form.captcha_code,
+      lot_number: geetest.lot_number,
+      captcha_output: geetest.captcha_output,
+      pass_token: geetest.pass_token,
+      gen_time: geetest.gen_time,
       verify_code: form.verify_code
     });
     message.success("注册成功，请登录");
@@ -542,6 +660,17 @@ onMounted(loadSettings);
 
 .captcha-img img {
   height: 100%;
+}
+
+.captcha-geetest {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.captcha-geetest-status {
+  color: #5d6a82;
+  font-size: 12px;
 }
 
 @media (max-width: 768px) {
