@@ -6,10 +6,25 @@ import (
 	"net/http"
 	"testing"
 	"time"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/testutilhttp"
 )
+
+type captureRealNameProvider struct {
+	lastInput appshared.RealNameVerifyInput
+}
+
+func (p *captureRealNameProvider) Key() string  { return "capture" }
+func (p *captureRealNameProvider) Name() string { return "Capture" }
+func (p *captureRealNameProvider) Verify(ctx context.Context, realName string, idNumber string) (bool, string, error) {
+	return true, "", nil
+}
+func (p *captureRealNameProvider) VerifyWithInput(ctx context.Context, in appshared.RealNameVerifyInput) (bool, string, error) {
+	p.lastInput = in
+	return true, "", nil
+}
 
 func TestHandlers_UserExtraSuccess(t *testing.T) {
 	env := testutilhttp.NewTestEnv(t, false)
@@ -143,6 +158,35 @@ func TestHandlers_UserExtraSuccess(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &dash)
 	if dash.Orders == 0 {
 		t.Fatalf("dashboard missing orders")
+	}
+}
+
+func TestHandlers_RealNameVerify_AutoInjectsCallbackURLFromSiteURL(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	user := testutil.CreateUser(t, env.Repo, "realcb", "realcb@example.com", "pass")
+	token := testutil.IssueJWT(t, env.JWTSecret, user.ID, "user", time.Hour)
+
+	provider := &captureRealNameProvider{}
+	env.RealnameReg.Register(provider)
+	if err := env.Repo.UpsertSetting(context.Background(), domain.Setting{Key: "realname_enabled", ValueJSON: "true"}); err != nil {
+		t.Fatalf("enable realname: %v", err)
+	}
+	if err := env.Repo.UpsertSetting(context.Background(), domain.Setting{Key: "realname_provider", ValueJSON: "capture"}); err != nil {
+		t.Fatalf("set provider: %v", err)
+	}
+	if err := env.Repo.UpsertSetting(context.Background(), domain.Setting{Key: "site_url", ValueJSON: "https://panel.example.com/"}); err != nil {
+		t.Fatalf("set site_url: %v", err)
+	}
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/realname/verify", map[string]any{
+		"real_name": "Test User",
+		"id_number": "11010519491231002X",
+	}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("realname verify: %d", rec.Code)
+	}
+	if provider.lastInput.CallbackURL != "https://panel.example.com" {
+		t.Fatalf("callback_url not injected, got=%q", provider.lastInput.CallbackURL)
 	}
 }
 

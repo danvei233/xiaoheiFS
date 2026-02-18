@@ -72,6 +72,8 @@ dependencies:
 
   # App version info
   package_info_plus: ^8.3.1
+  gt4_flutter_plugin: ^0.1.5
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

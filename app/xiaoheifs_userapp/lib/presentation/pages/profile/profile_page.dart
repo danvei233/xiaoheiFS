@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/input_limits.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/avatar_url.dart';
@@ -10,80 +10,43 @@ import '../../providers/auth_provider.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_input.dart';
 
-/// 个人设置页面
-class ProfilePage extends ConsumerWidget {
+/// 个人设置页面（仅支持修改 QQ 和个人简介）
+class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final authState = ref.watch(authProvider);
-    final user = authState.user;
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+}
 
-    if (user == null) {
-      return const Center(child: Text('请先登录'));
-    }
+class _ProfilePageState extends ConsumerState<ProfilePage> {
+  final _qqController = TextEditingController();
+  final _bioController = TextEditingController();
+  bool _saving = false;
 
-    final emailController = TextEditingController(
-      text: _sanitizeProfileValue(user.email?.toString()),
-    );
-    final phoneController = TextEditingController(
-      text: _sanitizePhone(user.phone?.toString()),
-    );
-    final qqController = TextEditingController(
-      text: _sanitizeQq(user.qq?.toString()),
-    );
-    final bioController = TextEditingController(
-      text: _sanitizeProfileValue(user.bio?.toString()),
-    );
-    return Scaffold(
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              AppStrings.profileSettings,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 16),
-            _buildUserInfoCard(user),
-            const SizedBox(height: 24),
-            _buildEditForm(
-              context,
-              ref,
-              emailController,
-              phoneController,
-              qqController,
-              bioController,
-            ),
-          ],
-        ),
-      ),
-    );
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final user = ref.read(authProvider).user;
+      if (user == null) return;
+      _qqController.text = _sanitizeQq(user.qq?.toString());
+      _bioController.text = _sanitizeProfileValue(user.bio?.toString());
+    });
+  }
+
+  @override
+  void dispose() {
+    _qqController.dispose();
+    _bioController.dispose();
+    super.dispose();
   }
 
   static String _sanitizeProfileValue(String? raw) {
     final value = (raw ?? '').trim();
     if (value.isEmpty) return '';
-
     if (value.contains('�')) return '';
     if (RegExp(r'[\u0080-\u009f]').hasMatch(value)) return '';
-
-    final lowered = value.toLowerCase();
-    if (lowered.contains('鍙') ||
-        lowered.contains('閫€') ||
-        lowered.contains('鏆')) {
-      return '';
-    }
-
     return value;
-  }
-
-  static String _sanitizePhone(String? raw) {
-    final digits = (raw ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return '';
-    if (digits.length == 11 && digits.startsWith('1')) return digits;
-    return '';
   }
 
   static String _sanitizeQq(String? raw) {
@@ -95,165 +58,162 @@ class ProfilePage extends ConsumerWidget {
     return '';
   }
 
-  Widget _buildUserInfoCard(dynamic user) {
+  int _runeLength(String text) => text.runes.length;
+
+  Future<void> _save() async {
+    if (_saving) return;
+    final qq = _qqController.text.trim();
+    final bio = _bioController.text.trim();
+
+    if (_runeLength(qq) > InputLimits.qq) {
+      _showError('QQ 长度不能超过 ${InputLimits.qq} 个字符');
+      return;
+    }
+    if (_runeLength(bio) > InputLimits.bio) {
+      _showError('个人简介长度不能超过 ${InputLimits.bio} 个字符');
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+    });
+    try {
+      await ref.read(authProvider.notifier).updateUserInfo({
+        'qq': qq,
+        'bio': bio,
+      });
+      _showSuccess('保存成功');
+    } catch (e) {
+      _showError(e.toString().replaceAll('Exception: ', '').trim());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final user = ref.watch(authProvider).user;
+    if (user == null) {
+      return const Scaffold(body: Center(child: Text('请先登录')));
+    }
     final avatarUrl = resolveUserAvatarUrl(
       baseUrl: ApiClient.instance.dio.options.baseUrl,
-      qq: user?.qq?.toString(),
-      avatarUrl: user?.avatarUrl?.toString(),
-      avatar: user?.avatar?.toString(),
+      qq: user.qq?.toString(),
+      avatarUrl: user.avatarUrl?.toString(),
+      avatar: user.avatar?.toString(),
     );
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Row(
-          children: [
-            if (avatarUrl.isNotEmpty)
-              CircleAvatar(radius: 40, backgroundImage: NetworkImage(avatarUrl))
-            else
-              CircleAvatar(
-                radius: 40,
-                backgroundColor: AppColors.primaryLight,
-                child: Text(
-                  (user.username ?? 'U')[0].toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    user.username ?? '',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    user.email ?? '',
-                    style: TextStyle(fontSize: 14, color: AppColors.gray500),
-                  ),
-                ],
-              ),
-            ),
-          ],
+
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildProfileHeader(user, avatarUrl),
+              const SizedBox(height: 16),
+              _buildEditableSection(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEditForm(
-    BuildContext context,
-    WidgetRef ref,
-    TextEditingController emailController,
-    TextEditingController phoneController,
-    TextEditingController qqController,
-    TextEditingController bioController,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            AppInput(
-              label: AppStrings.email,
-              hint: '请输入邮箱',
-              controller: emailController,
-              maxLength: InputLimits.email,
-              keyboardType: TextInputType.emailAddress,
-              prefixIcon: const Icon(Icons.email_outlined),
-            ),
-            const SizedBox(height: 16),
-            AppInput(
-              label: AppStrings.phone,
-              hint: '请输入手机号',
-              controller: phoneController,
-              maxLength: InputLimits.phone,
-              keyboardType: TextInputType.phone,
-              prefixIcon: const Icon(Icons.phone_outlined),
-            ),
-            const SizedBox(height: 16),
-            AppInput(
-              label: AppStrings.qq,
-              hint: '请输入QQ号',
-              controller: qqController,
-              maxLength: InputLimits.qq,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              prefixIcon: const Icon(Icons.chat_bubble_outline),
-            ),
-            const SizedBox(height: 16),
-            AppInput(
-              label: AppStrings.bio,
-              hint: '请输入个人简介',
-              controller: bioController,
-              maxLength: InputLimits.bio,
-              maxLines: 3,
-              prefixIcon: const Icon(Icons.edit_note),
-            ),
-            const SizedBox(height: 24),
-            AppButton(
-              text: AppStrings.save,
-              onPressed: () async {
-                final email = emailController.text.trim();
-                final phone = phoneController.text.trim();
-                final qq = qqController.text.trim();
-                final bio = bioController.text.trim();
-                if (runeLength(email) > InputLimits.email) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('邮箱长度不能超过 120 个字符')));
-                  return;
-                }
-                if (runeLength(phone) > InputLimits.phone) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('手机号长度不能超过 32 个字符')));
-                  return;
-                }
-                if (runeLength(qq) > InputLimits.qq) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('QQ 长度不能超过 20 个字符')));
-                  return;
-                }
-                if (runeLength(bio) > InputLimits.bio) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('个人简介长度不能超过 500 个字符')));
-                  return;
-                }
-                try {
-                  await ref.read(authProvider.notifier).updateUserInfo({
-                    'email': email,
-                    'phone': phone,
-                    'qq': qq,
-                    'bio': bio,
-                  });
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(const SnackBar(content: Text('保存成功')));
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('保存失败: $e')));
-                  }
-                }
-              },
-            ),
-          ],
+  Widget _buildProfileHeader(dynamic user, String avatarUrl) {
+    return Row(
+      children: [
+        avatarUrl.isNotEmpty
+            ? CircleAvatar(radius: 28, backgroundImage: NetworkImage(avatarUrl))
+            : CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.primary,
+                child: Text(
+                  (user.username ?? 'U')[0].toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                user.username ?? '',
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                user.email?.toString().trim().isEmpty == true
+                    ? '未绑定邮箱'
+                    : user.email.toString(),
+                style: const TextStyle(color: AppColors.gray500, fontSize: 12),
+              ),
+              Text(
+                user.phone?.toString().trim().isEmpty == true
+                    ? '未绑定手机号'
+                    : user.phone.toString(),
+                style: const TextStyle(color: AppColors.gray500, fontSize: 12),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
+  }
+
+  Widget _buildEditableSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AppInput(
+          label: 'QQ',
+          hint: '请输入QQ号',
+          controller: _qqController,
+          maxLength: InputLimits.qq,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        ),
+        const SizedBox(height: 12),
+        AppInput(
+          label: '个人简介',
+          hint: '请输入个人简介',
+          controller: _bioController,
+          maxLength: InputLimits.bio,
+          maxLines: 4,
+        ),
+        const SizedBox(height: 14),
+        AppButton(text: '保存资料', onPressed: _save, isLoading: _saving),
+      ],
+    );
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppColors.danger),
+      );
+  }
+
+  void _showSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: AppColors.success),
+      );
   }
 }

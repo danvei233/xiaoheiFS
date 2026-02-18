@@ -276,7 +276,7 @@ func (s *Service) ResolveUploadPassword(ctx context.Context, configuredPassword 
 			}
 		}
 	}
-	return "qweasd123456"
+	return ""
 }
 
 func (s *Service) ResolveUploadDir(ctx context.Context, configuredDir string) string {

@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../app_state.dart';
+import '../models/auth_tokens.dart';
 import '../services/admin_auth.dart';
 import '../services/api_client.dart';
 import '../services/app_storage.dart';
@@ -159,11 +162,20 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final apiUrl = _apiUrlController.text.trim();
       final auth = AdminAuthService();
-      final tokens = await auth.login(
+      final login = await auth.login(
         apiUrl: apiUrl,
         username: _loginUserController.text.trim(),
         password: _loginPasswordController.text.trim(),
       );
+      final tokens = await _resolveMfaIfNeeded(
+        auth: auth,
+        apiUrl: apiUrl,
+        login: login,
+        password: _loginPasswordController.text.trim(),
+      );
+      if (tokens == null) {
+        return;
+      }
       final client = ApiClient(baseUrl: apiUrl, token: tokens.accessToken);
       final profile = await client.getJson('/admin/api/v1/profile');
       final username = (profile['username'] as String?)?.trim();
@@ -193,6 +205,77 @@ class _LoginScreenState extends State<LoginScreen>
       return '无效登录凭据';
     }
     return '登录失败: $raw';
+  }
+
+  Future<AuthTokens?> _resolveMfaIfNeeded({
+    required AdminAuthService auth,
+    required String apiUrl,
+    required AdminLoginResult login,
+    required String password,
+  }) async {
+    if (login.mfaUnlocked || (!login.mfaRequired && !login.mfaBindRequired)) {
+      return login.tokens;
+    }
+
+    var accessToken = login.tokens.accessToken;
+    if (login.mfaBindRequired) {
+      final setup = await auth.setup2FA(
+        apiUrl: apiUrl,
+        accessToken: accessToken,
+        password: password,
+      );
+      if (!mounted) return null;
+      final bindCode = await _showTotpDialog(
+        title: '绑定管理员 2FA',
+        message: '请在身份验证器中添加账号后输入 6 位验证码',
+        secret: setup.secret,
+        otpauthUrl: setup.otpauthUrl,
+      );
+      if (bindCode == null) return null;
+      await auth.confirm2FA(
+        apiUrl: apiUrl,
+        accessToken: accessToken,
+        code: bindCode,
+      );
+      final unlocked = await auth.unlock2FA(
+        apiUrl: apiUrl,
+        accessToken: accessToken,
+        totpCode: bindCode,
+      );
+      return unlocked;
+    }
+
+    final unlockCode = await _showTotpDialog(
+      title: '管理员 2FA 验证',
+      message: '请输入身份验证器中的 6 位动态验证码',
+    );
+    if (unlockCode == null) return null;
+    final unlocked = await auth.unlock2FA(
+      apiUrl: apiUrl,
+      accessToken: accessToken,
+      totpCode: unlockCode,
+    );
+    return unlocked;
+  }
+
+  Future<String?> _showTotpDialog({
+    required String title,
+    required String message,
+    String? secret,
+    String? otpauthUrl,
+  }) async {
+    if (!mounted) return null;
+    return Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => _TotpInputScreen(
+          title: title,
+          message: message,
+          secret: secret,
+          otpauthUrl: otpauthUrl,
+        ),
+      ),
+    );
   }
 
   @override
@@ -418,6 +501,125 @@ class _AppLogo extends StatelessWidget {
         width: 56,
         height: 56,
         fit: BoxFit.cover,
+      ),
+    );
+  }
+}
+
+class _TotpInputScreen extends StatefulWidget {
+  final String title;
+  final String message;
+  final String? secret;
+  final String? otpauthUrl;
+
+  const _TotpInputScreen({
+    required this.title,
+    required this.message,
+    this.secret,
+    this.otpauthUrl,
+  });
+
+  @override
+  State<_TotpInputScreen> createState() => _TotpInputScreenState();
+}
+
+class _TotpInputScreenState extends State<_TotpInputScreen> {
+  final TextEditingController _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final code = _controller.text.trim();
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      setState(() => _error = '请输入 6 位数字验证码');
+      return;
+    }
+    Navigator.of(context).pop(code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasSecret = widget.secret != null && widget.secret!.isNotEmpty;
+    final hasOtpUrl =
+        widget.otpauthUrl != null && widget.otpauthUrl!.isNotEmpty;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.message),
+              if (hasSecret) ...[
+                const SizedBox(height: 16),
+                if (hasOtpUrl) ...[
+                  const Text('扫码绑定'),
+                  const SizedBox(height: 8),
+                  Center(
+                    child: Container(
+                      color: Colors.white,
+                      padding: const EdgeInsets.all(8),
+                      child: QrImageView(
+                        data: widget.otpauthUrl!,
+                        version: QrVersions.auto,
+                        size: 200,
+                        gapless: false,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                const Text('手动密钥'),
+                const SizedBox(height: 6),
+                SelectableText(widget.secret!),
+                TextButton(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: widget.secret!),
+                    );
+                    if (!mounted) return;
+                    ScaffoldMessenger.maybeOf(
+                      context,
+                    )?.showSnackBar(const SnackBar(content: Text('密钥已复制')));
+                  },
+                  child: const Text('复制密钥'),
+                ),
+              ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: _controller,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: '2FA 验证码',
+                  errorText: _error,
+                ),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _submit,
+                  child: const Text('确认'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

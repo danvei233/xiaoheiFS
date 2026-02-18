@@ -351,6 +351,8 @@ type RealNameVerifyInput struct {
 	RealName string
 	IDNumber string
 	Phone    string
+	// CallbackURL is used by face-flow KYC providers that require an upstream callback URL.
+	CallbackURL string
 }
 
 type RealNameProvider interface {

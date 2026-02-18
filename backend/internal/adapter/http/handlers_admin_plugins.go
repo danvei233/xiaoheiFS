@@ -121,9 +121,10 @@ func (h *Handler) AdminPaymentPluginUpload(c *gin.Context) {
 		expected = h.pluginAdmin.ResolveUploadPassword(c, "")
 	} else {
 		expected = strings.TrimSpace(h.getSettingValueByKey(c, "payment_plugin_upload_password"))
-		if expected == "" {
-			expected = "qweasd123456"
-		}
+	}
+	if expected == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginUploadPasswordNotConfigured.Error()})
+		return
 	}
 	if password == "" || password != expected {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrInvalidPassword.Error()})

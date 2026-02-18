@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/constants/app_strings.dart';
+import '../pages/auth/forgot_password_page.dart';
 import '../pages/auth/login_page.dart';
+import '../pages/auth/register_page.dart';
 import '../pages/home/main_layout.dart';
 import '../pages/dashboard/dashboard_page.dart';
 import '../pages/vps/vps_list_page.dart';
@@ -16,6 +18,7 @@ import '../pages/tickets/tickets_list_page.dart';
 import '../pages/tickets/ticket_detail_page.dart';
 import '../pages/realname/realname_page.dart';
 import '../pages/profile/profile_page.dart';
+import '../pages/profile/security_center_page.dart';
 import '../pages/more/more_page.dart';
 import '../pages/notifications/notifications_page.dart';
 import '../../core/navigation/app_navigator.dart';
@@ -30,13 +33,20 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/login',
     redirect: (context, state) {
       final isAuthenticated = authState.isAuthenticated;
-      final isLoginRoute = state.matchedLocation == '/login';
+      final publicRoutes = <String>{'/login', '/register', '/forgot-password'};
+      final location = state.matchedLocation;
+      final isPublicRoute = publicRoutes.contains(location);
 
-      if (!isAuthenticated && !isLoginRoute) {
-        return '/login';
+      if (!isAuthenticated && !isPublicRoute) {
+        final redirect = Uri.encodeComponent(state.uri.toString());
+        return '/login?redirect=$redirect';
       }
 
-      if (isAuthenticated && isLoginRoute) {
+      if (isAuthenticated && isPublicRoute) {
+        final redirect = state.uri.queryParameters['redirect'];
+        if (redirect != null && redirect.isNotEmpty) {
+          return Uri.decodeComponent(redirect);
+        }
         return '/console';
       }
 
@@ -46,10 +56,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/login',
         name: 'login',
-        pageBuilder: (context, state) => MaterialPage(
-          key: state.pageKey,
-          child: const LoginPage(),
-        ),
+        pageBuilder: (context, state) =>
+            MaterialPage(key: state.pageKey, child: const LoginPage()),
+      ),
+      GoRoute(
+        path: '/register',
+        name: 'register',
+        pageBuilder: (context, state) =>
+            MaterialPage(key: state.pageKey, child: const RegisterPage()),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        name: 'forgot_password',
+        pageBuilder: (context, state) =>
+            MaterialPage(key: state.pageKey, child: const ForgotPasswordPage()),
       ),
       ShellRoute(
         builder: (context, state, child) => MainLayout(child: child),
@@ -57,18 +77,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/console',
             name: 'dashboard',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const DashboardPage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const DashboardPage()),
           ),
           GoRoute(
             path: '/console/vps',
             name: 'vps_list',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const VpsListPage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const VpsListPage()),
           ),
           GoRoute(
             path: '/console/vps/:id',
@@ -84,26 +100,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/console/buy',
             name: 'buy_vps',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const BuyVpsPage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const BuyVpsPage()),
           ),
           GoRoute(
             path: '/console/cart',
             name: 'cart',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const CartPage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const CartPage()),
           ),
           GoRoute(
             path: '/console/orders',
             name: 'orders',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const OrdersListPage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const OrdersListPage()),
           ),
           GoRoute(
             path: '/console/orders/:id',
@@ -119,10 +129,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/console/billing',
             name: 'billing',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const BillingPage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const BillingPage()),
           ),
           GoRoute(
             path: '/console/tickets',
@@ -146,26 +154,36 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/console/realname',
             name: 'realname',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const RealnamePage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const RealnamePage()),
           ),
           GoRoute(
             path: '/console/profile',
             name: 'profile',
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const ProfilePage()),
+          ),
+          GoRoute(
+            path: '/console/profile/security',
+            name: 'profile_security',
             pageBuilder: (context, state) => MaterialPage(
               key: state.pageKey,
-              child: const ProfilePage(),
+              child: const SecurityCenterPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/console/security',
+            name: 'security_center',
+            pageBuilder: (context, state) => MaterialPage(
+              key: state.pageKey,
+              child: const SecurityCenterPage(),
             ),
           ),
           GoRoute(
             path: '/console/more',
             name: 'more',
-            pageBuilder: (context, state) => MaterialPage(
-              key: state.pageKey,
-              child: const MorePage(),
-            ),
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const MorePage()),
           ),
           GoRoute(
             path: '/console/notifications',

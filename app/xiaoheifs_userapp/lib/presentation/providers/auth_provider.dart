@@ -5,30 +5,16 @@ import '../../data/repositories/auth_repository.dart';
 import '../../data/models/user.dart';
 import 'vps_provider.dart';
 
-enum AuthStatus {
-  initial,
-  loading,
-  authenticated,
-  unauthenticated,
-  error,
-}
+enum AuthStatus { initial, loading, authenticated, unauthenticated, error }
 
 class AuthState {
   final AuthStatus status;
   final User? user;
   final String? error;
 
-  const AuthState({
-    this.status = AuthStatus.initial,
-    this.user,
-    this.error,
-  });
+  const AuthState({this.status = AuthStatus.initial, this.user, this.error});
 
-  AuthState copyWith({
-    AuthStatus? status,
-    User? user,
-    String? error,
-  }) {
+  AuthState copyWith({AuthStatus? status, User? user, String? error}) {
     return AuthState(
       status: status ?? this.status,
       user: user ?? this.user,
@@ -73,6 +59,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
     required String username,
     required String password,
     String? apiUrl,
+    String? captchaId,
+    String? captchaCode,
+    String? lotNumber,
+    String? captchaOutput,
+    String? passToken,
+    String? genTime,
   }) async {
     state = state.copyWith(status: AuthStatus.loading, error: null);
 
@@ -86,6 +78,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       final response = await _authRepository.login(
         username: username,
         password: password,
+        captchaId: captchaId,
+        captchaCode: captchaCode,
+        lotNumber: lotNumber,
+        captchaOutput: captchaOutput,
+        passToken: passToken,
+        genTime: genTime,
       );
 
       User? user = response.user;
@@ -95,10 +93,7 @@ class AuthNotifier extends StateNotifier<AuthState> {
         // Keep login response user as fallback when profile endpoint is temporarily unavailable.
       }
 
-      state = AuthState(
-        status: AuthStatus.authenticated,
-        user: user,
-      );
+      state = AuthState(status: AuthStatus.authenticated, user: user);
     } catch (e) {
       state = AuthState(status: AuthStatus.error, error: e.toString());
       rethrow;
@@ -139,5 +134,3 @@ class AuthNotifier extends StateNotifier<AuthState> {
     }
   }
 }
-
-

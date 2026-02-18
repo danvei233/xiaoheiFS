@@ -1,6 +1,8 @@
 package seed
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -241,6 +243,7 @@ func SeedIfEmpty(gdb *gorm.DB) error {
 }
 
 func EnsureSettings(gdb *gorm.DB) error {
+	defaultPluginUploadPassword := generateSecureSeedPassword()
 	settings := map[string]string{
 		"default_line_id":                          "0",
 		"default_port_num":                         "30",
@@ -248,7 +251,7 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"payment_providers_config":                 `{}`,
 		"payment_plugins":                          "[]",
 		"payment_plugin_dir":                       "plugins/payment",
-		"payment_plugin_upload_password":           "qweasd123456",
+		"payment_plugin_upload_password":           defaultPluginUploadPassword,
 		"robot_webhook_url":                        "",
 		"robot_webhook_secret":                     "",
 		"robot_webhook_enabled":                    "false",
@@ -400,6 +403,14 @@ func EnsureSettings(gdb *gorm.DB) error {
 		return err
 	}
 	return EnsureMessageTemplateDefaults(gdb)
+}
+
+func generateSecureSeedPassword() string {
+	secret := make([]byte, 48)
+	if _, err := rand.Read(secret); err != nil {
+		return "w6jW0pWj7Dq9Wq2BY8ahb0gNZXf3vLQ1-rg4r_4pKjv9Sm7ESe8B6y6M-R3qp9tH"
+	}
+	return base64.RawURLEncoding.EncodeToString(secret)
 }
 
 func ensureSettingNotBlank(gdb *gorm.DB, key, defaultValue string) error {

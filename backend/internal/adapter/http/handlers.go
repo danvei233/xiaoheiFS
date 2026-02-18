@@ -28,12 +28,20 @@ var (
 	htmlPolicy           = bluemonday.UGCPolicy()
 	forgotPwdLimiter     = newRateLimiter()
 	loginLimiter         = newRateLimiter()
+	adminLoginGuard      = newLoginCooldownGuard()
+	admin2FAFailureGuard = newConsecutiveFailureGuard()
 	registerCodeLimiter  = newRateLimiter()
 	resetCodeLimiter     = newRateLimiter()
 	resetVerifyLimiter   = newRateLimiter()
 	contactCodeLimiter   = newRateLimiter()
 	contactVerifyLimiter = newRateLimiter()
 	simpleTemplateVarRE  = regexp.MustCompile(`\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`)
+)
+
+const (
+	adminLoginFailureThreshold = 10
+	adminLoginCooldown         = 10 * time.Minute
+	admin2FAFailureThreshold   = 10
 )
 
 func sanitizeHTML(raw string) string {

@@ -45,7 +45,16 @@ func (p *Provider) VerifyWithInput(ctx context.Context, in appshared.RealNameVer
 	if !ok || client == nil {
 		return false, "plugin not loaded", nil
 	}
-	params := map[string]string{"real_name": strings.TrimSpace(in.RealName), "id_number": strings.TrimSpace(in.IDNumber), "phone": strings.TrimSpace(in.Phone)}
+	params := map[string]string{
+		"name":      strings.TrimSpace(in.RealName),
+		"real_name": strings.TrimSpace(in.RealName),
+		"id_number": strings.TrimSpace(in.IDNumber),
+		"phone":     strings.TrimSpace(in.Phone),
+		"mobile":    strings.TrimSpace(in.Phone),
+	}
+	if callbackURL := strings.TrimSpace(in.CallbackURL); callbackURL != "" {
+		params["callback_url"] = callbackURL
+	}
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	start, err := client.Start(cctx, &pluginv1.KycStartRequest{UserId: "", Params: params})

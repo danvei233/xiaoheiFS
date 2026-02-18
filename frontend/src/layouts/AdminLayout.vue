@@ -111,32 +111,45 @@
   </a-layout>
   <a-modal
     :open="mfaModalOpen"
-    :title="mfaTitle"
+    :title="null"
     :closable="false"
     :maskClosable="false"
     :footer="null"
-    width="420px"
+    width="460px"
+    wrap-class-name="admin-mfa-modal-wrap"
+    class="admin-mfa-modal"
   >
+    <div class="mfa-modal-head">
+      <div class="mfa-modal-badge">
+        <SafetyCertificateOutlined />
+      </div>
+      <div class="mfa-modal-copy">
+        <div class="mfa-modal-title">{{ mfaTitle }}</div>
+        <div class="mfa-modal-subtitle">
+          {{ admin.mfaBindRequired ? "首次使用需完成绑定后继续管理操作" : "输入动态验证码以恢复后台敏感操作权限" }}
+        </div>
+      </div>
+    </div>
     <a-alert
       v-if="admin.mfaBindRequired"
       type="warning"
       show-icon
       message="需要绑定 2FA 才能继续使用后台功能"
-      style="margin-bottom: 16px"
+      class="mfa-alert"
     />
     <a-alert
       v-else
       type="info"
       show-icon
       message="请输入 2FA 验证码以解锁后台操作"
-      style="margin-bottom: 16px"
+      class="mfa-alert"
     />
-    <a-form layout="vertical">
+    <a-form layout="vertical" class="mfa-form">
       <a-form-item v-if="admin.mfaBindRequired" label="登录密码">
-        <a-input-password v-model:value="mfaForm.password" placeholder="用于生成绑定信息" />
+        <a-input-password v-model:value="mfaForm.password" placeholder="用于生成绑定信息" class="mfa-input" />
       </a-form-item>
       <a-form-item v-if="admin.mfaBindRequired" label="生成绑定信息">
-        <a-button type="default" :loading="mfaLoading.setup" @click="handleSetup2FA">
+        <a-button type="default" :loading="mfaLoading.setup" block class="mfa-setup-btn" @click="handleSetup2FA">
           生成 2FA 绑定信息
         </a-button>
       </a-form-item>
@@ -150,13 +163,18 @@
         </div>
       </div>
       <a-form-item label="2FA 验证码">
-        <a-input v-model:value="mfaForm.totpCode" placeholder="请输入 6 位验证码" maxlength="6" />
+        <a-input
+          v-model:value="mfaForm.totpCode"
+          placeholder="请输入 6 位验证码"
+          maxlength="6"
+          inputmode="numeric"
+          class="mfa-code-input"
+        />
       </a-form-item>
-      <a-space>
-        <a-button type="primary" :loading="mfaLoading.confirm" @click="handleConfirmOrUnlock">
+      <div class="mfa-helper">验证码每 30 秒更新，请使用最新口令。</div>
+      <a-button type="primary" block class="mfa-confirm-btn" :loading="mfaLoading.confirm" @click="handleConfirmOrUnlock">
           {{ admin.mfaBindRequired ? "完成绑定并解锁" : "解锁" }}
-        </a-button>
-      </a-space>
+      </a-button>
     </a-form>
   </a-modal>
   </a-config-provider>
@@ -242,8 +260,8 @@ const hasAnyPermission = (requirements) => {
 const menuTree = [
   { key: "/admin/console", label: "总览", icon: DashboardOutlined, requireAny: ["dashboard.overview"] },
   {
-    key: "group-business",
-    label: "业务与订单",
+    key: "group-trade",
+    label: "交易与资源",
     icon: ShoppingCartOutlined,
     children: [
       { key: "/admin/orders", label: "订单审核", icon: ShoppingCartOutlined, requireAny: ["order.list"] },
@@ -252,7 +270,7 @@ const menuTree = [
       { key: "/admin/probes", label: "探针监控", icon: ApiOutlined, requireAny: ["probe.list"] },
       {
         key: "/admin/catalog",
-        label: "售卖配置",
+        label: "售卖目录",
         icon: AppstoreOutlined,
         requireAny: ["regions.list", "plan_group.list", "line.list", "packages.list", "system_image.list", "billing_cycle.list"]
       }
@@ -260,82 +278,68 @@ const menuTree = [
   },
   {
     key: "group-support",
-    label: "用户与支持",
+    label: "用户与客服",
     icon: TeamOutlined,
     children: [
       { key: "/admin/users", label: "用户管理", icon: TeamOutlined, requireAny: ["user.list"] },
-      { key: "/admin/tickets", label: "工单管理", icon: CustomerServiceOutlined, requireAny: ["tickets.list"] }
+      { key: "/admin/tickets", label: "工单管理", icon: CustomerServiceOutlined, requireAny: ["tickets.list"] },
+      { key: "/admin/realname/providers", label: "实名供应商", icon: AppstoreOutlined, requireAny: ["realname.list"] },
+      { key: "/admin/realname/config", label: "实名认证配置", icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
+      { key: "/admin/realname/records", label: "实名认证记录", icon: FileSearchOutlined, requireAny: ["realname.list"] }
     ]
   },
   {
     key: "group-cms",
-    label: "CMS 内容",
+    label: "内容运营",
     icon: FileTextOutlined,
     children: [
-      { key: "/admin/cms/categories", label: "分类管理", icon: AppstoreOutlined, requireAny: ["cms_category.list"] },
-      { key: "/admin/cms/posts", label: "内容管理", icon: FileTextOutlined, requireAny: ["cms_post.list"] },
+      { key: "/admin/cms/categories", label: "文章分类", icon: AppstoreOutlined, requireAny: ["cms_category.list"] },
+      { key: "/admin/cms/posts", label: "文章内容", icon: FileTextOutlined, requireAny: ["cms_post.list"] },
       { key: "/admin/cms/blocks", label: "页面模块", icon: LayoutOutlined, requireAny: ["cms_block.list"] },
-      { key: "/admin/cms/nav-items", label: "主页顶栏", icon: MenuOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/cms/uploads", label: "资源上传", icon: CloudUploadOutlined, requireAny: ["upload.list"] }
+      { key: "/admin/cms/nav-items", label: "导航菜单", icon: MenuOutlined, requireAny: ["settings.view"] },
+      { key: "/admin/cms/uploads", label: "媒体资源", icon: CloudUploadOutlined, requireAny: ["upload.list"] }
     ]
   },
   {
-    key: "group-system",
-    label: "系统设置",
+    key: "group-platform",
+    label: "平台配置",
     icon: SettingOutlined,
     children: [
-      {
-        key: "group-system-base",
-        label: "基础设置",
-        icon: SettingOutlined,
-        children: [
-          { key: "/admin/settings/site", label: "站点设置", icon: SettingOutlined, requireAny: ["settings.view"] },
-          { key: "/admin/audit", label: "审计日志", icon: SettingOutlined, requireAny: ["audit_log.view"] },
-          { key: "/admin/debug", label: "调试中心", icon: BugOutlined, requireAny: ["debug.view", "debug.list"] },
-          { key: "/admin/scheduled-tasks", label: "计划任务", icon: ClockCircleOutlined, requireAny: ["scheduled_tasks.list"] }
-        ]
-      },
-      {
-        key: "group-system-security",
-        label: "账号与权限",
-        icon: KeyOutlined,
-        children: [
-          { key: "/admin/admins", label: "管理员列表", icon: UserOutlined, requireAny: ["admin.list"] },
-          { key: "/admin/permission-groups", label: "权限组", icon: KeyOutlined, requireAny: ["permission_group.list"] }
-        ]
-      },
-      {
-        key: "group-system-realname",
-        label: "实名认证",
-        icon: SafetyCertificateOutlined,
-        children: [
-          { key: "/admin/realname/providers", label: "供应商列表", icon: AppstoreOutlined, requireAny: ["realname.list"] },
-          { key: "/admin/realname/config", label: "认证配置", icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
-          { key: "/admin/realname/records", label: "认证记录", icon: FileSearchOutlined, requireAny: ["realname.list"] }
-        ]
-      },
-      {
-        key: "group-system-integration",
-        label: "集成与通知",
-        icon: ApiOutlined,
-        children: [
-          { key: "/admin/settings/email", label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
-          { key: "/admin/settings/sms", label: "短信设置", icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
-          { key: "/admin/settings/captcha", label: "验证码设置", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
-          { key: "/admin/settings/payments", label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
-          { key: "/admin/settings/fcm", label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] },
-          { key: "/admin/settings/pricing", label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },
-          { key: "/admin/settings/lifecycle", label: "Lifecycle", icon: ClockCircleOutlined, requireAny: ["settings.view"] },
-          { key: "/admin/settings/plugins", label: "插件管理", icon: ToolOutlined, requireAny: ["plugin.list"] },
-          { key: "/admin/settings/apikey", label: "API Keys", icon: KeyOutlined, requireAny: ["api_key.list"] },
-          { key: "/admin/settings/webhook", label: "Webhook", icon: LinkOutlined, requireAny: ["robot.view"] },
-          { key: "/admin/automation", label: "自动化对接", icon: ApiOutlined, requireAny: ["automation.view"] }
-        ]
-      }
+      { key: "/admin/settings/site", label: "站点设置", icon: SettingOutlined, requireAny: ["settings.view"] },
+      { key: "/admin/settings/auth", label: "登录与注册", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
+      { key: "/admin/settings/pricing", label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },
+      { key: "/admin/settings/payments", label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
+      { key: "/admin/settings/lifecycle", label: "生命周期", icon: ClockCircleOutlined, requireAny: ["settings.view"] },
+      { key: "/admin/settings/plugins", label: "插件管理", icon: ToolOutlined, requireAny: ["plugin.list"] },
+      { key: "/admin/automation", label: "自动化对接", icon: ApiOutlined, requireAny: ["automation.view"] },
+      { key: "/admin/settings/webhook", label: "Webhook", icon: LinkOutlined, requireAny: ["robot.view"] },
+      { key: "/admin/scheduled-tasks", label: "计划任务", icon: ClockCircleOutlined, requireAny: ["scheduled_tasks.list"] }
     ]
   },
-  { key: "/admin/profile", label: "个人资料", icon: UserOutlined },
-  { key: "/admin/settings/auth", label: "注册与登录", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] }
+  {
+    key: "group-notify",
+    label: "通知与集成",
+    icon: MessageOutlined,
+    children: [
+      { key: "/admin/settings/email", label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
+      { key: "/admin/settings/sms", label: "短信设置", icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
+      { key: "/admin/settings/fcm", label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] }
+    ]
+  },
+  {
+    key: "group-security",
+    label: "安全与审计",
+    icon: KeyOutlined,
+    children: [
+      { key: "/admin/admins", label: "管理员列表", icon: UserOutlined, requireAny: ["admin.list"] },
+      { key: "/admin/permission-groups", label: "权限组", icon: KeyOutlined, requireAny: ["permission_group.list"] },
+      { key: "/admin/settings/apikey", label: "API Keys", icon: KeyOutlined, requireAny: ["api_key.list"] },
+      { key: "/admin/settings/captcha", label: "验证码设置", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
+      { key: "/admin/audit", label: "审计日志", icon: SettingOutlined, requireAny: ["audit_log.view"] },
+      { key: "/admin/debug", label: "调试中心", icon: BugOutlined, requireAny: ["debug.view", "debug.list"] }
+    ]
+  },
+  { key: "/admin/profile", label: "个人资料", icon: UserOutlined }
 ];
 
 const filterMenuTree = (nodes) => {
@@ -1102,5 +1106,135 @@ onUnmounted(() => {
   background: #f5f7fb;
   border-radius: 6px;
   word-break: break-all;
+}
+
+:deep(.admin-mfa-modal-wrap .ant-modal-content) {
+  border-radius: 18px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d7e3f8;
+  background:
+    radial-gradient(120% 100% at 100% -10%, rgba(22, 119, 255, 0.15) 0%, rgba(22, 119, 255, 0) 60%),
+    linear-gradient(180deg, #f9fcff 0%, #ffffff 56%, #f7faff 100%);
+  box-shadow: 0 20px 42px rgba(12, 39, 80, 0.24);
+}
+
+:deep(.admin-mfa-modal-wrap .ant-modal-body) {
+  padding: 24px;
+}
+
+.mfa-modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.mfa-modal-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #1677ff 0%, #3a95ff 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 8px 20px rgba(22, 119, 255, 0.32);
+}
+
+.mfa-modal-copy {
+  min-width: 0;
+}
+
+.mfa-modal-title {
+  color: #1f2937;
+  font-size: 30px;
+  line-height: 1.1;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.mfa-modal-subtitle {
+  color: #5b6b85;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.mfa-alert {
+  margin-bottom: 16px;
+  border-radius: 12px;
+}
+
+.mfa-form :deep(.ant-form-item-label > label) {
+  color: #334155;
+  font-weight: 600;
+}
+
+.mfa-form :deep(.ant-input),
+.mfa-form :deep(.ant-input-password) {
+  border-radius: 10px;
+  min-height: 42px;
+  border-color: #cdd8ea;
+  background: #ffffff;
+}
+
+.mfa-form :deep(.ant-input:hover),
+.mfa-form :deep(.ant-input-password:hover) {
+  border-color: #9cb4db;
+}
+
+.mfa-form :deep(.ant-input:focus),
+.mfa-form :deep(.ant-input-focused),
+.mfa-form :deep(.ant-input-password-focused) {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
+}
+
+.mfa-code-input {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  letter-spacing: 6px;
+  text-align: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.mfa-helper {
+  margin-top: -4px;
+  margin-bottom: 14px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.mfa-setup-btn {
+  border-radius: 10px;
+  height: 40px;
+}
+
+.mfa-confirm-btn {
+  border-radius: 10px;
+  height: 44px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 3px;
+}
+
+@media (max-width: 640px) {
+  :deep(.admin-mfa-modal-wrap .ant-modal) {
+    max-width: calc(100vw - 20px);
+  }
+
+  :deep(.admin-mfa-modal-wrap .ant-modal-body) {
+    padding: 18px;
+  }
+
+  .mfa-modal-title {
+    font-size: 24px;
+  }
+
+  .mfa-code-input {
+    letter-spacing: 4px;
+    font-size: 18px;
+  }
 }
 </style>

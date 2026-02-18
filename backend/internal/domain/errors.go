@@ -178,6 +178,7 @@ var (
 	ErrPhoneRequired                                      = errors.New("phone required")
 	ErrPlanGroupNotFound                                  = errors.New("plan_group not found")
 	ErrPluginManagerUnavailable                           = errors.New("plugin manager unavailable")
+	ErrPluginUploadPasswordNotConfigured                  = errors.New("plugin upload password not configured")
 	ErrPluginUploadDebugOnly                              = errors.New("plugin upload only allowed in debug mode")
 	ErrProbeDisabled                                      = errors.New("probe disabled")
 	ErrProbeNotFound                                      = errors.New("probe not found")

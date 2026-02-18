@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
+	appshared "xiaoheiplay/internal/app/shared"
 )
 
 const (
@@ -31,7 +32,7 @@ const (
 var orderFieldValidator = validator.New()
 
 func trimAndValidateRequired(value string, maxLen int) (string, error) {
-	trimmed := strings.TrimSpace(value)
+	trimmed := strings.TrimSpace(appshared.SanitizePlainText(value))
 	if err := orderFieldValidator.Var(trimmed, fmt.Sprintf("required,max=%d", maxLen)); err != nil {
 		return "", ErrInvalidInput
 	}
@@ -39,7 +40,7 @@ func trimAndValidateRequired(value string, maxLen int) (string, error) {
 }
 
 func trimAndValidateOptional(value string, maxLen int) (string, error) {
-	trimmed := strings.TrimSpace(value)
+	trimmed := strings.TrimSpace(appshared.SanitizePlainText(value))
 	if err := orderFieldValidator.Var(trimmed, fmt.Sprintf("omitempty,max=%d", maxLen)); err != nil {
 		return "", ErrInvalidInput
 	}

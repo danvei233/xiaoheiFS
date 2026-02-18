@@ -17,7 +17,7 @@ import (
 
 	"fmt"
 	plugins "xiaoheiplay/internal/adapter/plugins/core"
-	paymentplugin "xiaoheiplay/internal/adapt
+	paymentplugin "xiaoheiplay/internal/adapter/plugins/payment"
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"

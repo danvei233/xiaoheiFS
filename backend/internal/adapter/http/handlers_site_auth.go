@@ -1088,9 +1088,10 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 		}
 	}
 	record, err := h.realnameSvc.VerifyWithInput(c, getUserID(c), appshared.RealNameVerifyInput{
-		RealName: payload.RealName,
-		IDNumber: payload.IDNumber,
-		Phone:    phone,
+		RealName:    payload.RealName,
+		IDNumber:    payload.IDNumber,
+		Phone:       phone,
+		CallbackURL: h.defaultRealNameCallbackURL(c),
 	})
 	if err != nil {
 		status := http.StatusBadRequest
@@ -1101,4 +1102,31 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, toRealNameVerificationDTO(record))
+}
+
+func (h *Handler) defaultRealNameCallbackURL(c *gin.Context) string {
+	siteURL := strings.TrimSpace(h.getSettingValueByKey(c, "site_url"))
+	if siteURL != "" {
+		if strings.HasPrefix(siteURL, "http://") || strings.HasPrefix(siteURL, "https://") {
+			return strings.TrimRight(siteURL, "/")
+		}
+	}
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if proto := strings.TrimSpace(c.GetHeader("X-Forwarded-Proto")); proto != "" {
+		scheme = strings.TrimSpace(strings.Split(proto, ",")[0])
+	}
+	host := strings.TrimSpace(c.GetHeader("X-Forwarded-Host"))
+	if host == "" {
+		host = strings.TrimSpace(c.Request.Host)
+	}
+	if host == "" {
+		return ""
+	}
+	return strings.TrimRight(scheme+"://"+host, "/")
 }

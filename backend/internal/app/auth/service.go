@@ -323,14 +323,14 @@ func (s *Service) UpdateProfile(ctx context.Context, userID int64, in UpdateProf
 		in.Phone = normalized
 	}
 	if in.Bio != "" {
-		normalized, err := trimAndValidateOptional(in.Bio, maxLenBio)
+		normalized, err := trimAndValidateOptional(appshared.SanitizePlainText(in.Bio), maxLenBio)
 		if err != nil {
 			return domain.User{}, appshared.ErrInvalidInput
 		}
 		in.Bio = normalized
 	}
 	if in.Intro != "" {
-		normalized, err := trimAndValidateOptional(in.Intro, maxLenIntro)
+		normalized, err := trimAndValidateOptional(appshared.SanitizePlainText(in.Intro), maxLenIntro)
 		if err != nil {
 			return domain.User{}, appshared.ErrInvalidInput
 		}

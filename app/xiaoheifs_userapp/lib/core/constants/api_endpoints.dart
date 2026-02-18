@@ -1,4 +1,4 @@
-﻿class ApiEndpoints {
+class ApiEndpoints {
   ApiEndpoints._();
 
   static const String v1 = '/v1';
@@ -12,7 +12,30 @@
   static const String authRegisterCode = '$v1/auth/register/code';
   static const String authForgotPassword = '$v1/auth/forgot-password';
   static const String authResetPassword = '$v1/auth/reset-password';
+  static const String authPasswordResetOptions =
+      '$v1/auth/password-reset/options';
+  static const String authPasswordResetSendCode =
+      '$v1/auth/password-reset/send-code';
+  static const String authPasswordResetVerifyCode =
+      '$v1/auth/password-reset/verify-code';
+  static const String authPasswordResetConfirm =
+      '$v1/auth/password-reset/confirm';
   static const String me = '$v1/me';
+  static const String mePasswordChange = '$v1/me/password/change';
+  static const String meSecurityContacts = '$v1/me/security/contacts';
+  static const String meSecurityEmailVerify2fa =
+      '$v1/me/security/email/verify-2fa';
+  static const String meSecurityEmailSendCode =
+      '$v1/me/security/email/send-code';
+  static const String meSecurityEmailConfirm = '$v1/me/security/email/confirm';
+  static const String meSecurityPhoneVerify2fa =
+      '$v1/me/security/phone/verify-2fa';
+  static const String meSecurityPhoneSendCode =
+      '$v1/me/security/phone/send-code';
+  static const String meSecurityPhoneConfirm = '$v1/me/security/phone/confirm';
+  static const String meSecurity2faStatus = '$v1/me/security/2fa/status';
+  static const String meSecurity2faSetup = '$v1/me/security/2fa/setup';
+  static const String meSecurity2faConfirm = '$v1/me/security/2fa/confirm';
 
   // Captcha
   static const String captcha = '$v1/captcha';
@@ -54,7 +77,8 @@
 
   // Notifications
   static const String notifications = '$v1/notifications';
-  static const String notificationsUnreadCount = '$v1/notifications/unread-count';
+  static const String notificationsUnreadCount =
+      '$v1/notifications/unread-count';
   static const String notificationsReadAll = '$v1/notifications/read-all';
   static String notificationRead(int id) => '$v1/notifications/$id/read';
 
@@ -71,16 +95,22 @@
   static String vpsPanel(int id) => '$v1/vps/$id/panel';
   static String vpsVnc(int id) => '$v1/vps/$id/vnc';
   static String vpsSnapshots(int id) => '$v1/vps/$id/snapshots';
-  static String vpsSnapshotDetail(int id, int snapshotId) => '$v1/vps/$id/snapshots/$snapshotId';
-  static String vpsSnapshotRestore(int id, int snapshotId) => '$v1/vps/$id/snapshots/$snapshotId/restore';
+  static String vpsSnapshotDetail(int id, int snapshotId) =>
+      '$v1/vps/$id/snapshots/$snapshotId';
+  static String vpsSnapshotRestore(int id, int snapshotId) =>
+      '$v1/vps/$id/snapshots/$snapshotId/restore';
   static String vpsBackups(int id) => '$v1/vps/$id/backups';
-  static String vpsBackupDetail(int id, int backupId) => '$v1/vps/$id/backups/$backupId';
-  static String vpsBackupRestore(int id, int backupId) => '$v1/vps/$id/backups/$backupId/restore';
+  static String vpsBackupDetail(int id, int backupId) =>
+      '$v1/vps/$id/backups/$backupId';
+  static String vpsBackupRestore(int id, int backupId) =>
+      '$v1/vps/$id/backups/$backupId/restore';
   static String vpsFirewall(int id) => '$v1/vps/$id/firewall';
-  static String vpsFirewallRule(int id, int ruleId) => '$v1/vps/$id/firewall/$ruleId';
+  static String vpsFirewallRule(int id, int ruleId) =>
+      '$v1/vps/$id/firewall/$ruleId';
   static String vpsPorts(int id) => '$v1/vps/$id/ports';
   static String vpsPortCandidates(int id) => '$v1/vps/$id/ports/candidates';
-  static String vpsPortMapping(int id, int mappingId) => '$v1/vps/$id/ports/$mappingId';
+  static String vpsPortMapping(int id, int mappingId) =>
+      '$v1/vps/$id/ports/$mappingId';
   static String vpsRenew(int id) => '$v1/vps/$id/renew';
   static String vpsResizeQuote(int id) => '$v1/vps/$id/resize/quote';
   static String vpsResize(int id) => '$v1/vps/$id/resize';

@@ -587,12 +587,25 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
         if (value == 'profile') {
           context.go('/console/profile');
         }
+        if (value == 'security') {
+          context.go('/console/profile/security');
+        }
         if (value == 'logout') {
           _logout();
         }
       },
       itemBuilder: (context) => [
         PopupMenuItem(value: 'profile', child: Text(user?.username ?? 'User')),
+        const PopupMenuItem(
+          value: 'security',
+          child: Row(
+            children: [
+              Icon(Icons.security_outlined, size: 20),
+              SizedBox(width: 12),
+              Text('安全中心'),
+            ],
+          ),
+        ),
         const PopupMenuDivider(),
         const PopupMenuItem(
           value: 'logout',

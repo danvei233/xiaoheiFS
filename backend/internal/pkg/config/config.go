@@ -22,8 +22,6 @@ type Config struct {
 	DBType             string
 	DBPath             string
 	DBDSN              string
-	AdminUser          string
-	AdminPass          string
 	JWTSecret          string
 	PluginMasterKey    string
 	PluginOfficialKeys []string
@@ -60,8 +58,6 @@ func Load() Config {
 		DBType:             "",
 		DBPath:             "",
 		DBDSN:              "",
-		AdminUser:          "admin",
-		AdminPass:          "admin123",
 		JWTSecret:          "",
 		PluginMasterKey:    "",
 		PluginOfficialKeys: nil,

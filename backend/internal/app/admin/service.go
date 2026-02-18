@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	appports "xiaoheiplay/internal/app/ports"
@@ -260,6 +261,9 @@ func (s *Service) UpdateAPIKeyStatus(ctx context.Context, adminID int64, id int6
 }
 
 func (s *Service) UpdateSetting(ctx context.Context, adminID int64, key string, valueJSON string) error {
+	if shouldSanitizePlainSetting(key) {
+		valueJSON = strings.TrimSpace(appshared.SanitizePlainText(valueJSON))
+	}
 	if err := s.settings.UpsertSetting(ctx, domain.Setting{Key: key, ValueJSON: valueJSON, UpdatedAt: time.Now()}); err != nil {
 		return err
 	}
@@ -267,6 +271,17 @@ func (s *Service) UpdateSetting(ctx context.Context, adminID int64, key string, 
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "settings.update", TargetType: "setting", TargetID: key, DetailJSON: valueJSON})
 	}
 	return nil
+}
+
+func shouldSanitizePlainSetting(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "site_name", "site_title", "site_subtitle", "site_description", "site_keywords",
+		"company_name", "contact_phone", "contact_email", "contact_qq",
+		"icp_number", "psbe_number", "maintenance_message":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *Service) ListSettings(ctx context.Context) ([]domain.Setting, error) {

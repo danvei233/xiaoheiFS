@@ -17,7 +17,7 @@ const (
 var ticketFieldValidator = validator.New()
 
 func trimAndValidateRequired(value string, maxLen int) (string, error) {
-	trimmed := strings.TrimSpace(value)
+	trimmed := strings.TrimSpace(appshared.SanitizePlainText(value))
 	if err := ticketFieldValidator.Var(trimmed, fmt.Sprintf("required,max=%d", maxLen)); err != nil {
 		return "", appshared.ErrInvalidInput
 	}
@@ -25,7 +25,7 @@ func trimAndValidateRequired(value string, maxLen int) (string, error) {
 }
 
 func trimAndValidateOptional(value string, maxLen int) (string, error) {
-	trimmed := strings.TrimSpace(value)
+	trimmed := strings.TrimSpace(appshared.SanitizePlainText(value))
 	if err := ticketFieldValidator.Var(trimmed, fmt.Sprintf("omitempty,max=%d", maxLen)); err != nil {
 		return "", appshared.ErrInvalidInput
 	}

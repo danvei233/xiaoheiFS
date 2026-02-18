@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
@@ -54,6 +54,13 @@ class MorePage extends ConsumerWidget {
             ),
           ],
           const SizedBox(height: 8),
+          _buildItem(
+            context,
+            icon: Icons.security_outlined,
+            title: '安全中心',
+            route: '/console/profile/security',
+          ),
+          const SizedBox(height: 8),
           _buildLogoutItem(context, ref),
         ],
       ),
@@ -78,17 +85,19 @@ class MorePage extends ConsumerWidget {
           child: Row(
             children: [
               if (avatar.isNotEmpty)
-                CircleAvatar(
-                  radius: 28,
-                  backgroundImage: NetworkImage(avatar),
-                )
+                CircleAvatar(radius: 28, backgroundImage: NetworkImage(avatar))
               else
                 CircleAvatar(
                   radius: 28,
                   backgroundColor: AppColors.primaryLight,
                   child: Text(
-                    username.toString().isNotEmpty ? username.toString()[0].toUpperCase() : 'U',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                    username.toString().isNotEmpty
+                        ? username.toString()[0].toUpperCase()
+                        : 'U',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               const SizedBox(width: 12),
@@ -98,13 +107,19 @@ class MorePage extends ConsumerWidget {
                   children: [
                     Text(
                       username.toString(),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     if (email.toString().isNotEmpty) ...[
                       const SizedBox(height: 4),
                       Text(
                         email.toString(),
-                        style: TextStyle(color: AppColors.gray500, fontSize: 12),
+                        style: TextStyle(
+                          color: AppColors.gray500,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ],
@@ -138,7 +153,10 @@ class MorePage extends ConsumerWidget {
     return Card(
       child: ListTile(
         leading: const Icon(Icons.logout, color: AppColors.danger),
-        title: const Text(AppStrings.logout, style: TextStyle(color: AppColors.danger)),
+        title: const Text(
+          AppStrings.logout,
+          style: TextStyle(color: AppColors.danger),
+        ),
         onTap: () async {
           await ref.read(authProvider.notifier).logout();
           if (context.mounted) {
@@ -149,6 +167,3 @@ class MorePage extends ConsumerWidget {
     );
   }
 }
-
-
-

@@ -146,11 +146,29 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
+	accountKey := normalizeAdminSecurityKey(payload.Username)
+	now := time.Now()
+	if cooling, lockedUntil := adminLoginGuard.IsCoolingDown(accountKey, now); cooling {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error":        domain.ErrTooManyAttempts.Error(),
+			"locked_until": lockedUntil.Unix(),
+		})
+		return
+	}
 	user, err := h.authSvc.Login(c, payload.Username, payload.Password)
 	if err != nil || user.Role != domain.UserRoleAdmin {
+		cooling, lockedUntil, _ := adminLoginGuard.RegisterFailure(accountKey, adminLoginFailureThreshold, adminLoginCooldown, now)
+		if cooling {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error":        domain.ErrTooManyAttempts.Error(),
+				"locked_until": lockedUntil.Unix(),
+			})
+			return
+		}
 		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidCredentials.Error()})
 		return
 	}
+	adminLoginGuard.Reset(accountKey)
 	settings := h.loadAuthSettings(c)
 	totpEnabled := user.TOTPEnabled
 	mfaBindRequired := false
@@ -276,10 +294,30 @@ func (h *Handler) Admin2FAUnlock(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.Err2faNotEnabled.Error()})
 		return
 	}
+	if user.Status != domain.UserStatusActive {
+		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrUserDisabled.Error()})
+		return
+	}
+	accountKey := normalizeAdminSecurityKey(user.Username)
 	if err := h.authSvc.VerifyTOTP(c, userID, payload.TOTPCode); err != nil {
+		failures := admin2FAFailureGuard.RegisterFailure(accountKey)
+		if failures >= admin2FAFailureThreshold {
+			if h.adminSvc == nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrAdminServiceUnavailable.Error()})
+				return
+			}
+			if updateErr := h.adminSvc.UpdateAdminStatus(c, userID, userID, domain.UserStatusDisabled); updateErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": updateErr.Error()})
+				return
+			}
+			admin2FAFailureGuard.Reset(accountKey)
+			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrUserDisabled.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalid2faCode.Error()})
 		return
 	}
+	admin2FAFailureGuard.Reset(accountKey)
 	accessToken, err := h.signAuthTokenWithMFA(userID, role, 24*time.Hour, "access", 1)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
