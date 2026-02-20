@@ -101,7 +101,7 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 	settingsSvc := appsettings.NewService(repoSQLite)
 	notifySvc := appnotification.NewService(repoSQLite, repoSQLite, repoSQLite, email, messageSvc)
 	integrationSvc := appintegration.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
-	reportSvc := appreport.NewService(repoSQLite, repoSQLite, repoSQLite)
+	reportSvc := appreport.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	cmsSvc := appcms.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
 	ticketSvc := appticket.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
 	seedDefaultGoodsType(t, repoSQLite)

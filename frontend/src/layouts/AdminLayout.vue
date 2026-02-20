@@ -259,6 +259,7 @@ const hasAnyPermission = (requirements) => {
 
 const menuTree = [
   { key: "/admin/console", label: "总览", icon: DashboardOutlined, requireAny: ["dashboard.overview"] },
+  { key: "/admin/revenue-analytics", label: "收入统计", icon: DollarOutlined, requireAny: ["dashboard.revenue_analytics_overview", "dashboard.revenue"] },
   {
     key: "group-trade",
     label: "交易与资源",
@@ -395,6 +396,7 @@ const selectedKey = computed(() => {
   if (route.path.startsWith("/admin/audit")) return "/admin/audit";
   if (route.path.startsWith("/admin/debug")) return "/admin/debug";
   if (route.path.startsWith("/admin/console")) return "/admin/console";
+  if (route.path.startsWith("/admin/revenue-analytics")) return "/admin/revenue-analytics";
   if (route.path === "/admin") return "/admin/console";
   return route.path;
 });

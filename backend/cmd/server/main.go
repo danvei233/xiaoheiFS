@@ -149,7 +149,7 @@ func main() {
 	authSvc := appauth.NewService(repoSQLite, repoSQLite, repoSQLite)
 	notifySvc := appnotification.NewService(repoSQLite, repoSQLite, repoSQLite, emailSender, messageSvc)
 	integrationSvc := appintegration.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
-	reportSvc := appreport.NewService(repoSQLite, repoSQLite, repoSQLite)
+	reportSvc := appreport.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	cmsSvc := appcms.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
 	ticketSvc := appticket.NewService(repoSQLite, repoSQLite, repoSQLite, messageSvc)
 	permissionSvc := apppermission.NewService(repoSQLite, repoSQLite, repoSQLite)

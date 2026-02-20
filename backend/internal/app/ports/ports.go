@@ -109,6 +109,25 @@ type PaymentRepository interface {
 	ListPayments(ctx context.Context, filter appshared.PaymentFilter, limit, offset int) ([]domain.OrderPayment, int, error)
 }
 
+type RevenueAnalyticsRepository interface {
+	ListRevenueAnalyticsRows(ctx context.Context, fromAt, toAt time.Time) ([]RevenueAnalyticsRow, error)
+}
+
+type RevenueAnalyticsRow struct {
+	PaymentID    int64
+	OrderID      int64
+	OrderNo      string
+	UserID       int64
+	Amount       int64
+	PaidAt       time.Time
+	GoodsTypeID  int64
+	RegionID     int64
+	LineID       int64
+	PackageID    int64
+	DimensionID  int64
+	DimensionStr string
+}
+
 type VPSRepository interface {
 	CreateInstance(ctx context.Context, inst *domain.VPSInstance) error
 	GetInstance(ctx context.Context, id int64) (domain.VPSInstance, error)

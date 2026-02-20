@@ -9,6 +9,11 @@ import type {
   DashboardOverview,
   DashboardRevenue,
   DashboardStatus,
+  RevenueAnalyticsQuery,
+  RevenueAnalyticsOverviewResponse,
+  RevenueAnalyticsTrendPoint,
+  RevenueAnalyticsTopItem,
+  RevenueAnalyticsDetailsResponse,
   CMSBlock,
   CMSCategory,
   CMSPost,
@@ -289,6 +294,14 @@ export const getAdminDashboardRevenue = (params?: Record<string, unknown>) =>
   http.post<DashboardRevenue>("/admin/api/v1/dashboard/revenue", null, { params });
 export const getAdminDashboardVpsStatus = () => http.get<DashboardStatus>("/admin/api/v1/dashboard/vps-status");
 export const getServerStatus = () => http.get<ServerStatus>("/admin/api/v1/server/status");
+export const getRevenueAnalyticsOverview = (payload: RevenueAnalyticsQuery) =>
+  http.post<RevenueAnalyticsOverviewResponse>("/admin/api/v1/dashboard/revenue-analytics/overview", payload);
+export const getRevenueAnalyticsTrend = (payload: RevenueAnalyticsQuery) =>
+  http.post<{ items?: RevenueAnalyticsTrendPoint[] }>("/admin/api/v1/dashboard/revenue-analytics/trend", payload);
+export const getRevenueAnalyticsTop = (payload: RevenueAnalyticsQuery) =>
+  http.post<{ items?: RevenueAnalyticsTopItem[] }>("/admin/api/v1/dashboard/revenue-analytics/top", payload);
+export const getRevenueAnalyticsDetails = (payload: RevenueAnalyticsQuery) =>
+  http.post<RevenueAnalyticsDetailsResponse>("/admin/api/v1/dashboard/revenue-analytics/details", payload);
 
 // Probes
 export const listAdminProbes = (params?: Record<string, unknown>) =>

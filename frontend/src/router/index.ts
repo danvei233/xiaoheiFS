@@ -93,6 +93,7 @@ const router = createRouter({
       children: [
         { path: "", redirect: "console" },
         { path: "console", name: "admin-dashboard", component: () => import("@/pages/admin/Dashboard.vue") },
+        { path: "revenue-analytics", name: "admin-revenue-analytics", component: () => import("@/pages/admin/RevenueAnalytics.vue") },
         { path: "orders", name: "admin-orders", component: () => import("@/pages/admin/Orders.vue") },
         { path: "wallet/orders", name: "admin-wallet-orders", component: () => import("@/pages/admin/WalletOrders.vue") },
         { path: "vps", name: "admin-vps", component: () => import("@/pages/admin/Vps.vue") },

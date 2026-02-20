@@ -654,6 +654,79 @@ export interface DashboardStatus {
   points?: StatusPoint[];
 }
 
+export type RevenueAnalyticsLevel = "overall" | "goods_type" | "region" | "line" | "package";
+
+export interface RevenueAnalyticsQuery {
+  from_at: string;
+  to_at: string;
+  level: RevenueAnalyticsLevel;
+  goods_type_id?: number;
+  region_id?: number;
+  line_id?: number;
+  package_id?: number;
+  page?: number;
+  page_size?: number;
+  sort_field?: "paid_at" | "amount";
+  sort_order?: "asc" | "desc";
+}
+
+export interface RevenueAnalyticsSummary {
+  total_revenue_cents?: number;
+  order_count?: number;
+  yoy_ratio?: number | null;
+  mom_ratio?: number | null;
+  yoy_comparable?: boolean;
+  mom_comparable?: boolean;
+}
+
+export interface RevenueAnalyticsShareItem {
+  dimension_id?: number;
+  dimension_name?: string;
+  revenue_cents?: number;
+  ratio?: number;
+}
+
+export interface RevenueAnalyticsTopItem {
+  rank?: number;
+  dimension_id?: number;
+  dimension_name?: string;
+  revenue_cents?: number;
+  ratio?: number;
+}
+
+export interface RevenueAnalyticsTrendPoint {
+  bucket?: string;
+  revenue_cents?: number;
+  order_count?: number;
+}
+
+export interface RevenueAnalyticsDetailRecord {
+  payment_id?: number;
+  order_id?: number;
+  order_no?: string;
+  user_id?: number;
+  goods_type_id?: number;
+  region_id?: number;
+  line_id?: number;
+  package_id?: number;
+  amount_cents?: number;
+  paid_at?: string;
+  status?: string;
+}
+
+export interface RevenueAnalyticsOverviewResponse {
+  summary?: RevenueAnalyticsSummary;
+  share_items?: RevenueAnalyticsShareItem[];
+  top_items?: RevenueAnalyticsTopItem[];
+}
+
+export interface RevenueAnalyticsDetailsResponse {
+  items?: RevenueAnalyticsDetailRecord[];
+  page?: number;
+  page_size?: number;
+  total?: number;
+}
+
 export interface UserDashboard {
   orders?: number;
   vps?: number;

@@ -130,6 +130,10 @@ type ReportService interface {
 	RevenueByDay(ctx context.Context, days int) ([]appreport.RevenuePoint, error)
 	RevenueByMonth(ctx context.Context, months int) ([]appreport.RevenuePoint, error)
 	VPSStatus(ctx context.Context) ([]appreport.StatusPoint, error)
+	RevenueAnalyticsOverview(ctx context.Context, q appreport.RevenueAnalyticsQuery) (appreport.RevenueOverview, error)
+	RevenueAnalyticsTrend(ctx context.Context, q appreport.RevenueAnalyticsQuery) ([]appreport.RevenueTrendPoint, error)
+	RevenueAnalyticsTop(ctx context.Context, q appreport.RevenueAnalyticsQuery) ([]appreport.RevenueTopItem, error)
+	RevenueAnalyticsDetails(ctx context.Context, q appreport.RevenueAnalyticsQuery) ([]appreport.RevenueDetailRecord, int, error)
 }
 
 type IntegrationService interface {
