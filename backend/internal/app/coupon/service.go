@@ -331,19 +331,45 @@ func validateGroup(group domain.CouponProductGroup) error {
 		return appshared.ErrInvalidInput
 	}
 	for _, rule := range rules {
-		switch rule.Scope {
-		case domain.CouponGroupScopeAll,
-			domain.CouponGroupScopeAllAddons,
-			domain.CouponGroupScopeGoodsType,
-			domain.CouponGroupScopeGoodsTypeRegion,
-			domain.CouponGroupScopePlanGroup,
-			domain.CouponGroupScopePackage,
-			domain.CouponGroupScopeAddonConfig:
-		default:
+		if err := validateCouponRule(rule); err != nil {
 			return appshared.ErrInvalidInput
 		}
 	}
 	return nil
+}
+
+func validateCouponRule(rule domain.CouponProductRule) error {
+	switch rule.Scope {
+	case domain.CouponGroupScopeAll, domain.CouponGroupScopeAllAddons:
+		return nil
+	case domain.CouponGroupScopeGoodsType:
+		if rule.GoodsTypeID <= 0 {
+			return appshared.ErrInvalidInput
+		}
+		return nil
+	case domain.CouponGroupScopeGoodsTypeRegion:
+		if rule.GoodsTypeID <= 0 || rule.RegionID <= 0 {
+			return appshared.ErrInvalidInput
+		}
+		return nil
+	case domain.CouponGroupScopePlanGroup:
+		if rule.GoodsTypeID <= 0 || rule.RegionID <= 0 || rule.PlanGroupID <= 0 {
+			return appshared.ErrInvalidInput
+		}
+		return nil
+	case domain.CouponGroupScopePackage:
+		if rule.GoodsTypeID <= 0 || rule.RegionID <= 0 || rule.PlanGroupID <= 0 || rule.PackageID <= 0 {
+			return appshared.ErrInvalidInput
+		}
+		return nil
+	case domain.CouponGroupScopeAddonConfig:
+		if rule.GoodsTypeID <= 0 || rule.RegionID <= 0 || rule.PlanGroupID <= 0 {
+			return appshared.ErrInvalidInput
+		}
+		return nil
+	default:
+		return appshared.ErrInvalidInput
+	}
 }
 
 func groupDiscountableAmount(rules []domain.CouponProductRule, item QuoteItem) (int64, bool) {
@@ -383,17 +409,38 @@ func ruleDiscountableAmount(rule domain.CouponProductRule, item QuoteItem) (int6
 		}
 		return 0, false
 	case domain.CouponGroupScopePlanGroup:
-		if rule.PlanGroupID > 0 && rule.PlanGroupID == item.PlanGroupID {
-			return item.UnitTotalAmount, true
+		if rule.PlanGroupID <= 0 || rule.PlanGroupID != item.PlanGroupID {
+			return 0, false
 		}
-		return 0, false
+		if rule.GoodsTypeID > 0 && rule.GoodsTypeID != item.GoodsTypeID {
+			return 0, false
+		}
+		if rule.RegionID > 0 && rule.RegionID != item.RegionID {
+			return 0, false
+		}
+		return item.UnitTotalAmount, true
 	case domain.CouponGroupScopePackage:
-		if rule.PackageID > 0 && rule.PackageID == item.PackageID {
-			return item.UnitTotalAmount, true
+		if rule.PackageID <= 0 || rule.PackageID != item.PackageID {
+			return 0, false
 		}
-		return 0, false
-	case domain.CouponGroupScopeAddonConfig:
 		if rule.PlanGroupID > 0 && rule.PlanGroupID != item.PlanGroupID {
+			return 0, false
+		}
+		if rule.RegionID > 0 && rule.RegionID != item.RegionID {
+			return 0, false
+		}
+		if rule.GoodsTypeID > 0 && rule.GoodsTypeID != item.GoodsTypeID {
+			return 0, false
+		}
+		return item.UnitTotalAmount, true
+	case domain.CouponGroupScopeAddonConfig:
+		if rule.PlanGroupID <= 0 || rule.PlanGroupID != item.PlanGroupID {
+			return 0, false
+		}
+		if rule.RegionID > 0 && rule.RegionID != item.RegionID {
+			return 0, false
+		}
+		if rule.GoodsTypeID > 0 && rule.GoodsTypeID != item.GoodsTypeID {
 			return 0, false
 		}
 		var part int64

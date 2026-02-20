@@ -364,9 +364,13 @@ const packageOptions = computed(() => {
     .map((item) => ({ label: item.name || `#${item.id}`, value: Number(item.id) }));
 });
 
-const needGoodsType = computed(() => ["goods_type", "goods_type_region"].includes(discountForm.scope));
-const needRegion = computed(() => ["goods_type_region"].includes(discountForm.scope));
-const needPlanGroup = computed(() => ["goods_type_region_plan_group", "addon_config"].includes(discountForm.scope));
+const needGoodsType = computed(() =>
+  ["goods_type", "goods_type_region", "goods_type_region_plan_group", "addon_config", "package"].includes(discountForm.scope)
+);
+const needRegion = computed(() =>
+  ["goods_type_region", "goods_type_region_plan_group", "addon_config", "package"].includes(discountForm.scope)
+);
+const needPlanGroup = computed(() => ["goods_type_region_plan_group", "addon_config", "package"].includes(discountForm.scope));
 const needPackage = computed(() => discountForm.scope === "package");
 const needsTargetSelection = computed(() => needGoodsType.value || needRegion.value || needPlanGroup.value || needPackage.value);
 
@@ -451,13 +455,10 @@ const onDiscountGoodsTypeChange = async () => {
   discountForm.plan_group_id = 0;
   discountForm.package_id = 0;
   await Promise.all([
-    needRegion.value ? loadRegions(discountForm.goods_type_id) : Promise.resolve(),
-    needPlanGroup.value ? loadPlanGroups(discountForm.goods_type_id, null) : Promise.resolve(),
-    needPackage.value ? loadPackages(discountForm.goods_type_id, null) : Promise.resolve()
+    needRegion.value ? loadRegions(discountForm.goods_type_id) : Promise.resolve()
   ]);
-  if (!needPackage.value) {
-    packages.value = [];
-  }
+  planGroups.value = [];
+  packages.value = [];
 };
 
 const onDiscountRegionChange = async () => {
@@ -628,6 +629,22 @@ const openEditDiscount = async (record) => {
 const saveDiscount = async () => {
   try {
     if (!selectedGroup.value?.id) return;
+    if (needGoodsType.value && !toNumber(discountForm.goods_type_id)) {
+      message.error("请选择类型");
+      return;
+    }
+    if (needRegion.value && !toNumber(discountForm.region_id)) {
+      message.error("请选择地区");
+      return;
+    }
+    if (needPlanGroup.value && !toNumber(discountForm.plan_group_id)) {
+      message.error("请选择线路");
+      return;
+    }
+    if (needPackage.value && !toNumber(discountForm.package_id)) {
+      message.error("请选择套餐");
+      return;
+    }
     normalizeDiscountTargetByScope();
     if (discountModal.editing?.id) {
       await updateUserTierDiscountRule(selectedGroup.value.id, discountModal.editing.id, { ...discountForm });

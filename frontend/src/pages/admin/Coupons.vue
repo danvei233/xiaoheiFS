@@ -181,8 +181,8 @@ const scopeOptions = [
   { label: "类型", value: "goods_type" },
   { label: "类型-地区", value: "goods_type_region" },
   { label: "类型-地区-线路", value: "plan_group" },
-  { label: "套餐", value: "package" },
-  { label: "附加项配置", value: "addon_config" }
+  { label: "类型-地区-线路-套餐", value: "package" },
+  { label: "附加项配置(在线路下)", value: "addon_config" }
 ];
 
 const groupColumns = [
@@ -308,6 +308,14 @@ const normalizeRules = (rules) => {
   return list.length ? list : [createEmptyRule()];
 };
 
+const validateRule = (rule) => {
+  if (needGoodsType(rule.scope) && !Number(rule.goods_type_id || 0)) return "请选择类型";
+  if (needRegion(rule.scope) && !Number(rule.region_id || 0)) return "请选择地区";
+  if (needPlanGroup(rule.scope) && !Number(rule.plan_group_id || 0)) return "请选择线路";
+  if (needPackage(rule.scope) && !Number(rule.package_id || 0)) return "请选择套餐";
+  return "";
+};
+
 const fetchAll = async () => {
   const [g, c, gt, r, pg, p] = await Promise.all([
     listCouponGroups(),
@@ -348,10 +356,18 @@ const openGroup = (record) => {
 };
 
 const saveGroup = async () => {
+  const rules = normalizeRules(groupForm.rules);
+  for (const rule of rules) {
+    const errText = validateRule(rule);
+    if (errText) {
+      message.error(errText);
+      return;
+    }
+  }
   const payload = {
     id: groupForm.id,
     name: (groupForm.name || "").trim(),
-    rules: normalizeRules(groupForm.rules)
+    rules
   };
   if (!payload.name) {
     message.error("请输入商品组名称");
