@@ -51,6 +51,16 @@ const (
 	APIKeyStatusDisabled APIKeyStatus = "disabled"
 )
 
+type RequestActorMode string
+
+const (
+	RequestActorModeUserJWT     RequestActorMode = "user_jwt"
+	RequestActorModeUserAPIKey  RequestActorMode = "user_apikey"
+	RequestActorModeAdminJWT    RequestActorMode = "admin_jwt"
+	RequestActorModeAdminAPIKey RequestActorMode = "admin_apikey"
+	RequestActorModeUnknown     RequestActorMode = "unknown"
+)
+
 type PaymentStatus string
 
 const (
@@ -163,6 +173,27 @@ type APIKey struct {
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 	LastUsedAt        *time.Time
+}
+
+type UserAPIKey struct {
+	ID         int64
+	UserID     int64
+	Name       string
+	AKID       string
+	KeyHash    string
+	Status     APIKeyStatus
+	ScopesJSON string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	LastUsedAt *time.Time
+}
+
+type RequestActor struct {
+	Mode          RequestActorMode
+	UserID        int64
+	Role          string
+	UserAPIKeyID  int64
+	AdminAPIKeyID int64
 }
 
 type PasswordResetToken struct {

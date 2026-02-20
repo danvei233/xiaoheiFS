@@ -15,6 +15,7 @@ import (
 )
 
 func (h *Handler) Catalog(c *gin.Context) {
+	userID := getUserID(c)
 	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
 	regions, plans, packages, images, cycles, err := h.catalogSvc.Catalog(c)
 	if err != nil {
@@ -46,6 +47,7 @@ func (h *Handler) Catalog(c *gin.Context) {
 	}
 	plans = filterVisiblePlanGroups(plans)
 	packages = filterVisiblePackages(packages, plans)
+	packages = h.applyUserTierPackagePricing(c, userID, packages)
 	if len(plans) == 0 {
 		images = []domain.SystemImage{}
 	} else {
@@ -184,6 +186,7 @@ func (h *Handler) PlanGroups(c *gin.Context) {
 }
 
 func (h *Handler) Packages(c *gin.Context) {
+	userID := getUserID(c)
 	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
 	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
 	items, err := h.catalogSvc.ListPackages(c)
@@ -211,7 +214,24 @@ func (h *Handler) Packages(c *gin.Context) {
 		}
 		items = filtered
 	}
+	items = h.applyUserTierPackagePricing(c, userID, items)
 	c.JSON(http.StatusOK, gin.H{"items": toPackageDTOs(items)})
+}
+
+func (h *Handler) applyUserTierPackagePricing(ctx context.Context, userID int64, items []domain.Package) []domain.Package {
+	if h.userTierSvc == nil || userID <= 0 || len(items) == 0 {
+		return items
+	}
+	out := make([]domain.Package, len(items))
+	copy(out, items)
+	for i := range out {
+		pricing, _, err := h.userTierSvc.ResolvePackagePricing(ctx, userID, out[i].ID)
+		if err != nil {
+			continue
+		}
+		out[i].Monthly = pricing.MonthlyPrice
+	}
+	return out
 }
 
 func (h *Handler) BillingCycles(c *gin.Context) {

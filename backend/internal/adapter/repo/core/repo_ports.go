@@ -111,6 +111,7 @@ var (
 	_ appports.VPSRepository                 = (*VPSRepo)(nil)
 	_ appports.EventRepository               = (*EventRepo)(nil)
 	_ appports.APIKeyRepository              = (*APIKeyRepo)(nil)
+	_ appports.UserAPIKeyRepository          = (*APIKeyRepo)(nil)
 	_ appports.SettingsRepository            = (*SettingsRepo)(nil)
 	_ appports.AuditRepository               = (*AuditRepo)(nil)
 	_ appports.BillingCycleRepository        = (*BillingCycleRepo)(nil)

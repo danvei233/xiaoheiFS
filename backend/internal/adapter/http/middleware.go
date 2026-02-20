@@ -1,17 +1,22 @@
 package http
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 	appapikey "xiaoheiplay/internal/app/apikey"
 	apppermission "xiaoheiplay/internal/app/permission"
 	appshared "xiaoheiplay/internal/app/shared"
+	appuserapikey "xiaoheiplay/internal/app/userapikey"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/permissions"
 )
@@ -19,18 +24,23 @@ import (
 type Middleware struct {
 	jwtSecret     []byte
 	apiKeys       *appapikey.Service
+	userAPIKeys   *appuserapikey.Service
 	permissionSvc *apppermission.Service
 	authSvc       AuthService
 	settingsSvc   SettingsService
+	nonceMu       sync.Mutex
+	nonceSeen     map[string]time.Time
 }
 
-func NewMiddleware(jwtSecret string, apiKeys *appapikey.Service, permissionSvc *apppermission.Service, authSvc AuthService, settingsSvc SettingsService) *Middleware {
+func NewMiddleware(jwtSecret string, apiKeys *appapikey.Service, userAPIKeys *appuserapikey.Service, permissionSvc *apppermission.Service, authSvc AuthService, settingsSvc SettingsService) *Middleware {
 	return &Middleware{
 		jwtSecret:     []byte(jwtSecret),
 		apiKeys:       apiKeys,
+		userAPIKeys:   userAPIKeys,
 		permissionSvc: permissionSvc,
 		authSvc:       authSvc,
 		settingsSvc:   settingsSvc,
+		nonceSeen:     map[string]time.Time{},
 	}
 }
 
@@ -48,6 +58,12 @@ func (m *Middleware) RequireUser() gin.HandlerFunc {
 		}
 		c.Set("user_id", userID)
 		c.Set("role", claims["role"])
+		c.Set("actor_mode", string(domain.RequestActorModeUserJWT))
+		c.Set("request_actor", domain.RequestActor{
+			Mode:   domain.RequestActorModeUserJWT,
+			UserID: userID,
+			Role:   "user",
+		})
 		c.Next()
 	}
 }
@@ -71,6 +87,12 @@ func (m *Middleware) RequireAdmin() gin.HandlerFunc {
 		}
 		c.Set("user_id", userID)
 		c.Set("role", role)
+		c.Set("actor_mode", string(domain.RequestActorModeAdminJWT))
+		c.Set("request_actor", domain.RequestActor{
+			Mode:   domain.RequestActorModeAdminJWT,
+			UserID: userID,
+			Role:   "admin",
+		})
 		c.Next()
 	}
 }
@@ -177,6 +199,13 @@ func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey strin
 	c.Set("user_id", int64(0))
 	c.Set("role", "admin")
 	c.Set("api_key_id", key.ID)
+	c.Set("actor_mode", string(domain.RequestActorModeAdminAPIKey))
+	c.Set("request_actor", domain.RequestActor{
+		Mode:          domain.RequestActorModeAdminAPIKey,
+		UserID:        0,
+		Role:          "admin",
+		AdminAPIKeyID: key.ID,
+	})
 
 	if m.permissionSvc == nil {
 		c.Next()
@@ -223,6 +252,59 @@ func (m *Middleware) RequireAPIKey() gin.HandlerFunc {
 			c.AbortWithStatusJSON(status, gin.H{"error": domain.ErrInvalidApiKey.Error()})
 			return
 		}
+		c.Next()
+	}
+}
+
+func (m *Middleware) RequireUserAPIKeySigned() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if m.userAPIKeys == nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrApiKeyDisabled.Error()})
+			return
+		}
+		akid := strings.TrimSpace(c.GetHeader("X-AKID"))
+		tsRaw := strings.TrimSpace(c.GetHeader("X-Timestamp"))
+		nonce := strings.TrimSpace(c.GetHeader("X-Nonce"))
+		signature := strings.TrimSpace(c.GetHeader("X-Signature"))
+		if akid == "" || tsRaw == "" || nonce == "" || signature == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
+		}
+		if _, err := appuserapikey.ParseAndCheckTimestamp(tsRaw, time.Now(), appuserapikey.DefaultSignatureWindowSec); err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
+		}
+		if !m.registerNonce(akid, nonce, time.Now(), appuserapikey.DefaultSignatureWindowSec) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
+		}
+		body, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
+		}
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+		path := c.Request.URL.Path
+		canonical := appuserapikey.BuildCanonical(c.Request.Method, path, c.Request.URL.RawQuery, tsRaw, nonce, body)
+		key, err := m.userAPIKeys.ValidateSignature(c, akid, tsRaw, nonce, signature, canonical)
+		if err != nil {
+			status := http.StatusUnauthorized
+			if errors.Is(err, appshared.ErrForbidden) {
+				status = http.StatusForbidden
+			}
+			c.AbortWithStatusJSON(status, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
+		}
+		c.Set("user_id", key.UserID)
+		c.Set("role", "user")
+		c.Set("user_api_key_id", key.ID)
+		c.Set("actor_mode", string(domain.RequestActorModeUserAPIKey))
+		c.Set("request_actor", domain.RequestActor{
+			Mode:         domain.RequestActorModeUserAPIKey,
+			UserID:       key.UserID,
+			Role:         "user",
+			UserAPIKeyID: key.ID,
+		})
 		c.Next()
 	}
 }
@@ -409,6 +491,26 @@ func (m *Middleware) getSettingBool(ctx context.Context, key string, def bool) b
 		return def
 	}
 	return val == "true" || val == "1" || val == "yes"
+}
+
+func (m *Middleware) registerNonce(akid, nonce string, now time.Time, windowSec int) bool {
+	if windowSec <= 0 {
+		windowSec = appuserapikey.DefaultSignatureWindowSec
+	}
+	key := akid + ":" + nonce
+	cutoff := now.Add(-time.Duration(windowSec) * time.Second)
+	m.nonceMu.Lock()
+	defer m.nonceMu.Unlock()
+	for k, seenAt := range m.nonceSeen {
+		if seenAt.Before(cutoff) {
+			delete(m.nonceSeen, k)
+		}
+	}
+	if _, exists := m.nonceSeen[key]; exists {
+		return false
+	}
+	m.nonceSeen[key] = now
+	return true
 }
 
 func getUserID(c *gin.Context) int64 {

@@ -1082,6 +1082,21 @@ const loadAutomationConfigTemplate = async () => {
       automationConfigError.value = "插件未返回有效 object schema";
       return;
     }
+    // If plugin exposes goods_type_id as plain integer, enhance to select list from local goods types.
+    const properties = (schemaObj && schemaObj.properties) || {};
+    if (properties && properties.goods_type_id && !Array.isArray(properties.goods_type_id.enum) && goodsTypes.value.length > 0) {
+      const options = goodsTypes.value
+        .filter((g: any) => Number(g.id || 0) > 0)
+        .map((g: any) => ({ id: Number(g.id), label: `${g.name || g.code || g.id} (#${g.id})` }));
+      if (options.length > 0) {
+        properties.goods_type_id.enum = options.map((x: any) => x.id);
+        properties.goods_type_id.enumNames = options.map((x: any) => x.label);
+        uiObj.goods_type_id = {
+          ...(uiObj.goods_type_id || {}),
+          "ui:widget": "select"
+        };
+      }
+    }
     automationConfigSchema.value = schemaObj;
     automationConfigUI.value = uiObj;
     automationConfigModel.value = cfgObj;

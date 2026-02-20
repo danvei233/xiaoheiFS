@@ -77,6 +77,7 @@ message AutomationPackage {
   int32 bandwidth_mbps = 6;
   int32 port_num = 7;
   int64 monthly_price = 8;
+  optional int32 capacity_remaining = 9;
 }
 
 message AutomationImage {

@@ -78,6 +78,7 @@ const router = createRouter({
         { path: "orders", name: "console-orders", component: () => import("@/pages/console/Orders.vue") },
         { path: "orders/:id", name: "console-order-detail", component: () => import("@/pages/console/OrderDetail.vue") },
         { path: "billing", name: "console-billing", component: () => import("@/pages/console/Billing.vue") },
+        { path: "api-keys", name: "console-api-keys", component: () => import("@/pages/console/ApiKeys.vue") },
         { path: "realname", name: "console-realname", component: () => import("@/pages/console/Realname.vue") },
         { path: "tickets", name: "console-tickets", component: () => import("@/pages/console/Tickets.vue") },
         { path: "tickets/:id", name: "console-ticket-detail", component: () => import("@/pages/console/TicketDetail.vue") }

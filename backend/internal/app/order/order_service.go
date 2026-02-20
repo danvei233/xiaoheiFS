@@ -129,6 +129,7 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
+		Source:         resolveOrderSource(ctx),
 		Status:         domain.OrderStatusPendingPayment,
 		TotalAmount:    0,
 		Currency:       currency,
@@ -421,6 +422,7 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
+		Source:         resolveOrderSource(ctx),
 		Status:         domain.OrderStatusPendingPayment,
 		TotalAmount:    total,
 		Currency:       currency,
@@ -663,6 +665,9 @@ func (s *OrderService) SubmitPayment(ctx context.Context, userID int64, orderID 
 	if input.Amount <= 0 {
 		return domain.OrderPayment{}, ErrInvalidInput
 	}
+	if input.Amount != order.TotalAmount {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
 	if input.Currency == "" {
 		input.Currency = order.Currency
 	}
@@ -782,6 +787,9 @@ func (s *OrderService) MarkPaid(ctx context.Context, adminID int64, orderID int6
 		return domain.OrderPayment{}, ErrNoPaymentRequired
 	}
 	if input.Amount <= 0 {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	if input.Amount != order.TotalAmount {
 		return domain.OrderPayment{}, ErrInvalidInput
 	}
 	if input.Currency == "" {
@@ -2346,6 +2354,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
+		Source:      resolveOrderSource(ctx),
 		Status:      domain.OrderStatusPendingPayment,
 		TotalAmount: amount,
 		Currency:    "CNY",
@@ -2409,6 +2418,7 @@ func (s *OrderService) CreateEmergencyRenewOrder(ctx context.Context, userID int
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
+		Source:      resolveOrderSource(ctx),
 		Status:      domain.OrderStatusPendingReview,
 		TotalAmount: 0,
 		Currency:    "CNY",
@@ -2493,6 +2503,7 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
+		Source:      resolveOrderSource(ctx),
 		Status:      status,
 		TotalAmount: amount,
 		Currency:    "CNY",
@@ -2580,6 +2591,7 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
+		Source:         resolveOrderSource(ctx),
 		Status:         domain.OrderStatusPendingReview,
 		TotalAmount:    -amount,
 		Currency:       "CNY",
@@ -2612,7 +2624,15 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 		}
 		return domain.Order{}, 0, err
 	}
-	if s.events != nil {
+	if !policy.RequireApproval || resolveOrderSource(ctx) == OrderSourceUserAPIKey {
+		if err := s.ApproveOrder(ctx, 0, order.ID); err != nil {
+			return domain.Order{}, 0, err
+		}
+		if updated, err := s.orders.GetOrder(ctx, order.ID); err == nil {
+			order = updated
+		}
+	}
+	if s.events != nil && order.Status == domain.OrderStatusPendingReview {
 		_, _ = s.events.Publish(ctx, order.ID, "order.pending_review", map[string]any{"status": order.Status, "total": order.TotalAmount})
 	}
 	return order, amount, nil

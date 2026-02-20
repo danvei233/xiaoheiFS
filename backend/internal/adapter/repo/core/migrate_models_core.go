@@ -114,24 +114,25 @@ type planGroupRow struct {
 func (planGroupRow) TableName() string { return "plan_groups" }
 
 type packageRow struct {
-	ID                int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	GoodsTypeID       int64     `gorm:"column:goods_type_id;not null;default:0;index;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
-	PlanGroupID       int64     `gorm:"column:plan_group_id;not null;index;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
-	ProductID         int64     `gorm:"column:product_id;not null;default:0;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
-	Name              string    `gorm:"column:name;not null"`
-	Cores             int       `gorm:"column:cores;not null"`
-	MemoryGB          int       `gorm:"column:memory_gb;not null"`
-	DiskGB            int       `gorm:"column:disk_gb;not null"`
-	BandwidthMbps     int       `gorm:"column:bandwidth_mbps;not null"`
-	CPUModel          string    `gorm:"column:cpu_model;not null"`
-	MonthlyPrice      int64     `gorm:"column:monthly_price;not null"`
-	PortNum           int       `gorm:"column:port_num;not null;default:30"`
-	SortOrder         int       `gorm:"column:sort_order;not null;default:0"`
-	Active            int       `gorm:"column:active;not null;default:1"`
-	Visible           int       `gorm:"column:visible;not null;default:1"`
-	CapacityRemaining int       `gorm:"column:capacity_remaining;not null;default:-1"`
-	CreatedAt         time.Time `gorm:"column:created_at;not null;autoCreateTime"`
-	UpdatedAt         time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
+	ID                   int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	GoodsTypeID          int64     `gorm:"column:goods_type_id;not null;default:0;index;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
+	PlanGroupID          int64     `gorm:"column:plan_group_id;not null;index;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
+	ProductID            int64     `gorm:"column:product_id;not null;default:0;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
+	IntegrationPackageID int64     `gorm:"column:integration_package_id;not null;default:0;index;uniqueIndex:idx_packages_gt_integration_unique,where:integration_package_id > 0"`
+	Name                 string    `gorm:"column:name;not null"`
+	Cores                int       `gorm:"column:cores;not null"`
+	MemoryGB             int       `gorm:"column:memory_gb;not null"`
+	DiskGB               int       `gorm:"column:disk_gb;not null"`
+	BandwidthMbps        int       `gorm:"column:bandwidth_mbps;not null"`
+	CPUModel             string    `gorm:"column:cpu_model;not null"`
+	MonthlyPrice         int64     `gorm:"column:monthly_price;not null"`
+	PortNum              int       `gorm:"column:port_num;not null;default:30"`
+	SortOrder            int       `gorm:"column:sort_order;not null;default:0"`
+	Active               int       `gorm:"column:active;not null;default:1"`
+	Visible              int       `gorm:"column:visible;not null;default:1"`
+	CapacityRemaining    int       `gorm:"column:capacity_remaining;not null;default:-1"`
+	CreatedAt            time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt            time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
 
 func (packageRow) TableName() string { return "packages" }
@@ -175,6 +176,7 @@ type orderRow struct {
 	ID             int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID         int64      `gorm:"column:user_id;not null;index;uniqueIndex:idx_orders_idem"`
 	OrderNo        string     `gorm:"size:191;column:order_no;not null;uniqueIndex"`
+	Source         string     `gorm:"size:64;column:source;not null;default:user_ui;index"`
 	Status         string     `gorm:"column:status;not null"`
 	TotalAmount    int64      `gorm:"column:total_amount;not null"`
 	Currency       string     `gorm:"column:currency;not null"`
@@ -280,6 +282,21 @@ type apiKeyRow struct {
 }
 
 func (apiKeyRow) TableName() string { return "api_keys" }
+
+type userAPIKeyRow struct {
+	ID         int64      `gorm:"primaryKey;autoIncrement;column:id"`
+	UserID     int64      `gorm:"column:user_id;not null;index"`
+	Name       string     `gorm:"column:name;not null"`
+	AKID       string     `gorm:"size:191;column:akid;not null;uniqueIndex"`
+	KeyHash    string     `gorm:"size:191;column:key_hash;not null;uniqueIndex"`
+	Status     string     `gorm:"column:status;not null"`
+	ScopesJSON string     `gorm:"column:scopes_json;not null"`
+	CreatedAt  time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt  time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
+	LastUsedAt *time.Time `gorm:"column:last_used_at"`
+}
+
+func (userAPIKeyRow) TableName() string { return "user_api_keys" }
 
 type settingRow struct {
 	Key       string    `gorm:"size:191;primaryKey;column:key"`

@@ -166,6 +166,8 @@ type PluginAdminService interface {
 }
 
 type UserTierService interface {
+	EnsureUserHasGroup(ctx context.Context, userID int64) error
+	ResolvePackagePricing(ctx context.Context, userID, packageID int64) (domain.UserTierPriceCache, int64, error)
 	ListGroups(ctx context.Context) ([]domain.UserTierGroup, error)
 	GetGroup(ctx context.Context, id int64) (domain.UserTierGroup, error)
 	CreateGroup(ctx context.Context, adminID int64, group *domain.UserTierGroup) error

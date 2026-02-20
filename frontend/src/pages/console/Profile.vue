@@ -115,7 +115,10 @@
             <IdcardOutlined class="item-icon" />
             <div class="info-content">
               <span class="info-label">用户组</span>
-              <a-tag :color="myTier.group_color || 'default'">{{ myTier.group_name || "-" }}</a-tag>
+              <a-tag :color="myTier.group_color || 'default'" class="tier-tag">
+                <component :is="tierIconComp" v-if="tierIconComp" class="tier-tag-icon" />
+                {{ myTier.group_name || "-" }}
+              </a-tag>
             </div>
           </div>
           <div class="info-item">
@@ -433,7 +436,16 @@ import {
   CloseCircleOutlined,
   InfoCircleOutlined,
   KeyOutlined,
-  LockOutlined
+  LockOutlined,
+  FireOutlined,
+  GiftOutlined,
+  HeartOutlined,
+  StarOutlined,
+  CrownOutlined,
+  RocketOutlined,
+  ThunderboltOutlined,
+  TrophyOutlined,
+  SafetyCertificateOutlined
 } from "@ant-design/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -477,7 +489,23 @@ const myTier = ref({
   group_id: 0,
   group_name: "",
   group_color: "",
+  group_icon: "",
   expire_at: ""
+});
+
+const tierIconComp = computed(() => {
+  const icon = String(myTier.value?.group_icon || "").trim().toLowerCase();
+  if (!icon) return null;
+  if (icon === "fire") return FireOutlined;
+  if (icon === "gift") return GiftOutlined;
+  if (icon === "heart") return HeartOutlined;
+  if (icon === "star") return StarOutlined;
+  if (icon === "crown") return CrownOutlined;
+  if (icon === "rocket") return RocketOutlined;
+  if (icon === "thunder") return ThunderboltOutlined;
+  if (icon === "trophy") return TrophyOutlined;
+  if (icon === "badge") return SafetyCertificateOutlined;
+  return SafetyCertificateOutlined;
 });
 const editModalVisible = ref(false);
 const passwordModalVisible = ref(false);
@@ -1657,6 +1685,19 @@ const securityModalTitle = computed(() => {
 .info-item-balance .item-icon {
   color: var(--success);
   font-size: 20px;
+}
+
+.tier-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tier-tag-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 /* Modal */

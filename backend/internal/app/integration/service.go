@@ -150,13 +150,20 @@ func (s *Service) SyncAutomationForGoodsType(ctx context.Context, goodsTypeID in
 			planByLine[p.LineID] = p
 		}
 	}
-	packageByKey := map[string]domain.Package{}
+	packageByIntegrationID := map[string]domain.Package{}
+	packageByName := map[string]domain.Package{}
 	for _, pkg := range allPackages {
 		if pkg.GoodsTypeID != goodsTypeID {
 			continue
 		}
-		if pkg.ProductID > 0 && pkg.PlanGroupID > 0 {
-			packageByKey[fmt.Sprintf("%d:%d", pkg.PlanGroupID, pkg.ProductID)] = pkg
+		if pkg.PlanGroupID <= 0 {
+			continue
+		}
+		if pkg.IntegrationPackageID > 0 {
+			packageByIntegrationID[fmt.Sprintf("%d:%d", pkg.PlanGroupID, pkg.IntegrationPackageID)] = pkg
+		}
+		if strings.TrimSpace(pkg.Name) != "" {
+			packageByName[fmt.Sprintf("%d:%s", pkg.PlanGroupID, strings.ToLower(strings.TrimSpace(pkg.Name)))] = pkg
 		}
 	}
 	imageByID := map[int64]domain.SystemImage{}
@@ -254,6 +261,7 @@ func (s *Service) SyncAutomationForGoodsType(ctx context.Context, goodsTypeID in
 		defaultRegionID = region.ID
 	}
 
+	pricePolicy := s.getPricePolicy(ctx)
 	createdProducts := 0
 	for _, line := range lines {
 		plan, ok := planByLine[line.ID]
@@ -266,46 +274,64 @@ func (s *Service) SyncAutomationForGoodsType(ctx context.Context, goodsTypeID in
 			return SyncResult{}, err
 		}
 		for _, product := range products {
-			key := fmt.Sprintf("%d:%d", plan.ID, product.ID)
-			if existing, ok := packageByKey[key]; ok {
+			integrationKey := fmt.Sprintf("%d:%d", plan.ID, product.ID)
+			nameKey := fmt.Sprintf("%d:%s", plan.ID, strings.ToLower(strings.TrimSpace(product.Name)))
+			existing, ok := packageByIntegrationID[integrationKey]
+			if !ok {
+				existing, ok = packageByName[nameKey]
+			}
+			if ok {
 				existing.GoodsTypeID = goodsTypeID
+				existing.IntegrationPackageID = product.ID
+				if existing.ProductID <= 0 {
+					existing.ProductID = product.ID
+				}
 				existing.Name = product.Name
 				existing.Cores = product.CPU
 				existing.MemoryGB = product.MemoryGB
 				existing.DiskGB = product.DiskGB
 				existing.BandwidthMB = product.Bandwidth
-				existing.Monthly = product.Price
+				if shouldOverwritePrice(pricePolicy, existing.Monthly, product.Price) {
+					existing.Monthly = product.Price
+				}
 				if product.PortNum > 0 {
 					existing.PortNum = product.PortNum
+				}
+				if product.CapacityRemaining >= -1 {
+					existing.CapacityRemaining = product.CapacityRemaining
 				}
 				if mode == "override" {
 					existing.Active = true
 				}
 				_ = s.catalog.UpdatePackage(ctx, existing)
+				packageByIntegrationID[integrationKey] = existing
+				packageByName[nameKey] = existing
 			} else {
 				portNum := 30
 				if product.PortNum > 0 {
 					portNum = product.PortNum
 				}
 				pkg := domain.Package{
-					GoodsTypeID:       goodsTypeID,
-					PlanGroupID:       plan.ID,
-					ProductID:         product.ID,
-					Name:              product.Name,
-					Cores:             product.CPU,
-					MemoryGB:          product.MemoryGB,
-					DiskGB:            product.DiskGB,
-					BandwidthMB:       product.Bandwidth,
-					CPUModel:          "",
-					Monthly:           product.Price,
-					PortNum:           portNum,
-					SortOrder:         0,
-					Active:            true,
-					Visible:           true,
-					CapacityRemaining: -1,
+					GoodsTypeID:          goodsTypeID,
+					PlanGroupID:          plan.ID,
+					ProductID:            product.ID,
+					IntegrationPackageID: product.ID,
+					Name:                 product.Name,
+					Cores:                product.CPU,
+					MemoryGB:             product.MemoryGB,
+					DiskGB:               product.DiskGB,
+					BandwidthMB:          product.Bandwidth,
+					CPUModel:             "",
+					Monthly:              product.Price,
+					PortNum:              portNum,
+					SortOrder:            0,
+					Active:               true,
+					Visible:              true,
+					CapacityRemaining:    product.CapacityRemaining,
 				}
 				_ = s.catalog.CreatePackage(ctx, &pkg)
-				packageByKey[key] = pkg
+				packageByIntegrationID[integrationKey] = pkg
+				packageByName[nameKey] = pkg
 				createdProducts++
 			}
 		}
@@ -327,6 +353,116 @@ func (s *Service) SyncAutomationForGoodsType(ctx context.Context, goodsTypeID in
 	s.appendSyncLog(ctx, "mirror_image", mode, "ok", fmt.Sprintf("goods_type_id=%d images=%d", goodsTypeID, createdImages))
 
 	return SyncResult{Lines: createdLines, Products: createdProducts, Images: createdImages}, nil
+}
+
+func (s *Service) SyncAutomationInventoryForGoodsType(ctx context.Context, goodsTypeID int64) (int, error) {
+	if s.automation == nil || s.catalog == nil {
+		return 0, appshared.ErrInvalidInput
+	}
+	if goodsTypeID <= 0 {
+		if s.goodsTypes == nil {
+			return 0, appshared.ErrInvalidInput
+		}
+		items, err := s.goodsTypes.ListGoodsTypes(ctx)
+		if err != nil {
+			return 0, err
+		}
+		total := 0
+		for _, item := range items {
+			if item.ID <= 0 {
+				continue
+			}
+			count, syncErr := s.SyncAutomationInventoryForGoodsType(ctx, item.ID)
+			if syncErr != nil {
+				return total, syncErr
+			}
+			total += count
+		}
+		return total, nil
+	}
+	cli, err := s.automation.ClientForGoodsType(ctx, goodsTypeID)
+	if err != nil {
+		return 0, err
+	}
+	plans, err := s.catalog.ListPlanGroups(ctx)
+	if err != nil {
+		return 0, err
+	}
+	packages, err := s.catalog.ListPackages(ctx)
+	if err != nil {
+		return 0, err
+	}
+	pkgByIntegration := map[string]domain.Package{}
+	for _, pkg := range packages {
+		if pkg.GoodsTypeID != goodsTypeID || pkg.PlanGroupID <= 0 || pkg.IntegrationPackageID <= 0 {
+			continue
+		}
+		pkgByIntegration[fmt.Sprintf("%d:%d", pkg.PlanGroupID, pkg.IntegrationPackageID)] = pkg
+	}
+	planByLine := map[int64]domain.PlanGroup{}
+	for _, plan := range plans {
+		if plan.GoodsTypeID == goodsTypeID && plan.LineID > 0 {
+			planByLine[plan.LineID] = plan
+		}
+	}
+	updated := 0
+	unsupported := 0
+	for lineID, plan := range planByLine {
+		products, err := cli.ListProducts(ctx, lineID)
+		if err != nil {
+			return updated, err
+		}
+		for _, product := range products {
+			if product.CapacityRemaining < -1 {
+				unsupported++
+				continue
+			}
+			key := fmt.Sprintf("%d:%d", plan.ID, product.ID)
+			pkg, ok := pkgByIntegration[key]
+			if !ok {
+				continue
+			}
+			if pkg.CapacityRemaining == product.CapacityRemaining {
+				continue
+			}
+			pkg.CapacityRemaining = product.CapacityRemaining
+			if err := s.catalog.UpdatePackage(ctx, pkg); err != nil {
+				return updated, err
+			}
+			updated++
+		}
+	}
+	if unsupported > 0 {
+		s.appendSyncLog(ctx, "inventory", "inventory_only", "warn", fmt.Sprintf("goods_type_id=%d unsupported=%d", goodsTypeID, unsupported))
+	}
+	s.appendSyncLog(ctx, "inventory", "inventory_only", "ok", fmt.Sprintf("goods_type_id=%d updated=%d", goodsTypeID, updated))
+	return updated, nil
+}
+
+func (s *Service) getPricePolicy(ctx context.Context) string {
+	if s.settings == nil {
+		return "none"
+	}
+	item, err := s.settings.GetSetting(ctx, "integration_price_policy")
+	if err != nil {
+		return "none"
+	}
+	raw := strings.ToLower(strings.TrimSpace(item.ValueJSON))
+	switch raw {
+	case "overwrite_if_local_below_upstream":
+		return raw
+	default:
+		return "none"
+	}
+}
+
+func shouldOverwritePrice(policy string, local, upstream int64) bool {
+	switch policy {
+	case "overwrite_if_local_below_upstream":
+		return local < upstream
+	default:
+		return false
+	}
 }
 
 func (s *Service) syncLineImages(ctx context.Context, cli AutomationClient, lineID int64, mode string, imageByID map[int64]domain.SystemImage) (int, int, error) {

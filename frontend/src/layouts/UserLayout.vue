@@ -309,6 +309,7 @@ import {
   DashboardOutlined,
   CloudServerOutlined,
   ShoppingCartOutlined,
+  ApiOutlined,
   FileTextOutlined,
   CustomerServiceOutlined,
   SafetyCertificateOutlined,
@@ -363,6 +364,7 @@ const menuGroups = computed(() => [
       { key: '/console/cart', label: '购物车', icon: ShoppingCartOutlined, badge: cartCount.value > 0 ? cartCount.value : null },
       { key: '/console/orders', label: '订单管理', icon: FileTextOutlined },
       { key: '/console/billing', label: '钱包充值', icon: WalletOutlined },
+      { key: '/console/api-keys', label: 'API 管理', icon: ApiOutlined },
     ]
   },
   {
@@ -382,6 +384,7 @@ const isActive = (path) => {
   if (route.path.startsWith('/console/vps')) return path === '/console/vps';
   if (route.path.startsWith('/console/orders')) return path === '/console/orders';
   if (route.path.startsWith('/console/billing')) return path === '/console/billing';
+  if (route.path.startsWith('/console/api-keys')) return path === '/console/api-keys';
   if (route.path.startsWith('/console/tickets')) return path === '/console/tickets';
   if (route.path.startsWith('/console/realname')) return path === '/console/realname';
   if (route.path.startsWith('/console/cart')) return path === '/console/cart';
@@ -394,6 +397,7 @@ const labelMap = {
   "/console/vps": "云服务器",
   "/console/orders": "订单管理",
   "/console/billing": "钱包充值",
+  "/console/api-keys": "API 管理",
   "/console/tickets": "工单中心",
   "/console/realname": "实名认证",
   "/console/cart": "购物车",
@@ -407,6 +411,7 @@ const selectedKey = computed(() => {
   if (route.path.startsWith("/console/vps")) return "/console/vps";
   if (route.path.startsWith("/console/orders")) return "/console/orders";
   if (route.path.startsWith("/console/billing")) return "/console/billing";
+  if (route.path.startsWith("/console/api-keys")) return "/console/api-keys";
   if (route.path.startsWith("/console/tickets")) return "/console/tickets";
   if (route.path.startsWith("/console/realname")) return "/console/realname";
   if (route.path.startsWith("/console/cart")) return "/console/cart";

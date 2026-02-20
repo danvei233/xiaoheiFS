@@ -107,10 +107,15 @@ func toOrderRow(order domain.Order) orderRow {
 		v := strings.TrimSpace(order.IdempotencyKey)
 		idem = &v
 	}
+	source := strings.TrimSpace(order.Source)
+	if source == "" {
+		source = "user_ui"
+	}
 	return orderRow{
 		ID:             order.ID,
 		UserID:         order.UserID,
 		OrderNo:        order.OrderNo,
+		Source:         source,
 		Status:         string(order.Status),
 		TotalAmount:    order.TotalAmount,
 		Currency:       order.Currency,
@@ -132,6 +137,7 @@ func fromOrderRow(r orderRow) domain.Order {
 		ID:             r.ID,
 		UserID:         r.UserID,
 		OrderNo:        r.OrderNo,
+		Source:         r.Source,
 		Status:         domain.OrderStatus(r.Status),
 		TotalAmount:    r.TotalAmount,
 		Currency:       r.Currency,

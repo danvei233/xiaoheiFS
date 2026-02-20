@@ -75,22 +75,23 @@ type PlanGroupDTO struct {
 }
 
 type PackageDTO struct {
-	ID                int64   `json:"id"`
-	GoodsTypeID       int64   `json:"goods_type_id"`
-	PlanGroupID       int64   `json:"plan_group_id"`
-	ProductID         int64   `json:"product_id"`
-	Name              string  `json:"name"`
-	Cores             int     `json:"cores"`
-	MemoryGB          int     `json:"memory_gb"`
-	DiskGB            int     `json:"disk_gb"`
-	BandwidthMB       int     `json:"bandwidth_mbps"`
-	CPUModel          string  `json:"cpu_model"`
-	MonthlyPrice      float64 `json:"monthly_price"`
-	PortNum           int     `json:"port_num"`
-	SortOrder         int     `json:"sort_order"`
-	Active            bool    `json:"active"`
-	Visible           bool    `json:"visible"`
-	CapacityRemaining int     `json:"capacity_remaining"`
+	ID                   int64   `json:"id"`
+	GoodsTypeID          int64   `json:"goods_type_id"`
+	PlanGroupID          int64   `json:"plan_group_id"`
+	ProductID            int64   `json:"product_id"`
+	IntegrationPackageID int64   `json:"integration_package_id"`
+	Name                 string  `json:"name"`
+	Cores                int     `json:"cores"`
+	MemoryGB             int     `json:"memory_gb"`
+	DiskGB               int     `json:"disk_gb"`
+	BandwidthMB          int     `json:"bandwidth_mbps"`
+	CPUModel             string  `json:"cpu_model"`
+	MonthlyPrice         float64 `json:"monthly_price"`
+	PortNum              int     `json:"port_num"`
+	SortOrder            int     `json:"sort_order"`
+	Active               bool    `json:"active"`
+	Visible              bool    `json:"visible"`
+	CapacityRemaining    int     `json:"capacity_remaining"`
 }
 
 type SystemImageDTO struct {
@@ -130,6 +131,7 @@ type OrderDTO struct {
 	ID             int64      `json:"id"`
 	UserID         int64      `json:"user_id"`
 	OrderNo        string     `json:"order_no"`
+	Source         string     `json:"source"`
 	Status         string     `json:"status"`
 	TotalAmount    float64    `json:"total_amount"`
 	Currency       string     `json:"currency"`
@@ -685,22 +687,23 @@ func toPlanGroupDTO(plan domain.PlanGroup) PlanGroupDTO {
 
 func toPackageDTO(pkg domain.Package) PackageDTO {
 	return PackageDTO{
-		ID:                pkg.ID,
-		GoodsTypeID:       pkg.GoodsTypeID,
-		PlanGroupID:       pkg.PlanGroupID,
-		ProductID:         pkg.ProductID,
-		Name:              pkg.Name,
-		Cores:             pkg.Cores,
-		MemoryGB:          pkg.MemoryGB,
-		DiskGB:            pkg.DiskGB,
-		BandwidthMB:       pkg.BandwidthMB,
-		CPUModel:          pkg.CPUModel,
-		MonthlyPrice:      centsToFloat(pkg.Monthly),
-		PortNum:           pkg.PortNum,
-		SortOrder:         pkg.SortOrder,
-		Active:            pkg.Active,
-		Visible:           pkg.Visible,
-		CapacityRemaining: pkg.CapacityRemaining,
+		ID:                   pkg.ID,
+		GoodsTypeID:          pkg.GoodsTypeID,
+		PlanGroupID:          pkg.PlanGroupID,
+		ProductID:            pkg.ProductID,
+		IntegrationPackageID: pkg.IntegrationPackageID,
+		Name:                 pkg.Name,
+		Cores:                pkg.Cores,
+		MemoryGB:             pkg.MemoryGB,
+		DiskGB:               pkg.DiskGB,
+		BandwidthMB:          pkg.BandwidthMB,
+		CPUModel:             pkg.CPUModel,
+		MonthlyPrice:         centsToFloat(pkg.Monthly),
+		PortNum:              pkg.PortNum,
+		SortOrder:            pkg.SortOrder,
+		Active:               pkg.Active,
+		Visible:              pkg.Visible,
+		CapacityRemaining:    pkg.CapacityRemaining,
 	}
 }
 
@@ -748,6 +751,7 @@ func toOrderDTO(order domain.Order) OrderDTO {
 		ID:             order.ID,
 		UserID:         order.UserID,
 		OrderNo:        order.OrderNo,
+		Source:         order.Source,
 		Status:         string(order.Status),
 		TotalAmount:    centsToFloat(order.TotalAmount),
 		Currency:       order.Currency,
@@ -1366,22 +1370,23 @@ func planGroupDTOToDomain(dto PlanGroupDTO) domain.PlanGroup {
 
 func packageDTOToDomain(dto PackageDTO) domain.Package {
 	return domain.Package{
-		ID:                dto.ID,
-		GoodsTypeID:       dto.GoodsTypeID,
-		PlanGroupID:       dto.PlanGroupID,
-		ProductID:         dto.ProductID,
-		Name:              dto.Name,
-		Cores:             dto.Cores,
-		MemoryGB:          dto.MemoryGB,
-		DiskGB:            dto.DiskGB,
-		BandwidthMB:       dto.BandwidthMB,
-		CPUModel:          dto.CPUModel,
-		Monthly:           floatToCents(dto.MonthlyPrice),
-		PortNum:           dto.PortNum,
-		SortOrder:         dto.SortOrder,
-		Active:            dto.Active,
-		Visible:           dto.Visible,
-		CapacityRemaining: dto.CapacityRemaining,
+		ID:                   dto.ID,
+		GoodsTypeID:          dto.GoodsTypeID,
+		PlanGroupID:          dto.PlanGroupID,
+		ProductID:            dto.ProductID,
+		IntegrationPackageID: dto.IntegrationPackageID,
+		Name:                 dto.Name,
+		Cores:                dto.Cores,
+		MemoryGB:             dto.MemoryGB,
+		DiskGB:               dto.DiskGB,
+		BandwidthMB:          dto.BandwidthMB,
+		CPUModel:             dto.CPUModel,
+		Monthly:              floatToCents(dto.MonthlyPrice),
+		PortNum:              dto.PortNum,
+		SortOrder:            dto.SortOrder,
+		Active:               dto.Active,
+		Visible:              dto.Visible,
+		CapacityRemaining:    dto.CapacityRemaining,
 	}
 }
 

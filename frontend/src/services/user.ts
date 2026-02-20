@@ -35,7 +35,8 @@ import type {
   CMSBlock,
   CMSPost,
   GoodsType,
-  CouponPreviewResponse
+  CouponPreviewResponse,
+  UserAPIKey
 } from "./types";
 
 export const getCaptcha = () => http.get<CaptchaResponse>("/api/v1/captcha");
@@ -171,6 +172,15 @@ export const requestVpsRefund = (id: number | string, payload: { reason?: string
 
 export const triggerRobotWebhook = (payload: Record<string, unknown>, headers?: Record<string, string>) =>
   http.post("/api/v1/integrations/robot/webhook", payload, withApiKey(headers));
+
+// Open API key management (JWT user)
+export const listUserApiKeys = (params?: Record<string, unknown>) =>
+  http.get<ApiList<UserAPIKey>>("/api/v1/open/me/api-keys", { params });
+export const createUserApiKey = (payload: { name: string; scopes?: string[] }) =>
+  http.post<{ item?: UserAPIKey; secret?: string }>("/api/v1/open/me/api-keys", payload);
+export const updateUserApiKeyStatus = (id: number | string, payload: { status: "active" | "disabled" }) =>
+  http.patch(`/api/v1/open/me/api-keys/${id}`, payload);
+export const deleteUserApiKey = (id: number | string) => http.delete(`/api/v1/open/me/api-keys/${id}`);
 
 // 实名认证
 export const getRealNameStatus = () => http.get<RealNameStatusResponse>("/api/v1/realname/status");

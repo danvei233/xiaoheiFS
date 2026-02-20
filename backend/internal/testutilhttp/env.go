@@ -135,7 +135,7 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 		PermissionSvc:     permissionSvc,
 		EmailSender:       adapteremail.NewSender(repoSQLite),
 	})
-	middleware := http.NewMiddleware(jwtSecret, nil, permissionSvc, authSvc, settingsSvc)
+	middleware := http.NewMiddleware(jwtSecret, nil, nil, permissionSvc, authSvc, settingsSvc)
 	server := http.NewServer(handler, middleware)
 
 	return &Env{

@@ -34,6 +34,7 @@ import (
 	appintegration "xiaoheiplay/internal/app/integration"
 	appmessage "xiaoheiplay/internal/app/message"
 	appnotification "xiaoheiplay/internal/app/notification"
+	appopenapi "xiaoheiplay/internal/app/openapi"
 	apporder "xiaoheiplay/internal/app/order"
 	apporderevent "xiaoheiplay/internal/app/orderevent"
 	apppasswordreset "xiaoheiplay/internal/app/passwordreset"
@@ -50,6 +51,7 @@ import (
 	appsystemstatus "xiaoheiplay/internal/app/systemstatus"
 	appticket "xiaoheiplay/internal/app/ticket"
 	appupload "xiaoheiplay/internal/app/upload"
+	appuserapikey "xiaoheiplay/internal/app/userapikey"
 	appusertier "xiaoheiplay/internal/app/usertier"
 	appvps "xiaoheiplay/internal/app/vps"
 	appwallet "xiaoheiplay/internal/app/wallet"
@@ -146,6 +148,7 @@ func main() {
 	adminSvc := appadmin.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	adminVPSSvc := appadminvps.NewService(repoSQLite, automationResolver, repoSQLite, repoSQLite, repoSQLite, messageSvc)
 	apiKeySvc := appapikey.NewService(repoSQLite)
+	userAPIKeySvc := appuserapikey.NewService(repoSQLite)
 	authSvc := appauth.NewService(repoSQLite, repoSQLite, repoSQLite)
 	notifySvc := appnotification.NewService(repoSQLite, repoSQLite, repoSQLite, emailSender, messageSvc)
 	integrationSvc := appintegration.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
@@ -188,9 +191,11 @@ func main() {
 	paymentRegistry.SetPluginManager(pluginMgr)
 	paymentRegistry.SetPluginPaymentMethodRepo(repoSQLite)
 	paymentSvc := apppayment.NewService(repoSQLite, repoSQLite, repoSQLite, paymentRegistry, repoSQLite, orderSvc, eventBus)
+	openAPISvc := appopenapi.NewService(orderSvc, paymentSvc, repoSQLite)
 	statusSvc := appsystemstatus.NewService(system.NewProvider())
 	taskSvc := appscheduledtask.NewService(repoSQLite, vpsSvc, orderSvc, notifySvc, repoSQLite, realnameSvc)
 	taskSvc.SetUserTierService(userTierSvc)
+	taskSvc.SetIntegrationService(integrationSvc)
 	probeHub := appprobe.NewHub()
 	probeSvc := appprobe.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	go taskSvc.Start(context.Background())
@@ -234,12 +239,14 @@ func main() {
 		CouponSvc:         couponSvc,
 		SMSSender:         pluginSMSSender,
 		TaskSvc:           taskSvc,
+		UserAPIKeySvc:     userAPIKeySvc,
+		OpenAPISvc:        openAPISvc,
 		ProbeSvc:          probeSvc,
 		ProbeHub:          probeHub,
 		EmailSender:       emailSender,
 		RobotNotifier:     robotNotifier,
 	})
-	middleware := http.NewMiddleware(cfg.JWTSecret, apiKeySvc, permissionSvc, authSvc, settingsSvc)
+	middleware := http.NewMiddleware(cfg.JWTSecret, apiKeySvc, userAPIKeySvc, permissionSvc, authSvc, settingsSvc)
 	server := http.NewServer(handler, middleware)
 
 	routeDefinitions := permissions.BuildFromRoutes(server.Engine.Routes())

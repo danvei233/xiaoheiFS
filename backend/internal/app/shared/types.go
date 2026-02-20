@@ -275,14 +275,15 @@ type AutomationArea struct {
 }
 
 type AutomationProduct struct {
-	ID        int64
-	Name      string
-	CPU       int
-	MemoryGB  int
-	DiskGB    int
-	Bandwidth int
-	Price     int64
-	PortNum   int
+	ID                int64
+	Name              string
+	CPU               int
+	MemoryGB          int
+	DiskGB            int
+	Bandwidth         int
+	Price             int64
+	PortNum           int
+	CapacityRemaining int
 }
 
 type AutomationMonitor struct {

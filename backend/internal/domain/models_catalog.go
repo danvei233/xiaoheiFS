@@ -52,22 +52,23 @@ type PlanGroup struct {
 }
 
 type Package struct {
-	ID                int64
-	GoodsTypeID       int64
-	PlanGroupID       int64
-	ProductID         int64
-	Name              string
-	Cores             int
-	MemoryGB          int
-	DiskGB            int
-	BandwidthMB       int
-	CPUModel          string
-	Monthly           int64
-	PortNum           int
-	SortOrder         int
-	Active            bool
-	Visible           bool
-	CapacityRemaining int
+	ID                   int64
+	GoodsTypeID          int64
+	PlanGroupID          int64
+	ProductID            int64
+	IntegrationPackageID int64
+	Name                 string
+	Cores                int
+	MemoryGB             int
+	DiskGB               int
+	BandwidthMB          int
+	CPUModel             string
+	Monthly              int64
+	PortNum              int
+	SortOrder            int
+	Active               bool
+	Visible              bool
+	CapacityRemaining    int
 }
 
 type SystemImage struct {

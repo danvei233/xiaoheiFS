@@ -11,6 +11,7 @@ import (
 	appcms "xiaoheiplay/internal/app/cms"
 	appgoodstype "xiaoheiplay/internal/app/goodstype"
 	appmessage "xiaoheiplay/internal/app/message"
+	appopenapi "xiaoheiplay/internal/app/openapi"
 	apppasswordreset "xiaoheiplay/internal/app/passwordreset"
 	apppayment "xiaoheiplay/internal/app/payment"
 	apppermission "xiaoheiplay/internal/app/permission"
@@ -20,6 +21,7 @@ import (
 	apprealname "xiaoheiplay/internal/app/realname"
 	appscheduledtask "xiaoheiplay/internal/app/scheduledtask"
 	appticket "xiaoheiplay/internal/app/ticket"
+	appuserapikey "xiaoheiplay/internal/app/userapikey"
 	appwallet "xiaoheiplay/internal/app/wallet"
 	appwalletorder "xiaoheiplay/internal/app/walletorder"
 )
@@ -84,6 +86,8 @@ type HandlerDeps struct {
 	UserTierSvc       UserTierService
 	CouponSvc         CouponService
 	TaskSvc           *appscheduledtask.Service
+	UserAPIKeySvc     *appuserapikey.Service
+	OpenAPISvc        *appopenapi.Service
 	ProbeSvc          *appprobe.Service
 	ProbeHub          *appprobe.Hub
 	GeoResolver       GeoResolver
@@ -125,6 +129,8 @@ type Handler struct {
 	userTierSvc       UserTierService
 	couponSvc         CouponService
 	taskSvc           *appscheduledtask.Service
+	userAPIKeySvc     *appuserapikey.Service
+	openAPISvc        *appopenapi.Service
 	probeSvc          *appprobe.Service
 	probeHub          *appprobe.Hub
 	geoResolver       GeoResolver
@@ -224,6 +230,8 @@ func NewHandler(deps HandlerDeps) *Handler {
 		userTierSvc:       deps.UserTierSvc,
 		couponSvc:         deps.CouponSvc,
 		taskSvc:           deps.TaskSvc,
+		userAPIKeySvc:     deps.UserAPIKeySvc,
+		openAPISvc:        deps.OpenAPISvc,
 		probeSvc:          deps.ProbeSvc,
 		probeHub:          deps.ProbeHub,
 		geoResolver:       deps.GeoResolver,

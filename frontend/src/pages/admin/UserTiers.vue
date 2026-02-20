@@ -20,6 +20,12 @@
               <span>{{ record.name }}</span>
             </a-space>
           </template>
+          <template v-else-if="column.key === 'icon'">
+            <a-space class="tier-icon-row">
+              <component :is="getIconComponent(record.icon)" class="tier-icon" />
+              <span>{{ iconLabelByValue(record.icon) }}</span>
+            </a-space>
+          </template>
           <template v-else-if="column.key === 'auto_approve_enabled'">
             <a-tag :color="record.auto_approve_enabled ? 'green' : 'default'">{{ record.auto_approve_enabled ? "开启" : "关闭" }}</a-tag>
           </template>
@@ -44,7 +50,7 @@
         <a-tabs v-model:activeKey="activeTab">
           <a-tab-pane key="discount" tab="优惠策略">
             <div class="toolbar">
-              <a-button type="primary" @click="openCreateDiscount">新增优惠规则</a-button>
+              <a-button type="primary" :disabled="selectedGroup?.is_default" @click="openCreateDiscount">新增优惠规则</a-button>
             </div>
             <a-table
               :columns="discountColumns"
@@ -59,8 +65,8 @@
                 </template>
                 <template v-else-if="column.key === 'action'">
                   <a-space>
-                    <a-button type="link" @click="openEditDiscount(record)">编辑</a-button>
-                    <a-button type="link" danger @click="removeDiscount(record)">删除</a-button>
+                    <a-button type="link" :disabled="selectedGroup?.is_default" @click="openEditDiscount(record)">编辑</a-button>
+                    <a-button type="link" danger :disabled="selectedGroup?.is_default" @click="removeDiscount(record)">删除</a-button>
                   </a-space>
                 </template>
               </template>
@@ -68,14 +74,17 @@
           </a-tab-pane>
           <a-tab-pane key="auto" tab="自动审批条件">
             <div class="toolbar">
-              <a-button type="primary" @click="openCreateAuto">新增审批条件</a-button>
+              <a-button type="primary" :disabled="selectedGroup?.is_default" @click="openCreateAuto">新增审批条件</a-button>
             </div>
             <a-table :columns="autoColumns" :data-source="autoRules" :pagination="false" row-key="id" :loading="loading.autoRules">
               <template #bodyCell="{ column, record }">
-                <template v-if="column.key === 'action'">
+                <template v-if="column.key === 'conditions_json'">
+                  {{ renderAutoConditions(record.conditions_json) }}
+                </template>
+                <template v-else-if="column.key === 'action'">
                   <a-space>
-                    <a-button type="link" @click="openEditAuto(record)">编辑</a-button>
-                    <a-button type="link" danger @click="removeAuto(record)">删除</a-button>
+                    <a-button type="link" :disabled="selectedGroup?.is_default" @click="openEditAuto(record)">编辑</a-button>
+                    <a-button type="link" danger :disabled="selectedGroup?.is_default" @click="removeAuto(record)">删除</a-button>
                   </a-space>
                 </template>
               </template>
@@ -91,14 +100,19 @@
           <a-input v-model:value="groupForm.name" />
         </a-form-item>
         <a-form-item label="颜色">
-          <a-input v-model:value="groupForm.color" placeholder="#1677ff" />
+          <div class="color-picker-row">
+            <input v-model="groupForm.color" class="color-picker-input" type="color" />
+            <a-tag>{{ groupForm.color || "#1677ff" }}</a-tag>
+          </div>
         </a-form-item>
         <a-form-item label="图标">
-          <a-select v-model:value="groupForm.icon">
-            <a-select-option value="badge">badge</a-select-option>
-            <a-select-option value="star">star</a-select-option>
-            <a-select-option value="crown">crown</a-select-option>
-            <a-select-option value="rocket">rocket</a-select-option>
+          <a-select v-model:value="groupForm.icon" option-filter-prop="label" show-search>
+            <a-select-option v-for="it in iconOptions" :key="it.value" :value="it.value" :label="it.label">
+              <a-space class="tier-icon-row">
+                <component :is="it.component" class="tier-icon" />
+                <span>{{ it.label }}</span>
+              </a-space>
+            </a-select-option>
           </a-select>
         </a-form-item>
         <a-form-item label="优先级">
@@ -118,11 +132,18 @@
             <a-select-option value="all_addons">全部附加项</a-select-option>
             <a-select-option value="goods_type">类型</a-select-option>
             <a-select-option value="goods_type_region">类型-地区</a-select-option>
-            <a-select-option value="goods_type_region_plan_group">类型-地区-线路</a-select-option>
+            <a-select-option value="plan_group">类型-地区-线路</a-select-option>
             <a-select-option value="package">套餐</a-select-option>
             <a-select-option value="addon_config">附加项配置</a-select-option>
           </a-select>
         </a-form-item>
+        <a-alert
+          type="info"
+          show-icon
+          class="discount-help"
+          message="折扣说明"
+          description="折扣字段是减免值(‰)。计算公式：最终价 = 原价 × (1 - 折扣/10000)。示例：原价10元，填0=10元，填1000=9元，填2000=8元。"
+        />
         <a-row v-if="needsTargetSelection" :gutter="12">
           <a-col :span="6" v-if="needGoodsType">
             <a-form-item label="类型">
@@ -180,14 +201,14 @@
           </a-col>
         </a-row>
         <a-row :gutter="12">
-          <a-col :span="8"><a-form-item label="折扣(‰)"><a-input-number v-model:value="discountForm.discount_permille" style="width: 100%" :min="0" :max="1000" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="折扣(‰)"><a-input-number v-model:value="discountForm.discount_permille" style="width: 100%" :min="0" :max="10000" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="固定价格(分,套餐)"><a-input-number v-model:value="discountForm.fixed_price" style="width: 100%" :min="0" /></a-form-item></a-col>
-          <a-col :span="8"><a-form-item label="核心附加折扣(‰)"><a-input-number v-model:value="discountForm.add_core_permille" style="width: 100%" :min="0" :max="1000" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="核心附加折扣(‰)"><a-input-number v-model:value="discountForm.add_core_permille" style="width: 100%" :min="0" :max="10000" /></a-form-item></a-col>
         </a-row>
         <a-row :gutter="12">
-          <a-col :span="8"><a-form-item label="内存附加折扣(‰)"><a-input-number v-model:value="discountForm.add_mem_permille" style="width: 100%" :min="0" :max="1000" /></a-form-item></a-col>
-          <a-col :span="8"><a-form-item label="磁盘附加折扣(‰)"><a-input-number v-model:value="discountForm.add_disk_permille" style="width: 100%" :min="0" :max="1000" /></a-form-item></a-col>
-          <a-col :span="8"><a-form-item label="带宽附加折扣(‰)"><a-input-number v-model:value="discountForm.add_bw_permille" style="width: 100%" :min="0" :max="1000" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="内存附加折扣(‰)"><a-input-number v-model:value="discountForm.add_mem_permille" style="width: 100%" :min="0" :max="10000" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="磁盘附加折扣(‰)"><a-input-number v-model:value="discountForm.add_disk_permille" style="width: 100%" :min="0" :max="10000" /></a-form-item></a-col>
+          <a-col :span="8"><a-form-item label="带宽附加折扣(‰)"><a-input-number v-model:value="discountForm.add_bw_permille" style="width: 100%" :min="0" :max="10000" /></a-form-item></a-col>
         </a-row>
       </a-form>
     </a-modal>
@@ -198,8 +219,32 @@
           <a-col :span="12"><a-form-item label="时长(天,-1无限)"><a-input-number v-model:value="autoForm.duration_days" style="width: 100%" :min="-1" /></a-form-item></a-col>
           <a-col :span="12"><a-form-item label="排序"><a-input-number v-model:value="autoForm.sort_order" style="width: 100%" :min="0" /></a-form-item></a-col>
         </a-row>
-        <a-form-item label="条件(JSON)">
-          <a-textarea v-model:value="autoForm.conditions_json" :rows="7" />
+        <a-form-item label="审批条件">
+          <div class="auto-hint">同一条规则内为 AND；不同规则记录之间为 OR。</div>
+          <div class="auto-condition-list">
+            <div v-for="(item, idx) in autoFormConditions" :key="idx" class="auto-condition-row">
+              <a-select
+                v-model:value="item.metric"
+                class="auto-select"
+                :options="metricOptions"
+                placeholder="条件数"
+              />
+              <a-select
+                v-model:value="item.operator"
+                class="auto-select auto-operator"
+                :options="operatorOptions"
+                placeholder="算符"
+              />
+              <a-input-number
+                v-model:value="item.value"
+                class="auto-input"
+                placeholder="目标数"
+                style="width: 100%"
+              />
+              <a-button danger @click="removeAutoCondition(idx)">删除</a-button>
+            </div>
+            <a-button @click="addAutoCondition">添加条件</a-button>
+          </div>
         </a-form-item>
       </a-form>
     </a-modal>
@@ -209,6 +254,17 @@
 <script setup>
 import { computed, reactive, ref } from "vue";
 import { Modal, message } from "ant-design-vue";
+import {
+  CrownOutlined,
+  FireOutlined,
+  GiftOutlined,
+  HeartOutlined,
+  RocketOutlined,
+  SafetyCertificateOutlined,
+  StarOutlined,
+  ThunderboltOutlined,
+  TrophyOutlined
+} from "@ant-design/icons-vue";
 import {
   createUserTierAutoRule,
   createUserTierDiscountRule,
@@ -246,7 +302,7 @@ const packages = ref([]);
 
 const groupColumns = [
   { title: "名称", key: "name" },
-  { title: "图标", dataIndex: "icon", key: "icon", width: 90 },
+  { title: "图标", dataIndex: "icon", key: "icon", width: 130 },
   { title: "优先级", dataIndex: "priority", key: "priority", width: 90 },
   { title: "自动审批", key: "auto_approve_enabled", width: 100 },
   { title: "默认组", key: "is_default", width: 90 },
@@ -287,12 +343,83 @@ const discountForm = reactive({
   add_bw_permille: 1000
 });
 const autoForm = reactive({ duration_days: -1, sort_order: 10, conditions_json: "[]" });
+const autoFormConditions = ref([]);
+const iconOptions = [
+  { value: "badge", label: "认证徽章", component: SafetyCertificateOutlined },
+  { value: "star", label: "星标", component: StarOutlined },
+  { value: "crown", label: "皇冠", component: CrownOutlined },
+  { value: "rocket", label: "火箭", component: RocketOutlined },
+  { value: "trophy", label: "奖杯", component: TrophyOutlined },
+  { value: "fire", label: "火焰", component: FireOutlined },
+  { value: "thunder", label: "闪电", component: ThunderboltOutlined },
+  { value: "gift", label: "礼物", component: GiftOutlined },
+  { value: "heart", label: "爱心", component: HeartOutlined }
+];
 
 const renderPermille = (permille) => `${Number(permille || 0) / 10}%`;
 const readItems = (res) => res?.data?.items || res?.items || [];
+const metricOptions = [
+  { label: "注册时长(月)", value: "register_months" },
+  { label: "用户钱包余额(元)", value: "wallet_balance" }
+];
+const operatorOptions = [
+  { label: "大于", value: "gt" },
+  { label: "小于", value: "lt" },
+  { label: "等于", value: "eq" }
+];
+const isValidMetric = (v) => metricOptions.some((it) => it.value === v);
+const isValidOperator = (v) => operatorOptions.some((it) => it.value === v);
+const parseConditionsJSON = (raw) => {
+  const text = String(raw || "").trim();
+  if (!text) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(text);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((it) => ({
+        metric: String(it?.metric || "").trim(),
+        operator: String(it?.operator || "").trim(),
+        value: Number(it?.value ?? 0)
+      }))
+      .filter((it) => isValidMetric(it.metric) && isValidOperator(it.operator) && Number.isFinite(it.value));
+  } catch (_) {
+    return [];
+  }
+};
+const addAutoCondition = () => {
+  autoFormConditions.value.push({ metric: "register_months", operator: "gt", value: 0 });
+};
+const removeAutoCondition = (idx) => {
+  autoFormConditions.value.splice(idx, 1);
+};
+const metricLabel = (metric) => {
+  const found = metricOptions.find((it) => it.value === metric);
+  return found?.label || metric || "-";
+};
+const operatorLabel = (operator) => {
+  const found = operatorOptions.find((it) => it.value === operator);
+  return found?.label || operator || "-";
+};
+const renderAutoConditions = (raw) => {
+  const conditions = parseConditionsJSON(raw);
+  if (!conditions.length) {
+    return "任意";
+  }
+  return conditions.map((it) => `${metricLabel(it.metric)} ${operatorLabel(it.operator)} ${it.value}`).join(" AND ");
+};
 const toNumber = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+};
+const normalizeScope = (scope) => {
+  if (scope === "goods_type_region_plan_group") {
+    return "plan_group";
+  }
+  return scope || "all";
 };
 const normalizeGoodsType = (row) => ({
   id: Number(row?.id ?? row?.ID ?? 0) || 0,
@@ -365,12 +492,12 @@ const packageOptions = computed(() => {
 });
 
 const needGoodsType = computed(() =>
-  ["goods_type", "goods_type_region", "goods_type_region_plan_group", "addon_config", "package"].includes(discountForm.scope)
+  ["goods_type", "goods_type_region", "plan_group", "addon_config", "package"].includes(discountForm.scope)
 );
 const needRegion = computed(() =>
-  ["goods_type_region", "goods_type_region_plan_group", "addon_config", "package"].includes(discountForm.scope)
+  ["goods_type_region", "plan_group", "addon_config", "package"].includes(discountForm.scope)
 );
-const needPlanGroup = computed(() => ["goods_type_region_plan_group", "addon_config", "package"].includes(discountForm.scope));
+const needPlanGroup = computed(() => ["plan_group", "addon_config", "package"].includes(discountForm.scope));
 const needPackage = computed(() => discountForm.scope === "package");
 const needsTargetSelection = computed(() => needGoodsType.value || needRegion.value || needPlanGroup.value || needPackage.value);
 
@@ -384,6 +511,16 @@ const renderRuleTarget = (record) => {
   const plan = planID > 0 ? planGroupNameMap.value.get(planID) || `#${planID}` : "-";
   const pkg = pkgID > 0 ? packageNameMap.value.get(pkgID) || `#${pkgID}` : "-";
   return `${gt}/${region}/${plan}/${pkg}`;
+};
+const getIconComponent = (name) => {
+  const key = String(name || "").trim().toLowerCase();
+  const found = iconOptions.find((it) => it.value === key);
+  return found?.component || SafetyCertificateOutlined;
+};
+const iconLabelByValue = (name) => {
+  const key = String(name || "").trim().toLowerCase();
+  const found = iconOptions.find((it) => it.value === key);
+  return found?.label || key || "-";
 };
 
 const loadGoodsTypes = async () => {
@@ -603,7 +740,7 @@ const openCreateDiscount = () => {
 
 const openEditDiscount = async (record) => {
   Object.assign(discountForm, {
-    scope: record.scope || "all",
+    scope: normalizeScope(record.scope),
     goods_type_id: record.goods_type_id || 0,
     region_id: record.region_id || 0,
     plan_group_id: record.plan_group_id || 0,
@@ -629,6 +766,10 @@ const openEditDiscount = async (record) => {
 const saveDiscount = async () => {
   try {
     if (!selectedGroup.value?.id) return;
+    if (selectedGroup.value?.is_default) {
+      message.error("默认组不允许配置规则");
+      return;
+    }
     if (needGoodsType.value && !toNumber(discountForm.goods_type_id)) {
       message.error("请选择类型");
       return;
@@ -646,11 +787,12 @@ const saveDiscount = async () => {
       return;
     }
     normalizeDiscountTargetByScope();
+    const payload = { ...discountForm, scope: normalizeScope(discountForm.scope) };
     if (discountModal.editing?.id) {
-      await updateUserTierDiscountRule(selectedGroup.value.id, discountModal.editing.id, { ...discountForm });
+      await updateUserTierDiscountRule(selectedGroup.value.id, discountModal.editing.id, payload);
       message.success("优惠规则已更新");
     } else {
-      await createUserTierDiscountRule(selectedGroup.value.id, { ...discountForm });
+      await createUserTierDiscountRule(selectedGroup.value.id, payload);
       message.success("优惠规则已创建");
     }
     discountModal.open = false;
@@ -678,16 +820,19 @@ const removeDiscount = (record) => {
 
 const openCreateAuto = () => {
   Object.assign(autoForm, { duration_days: -1, sort_order: 10, conditions_json: "[]" });
+  autoFormConditions.value = [{ metric: "register_months", operator: "gt", value: 0 }];
   autoModal.editing = null;
   autoModal.open = true;
 };
 
 const openEditAuto = (record) => {
+  const conditions = parseConditionsJSON(record.conditions_json);
   Object.assign(autoForm, {
     duration_days: record.duration_days ?? -1,
     sort_order: record.sort_order ?? 10,
     conditions_json: record.conditions_json || "[]"
   });
+  autoFormConditions.value = conditions;
   autoModal.editing = record;
   autoModal.open = true;
 };
@@ -695,6 +840,23 @@ const openEditAuto = (record) => {
 const saveAuto = async () => {
   try {
     if (!selectedGroup.value?.id) return;
+    if (selectedGroup.value?.is_default) {
+      message.error("默认组不允许配置审批规则");
+      return;
+    }
+    const conditions = autoFormConditions.value.map((it) => ({
+      metric: String(it.metric || "").trim(),
+      operator: String(it.operator || "").trim(),
+      value: Number(it.value)
+    }));
+    const invalid = conditions.some(
+      (it) => !isValidMetric(it.metric) || !isValidOperator(it.operator) || !Number.isFinite(it.value)
+    );
+    if (invalid) {
+      message.error("审批条件存在无效项");
+      return;
+    }
+    autoForm.conditions_json = JSON.stringify(conditions);
     if (autoModal.editing?.id) {
       await updateUserTierAutoRule(selectedGroup.value.id, autoModal.editing.id, { ...autoForm });
       message.success("审批规则已更新");
@@ -738,10 +900,72 @@ loadGoodsTypes();
   margin-bottom: 12px;
 }
 
+.discount-help {
+  margin-bottom: 12px;
+}
+
 .dot {
   width: 10px;
   height: 10px;
   border-radius: 999px;
   display: inline-block;
+}
+
+.tier-icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tier-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.color-picker-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.color-picker-input {
+  width: 44px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.auto-hint {
+  margin-bottom: 8px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.auto-condition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auto-condition-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.auto-select {
+  width: 100%;
+}
+
+.auto-operator {
+  min-width: 120px;
+}
+
+.auto-input {
+  width: 100%;
 }
 </style>

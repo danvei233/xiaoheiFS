@@ -163,6 +163,15 @@ type APIKeyRepository interface {
 	TouchAPIKey(ctx context.Context, id int64) error
 }
 
+type UserAPIKeyRepository interface {
+	CreateUserAPIKey(ctx context.Context, key *domain.UserAPIKey) error
+	GetUserAPIKeyByAKID(ctx context.Context, akid string) (domain.UserAPIKey, error)
+	ListUserAPIKeys(ctx context.Context, userID int64, limit, offset int) ([]domain.UserAPIKey, int, error)
+	UpdateUserAPIKeyStatus(ctx context.Context, userID, id int64, status domain.APIKeyStatus) error
+	DeleteUserAPIKey(ctx context.Context, userID, id int64) error
+	TouchUserAPIKey(ctx context.Context, id int64) error
+}
+
 type SettingsRepository interface {
 	GetSetting(ctx context.Context, key string) (domain.Setting, error)
 	UpsertSetting(ctx context.Context, setting domain.Setting) error

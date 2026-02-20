@@ -296,15 +296,20 @@ func (c *PluginInstanceClient) ListProducts(ctx context.Context, lineID int64) (
 	resp := respAny.(*pluginv1.ListPackagesResponse)
 	out := make([]appshared.AutomationProduct, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
+		capacityRemaining := -1
+		if it.CapacityRemaining != nil {
+			capacityRemaining = int(it.GetCapacityRemaining())
+		}
 		out = append(out, appshared.AutomationProduct{
-			ID:        it.GetId(),
-			Name:      it.GetName(),
-			CPU:       int(it.GetCpu()),
-			MemoryGB:  int(it.GetMemoryGb()),
-			DiskGB:    int(it.GetDiskGb()),
-			Bandwidth: int(it.GetBandwidthMbps()),
-			Price:     it.GetMonthlyPrice(),
-			PortNum:   int(it.GetPortNum()),
+			ID:                it.GetId(),
+			Name:              it.GetName(),
+			CPU:               int(it.GetCpu()),
+			MemoryGB:          int(it.GetMemoryGb()),
+			DiskGB:            int(it.GetDiskGb()),
+			Bandwidth:         int(it.GetBandwidthMbps()),
+			Price:             it.GetMonthlyPrice(),
+			PortNum:           int(it.GetPortNum()),
+			CapacityRemaining: capacityRemaining,
 		})
 	}
 	return out, nil

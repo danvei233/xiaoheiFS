@@ -42,6 +42,7 @@ func (s *Service) EnsureDefaultGroup(ctx context.Context) (domain.UserTierGroup,
 	}
 	for _, g := range groups {
 		if g.IsDefault {
+			s.ensureDefaultGroupNoDiscountRules(ctx, g.ID)
 			return g, nil
 		}
 	}
@@ -67,6 +68,22 @@ func (s *Service) EnsureDefaultGroup(ctx context.Context) (domain.UserTierGroup,
 	return group, nil
 }
 
+func (s *Service) ensureDefaultGroupNoDiscountRules(ctx context.Context, groupID int64) {
+	rules, err := s.repo.ListUserTierDiscountRules(ctx, groupID)
+	if err != nil || len(rules) == 0 {
+		return
+	}
+	changed := false
+	for _, rule := range rules {
+		if derr := s.repo.DeleteUserTierDiscountRule(ctx, rule.ID); derr == nil {
+			changed = true
+		}
+	}
+	if changed {
+		s.RebuildGroupPriceCacheAsync(groupID)
+	}
+}
+
 func (s *Service) EnsureUserHasGroup(ctx context.Context, userID int64) error {
 	if userID <= 0 {
 		return appshared.ErrInvalidInput
@@ -78,6 +95,11 @@ func (s *Service) EnsureUserHasGroup(ctx context.Context, userID int64) error {
 	user, err := s.users.GetUserByID(ctx, userID)
 	if err != nil {
 		return err
+	}
+	if user.Role == domain.UserRoleUser && user.UserTierGroupID != nil && *user.UserTierGroupID > 0 {
+		if _, gerr := s.repo.GetUserTierGroup(ctx, *user.UserTierGroupID); gerr == nil {
+			return nil
+		}
 	}
 	_, err = s.assignDefaultGroupIfMissing(ctx, user, def.ID)
 	return err
@@ -129,7 +151,13 @@ func (s *Service) assignDefaultGroupIfMissing(ctx context.Context, user domain.U
 	if user.Role != domain.UserRoleUser {
 		return false, nil
 	}
+	needsAssign := true
 	if user.UserTierGroupID != nil && *user.UserTierGroupID > 0 {
+		if _, err := s.repo.GetUserTierGroup(ctx, *user.UserTierGroupID); err == nil {
+			needsAssign = false
+		}
+	}
+	if !needsAssign {
 		return false, nil
 	}
 	member := domain.UserTierMembership{

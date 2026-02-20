@@ -166,6 +166,17 @@ export interface User {
   user_tier_expire_at?: string;
 }
 
+export interface UserAPIKey {
+  id?: number;
+  name?: string;
+  akid?: string;
+  status?: string;
+  scopes_json?: string;
+  last_used_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Region {
   id?: number;
   goods_type_id?: number;

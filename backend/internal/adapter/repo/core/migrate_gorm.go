@@ -25,6 +25,7 @@ func migrateGorm(db *gorm.DB) error {
 		&orderEventRow{},
 		&adminAuditLogRow{},
 		&apiKeyRow{},
+		&userAPIKeyRow{},
 		&settingRow{},
 		&emailTemplateRow{},
 		&orderPaymentRow{},

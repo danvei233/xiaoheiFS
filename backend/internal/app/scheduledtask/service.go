@@ -60,6 +60,10 @@ type userTierTaskService interface {
 	ReconcileExpired(ctx context.Context, limit int) (int, error)
 }
 
+type integrationInventorySyncService interface {
+	SyncAutomationInventoryForGoodsType(ctx context.Context, goodsTypeID int64) (int, error)
+}
+
 type taskRuntime struct {
 	lastRun     time.Time
 	running     bool
@@ -69,15 +73,16 @@ type taskRuntime struct {
 }
 
 type Service struct {
-	settings appports.SettingsRepository
-	vps      vpsTaskService
-	orders   orderTaskService
-	notify   notificationTaskService
-	realname realnameTaskService
-	userTier userTierTaskService
-	runs     appports.ScheduledTaskRunRepository
-	mu       sync.Mutex
-	runtime  map[string]*taskRuntime
+	settings    appports.SettingsRepository
+	vps         vpsTaskService
+	orders      orderTaskService
+	notify      notificationTaskService
+	realname    realnameTaskService
+	userTier    userTierTaskService
+	integration integrationInventorySyncService
+	runs        appports.ScheduledTaskRunRepository
+	mu          sync.Mutex
+	runtime     map[string]*taskRuntime
 }
 
 func NewService(settings appports.SettingsRepository, vps vpsTaskService, orders orderTaskService, notify notificationTaskService, runs appports.ScheduledTaskRunRepository, realname ...realnameTaskService) *Service {
@@ -98,6 +103,10 @@ func NewService(settings appports.SettingsRepository, vps vpsTaskService, orders
 
 func (s *Service) SetUserTierService(svc userTierTaskService) {
 	s.userTier = svc
+}
+
+func (s *Service) SetIntegrationService(svc integrationInventorySyncService) {
+	s.integration = svc
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -288,6 +297,10 @@ func (s *Service) executeTask(ctx context.Context, cfg ScheduledTaskConfig) {
 		case "user_tier_expire_reconcile":
 			if s.userTier != nil {
 				_, runErr = s.userTier.ReconcileExpired(ctx, 500)
+			}
+		case "integration_inventory_sync":
+			if s.integration != nil {
+				_, runErr = s.integration.SyncAutomationInventoryForGoodsType(ctx, 0)
 			}
 		}
 	}()
@@ -498,6 +511,14 @@ func defaultTaskDefinitions() map[string]ScheduledTaskConfig {
 			Enabled:     true,
 			Strategy:    TaskStrategyInterval,
 			IntervalSec: 60,
+		},
+		"integration_inventory_sync": {
+			Key:         "integration_inventory_sync",
+			Name:        "Integration Inventory Sync",
+			Description: "Sync package inventory only, without touching structure or pricing.",
+			Enabled:     false,
+			Strategy:    TaskStrategyInterval,
+			IntervalSec: 300,
 		},
 	}
 }
