@@ -16,6 +16,7 @@ import type {
   Line,
   SystemImage,
   User,
+  UserTierSelf,
   UserDashboard,
   VPSInstance,
   MonitorResponse,
@@ -33,7 +34,8 @@ import type {
   RealNameVerification,
   CMSBlock,
   CMSPost,
-  GoodsType
+  GoodsType,
+  CouponPreviewResponse
 } from "./types";
 
 export const getCaptcha = () => http.get<CaptchaResponse>("/api/v1/captcha");
@@ -57,6 +59,7 @@ export const runInstall = (payload: Record<string, unknown>) => http.post("/api/
 export const userRegister = (payload: Record<string, unknown>) => http.post("/api/v1/auth/register", payload);
 export const userLogin = (payload: Record<string, unknown>) => http.post<AuthResponse>("/api/v1/auth/login", payload);
 export const getMe = () => http.get<User>("/api/v1/me");
+export const getMyUserTier = () => http.get<UserTierSelf>("/api/v1/me/user-tier");
 export const updateMe = (payload: Record<string, unknown>) => http.patch<User>("/api/v1/me", payload);
 
 export const getDashboard = () => http.get<UserDashboard>("/api/v1/dashboard");
@@ -81,10 +84,16 @@ export const createOrderFromCart = (idempotencyKey?: string) =>
   http.post<OrderCreateResponse>("/api/v1/orders", null, {
     headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}
   });
+export const createOrderFromCartWithCoupon = (payload?: { coupon_code?: string }, idempotencyKey?: string) =>
+  http.post<OrderCreateResponse>("/api/v1/orders", payload || null, {
+    headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}
+  });
 export const createOrder = (payload: OrderCreateRequest, idempotencyKey?: string) =>
   http.post<OrderCreateResponse>("/api/v1/orders/items", payload, {
     headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}
   });
+export const previewCoupon = (payload: { coupon_code: string; items?: OrderCreateRequest["items"] }) =>
+  http.post<CouponPreviewResponse>("/api/v1/coupons/preview", payload);
 export const getOrderDetail = (id: number | string) => http.get<OrderDetailResponse>(`/api/v1/orders/${id}`);
 export const refreshOrder = (id: number | string) => http.post(`/api/v1/orders/${id}/refresh`);
 export const cancelOrder = (id: number | string) => http.post(`/api/v1/orders/${id}/cancel`);

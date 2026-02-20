@@ -219,6 +219,53 @@ type PermissionGroupRepository interface {
 	DeletePermissionGroup(ctx context.Context, id int64) error
 }
 
+type UserTierRepository interface {
+	ListUserTierGroups(ctx context.Context) ([]domain.UserTierGroup, error)
+	GetUserTierGroup(ctx context.Context, id int64) (domain.UserTierGroup, error)
+	CreateUserTierGroup(ctx context.Context, group *domain.UserTierGroup) error
+	UpdateUserTierGroup(ctx context.Context, group domain.UserTierGroup) error
+	DeleteUserTierGroup(ctx context.Context, id int64) error
+
+	ListUserTierDiscountRules(ctx context.Context, groupID int64) ([]domain.UserTierDiscountRule, error)
+	CreateUserTierDiscountRule(ctx context.Context, rule *domain.UserTierDiscountRule) error
+	UpdateUserTierDiscountRule(ctx context.Context, rule domain.UserTierDiscountRule) error
+	DeleteUserTierDiscountRule(ctx context.Context, id int64) error
+
+	ListUserTierAutoRules(ctx context.Context, groupID int64) ([]domain.UserTierAutoRule, error)
+	CreateUserTierAutoRule(ctx context.Context, rule *domain.UserTierAutoRule) error
+	UpdateUserTierAutoRule(ctx context.Context, rule domain.UserTierAutoRule) error
+	DeleteUserTierAutoRule(ctx context.Context, id int64) error
+
+	GetUserTierMembership(ctx context.Context, userID int64) (domain.UserTierMembership, error)
+	UpsertUserTierMembership(ctx context.Context, item *domain.UserTierMembership) error
+	ClearUserTierMembership(ctx context.Context, userID int64) error
+	ListExpiredUserTierMemberships(ctx context.Context, now time.Time, limit int) ([]domain.UserTierMembership, error)
+
+	GetUserTierPriceCache(ctx context.Context, groupID int64, packageID int64) (domain.UserTierPriceCache, error)
+	DeleteUserTierPriceCachesByGroup(ctx context.Context, groupID int64) error
+	UpsertUserTierPriceCaches(ctx context.Context, items []domain.UserTierPriceCache) error
+}
+
+type CouponRepository interface {
+	ListCouponProductGroups(ctx context.Context) ([]domain.CouponProductGroup, error)
+	GetCouponProductGroup(ctx context.Context, id int64) (domain.CouponProductGroup, error)
+	CreateCouponProductGroup(ctx context.Context, group *domain.CouponProductGroup) error
+	UpdateCouponProductGroup(ctx context.Context, group domain.CouponProductGroup) error
+	DeleteCouponProductGroup(ctx context.Context, id int64) error
+
+	ListCoupons(ctx context.Context, filter appshared.CouponFilter, limit, offset int) ([]domain.Coupon, int, error)
+	GetCoupon(ctx context.Context, id int64) (domain.Coupon, error)
+	GetCouponByCode(ctx context.Context, code string) (domain.Coupon, error)
+	CreateCoupon(ctx context.Context, coupon *domain.Coupon) error
+	UpdateCoupon(ctx context.Context, coupon domain.Coupon) error
+	DeleteCoupon(ctx context.Context, id int64) error
+
+	CountCouponRedemptions(ctx context.Context, couponID int64, userID *int64, statuses []string) (int64, error)
+	CreateCouponRedemption(ctx context.Context, redemption *domain.CouponRedemption) error
+	UpdateCouponRedemptionStatusByOrder(ctx context.Context, orderID int64, fromStatuses []string, toStatus string) error
+	CountUserSuccessfulOrders(ctx context.Context, userID int64) (int64, error)
+}
+
 type PasswordResetTokenRepository interface {
 	CreatePasswordResetToken(ctx context.Context, token *domain.PasswordResetToken) error
 	GetPasswordResetToken(ctx context.Context, token string) (domain.PasswordResetToken, error)

@@ -29,6 +29,8 @@ type UserDTO struct {
 	Intro             string     `json:"intro"`
 	AvatarURL         string     `json:"avatar_url"`
 	PermissionGroupID *int64     `json:"permission_group_id"`
+	UserTierGroupID   *int64     `json:"user_tier_group_id"`
+	UserTierExpireAt  *time.Time `json:"user_tier_expire_at"`
 	Role              string     `json:"role"`
 	Status            string     `json:"status"`
 	Permissions       []string   `json:"permissions,omitempty"`
@@ -131,6 +133,9 @@ type OrderDTO struct {
 	Status         string     `json:"status"`
 	TotalAmount    float64    `json:"total_amount"`
 	Currency       string     `json:"currency"`
+	CouponID       *int64     `json:"coupon_id,omitempty"`
+	CouponCode     string     `json:"coupon_code,omitempty"`
+	CouponDiscount float64    `json:"coupon_discount,omitempty"`
 	IdempotencyKey string     `json:"idempotency_key"`
 	PendingReason  string     `json:"pending_reason"`
 	ApprovedBy     *int64     `json:"approved_by"`
@@ -378,6 +383,85 @@ type AutomationLogDTO struct {
 	CreatedAt    time.Time       `json:"created_at"`
 }
 
+type UserTierGroupDTO struct {
+	ID                 int64     `json:"id"`
+	Name               string    `json:"name"`
+	Color              string    `json:"color"`
+	Icon               string    `json:"icon"`
+	Priority           int       `json:"priority"`
+	AutoApproveEnabled bool      `json:"auto_approve_enabled"`
+	IsDefault          bool      `json:"is_default"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+type UserTierDiscountRuleDTO struct {
+	ID               int64  `json:"id"`
+	GroupID          int64  `json:"group_id"`
+	Scope            string `json:"scope"`
+	GoodsTypeID      int64  `json:"goods_type_id"`
+	RegionID         int64  `json:"region_id"`
+	PlanGroupID      int64  `json:"plan_group_id"`
+	PackageID        int64  `json:"package_id"`
+	DiscountPermille int    `json:"discount_permille"`
+	FixedPrice       *int64 `json:"fixed_price"`
+	AddCorePermille  int    `json:"add_core_permille"`
+	AddMemPermille   int    `json:"add_mem_permille"`
+	AddDiskPermille  int    `json:"add_disk_permille"`
+	AddBWPermille    int    `json:"add_bw_permille"`
+}
+
+type UserTierAutoRuleDTO struct {
+	ID             int64  `json:"id"`
+	GroupID        int64  `json:"group_id"`
+	DurationDays   int    `json:"duration_days"`
+	ConditionsJSON string `json:"conditions_json"`
+	SortOrder      int    `json:"sort_order"`
+}
+
+type CouponProductGroupDTO struct {
+	ID          int64                  `json:"id"`
+	Name        string                 `json:"name"`
+	Rules       []CouponProductRuleDTO `json:"rules"`
+	Scope       string                 `json:"scope"`
+	GoodsTypeID int64                  `json:"goods_type_id"`
+	RegionID    int64                  `json:"region_id"`
+	PlanGroupID int64                  `json:"plan_group_id"`
+	PackageID   int64                  `json:"package_id"`
+	AddonCore   int                    `json:"addon_core"`
+	AddonMemGB  int                    `json:"addon_mem_gb"`
+	AddonDiskGB int                    `json:"addon_disk_gb"`
+	AddonBWMbps int                    `json:"addon_bw_mbps"`
+}
+
+type CouponProductRuleDTO struct {
+	Scope            string `json:"scope"`
+	GoodsTypeID      int64  `json:"goods_type_id"`
+	RegionID         int64  `json:"region_id"`
+	PlanGroupID      int64  `json:"plan_group_id"`
+	PackageID        int64  `json:"package_id"`
+	AddonCoreEnabled bool   `json:"addon_core_enabled"`
+	AddonMemEnabled  bool   `json:"addon_mem_enabled"`
+	AddonDiskEnabled bool   `json:"addon_disk_enabled"`
+	AddonBWEnabled   bool   `json:"addon_bw_enabled"`
+}
+
+type CouponDTO struct {
+	ID               int64      `json:"id"`
+	Code             string     `json:"code"`
+	DiscountPermille int        `json:"discount_permille"`
+	ProductGroupID   int64      `json:"product_group_id"`
+	TotalLimit       int        `json:"total_limit"`
+	PerUserLimit     int        `json:"per_user_limit"`
+	StartsAt         *time.Time `json:"starts_at"`
+	EndsAt           *time.Time `json:"ends_at"`
+	NewUserOnly      bool       `json:"new_user_only"`
+	Active           bool       `json:"active"`
+	Note             string     `json:"note"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
 func toUserDTO(user domain.User) UserDTO {
 	return UserDTO{
 		ID:                user.ID,
@@ -392,11 +476,152 @@ func toUserDTO(user domain.User) UserDTO {
 		Intro:             user.Intro,
 		AvatarURL:         resolveAvatarURL(user),
 		PermissionGroupID: user.PermissionGroupID,
+		UserTierGroupID:   user.UserTierGroupID,
+		UserTierExpireAt:  user.UserTierExpireAt,
 		Role:              string(user.Role),
 		Status:            string(user.Status),
 		CreatedAt:         user.CreatedAt,
 		UpdatedAt:         user.UpdatedAt,
 	}
+}
+
+func toUserTierGroupDTO(item domain.UserTierGroup) UserTierGroupDTO {
+	return UserTierGroupDTO{
+		ID:                 item.ID,
+		Name:               item.Name,
+		Color:              item.Color,
+		Icon:               item.Icon,
+		Priority:           item.Priority,
+		AutoApproveEnabled: item.AutoApproveEnabled,
+		IsDefault:          item.IsDefault,
+		CreatedAt:          item.CreatedAt,
+		UpdatedAt:          item.UpdatedAt,
+	}
+}
+
+func toUserTierGroupDTOs(items []domain.UserTierGroup) []UserTierGroupDTO {
+	out := make([]UserTierGroupDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, toUserTierGroupDTO(item))
+	}
+	return out
+}
+
+func toUserTierDiscountRuleDTO(item domain.UserTierDiscountRule) UserTierDiscountRuleDTO {
+	return UserTierDiscountRuleDTO{
+		ID:               item.ID,
+		GroupID:          item.GroupID,
+		Scope:            string(item.Scope),
+		GoodsTypeID:      item.GoodsTypeID,
+		RegionID:         item.RegionID,
+		PlanGroupID:      item.PlanGroupID,
+		PackageID:        item.PackageID,
+		DiscountPermille: item.DiscountPermille,
+		FixedPrice:       item.FixedPrice,
+		AddCorePermille:  item.AddCorePermille,
+		AddMemPermille:   item.AddMemPermille,
+		AddDiskPermille:  item.AddDiskPermille,
+		AddBWPermille:    item.AddBWPermille,
+	}
+}
+
+func toUserTierDiscountRuleDTOs(items []domain.UserTierDiscountRule) []UserTierDiscountRuleDTO {
+	out := make([]UserTierDiscountRuleDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, toUserTierDiscountRuleDTO(item))
+	}
+	return out
+}
+
+func toUserTierAutoRuleDTO(item domain.UserTierAutoRule) UserTierAutoRuleDTO {
+	return UserTierAutoRuleDTO{
+		ID:             item.ID,
+		GroupID:        item.GroupID,
+		DurationDays:   item.DurationDays,
+		ConditionsJSON: item.ConditionsJSON,
+		SortOrder:      item.SortOrder,
+	}
+}
+
+func toUserTierAutoRuleDTOs(items []domain.UserTierAutoRule) []UserTierAutoRuleDTO {
+	out := make([]UserTierAutoRuleDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, toUserTierAutoRuleDTO(item))
+	}
+	return out
+}
+
+func toCouponProductGroupDTO(item domain.CouponProductGroup) CouponProductGroupDTO {
+	return CouponProductGroupDTO{
+		ID:          item.ID,
+		Name:        item.Name,
+		Rules:       toCouponProductRuleDTOs(parseCouponProductRules(item.RulesJSON)),
+		Scope:       string(item.Scope),
+		GoodsTypeID: item.GoodsTypeID,
+		RegionID:    item.RegionID,
+		PlanGroupID: item.PlanGroupID,
+		PackageID:   item.PackageID,
+		AddonCore:   item.AddonCore,
+		AddonMemGB:  item.AddonMemGB,
+		AddonDiskGB: item.AddonDiskGB,
+		AddonBWMbps: item.AddonBWMbps,
+	}
+}
+
+func toCouponProductGroupDTOs(items []domain.CouponProductGroup) []CouponProductGroupDTO {
+	out := make([]CouponProductGroupDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, toCouponProductGroupDTO(item))
+	}
+	return out
+}
+
+func toCouponDTO(item domain.Coupon) CouponDTO {
+	return CouponDTO{
+		ID:               item.ID,
+		Code:             item.Code,
+		DiscountPermille: item.DiscountPermille,
+		ProductGroupID:   item.ProductGroupID,
+		TotalLimit:       item.TotalLimit,
+		PerUserLimit:     item.PerUserLimit,
+		StartsAt:         item.StartsAt,
+		EndsAt:           item.EndsAt,
+		NewUserOnly:      item.NewUserOnly,
+		Active:           item.Active,
+		Note:             item.Note,
+		CreatedAt:        item.CreatedAt,
+		UpdatedAt:        item.UpdatedAt,
+	}
+}
+
+func toCouponDTOs(items []domain.Coupon) []CouponDTO {
+	out := make([]CouponDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, toCouponDTO(item))
+	}
+	return out
+}
+
+func toCouponProductRuleDTO(item domain.CouponProductRule) CouponProductRuleDTO {
+	return CouponProductRuleDTO{
+		Scope:            string(item.Scope),
+		GoodsTypeID:      item.GoodsTypeID,
+		RegionID:         item.RegionID,
+		PlanGroupID:      item.PlanGroupID,
+		PackageID:        item.PackageID,
+		AddonCoreEnabled: item.AddonCoreEnabled,
+		AddonMemEnabled:  item.AddonMemEnabled,
+		AddonDiskEnabled: item.AddonDiskEnabled,
+		AddonBWEnabled:   item.AddonBWEnabled,
+	}
+}
+
+func toCouponProductRuleDTOs(items []domain.CouponProductRule) []CouponProductRuleDTO {
+	out := make([]CouponProductRuleDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, toCouponProductRuleDTO(item))
+	}
+	return out
 }
 
 func toUserSelfDTO(user domain.User) UserDTO {
@@ -526,6 +751,9 @@ func toOrderDTO(order domain.Order) OrderDTO {
 		Status:         string(order.Status),
 		TotalAmount:    centsToFloat(order.TotalAmount),
 		Currency:       order.Currency,
+		CouponID:       order.CouponID,
+		CouponCode:     order.CouponCode,
+		CouponDiscount: centsToFloat(order.CouponDiscount),
 		IdempotencyKey: order.IdempotencyKey,
 		PendingReason:  order.PendingReason,
 		ApprovedBy:     order.ApprovedBy,
@@ -1085,6 +1313,25 @@ func parseStringArray(payload string) []string {
 		return nil
 	}
 	return out
+}
+
+func parseCouponProductRules(payload string) []domain.CouponProductRule {
+	raw := strings.TrimSpace(payload)
+	if raw == "" {
+		return nil
+	}
+	var out []domain.CouponProductRule
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	items := make([]domain.CouponProductRule, 0, len(out))
+	for _, item := range out {
+		if strings.TrimSpace(string(item.Scope)) == "" {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
 }
 
 func planGroupDTOToDomain(dto PlanGroupDTO) domain.PlanGroup {

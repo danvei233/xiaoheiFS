@@ -111,6 +111,20 @@
               <span class="info-value">{{ profile?.role || "-" }}</span>
             </div>
           </div>
+          <div class="info-item">
+            <IdcardOutlined class="item-icon" />
+            <div class="info-content">
+              <span class="info-label">用户组</span>
+              <a-tag :color="myTier.group_color || 'default'">{{ myTier.group_name || "-" }}</a-tag>
+            </div>
+          </div>
+          <div class="info-item">
+            <CalendarOutlined class="item-icon" />
+            <div class="info-content">
+              <span class="info-label">用户组到期</span>
+              <span class="info-value">{{ formatTime(myTier.expire_at) }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -428,6 +442,7 @@ import {
   confirmMyPhoneBind,
   confirmTwoFA,
   getMySecurityContacts,
+  getMyUserTier,
   getRealNameStatus,
   getTwoFAStatus,
   getWallet,
@@ -458,6 +473,12 @@ const auth = useAuthStore();
 const profile = computed(() => auth.profile);
 const wallet = ref({ balance: 0, currency: "CNY" });
 const realname = ref(null);
+const myTier = ref({
+  group_id: 0,
+  group_name: "",
+  group_color: "",
+  expire_at: ""
+});
 const editModalVisible = ref(false);
 const passwordModalVisible = ref(false);
 const securityModalVisible = ref(false);
@@ -865,9 +886,10 @@ const handleSubmit = async () => {
 
 const fetchExtras = async () => {
   try {
-    const [walletRes, realnameRes] = await Promise.all([getWallet(), getRealNameStatus()]);
+    const [walletRes, realnameRes, tierRes] = await Promise.all([getWallet(), getRealNameStatus(), getMyUserTier()]);
     wallet.value = normalizeWallet(walletRes.data) || wallet.value;
     realname.value = realnameRes.data || realname.value;
+    myTier.value = tierRes.data || myTier.value;
   } catch {
     // ignore
   }

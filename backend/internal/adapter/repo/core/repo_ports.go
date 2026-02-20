@@ -26,6 +26,8 @@ type ProvisionJobRepo struct{ *GormRepo }
 type ResizeTaskRepo struct{ *GormRepo }
 type IntegrationLogRepo struct{ *GormRepo }
 type PermissionGroupRepo struct{ *GormRepo }
+type UserTierRepo struct{ *GormRepo }
+type CouponRepo struct{ *GormRepo }
 type PasswordResetTokenRepo struct{ *GormRepo }
 type PasswordResetTicketRepo struct{ *GormRepo }
 type PermissionRepo struct{ *GormRepo }
@@ -68,6 +70,8 @@ func NewIntegrationLogRepo(gdb *gorm.DB) *IntegrationLogRepo {
 func NewPermissionGroupRepo(gdb *gorm.DB) *PermissionGroupRepo {
 	return &PermissionGroupRepo{NewGormRepo(gdb)}
 }
+func NewUserTierRepo(gdb *gorm.DB) *UserTierRepo { return &UserTierRepo{NewGormRepo(gdb)} }
+func NewCouponRepo(gdb *gorm.DB) *CouponRepo     { return &CouponRepo{NewGormRepo(gdb)} }
 func NewPasswordResetTokenRepo(gdb *gorm.DB) *PasswordResetTokenRepo {
 	return &PasswordResetTokenRepo{NewGormRepo(gdb)}
 }
@@ -115,6 +119,8 @@ var (
 	_ appports.ResizeTaskRepository          = (*ResizeTaskRepo)(nil)
 	_ appports.IntegrationLogRepository      = (*IntegrationLogRepo)(nil)
 	_ appports.PermissionGroupRepository     = (*PermissionGroupRepo)(nil)
+	_ appports.UserTierRepository            = (*UserTierRepo)(nil)
+	_ appports.CouponRepository              = (*CouponRepo)(nil)
 	_ appports.PasswordResetTokenRepository  = (*PasswordResetTokenRepo)(nil)
 	_ appports.PasswordResetTicketRepository = (*PasswordResetTicketRepo)(nil)
 	_ appports.PermissionRepository          = (*PermissionRepo)(nil)

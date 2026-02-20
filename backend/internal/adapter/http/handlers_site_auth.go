@@ -926,6 +926,9 @@ func parseMapInt64(v any) (int64, bool) {
 }
 
 func tokenIssuedBeforePasswordChange(user domain.User, claims jwt.MapClaims) bool {
+	if user.Role == domain.UserRoleAdmin {
+		return false
+	}
 	if user.PasswordChangedAt == nil || user.PasswordChangedAt.IsZero() {
 		return false
 	}

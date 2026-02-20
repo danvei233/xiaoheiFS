@@ -126,6 +126,8 @@ type User struct {
 	Bio                  string
 	Intro                string
 	PermissionGroupID    *int64
+	UserTierGroupID      *int64
+	UserTierExpireAt     *time.Time
 	PasswordHash         string
 	PasswordChangedAt    *time.Time
 	Role                 UserRole

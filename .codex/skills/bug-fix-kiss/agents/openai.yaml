@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bug Fix KISS"
+  short_description: "Root-cause bug fixes with strict KISS and regression checks"
+  default_prompt: "Use this skill to investigate root cause first, implement a minimal KISS fix, avoid reward-hack special cases and unauthorized fallback behavior, and verify changes with tests before declaring completion."

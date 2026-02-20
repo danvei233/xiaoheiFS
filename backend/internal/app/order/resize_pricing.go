@@ -41,8 +41,25 @@ func (s *OrderService) quoteResize(ctx context.Context, inst domain.VPSInstance,
 	}
 
 	currentSpec := parseCartSpecJSON(inst.SpecJSON)
-	currentAddon := addonPrice(plan, currentSpec)
-	currentMonthly := currentPkg.Monthly + currentAddon
+	currentBase := currentPkg.Monthly
+	currentUnitCore := plan.UnitCore
+	currentUnitMem := plan.UnitMem
+	currentUnitDisk := plan.UnitDisk
+	currentUnitBW := plan.UnitBW
+	if s.pricer != nil && inst.UserID > 0 {
+		if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, inst.UserID, currentPkg.ID); err == nil {
+			currentBase = pricing.MonthlyPrice
+			currentUnitCore = pricing.UnitCore
+			currentUnitMem = pricing.UnitMem
+			currentUnitDisk = pricing.UnitDisk
+			currentUnitBW = pricing.UnitBW
+		}
+	}
+	currentAddon := int64(currentSpec.AddCores)*currentUnitCore +
+		int64(currentSpec.AddMemGB)*currentUnitMem +
+		int64(currentSpec.AddDiskGB)*currentUnitDisk +
+		int64(currentSpec.AddBWMbps)*currentUnitBW
+	currentMonthly := currentBase + currentAddon
 
 	quote := ResizeQuote{
 		RefundToWallet: policy.RefundToWallet,
@@ -87,8 +104,25 @@ func (s *OrderService) quoteResize(ctx context.Context, inst domain.VPSInstance,
 		return ResizeQuote{}, CartSpec{}, ErrResizeSamePlan
 	}
 
-	targetAddon := addonPrice(plan, targetSpec)
-	targetMonthly := targetPkg.Monthly + targetAddon
+	targetBase := targetPkg.Monthly
+	targetUnitCore := plan.UnitCore
+	targetUnitMem := plan.UnitMem
+	targetUnitDisk := plan.UnitDisk
+	targetUnitBW := plan.UnitBW
+	if s.pricer != nil && inst.UserID > 0 {
+		if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, inst.UserID, targetPkg.ID); err == nil {
+			targetBase = pricing.MonthlyPrice
+			targetUnitCore = pricing.UnitCore
+			targetUnitMem = pricing.UnitMem
+			targetUnitDisk = pricing.UnitDisk
+			targetUnitBW = pricing.UnitBW
+		}
+	}
+	targetAddon := int64(targetSpec.AddCores)*targetUnitCore +
+		int64(targetSpec.AddMemGB)*targetUnitMem +
+		int64(targetSpec.AddDiskGB)*targetUnitDisk +
+		int64(targetSpec.AddBWMbps)*targetUnitBW
+	targetMonthly := targetBase + targetAddon
 	quote.TargetCPU = targetPkg.Cores + targetSpec.AddCores
 	quote.TargetMemGB = targetPkg.MemoryGB + targetSpec.AddMemGB
 	quote.TargetDiskGB = targetPkg.DiskGB + targetSpec.AddDiskGB

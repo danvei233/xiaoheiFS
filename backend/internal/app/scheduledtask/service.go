@@ -56,6 +56,10 @@ type realnameTaskService interface {
 	PollPending(ctx context.Context, limit int) (int, error)
 }
 
+type userTierTaskService interface {
+	ReconcileExpired(ctx context.Context, limit int) (int, error)
+}
+
 type taskRuntime struct {
 	lastRun     time.Time
 	running     bool
@@ -70,6 +74,7 @@ type Service struct {
 	orders   orderTaskService
 	notify   notificationTaskService
 	realname realnameTaskService
+	userTier userTierTaskService
 	runs     appports.ScheduledTaskRunRepository
 	mu       sync.Mutex
 	runtime  map[string]*taskRuntime
@@ -89,6 +94,10 @@ func NewService(settings appports.SettingsRepository, vps vpsTaskService, orders
 		runs:     runs,
 		runtime:  make(map[string]*taskRuntime),
 	}
+}
+
+func (s *Service) SetUserTierService(svc userTierTaskService) {
+	s.userTier = svc
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -275,6 +284,10 @@ func (s *Service) executeTask(ctx context.Context, cfg ScheduledTaskConfig) {
 		case "plugin_schedule":
 			if s.realname != nil {
 				_, runErr = s.realname.PollPending(ctx, 200)
+			}
+		case "user_tier_expire_reconcile":
+			if s.userTier != nil {
+				_, runErr = s.userTier.ReconcileExpired(ctx, 500)
 			}
 		}
 	}()
@@ -477,6 +490,14 @@ func defaultTaskDefinitions() map[string]ScheduledTaskConfig {
 			Enabled:     true,
 			Strategy:    TaskStrategyInterval,
 			IntervalSec: 20,
+		},
+		"user_tier_expire_reconcile": {
+			Key:         "user_tier_expire_reconcile",
+			Name:        "User Tier Expire Reconcile",
+			Description: "Reconcile expired user tier memberships and re-run auto approval.",
+			Enabled:     true,
+			Strategy:    TaskStrategyInterval,
+			IntervalSec: 60,
 		},
 	}
 }

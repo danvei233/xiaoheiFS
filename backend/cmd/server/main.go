@@ -29,6 +29,7 @@ import (
 	appcart "xiaoheiplay/internal/app/cart"
 	appcatalog "xiaoheiplay/internal/app/catalog"
 	appcms "xiaoheiplay/internal/app/cms"
+	appcoupon "xiaoheiplay/internal/app/coupon"
 	appgoodstype "xiaoheiplay/internal/app/goodstype"
 	appintegration "xiaoheiplay/internal/app/integration"
 	appmessage "xiaoheiplay/internal/app/message"
@@ -49,6 +50,7 @@ import (
 	appsystemstatus "xiaoheiplay/internal/app/systemstatus"
 	appticket "xiaoheiplay/internal/app/ticket"
 	appupload "xiaoheiplay/internal/app/upload"
+	appusertier "xiaoheiplay/internal/app/usertier"
 	appvps "xiaoheiplay/internal/app/vps"
 	appwallet "xiaoheiplay/internal/app/wallet"
 	appwalletorder "xiaoheiplay/internal/app/walletorder"
@@ -154,6 +156,28 @@ func main() {
 	passwordResetSvc := apppasswordreset.NewService(repoSQLite, repoSQLite, emailSender, repoSQLite)
 	walletSvc := appwallet.NewService(repoSQLite, repoSQLite)
 	walletOrderSvc := appwalletorder.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
+	couponSvc := appcoupon.NewService(repoSQLite, repoSQLite)
+	userTierSvc := appusertier.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
+	_, _ = userTierSvc.EnsureDefaultGroup(context.Background())
+	authSvc.SetUserTierAssigner(userTierSvc)
+	adminSvc.SetUserTierAssigner(userTierSvc)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+		updated, err := userTierSvc.BackfillUsersWithoutGroup(ctx, 500)
+		if err != nil {
+			log.Printf("user tier backfill failed: %v", err)
+			return
+		}
+		if updated > 0 {
+			log.Printf("user tier backfill completed: updated=%d", updated)
+		}
+	}()
+	cartSvc.SetUserTierPricingResolver(userTierSvc)
+	orderSvc.SetUserTierPricingResolver(userTierSvc)
+	orderSvc.SetUserTierAutoApprover(userTierSvc)
+	orderSvc.SetCouponService(couponSvc)
+	walletOrderSvc.SetUserTierAutoApprover(userTierSvc)
 	uploadSvc := appupload.NewService(repoSQLite)
 	autoLogSvc := appautomationlog.NewService(repoSQLite)
 	orderEventSvc := apporderevent.NewService(repoSQLite)
@@ -166,6 +190,7 @@ func main() {
 	paymentSvc := apppayment.NewService(repoSQLite, repoSQLite, repoSQLite, paymentRegistry, repoSQLite, orderSvc, eventBus)
 	statusSvc := appsystemstatus.NewService(system.NewProvider())
 	taskSvc := appscheduledtask.NewService(repoSQLite, vpsSvc, orderSvc, notifySvc, repoSQLite, realnameSvc)
+	taskSvc.SetUserTierService(userTierSvc)
 	probeHub := appprobe.NewHub()
 	probeSvc := appprobe.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	go taskSvc.Start(context.Background())
@@ -205,6 +230,8 @@ func main() {
 		SecurityTicketSvc: securityTicketSvc,
 		PermissionSvc:     permissionSvc,
 		PluginAdmin:       pluginAdminSvc,
+		UserTierSvc:       userTierSvc,
+		CouponSvc:         couponSvc,
 		SMSSender:         pluginSMSSender,
 		TaskSvc:           taskSvc,
 		ProbeSvc:          probeSvc,

@@ -141,12 +141,28 @@
               <span class="summary-label">小计</span>
               <span class="summary-value">¥{{ totalAmount.toFixed(2) }}</span>
             </div>
+            <div class="summary-row">
+              <span class="summary-label">优惠码</span>
+              <a-space>
+                <a-input
+                  v-model:value="couponCode"
+                  size="small"
+                  placeholder="输入优惠码"
+                  style="width: 140px"
+                />
+                <a-button size="small" :loading="couponLoading" @click="applyCoupon">使用</a-button>
+              </a-space>
+            </div>
+            <div class="summary-row" v-if="couponPreview">
+              <span class="summary-label">优惠</span>
+              <span class="summary-value" style="color: var(--success)">-¥{{ Number(couponPreview.discount || 0).toFixed(2) }}</span>
+            </div>
 
             <a-divider class="summary-divider" />
 
             <div class="summary-row summary-total">
               <span class="summary-label">总计</span>
-              <span class="summary-value summary-price">¥{{ totalAmount.toFixed(2) }}</span>
+              <span class="summary-value summary-price">¥{{ payableTotal.toFixed(2) }}</span>
             </div>
           </div>
 
@@ -173,10 +189,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useCartStore } from "@/stores/cart";
 import { useCatalogStore } from "@/stores/catalog";
-import { createOrderFromCart } from "@/services/user";
+import { createOrderFromCartWithCoupon, previewCoupon } from "@/services/user";
 import { message } from "ant-design-vue";
 import { useRouter } from "vue-router";
 import {
@@ -200,6 +216,9 @@ const cart = useCartStore();
 const router = useRouter();
 const catalog = useCatalogStore();
 const submitting = ref(false);
+const couponCode = ref("");
+const couponLoading = ref(false);
+const couponPreview = ref(null);
 
 const columns = [
   { title: "商品", dataIndex: "package", key: "package", width: 280 },
@@ -302,6 +321,11 @@ const totalAmount = computed(() =>
 const totalItems = computed(() =>
   dataSource.value.reduce((sum, item) => sum + Number(item.qty || 1), 0)
 );
+const payableTotal = computed(() => {
+  if (!couponPreview.value) return totalAmount.value;
+  const finalTotal = Number(couponPreview.value.final_total || totalAmount.value);
+  return finalTotal >= 0 ? finalTotal : 0;
+});
 
 const updateQty = (record, val) => {
   cart.updateItem(record.id, { spec: record.spec, qty: val });
@@ -310,7 +334,8 @@ const updateQty = (record, val) => {
 const submitOrder = async () => {
   submitting.value = true;
   try {
-    const res = await createOrderFromCart(`order-${Date.now()}`);
+    const coupon = (couponCode.value || "").trim();
+    const res = await createOrderFromCartWithCoupon(coupon ? { coupon_code: coupon } : undefined, `order-${Date.now()}`);
     const orderId = res.data?.order?.id || res.data?.order?.ID || res.data?.id || res.data?.ID;
     message.success("订单已创建");
     if (orderId) {
@@ -323,6 +348,36 @@ const submitOrder = async () => {
     submitting.value = false;
   }
 };
+
+const applyCoupon = async () => {
+  const code = (couponCode.value || "").trim();
+  if (!code) {
+    message.warning("请先输入优惠码");
+    return;
+  }
+  couponLoading.value = true;
+  try {
+    const res = await previewCoupon({ coupon_code: code });
+    couponPreview.value = res.data || null;
+    message.success("优惠码已应用");
+  } catch (err) {
+    couponPreview.value = null;
+    message.error(err?.response?.data?.error || "优惠码不可用");
+  } finally {
+    couponLoading.value = false;
+  }
+};
+
+watch(couponCode, () => {
+  couponPreview.value = null;
+});
+
+watch(
+  () => dataSource.value.map((item) => `${item.id}:${item.qty}:${item.amount}`).join("|"),
+  () => {
+    couponPreview.value = null;
+  }
+);
 
 onMounted(() => {
   if (!catalog.packages.length) {

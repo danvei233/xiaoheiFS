@@ -19,7 +19,7 @@ func TestOrderService_CreateOrderFromItems(t *testing.T) {
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
 	order, items, err := svc.CreateOrderFromItems(context.Background(), user.ID, "CNY", []appshared.OrderItemInput{
 		{PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Qty: 1},
-	}, "idem-1")
+	}, "idem-1", "")
 	if err != nil {
 		t.Fatalf("create order: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestOrderService_CreateOrderFromCartAndCancel(t *testing.T) {
 	}
 
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
-	order, items, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", "idem-cart")
+	order, items, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", "idem-cart", "")
 	if err != nil {
 		t.Fatalf("create order: %v", err)
 	}

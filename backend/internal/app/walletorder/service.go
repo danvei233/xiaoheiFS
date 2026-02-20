@@ -43,10 +43,19 @@ type Service struct {
 	orderItems appports.OrderItemRepository
 	automation appports.AutomationClientResolver
 	audit      appports.AuditRepository
+	userTiers  userTierAutoApprover
 }
 
 func NewService(orders appports.WalletOrderRepository, wallets appports.WalletRepository, settings appports.SettingsRepository, vps appports.VPSRepository, orderItems appports.OrderItemRepository, automation appports.AutomationClientResolver, audit appports.AuditRepository) *Service {
 	return &Service{orders: orders, wallets: wallets, settings: settings, vps: vps, orderItems: orderItems, automation: automation, audit: audit}
+}
+
+type userTierAutoApprover interface {
+	TryAutoApproveForUser(ctx context.Context, userID int64, reason string) error
+}
+
+func (s *Service) SetUserTierAutoApprover(approver userTierAutoApprover) {
+	s.userTiers = approver
 }
 
 func (s *Service) CreateRefundOrder(ctx context.Context, userID int64, amount int64, note string, meta map[string]any) (domain.WalletOrder, error) {
@@ -306,6 +315,9 @@ func (s *Service) approveOrder(ctx context.Context, adminID int64, order domain.
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "wallet_order.approve", TargetType: "wallet_order", TargetID: strconv.FormatInt(order.ID, 10), DetailJSON: mustJSON(map[string]any{"type": order.Type, "amount": order.Amount})})
+	}
+	if s.userTiers != nil {
+		_ = s.userTiers.TryAutoApproveForUser(ctx, order.UserID, "wallet_order_success")
 	}
 	return wallet, nil
 }

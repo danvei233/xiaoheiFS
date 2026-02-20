@@ -94,10 +94,13 @@ func CreateAdmin(t *testing.T, repo *repo.GormRepo, username, email, password st
 
 func IssueJWT(t *testing.T, secret string, userID int64, role string, ttl time.Duration) string {
 	t.Helper()
+	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
-		"exp":     time.Now().Add(ttl).Unix(),
+		"type":    "access",
+		"iat":     float64(now.UnixNano()) / 1e9,
+		"exp":     now.Add(ttl).Unix(),
 	})
 	signed, err := token.SignedString([]byte(secret))
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 	appintegration "xiaoheiplay/internal/app/integration"
+	apporder "xiaoheiplay/internal/app/order"
 	appreport "xiaoheiplay/internal/app/report"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
@@ -82,8 +83,10 @@ type OrderService interface {
 	GetOrder(ctx context.Context, orderID int64, userID int64) (domain.Order, []domain.OrderItem, error)
 	ListPaymentsForOrder(ctx context.Context, userID int64, orderID int64) ([]domain.OrderPayment, error)
 	RefreshOrder(ctx context.Context, userID int64, orderID int64) ([]domain.VPSInstance, error)
-	CreateOrderFromItems(ctx context.Context, userID int64, currency string, inputs []appshared.OrderItemInput, idemKey string) (domain.Order, []domain.OrderItem, error)
-	CreateOrderFromCart(ctx context.Context, userID int64, currency string, idemKey string) (domain.Order, []domain.OrderItem, error)
+	CreateOrderFromItems(ctx context.Context, userID int64, currency string, inputs []appshared.OrderItemInput, idemKey string, couponCode string) (domain.Order, []domain.OrderItem, error)
+	CreateOrderFromCart(ctx context.Context, userID int64, currency string, idemKey string, couponCode string) (domain.Order, []domain.OrderItem, error)
+	PreviewCouponFromItems(ctx context.Context, userID int64, inputs []appshared.OrderItemInput, couponCode string) (apporder.CouponPreview, error)
+	PreviewCouponFromCart(ctx context.Context, userID int64, couponCode string) (apporder.CouponPreview, error)
 	SubmitPayment(ctx context.Context, userID int64, orderID int64, input appshared.PaymentInput, idemKey string) (domain.OrderPayment, error)
 	CreateRenewOrder(ctx context.Context, userID int64, vpsID int64, renewDays int, durationMonths int) (domain.Order, error)
 	CreateResizeOrder(ctx context.Context, userID int64, vpsID int64, spec *appshared.CartSpec, targetPackageID int64, resetAddons bool, scheduledAt *time.Time) (domain.Order, appshared.ResizeQuote, error)
@@ -156,4 +159,41 @@ type PluginAdminService interface {
 	UpdateConfigInstance(ctx context.Context, category, pluginID, instanceID, configJSON string) error
 	CreateInstance(ctx context.Context, category, pluginID, instanceID string) (domain.PluginInstallation, error)
 	DeletePluginFiles(ctx context.Context, category, pluginID string) error
+}
+
+type UserTierService interface {
+	ListGroups(ctx context.Context) ([]domain.UserTierGroup, error)
+	GetGroup(ctx context.Context, id int64) (domain.UserTierGroup, error)
+	CreateGroup(ctx context.Context, adminID int64, group *domain.UserTierGroup) error
+	UpdateGroup(ctx context.Context, adminID int64, group domain.UserTierGroup) error
+	DeleteGroup(ctx context.Context, adminID int64, id int64) error
+
+	ListDiscountRules(ctx context.Context, groupID int64) ([]domain.UserTierDiscountRule, error)
+	CreateDiscountRule(ctx context.Context, adminID int64, rule *domain.UserTierDiscountRule) error
+	UpdateDiscountRule(ctx context.Context, adminID int64, rule domain.UserTierDiscountRule) error
+	DeleteDiscountRule(ctx context.Context, adminID int64, groupID, id int64) error
+
+	ListAutoRules(ctx context.Context, groupID int64) ([]domain.UserTierAutoRule, error)
+	CreateAutoRule(ctx context.Context, adminID int64, rule *domain.UserTierAutoRule) error
+	UpdateAutoRule(ctx context.Context, adminID int64, rule domain.UserTierAutoRule) error
+	DeleteAutoRule(ctx context.Context, adminID int64, groupID, id int64) error
+
+	SetUserGroup(ctx context.Context, adminID, userID, groupID int64, expireAt *time.Time) error
+	RebuildAllPriceCachesAsync()
+	RebuildGroupPriceCacheAsync(groupID int64)
+}
+
+type CouponService interface {
+	ListProductGroups(ctx context.Context) ([]domain.CouponProductGroup, error)
+	GetProductGroup(ctx context.Context, id int64) (domain.CouponProductGroup, error)
+	CreateProductGroup(ctx context.Context, adminID int64, group *domain.CouponProductGroup) error
+	UpdateProductGroup(ctx context.Context, adminID int64, group domain.CouponProductGroup) error
+	DeleteProductGroup(ctx context.Context, adminID int64, id int64) error
+
+	ListCoupons(ctx context.Context, filter appshared.CouponFilter, limit, offset int) ([]domain.Coupon, int, error)
+	GetCoupon(ctx context.Context, id int64) (domain.Coupon, error)
+	CreateCoupon(ctx context.Context, adminID int64, coupon *domain.Coupon) error
+	UpdateCoupon(ctx context.Context, adminID int64, coupon domain.Coupon) error
+	DeleteCoupon(ctx context.Context, adminID int64, id int64) error
+	BatchGenerateCoupons(ctx context.Context, adminID int64, prefix string, count int, length int, coupon domain.Coupon) ([]domain.Coupon, error)
 }

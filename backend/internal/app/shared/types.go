@@ -93,6 +93,12 @@ type ProbeNodeFilter struct {
 	Status  string
 }
 
+type CouponFilter struct {
+	Keyword        string
+	ProductGroupID int64
+	Active         *bool
+}
+
 type OrderItemInput struct {
 	PackageID int64    `json:"package_id"`
 	SystemID  int64    `json:"system_id"`

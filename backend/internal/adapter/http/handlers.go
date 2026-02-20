@@ -81,6 +81,8 @@ type HandlerDeps struct {
 	SecurityTicketSvc SecurityTicketService
 	PermissionSvc     *apppermission.Service
 	PluginAdmin       PluginAdminService
+	UserTierSvc       UserTierService
+	CouponSvc         CouponService
 	TaskSvc           *appscheduledtask.Service
 	ProbeSvc          *appprobe.Service
 	ProbeHub          *appprobe.Hub
@@ -120,6 +122,8 @@ type Handler struct {
 	securityTicketSvc SecurityTicketService
 	permissionSvc     *apppermission.Service
 	pluginAdmin       PluginAdminService
+	userTierSvc       UserTierService
+	couponSvc         CouponService
 	taskSvc           *appscheduledtask.Service
 	probeSvc          *appprobe.Service
 	probeHub          *appprobe.Hub
@@ -217,6 +221,8 @@ func NewHandler(deps HandlerDeps) *Handler {
 		securityTicketSvc: deps.SecurityTicketSvc,
 		permissionSvc:     deps.PermissionSvc,
 		pluginAdmin:       deps.PluginAdmin,
+		userTierSvc:       deps.UserTierSvc,
+		couponSvc:         deps.CouponSvc,
 		taskSvc:           deps.TaskSvc,
 		probeSvc:          deps.ProbeSvc,
 		probeHub:          deps.ProbeHub,

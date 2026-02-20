@@ -305,7 +305,7 @@ func (m *Middleware) parseToken(c *gin.Context) (jwt.MapClaims, error) {
 			if userErr != nil {
 				return nil, domain.ErrInvalidToken
 			}
-			if user.PasswordChangedAt != nil {
+			if user.Role != domain.UserRoleAdmin && user.PasswordChangedAt != nil {
 				iatSeconds, hasIAT := toFloat64Claim(claims["iat"])
 				if !hasIAT || iatSeconds <= 0 {
 					return nil, domain.ErrInvalidToken

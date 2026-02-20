@@ -24,6 +24,8 @@ type userRow struct {
 	Bio                  string     `gorm:"size:512;column:bio"`
 	Intro                string     `gorm:"size:1024;column:intro"`
 	PermissionGroupID    *int64     `gorm:"column:permission_group_id"`
+	UserTierGroupID      *int64     `gorm:"column:user_tier_group_id;index"`
+	UserTierExpireAt     *time.Time `gorm:"column:user_tier_expire_at;index"`
 	CreatedAt            time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt            time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
 	PasswordChangedAt    *time.Time `gorm:"column:password_changed_at"`
@@ -176,6 +178,9 @@ type orderRow struct {
 	Status         string     `gorm:"column:status;not null"`
 	TotalAmount    int64      `gorm:"column:total_amount;not null"`
 	Currency       string     `gorm:"column:currency;not null"`
+	CouponID       *int64     `gorm:"column:coupon_id;index"`
+	CouponCode     string     `gorm:"size:128;column:coupon_code;not null;default:'';index"`
+	CouponDiscount int64      `gorm:"column:coupon_discount;not null;default:0"`
 	IdempotencyKey *string    `gorm:"size:191;column:idempotency_key;uniqueIndex:idx_orders_idem"`
 	PendingReason  string     `gorm:"size:1000;column:pending_reason"`
 	ApprovedBy     *int64     `gorm:"column:approved_by"`

@@ -282,6 +282,8 @@ const menuTree = [
     icon: TeamOutlined,
     children: [
       { key: "/admin/users", label: "用户管理", icon: TeamOutlined, requireAny: ["user.list"] },
+      { key: "/admin/user-tiers", label: "用户等级", icon: SafetyCertificateOutlined, requireAny: ["user.list"] },
+      { key: "/admin/coupons", label: "优惠码", icon: DollarOutlined, requireAny: ["settings.view"] },
       { key: "/admin/tickets", label: "工单管理", icon: CustomerServiceOutlined, requireAny: ["tickets.list"] },
       { key: "/admin/realname/providers", label: "实名供应商", icon: AppstoreOutlined, requireAny: ["realname.list"] },
       { key: "/admin/realname/config", label: "实名认证配置", icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
