@@ -3455,6 +3455,83 @@ onBeforeUnmount(() => {
   letter-spacing: 2px;
 }
 
+/* ========== Dark Mode ========== */
+:global(html.console-dark) .vps-detail-page {
+  background: #0f1419;
+  color: #f1f5f9;
+}
+
+:global(html.console-dark) .detail-header,
+:global(html.console-dark) .ecs-tabs :deep(.ant-tabs-nav),
+:global(html.console-dark) .overview-card,
+:global(html.console-dark) .monitor-layout .monitor-panel {
+  background: #1e2433;
+  border-color: #2d3748;
+  box-shadow: none;
+}
+
+:global(html.console-dark) .header-breadcrumb,
+:global(html.console-dark) .meta-value,
+:global(html.console-dark) .info-list-item:hover,
+:global(html.console-dark) .info-list-icon,
+:global(html.console-dark) .monitor-bar,
+:global(html.console-dark) .gauge-mask {
+  background: #161b28;
+}
+
+:global(html.console-dark) .header-breadcrumb,
+:global(html.console-dark) .ecs-tabs :deep(.ant-tabs-nav),
+:global(html.console-dark) .monitor-item,
+:global(html.console-dark) .account-row-item {
+  border-color: #2d3748;
+}
+
+:global(html.console-dark) .overview-card :deep(.ant-card-head),
+:global(html.console-dark) .monitor-layout .monitor-panel :deep(.ant-card-head),
+:global(html.console-dark) .security-card :deep(.ant-card-head) {
+  background: linear-gradient(180deg, #1f2636 0%, #1b2232 100%);
+  border-bottom-color: #2d3748;
+}
+
+:global(html.console-dark) .title-text,
+:global(html.console-dark) .card-title,
+:global(html.console-dark) .info-value,
+:global(html.console-dark) .info-list-value,
+:global(html.console-dark) .monitor-value,
+:global(html.console-dark) .network-value-text,
+:global(html.console-dark) .summary-value,
+:global(html.console-dark) .account-row-value,
+:global(html.console-dark) .meta-value {
+  color: #f1f5f9;
+}
+
+:global(html.console-dark) .meta-label,
+:global(html.console-dark) .meta-icon,
+:global(html.console-dark) .info-label,
+:global(html.console-dark) .info-list-label,
+:global(html.console-dark) .monitor-label,
+:global(html.console-dark) .monitor-icon,
+:global(html.console-dark) .monitor-spec,
+:global(html.console-dark) .network-label-text,
+:global(html.console-dark) .network-unit-text,
+:global(html.console-dark) .price-unit,
+:global(html.console-dark) .account-row-label,
+:global(html.console-dark) .summary-list,
+:global(html.console-dark) .gauge-sub,
+:global(html.console-dark) .port-candidates-label {
+  color: #94a3b8;
+}
+
+:global(html.console-dark) .ecs-tabs :deep(.ant-tabs-tab) {
+  color: #9fb0c7;
+}
+
+:global(html.console-dark) .ecs-tabs :deep(.ant-tabs-tab:hover),
+:global(html.console-dark) .ecs-tabs :deep(.ant-tabs-tab-active),
+:global(html.console-dark) .ecs-tabs :deep(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: #60a5fa;
+}
+
 /* ========== Responsive ========== */
 @media (max-width: 1200px) {
   .overview-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }

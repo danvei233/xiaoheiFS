@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -336,153 +335,146 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
-    final darkTheme = Theme.of(context).copyWith(
-      brightness: Brightness.dark,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: AppColors.primary,
-        brightness: Brightness.dark,
-      ),
-    );
-
-    return Theme(
-      data: darkTheme,
-      child: Scaffold(
-        backgroundColor: AppColors.darkBackground,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        tooltip: 'API 设置',
-                        onPressed: _openApiSettingsDialog,
-                        icon: const Icon(Icons.settings_outlined),
-                      ),
+    return Scaffold(
+      backgroundColor: isLight ? cs.surface : AppColors.darkBackground,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 30, 24, 20),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      tooltip: 'API 设置',
+                      onPressed: _openApiSettingsDialog,
+                      icon: const Icon(Icons.settings_outlined),
                     ),
-                    _buildHeader(),
-                    const SizedBox(height: 28),
-                    _buildModeTabs(),
-                    const SizedBox(height: 20),
-                    if (_loginMode == 'account')
-                      AppInput(
-                        label: '账号',
-                        hint: '请输入用户名/邮箱',
-                        controller: _accountController,
-                        prefixIcon: const Icon(Icons.person_outline),
-                        maxLength: InputLimits.email,
-                        textInputAction: TextInputAction.next,
-                      )
-                    else
-                      AppInput(
-                        label: '手机号',
-                        hint: '请输入手机号',
-                        controller: _phoneController,
-                        prefixIcon: const Icon(Icons.phone_outlined),
-                        keyboardType: TextInputType.phone,
-                        maxLength: InputLimits.phone,
-                        textInputAction: TextInputAction.next,
-                      ),
-                    const SizedBox(height: 16),
+                  ),
+                  _buildHeader(),
+                  const SizedBox(height: 28),
+                  _buildModeTabs(),
+                  const SizedBox(height: 20),
+                  if (_loginMode == 'account')
                     AppInput(
-                      label: AppStrings.password,
-                      hint: AppStrings.inputPassword,
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      suffixIcon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_outlined
-                            : Icons.visibility_off_outlined,
-                      ),
-                      onSuffixIconPressed: () {
-                        setState(() {
-                          _obscurePassword = !_obscurePassword;
-                        });
-                      },
-                      maxLength: InputLimits.password,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _login(),
+                      label: '账号',
+                      hint: '请输入用户名/邮箱',
+                      controller: _accountController,
+                      prefixIcon: const Icon(Icons.person_outline),
+                      maxLength: InputLimits.email,
+                      textInputAction: TextInputAction.next,
+                    )
+                  else
+                    AppInput(
+                      label: '手机号',
+                      hint: '请输入手机号',
+                      controller: _phoneController,
+                      prefixIcon: const Icon(Icons.phone_outlined),
+                      keyboardType: TextInputType.phone,
+                      maxLength: InputLimits.phone,
+                      textInputAction: TextInputAction.next,
                     ),
-                    if (_loadingSettings)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: LinearProgressIndicator(minHeight: 2),
+                  const SizedBox(height: 16),
+                  AppInput(
+                    label: AppStrings.password,
+                    hint: AppStrings.inputPassword,
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                    onSuffixIconPressed: () {
+                      setState(() {
+                        _obscurePassword = !_obscurePassword;
+                      });
+                    },
+                    maxLength: InputLimits.password,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) => _login(),
+                  ),
+                  if (_loadingSettings)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: LinearProgressIndicator(minHeight: 2),
+                    ),
+                  if (_loginCaptchaEnabled) ...[
+                    const SizedBox(height: 12),
+                    _buildCaptchaWidget(),
+                  ],
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      TextButton(
+                        onPressed: () => context.push('/forgot-password'),
+                        child: const Text('找回密码'),
                       ),
-                    if (_loginCaptchaEnabled) ...[
-                      const SizedBox(height: 12),
-                      _buildCaptchaWidget(),
+                      TextButton(
+                        onPressed: () => context.push('/register'),
+                        child: const Text('注册'),
+                      ),
                     ],
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        TextButton(
-                          onPressed: () => context.push('/forgot-password'),
-                          child: const Text('找回密码'),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_errorMessage != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.danger.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.danger.withValues(alpha: 0.5),
                         ),
-                        TextButton(
-                          onPressed: () => context.push('/register'),
-                          child: const Text('注册'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    if (_errorMessage != null)
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.danger.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: AppColors.danger.withOpacity(0.5),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            color: AppColors.danger,
+                            size: 20,
                           ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.error_outline,
-                              color: AppColors.danger,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _errorMessage!,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppColors.danger,
-                                ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.danger,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    if (_errorMessage != null) const SizedBox(height: 14),
-                    AppButton(
-                      text: AppStrings.login,
-                      onPressed: _login,
-                      isLoading: authState.isLoading,
-                    ),
-                    const SizedBox(height: 24),
-                    Center(
-                      child: Text(
-                        '${AppStrings.appName} $_appVersionLabel',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.gray400,
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  if (_errorMessage != null) const SizedBox(height: 14),
+                  AppButton(
+                    text: AppStrings.login,
+                    onPressed: _login,
+                    isLoading: authState.isLoading,
+                  ),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: Text(
+                      '${AppStrings.appName} $_appVersionLabel',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isLight
+                            ? cs.onSurfaceVariant
+                            : AppColors.gray400,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -492,45 +484,83 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Widget _buildModeTabs() {
-    return Theme(
-      data: Theme.of(context).copyWith(
-        cupertinoOverrideTheme: const CupertinoThemeData(
-          primaryColor: AppColors.primary,
-          barBackgroundColor: AppColors.gray800,
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    final bg = isLight
+        ? const Color(0xFFF2F4F7)
+        : AppColors.gray800;
+
+    Widget segment({required String keyValue, required String label}) {
+      final selected = _loginMode == keyValue;
+      return Expanded(
+        child: GestureDetector(
+          onTap: selected
+              ? null
+              : () {
+                  setState(() {
+                    _loginMode = keyValue;
+                    _errorMessage = null;
+                  });
+                },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: selected
+                  ? (isLight
+                        ? const Color(0xFFDCEBFF)
+                        : cs.primary.withValues(alpha: 0.95))
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              border: selected
+                  ? Border.all(
+                      color: isLight
+                          ? const Color(0xFFB9D5FF)
+                          : cs.primary.withValues(alpha: 0.9),
+                    )
+                  : null,
+            ),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: selected
+                    ? (isLight ? const Color(0xFF1F4E8C) : cs.onPrimary)
+                    : (isLight ? const Color(0xFF3F4752) : AppColors.gray300),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isLight
+              ? const Color(0xFFD4DAE3)
+              : cs.outlineVariant.withValues(alpha: 0.3),
         ),
       ),
-      child: CupertinoSlidingSegmentedControl<String>(
-        groupValue: _loginMode,
-        children: const {
-          'account': Padding(
-            padding: EdgeInsets.symmetric(vertical: 7, horizontal: 14),
-            child: Text(
-              '账号登录',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-          'phone': Padding(
-            padding: EdgeInsets.symmetric(vertical: 7, horizontal: 14),
-            child: Text(
-              '手机号登录',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-            ),
-          ),
-        },
-        thumbColor: AppColors.primary,
-        backgroundColor: AppColors.gray800,
-        onValueChanged: (value) {
-          if (value == null || value == _loginMode) return;
-          setState(() {
-            _loginMode = value;
-            _errorMessage = null;
-          });
-        },
+      child: Row(
+        children: [
+          segment(keyValue: 'account', label: '账号登录'),
+          const SizedBox(width: 4),
+          segment(keyValue: 'phone', label: '手机号登录'),
+        ],
       ),
     );
   }
 
   Future<void> _openApiSettingsDialog() async {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     final current =
         StorageService.instance.getApiBaseUrl() ??
         ApiClient.instance.dio.options.baseUrl;
@@ -571,12 +601,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         child: Container(
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
           decoration: BoxDecoration(
-            color: AppColors.gray900,
+            color: isLight ? cs.surface : AppColors.gray900,
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: AppColors.gray700),
+            border: Border.all(
+              color: isLight ? cs.outlineVariant : AppColors.gray700,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.35),
+                color: Colors.black.withValues(alpha: isLight ? 0.12 : 0.35),
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
@@ -592,7 +624,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.18),
+                      color: AppColors.primary.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: const Icon(
@@ -602,11 +634,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       'API 地址设置',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: isLight ? cs.onSurface : Colors.white,
                         fontWeight: FontWeight.w700,
                         fontSize: 17,
                       ),
@@ -615,31 +647,40 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   IconButton(
                     tooltip: '关闭',
                     onPressed: () => Navigator.of(context).pop(false),
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close_rounded,
-                      color: AppColors.gray300,
+                      color: isLight ? cs.onSurfaceVariant : AppColors.gray300,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 '修改后会立即刷新认证配置与验证码。',
-                style: TextStyle(color: AppColors.gray400, fontSize: 12.5),
+                style: TextStyle(
+                  color: isLight ? cs.onSurfaceVariant : AppColors.gray400,
+                  fontSize: 12.5,
+                ),
               ),
               const SizedBox(height: 14),
               TextField(
                 controller: controller,
                 keyboardType: TextInputType.url,
-                style: const TextStyle(color: Colors.white),
+                style: TextStyle(color: isLight ? cs.onSurface : Colors.white),
                 decoration: InputDecoration(
                   hintText: ApiConfig.defaultUrl,
-                  hintStyle: const TextStyle(color: AppColors.gray500),
+                  hintStyle: TextStyle(
+                    color: isLight ? cs.onSurfaceVariant : AppColors.gray500,
+                  ),
                   prefixIcon: const Icon(Icons.link_rounded),
                   filled: true,
-                  fillColor: AppColors.gray800,
+                  fillColor: isLight
+                      ? cs.surfaceContainerHighest
+                      : AppColors.gray800,
                   helperText: '示例: http://192.168.1.10:8080/api',
-                  helperStyle: const TextStyle(color: AppColors.gray500),
+                  helperStyle: TextStyle(
+                    color: isLight ? cs.onSurfaceVariant : AppColors.gray500,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(4),
                     borderSide: BorderSide.none,
@@ -658,8 +699,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         }
                       },
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.gray300,
-                        side: const BorderSide(color: AppColors.gray600),
+                        foregroundColor: isLight
+                            ? cs.onSurfaceVariant
+                            : AppColors.gray300,
+                        side: BorderSide(
+                          color: isLight
+                              ? cs.outlineVariant
+                              : AppColors.gray600,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -718,11 +765,18 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Widget _buildCaptchaWidget() {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     if (_captchaProvider == 'geetest') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('行为验证码', style: TextStyle(color: AppColors.gray300)),
+          Text(
+            '行为验证码',
+            style: TextStyle(
+              color: isLight ? cs.onSurfaceVariant : AppColors.gray300,
+            ),
+          ),
           const SizedBox(height: 8),
           _buildGeeTestActionButton(),
         ],
@@ -732,7 +786,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('图形验证码', style: TextStyle(color: AppColors.gray300)),
+        Text(
+          '图形验证码',
+          style: TextStyle(
+            color: isLight ? cs.onSurfaceVariant : AppColors.gray300,
+          ),
+        ),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -751,16 +810,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 height: 40,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.gray700),
-                  color: AppColors.gray900,
+                  border: Border.all(
+                    color: isLight ? cs.outlineVariant : AppColors.gray700,
+                  ),
+                  color: isLight
+                      ? cs.surfaceContainerHighest
+                      : AppColors.gray900,
                 ),
                 clipBehavior: Clip.hardEdge,
                 child: _captchaImageBase64.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
                           '点击刷新',
                           style: TextStyle(
-                            color: AppColors.gray400,
+                            color: isLight
+                                ? cs.onSurfaceVariant
+                                : AppColors.gray400,
                             fontSize: 12,
                           ),
                         ),
@@ -768,11 +833,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     : Image.memory(
                         base64Decode(_captchaImageBase64),
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Center(
+                        errorBuilder: (_, __, ___) => Center(
                           child: Text(
                             '点击刷新',
                             style: TextStyle(
-                              color: AppColors.gray400,
+                              color: isLight
+                                  ? cs.onSurfaceVariant
+                                  : AppColors.gray400,
                               fontSize: 12,
                             ),
                           ),
@@ -787,6 +854,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Widget _buildGeeTestActionButton() {
+    final isLight =
+        Theme.of(context).colorScheme.brightness == Brightness.light;
     final passed = _geetestResult.passed;
     final loading = _geetestLoading;
     final enabled = !loading && !passed;
@@ -800,8 +869,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: (passed ? AppColors.success : AppColors.primary).withOpacity(
-              0.28,
+            color: (passed ? AppColors.success : AppColors.primary).withValues(
+              alpha: isLight ? 0.18 : 0.28,
             ),
             blurRadius: passed ? 16 : 12,
             offset: const Offset(0, 6),
@@ -815,11 +884,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           onTap: enabled ? _verifyGeeTest : null,
           child: Center(
             child: loading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 22,
                     height: 22,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
+                      backgroundColor: Colors.white.withValues(alpha: 0.28),
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )
@@ -915,26 +985,34 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Widget _buildHeader() {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     return Column(
       children: [
         SizedBox(
           width: 100,
           height: 100,
-          child: SvgPicture.asset('assets/app_icon.svg', fit: BoxFit.contain),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: SvgPicture.asset('assets/app_icon.svg', fit: BoxFit.contain),
+          ),
         ),
         const SizedBox(height: 24),
         Text(
           AppStrings.appTitle,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.bold,
-            color: AppColors.gray100,
+            color: isLight ? cs.onSurface : AppColors.gray100,
           ),
         ),
         const SizedBox(height: 8),
         Text(
           '请登录您的账户',
-          style: TextStyle(fontSize: 14, color: AppColors.gray400),
+          style: TextStyle(
+            fontSize: 14,
+            color: isLight ? cs.onSurfaceVariant : AppColors.gray400,
+          ),
         ),
       ],
     );

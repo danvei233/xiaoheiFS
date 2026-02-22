@@ -128,7 +128,7 @@
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="到期时间" required>
+            <a-form-item label="到期时间">
               <a-date-picker v-model:value="createForm.expire_at" show-time style="width: 100%" />
             </a-form-item>
           </a-col>
@@ -626,7 +626,7 @@ const onCreatePackageChange = () => {
 };
 
 const submitCreateRecord = async () => {
-  if (!createForm.user_id || !createForm.name || !createForm.goods_type_id || !createForm.region_id || !createForm.line_id || !createForm.package_id || !createForm.expire_at) {
+  if (!createForm.user_id || !createForm.name || !createForm.goods_type_id || !createForm.region_id || !createForm.line_id || !createForm.package_id) {
     message.error("请完整填写必填项");
     return;
   }
@@ -641,7 +641,7 @@ const submitCreateRecord = async () => {
       line_id: createForm.line_id,
       package_id: createForm.package_id,
       monthly_price: createForm.monthly_price,
-      expire_at: expireAt,
+      ...(expireAt ? { expire_at: expireAt } : {}),
       provision: false
     });
     createOpen.value = false;

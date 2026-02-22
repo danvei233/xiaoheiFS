@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -31,11 +31,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
   Widget build(BuildContext context) {
     final client = context.read<AppState>().apiClient;
     if (client == null) {
-      return _ErrorState(
-        title: '未登录',
-        message: '请先登录管理员账号。',
-        onRetry: () {},
-      );
+      return _ErrorState(title: '未登录', message: '请先登录管理员账号。', onRetry: () {});
     }
     return ChangeNotifierProvider.value(
       value: _state ?? OrdersState(OrdersRepository(client)),
@@ -74,14 +70,7 @@ class _OrdersViewState extends State<_OrdersView> {
 
         return Scaffold(
           appBar: AppBar(
-            toolbarHeight: 44,
             title: const Text('订单审核'),
-            titleTextStyle: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w600, fontSize: 16),
-            iconTheme: const IconThemeData(size: 20),
-            actionsIconTheme: const IconThemeData(size: 20),
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh_rounded),
@@ -92,6 +81,43 @@ class _OrdersViewState extends State<_OrdersView> {
           body: Column(
             children: [
               Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE5EAF2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEAF4FF),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(
+                          Icons.receipt_long,
+                          color: Color(0xFF1E88E5),
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '下拉可刷新订单，支持待审核/开通中/失败等快速筛选',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 2),
                 child: _FilterCard(
                   expanded: _filterExpanded,
@@ -99,7 +125,8 @@ class _OrdersViewState extends State<_OrdersView> {
                   userIdCtl: _userIdCtl,
                   orderNoCtl: _orderNoCtl,
                   keywordCtl: _keywordCtl,
-                  onToggleExpand: () => setState(() => _filterExpanded = !_filterExpanded),
+                  onToggleExpand: () =>
+                      setState(() => _filterExpanded = !_filterExpanded),
                   onStatusChanged: (value) => state.setStatus(value),
                   onSearch: () {
                     state.setFilters(
@@ -116,6 +143,10 @@ class _OrdersViewState extends State<_OrdersView> {
                   },
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
+                child: _OrderStatsStrip(items: state.items),
+              ),
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async => state.refresh(),
@@ -126,8 +157,11 @@ class _OrdersViewState extends State<_OrdersView> {
                 page: state.page,
                 pageSize: state.pageSize,
                 total: state.total,
-                onPrev: state.page > 1 && !state.loading ? () => state.setPage(state.page - 1) : null,
-                onNext: state.page * state.pageSize < state.total && !state.loading
+                onPrev: state.page > 1 && !state.loading
+                    ? () => state.setPage(state.page - 1)
+                    : null,
+                onNext:
+                    state.page * state.pageSize < state.total && !state.loading
                     ? () => state.setPage(state.page + 1)
                     : null,
               ),
@@ -138,7 +172,11 @@ class _OrdersViewState extends State<_OrdersView> {
     );
   }
 
-  Widget _buildBody(ThemeData theme, ColorScheme colorScheme, OrdersState state) {
+  Widget _buildBody(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    OrdersState state,
+  ) {
     if (state.loading && state.items.isEmpty) {
       return const _LoadingState(text: '加载订单中...');
     }
@@ -219,31 +257,44 @@ class _FilterCard extends StatelessWidget {
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.tune_rounded, color: colorScheme.primary, size: 14),
+                Icon(Icons.tune_rounded, color: colorScheme.primary, size: 18),
                 const SizedBox(width: 4),
-                Text('筛选条件', style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w600)),
+                Text(
+                  '筛选条件',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const Spacer(),
                 TextButton.icon(
                   onPressed: onToggleExpand,
-                  icon: Icon(expanded ? Icons.expand_less : Icons.expand_more, size: 16),
-                  label: Text(expanded ? '收起' : '更多', style: const TextStyle(fontSize: 11)),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    minimumSize: const Size(0, 26),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  icon: Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 16,
                   ),
-                )
+                  label: Text(
+                    expanded ? '收起' : '更多',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    minimumSize: const Size(0, 36),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 4),
             SizedBox(
-              height: 32,
+              height: 40,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: 9,
@@ -251,23 +302,68 @@ class _FilterCard extends StatelessWidget {
                 itemBuilder: (context, index) {
                   switch (index) {
                     case 0:
-                      return _StatusChip(value: '', label: '全部', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: '',
+                        label: '全部',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     case 1:
-                      return _StatusChip(value: 'pending_review', label: '待审核', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'pending_review',
+                        label: '待审核',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     case 2:
-                      return _StatusChip(value: 'provisioning', label: '开通中', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'provisioning',
+                        label: '开通中',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     case 3:
-                      return _StatusChip(value: 'failed', label: '失败', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'failed',
+                        label: '失败',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     case 4:
-                      return _StatusChip(value: 'pending_payment', label: '待支付', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'pending_payment',
+                        label: '待支付',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     case 5:
-                      return _StatusChip(value: 'approved', label: '已通过', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'approved',
+                        label: '已通过',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     case 6:
-                      return _StatusChip(value: 'active', label: '已完成', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'active',
+                        label: '已完成',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     case 7:
-                      return _StatusChip(value: 'rejected', label: '已驳回', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'rejected',
+                        label: '已驳回',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                     default:
-                      return _StatusChip(value: 'canceled', label: '已取消', current: status, onChanged: onStatusChanged);
+                      return _StatusChip(
+                        value: 'canceled',
+                        label: '已取消',
+                        current: status,
+                        onChanged: onStatusChanged,
+                      );
                   }
                 },
               ),
@@ -281,7 +377,10 @@ class _FilterCard extends StatelessWidget {
                   labelText: '用户 ID',
                   prefixIcon: Icon(Icons.person_outline),
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
                 ),
               ),
               const SizedBox(height: 4),
@@ -291,7 +390,10 @@ class _FilterCard extends StatelessWidget {
                   labelText: '订单号',
                   prefixIcon: Icon(Icons.receipt_long),
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
                 ),
               ),
               const SizedBox(height: 4),
@@ -301,7 +403,10 @@ class _FilterCard extends StatelessWidget {
                   labelText: '关键词 (ID/订单号)',
                   prefixIcon: Icon(Icons.search),
                   isDense: true,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
                 ),
               ),
             ],
@@ -312,10 +417,12 @@ class _FilterCard extends StatelessWidget {
                   child: OutlinedButton(
                     onPressed: onReset,
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: const Size(0, 28),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      textStyle: const TextStyle(fontSize: 11),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      minimumSize: const Size(0, 38),
+                      textStyle: const TextStyle(fontSize: 13),
                     ),
                     child: const Text('重置'),
                   ),
@@ -325,16 +432,18 @@ class _FilterCard extends StatelessWidget {
                   child: FilledButton(
                     onPressed: onSearch,
                     style: FilledButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      minimumSize: const Size(0, 28),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      textStyle: const TextStyle(fontSize: 11),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      minimumSize: const Size(0, 38),
+                      textStyle: const TextStyle(fontSize: 13),
                     ),
                     child: const Text('搜索'),
                   ),
                 ),
               ],
-            )
+            ),
           ],
         ),
       ),
@@ -373,7 +482,7 @@ class _StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         onTap: () => onChanged(value),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(8),
@@ -391,12 +500,81 @@ class _StatusChip extends StatelessWidget {
                 style: TextStyle(
                   color: textColor,
                   fontWeight: FontWeight.w600,
-                  fontSize: 11,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _OrderStatsStrip extends StatelessWidget {
+  final List<OrderListItem> items;
+
+  const _OrderStatsStrip({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    int countBy(Set<String> values) =>
+        items.where((e) => values.contains(e.status)).length;
+    final all = items.length;
+    final pending = countBy({'pending_review'});
+    final active = countBy({'active', 'approved', 'provisioning'});
+    final failed = countBy({'failed', 'rejected', 'canceled'});
+
+    final cards = [
+      ('当前页', all.toString(), const Color(0xFF1E88E5), Icons.list_alt),
+      ('待审核', pending.toString(), const Color(0xFFEF6C00), Icons.pending),
+      ('进行中', active.toString(), const Color(0xFF00A68C), Icons.bolt),
+      ('异常', failed.toString(), const Color(0xFFD32F2F), Icons.warning_amber),
+    ];
+    return SizedBox(
+      height: 82,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: cards.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final c = cards[i];
+          return Container(
+            width: 120,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: c.$3.withOpacity(0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(c.$4, size: 16, color: c.$3),
+                const SizedBox(height: 6),
+                Text(
+                  c.$2,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: c.$3,
+                  ),
+                ),
+                Text(
+                  c.$1,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -448,25 +626,24 @@ class _OrderTile extends StatelessWidget {
         child: Row(
           children: [
             // 左侧状态颜色条
-            Container(
-              width: 3,
-              height: 92,
-              color: statusMeta.color,
-            ),
+            Container(width: 4, height: 110, color: statusMeta.color),
             Expanded(
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(
                   onTap: onOpenDetail,
                   child: Padding(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: statusMeta.color.withOpacity(0.12),
                                 borderRadius: BorderRadius.circular(6),
@@ -480,7 +657,7 @@ class _OrderTile extends StatelessWidget {
                                 children: [
                                   Icon(
                                     _statusIcon(item.status),
-                                    size: 10,
+                                    size: 14,
                                     color: statusMeta.color,
                                   ),
                                   const SizedBox(width: 3),
@@ -490,7 +667,7 @@ class _OrderTile extends StatelessWidget {
                                       color: statusMeta.color,
                                       fontWeight: FontWeight.w700,
                                       letterSpacing: 0.1,
-                                      fontSize: 10,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ],
@@ -501,7 +678,9 @@ class _OrderTile extends StatelessWidget {
                               const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             else
                               Icon(
@@ -513,21 +692,32 @@ class _OrderTile extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          item.orderNo.isEmpty ? '订单 #${item.id}' : item.orderNo,
+                          item.orderNo.isEmpty
+                              ? '订单 #${item.id}'
+                              : item.orderNo,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w700,
                             letterSpacing: -0.2,
-                            fontSize: 14,
+                            fontSize: 16,
                           ),
                         ),
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 6),
                         Wrap(
                           spacing: 10,
                           runSpacing: 2,
                           children: [
-                            _InfoChip(icon: Icons.person_outline, text: username),
-                            _InfoChip(icon: Icons.badge_outlined, text: 'ID ${item.userId}'),
-                            _InfoChip(icon: Icons.schedule, text: _formatLocal(item.createdAt)),
+                            _InfoChip(
+                              icon: Icons.person_outline,
+                              text: username,
+                            ),
+                            _InfoChip(
+                              icon: Icons.badge_outlined,
+                              text: 'ID ${item.userId}',
+                            ),
+                            _InfoChip(
+                              icon: Icons.schedule,
+                              text: _formatLocal(item.createdAt),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -535,7 +725,10 @@ class _OrderTile extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: [
@@ -550,7 +743,7 @@ class _OrderTile extends StatelessWidget {
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.w800,
                                   color: colorScheme.primary,
-                                  fontSize: 14,
+                                  fontSize: 16,
                                 ),
                               ),
                             ),
@@ -568,13 +761,17 @@ class _OrderTile extends StatelessWidget {
                                 _ActionButton(
                                   label: '通过',
                                   icon: Icons.check_circle_outline,
-                                  onPressed: item.canReview && !busy ? onApprove : null,
+                                  onPressed: item.canReview && !busy
+                                      ? onApprove
+                                      : null,
                                   color: const Color(0xFF00A68C),
                                 ),
                                 _ActionButton(
                                   label: '驳回',
                                   icon: Icons.cancel_outlined,
-                                  onPressed: item.canReview && !busy ? onReject : null,
+                                  onPressed: item.canReview && !busy
+                                      ? onReject
+                                      : null,
                                   color: const Color(0xFFEF6C00),
                                 ),
                                 _ActionButton(
@@ -586,7 +783,9 @@ class _OrderTile extends StatelessWidget {
                                 _ActionButton(
                                   label: '删除',
                                   icon: Icons.delete_outline,
-                                  onPressed: canDelete && !busy ? onDelete : null,
+                                  onPressed: canDelete && !busy
+                                      ? onDelete
+                                      : null,
                                   color: const Color(0xFFD32F2F),
                                 ),
                               ],
@@ -619,13 +818,13 @@ class _InfoChip extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 11, color: colorScheme.onSurfaceVariant),
+        Icon(icon, size: 13, color: colorScheme.onSurfaceVariant),
         const SizedBox(width: 2),
         Text(
           text,
           style: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
-            fontSize: 10,
+            fontSize: 12,
           ),
         ),
       ],
@@ -655,22 +854,20 @@ class _ActionButton extends StatelessWidget {
     final foreground = color ?? colorScheme.primary;
     final style = ButtonStyle(
       padding: WidgetStateProperty.all(
-        const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       ),
-      minimumSize: WidgetStateProperty.all(const Size(0, 24)),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      minimumSize: WidgetStateProperty.all(const Size(0, 36)),
       textStyle: WidgetStateProperty.all(
-        theme.textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600, fontSize: 10),
+        theme.textTheme.labelSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
       ),
     );
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 12),
-        const SizedBox(width: 3),
-        Text(label),
-      ],
+      children: [Icon(icon, size: 14), const SizedBox(width: 4), Text(label)],
     );
 
     if (isOutlined) {
@@ -780,7 +977,7 @@ class _ErrorState extends StatelessWidget {
             const SizedBox(height: 12),
             FilledButton(onPressed: onRetry, child: const Text('重试')),
           ],
-        )
+        ),
       ],
     );
   }
@@ -818,24 +1015,28 @@ class _PaginationBar extends StatelessWidget {
               OutlinedButton(
                 onPressed: onPrev,
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  minimumSize: const Size(0, 32),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(0, 40),
                 ),
-                child: const Text('上一页', style: TextStyle(fontSize: 12)),
+                child: const Text('上一页', style: TextStyle(fontSize: 14)),
               ),
               const SizedBox(width: 6),
               OutlinedButton(
                 onPressed: onNext,
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  minimumSize: const Size(0, 32),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  minimumSize: const Size(0, 40),
                 ),
-                child: const Text('下一页', style: TextStyle(fontSize: 12)),
+                child: const Text('下一页', style: TextStyle(fontSize: 14)),
               ),
             ],
-          )
+          ),
         ],
       ),
     );
@@ -883,7 +1084,9 @@ class OrdersRepository {
     final resp = await client.getJson('/admin/api/v1/users/$userId');
     final map = resp['user'] is Map<String, dynamic>
         ? resp['user'] as Map<String, dynamic>
-        : (resp['data'] is Map<String, dynamic> ? resp['data'] as Map<String, dynamic> : resp);
+        : (resp['data'] is Map<String, dynamic>
+              ? resp['data'] as Map<String, dynamic>
+              : resp);
     final name = (map['username'] ?? userId.toString()).toString();
     _usernameCache[userId] = name;
     return name;
@@ -894,7 +1097,10 @@ class OrdersRepository {
   }
 
   Future<void> reject(int orderId, String reason) async {
-    await client.postJson('/admin/api/v1/orders/$orderId/reject', body: {'reason': reason});
+    await client.postJson(
+      '/admin/api/v1/orders/$orderId/reject',
+      body: {'reason': reason},
+    );
   }
 
   Future<void> retry(int orderId) async {
@@ -1055,9 +1261,15 @@ class OrderFilters {
     required this.keyword,
   });
 
-  static OrderFilters empty() => const OrderFilters(status: '', userId: '', orderNo: '', keyword: '');
+  static OrderFilters empty() =>
+      const OrderFilters(status: '', userId: '', orderNo: '', keyword: '');
 
-  OrderFilters copyWith({String? status, String? userId, String? orderNo, String? keyword}) {
+  OrderFilters copyWith({
+    String? status,
+    String? userId,
+    String? orderNo,
+    String? keyword,
+  }) {
     return OrderFilters(
       status: status ?? this.status,
       userId: userId ?? this.userId,

@@ -14,18 +14,15 @@ import 'wallet_orders_screen.dart';
 import 'catalog/catalog_hub_screen.dart';
 import 'permissions_screen.dart';
 import 'probes_screen.dart';
+import 'realname_records_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        leading: const BackButton(),
-        title: const Text('设置'),
-      ),
+      appBar: AppBar(leading: const BackButton(), title: const Text('设置')),
       body: Consumer<AppState>(
         builder: (context, state, _) {
           final session = state.session;
@@ -33,6 +30,32 @@ class SettingsScreen extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.palette_outlined, color: Colors.white),
+                    SizedBox(width: 8),
+                    Text(
+                      '设置中心',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               const _SectionHeader(title: '账户与系统', icon: Icons.account_circle),
               const SizedBox(height: 8),
               _ProfileCard(username: username, session: session),
@@ -65,7 +88,10 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () => _checkApiHealth(context),
               ),
               const SizedBox(height: 16),
-              const _SectionHeader(title: '管理模块', icon: Icons.dashboard_customize),
+              const _SectionHeader(
+                title: '管理模块',
+                icon: Icons.dashboard_customize,
+              ),
               const SizedBox(height: 8),
               _SettingTile(
                 icon: Icons.support_agent,
@@ -85,7 +111,9 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const WalletOrdersScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const WalletOrdersScreen(),
+                    ),
                   );
                 },
               ),
@@ -110,6 +138,19 @@ class SettingsScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const ProbesScreen()),
+                  );
+                },
+              ),
+              _SettingTile(
+                icon: Icons.verified_user,
+                title: '实名认证记录',
+                subtitle: '审核实名状态与原因',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const RealnameRecordsScreen(),
+                    ),
                   );
                 },
               ),
@@ -166,7 +207,9 @@ class SettingsScreen extends StatelessWidget {
                 onTap: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const PermissionsScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const PermissionsScreen(),
+                    ),
                   );
                 },
               ),
@@ -490,12 +533,21 @@ class _SettingTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+        border: Border.all(color: const Color(0xFFE5EAF2)),
       ),
       child: ListTile(
-        leading: Icon(icon, color: colorScheme.primary),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        leading: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withOpacity(0.45),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: colorScheme.primary, size: 18),
+        ),
         title: Text(title),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.chevron_right),

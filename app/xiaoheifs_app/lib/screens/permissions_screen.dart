@@ -13,6 +13,7 @@ class PermissionsScreen extends StatefulWidget {
 class _PermissionsScreenState extends State<PermissionsScreen> {
   Future<List<PermissionItem>>? _future;
   final _keywordController = TextEditingController();
+  bool _busy = false;
 
   @override
   void didChangeDependencies() {
@@ -55,8 +56,13 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   Future<void> _sync() async {
     final client = context.read<AppState>().apiClient;
     if (client == null) return;
-    await client.postJson('/admin/api/v1/permissions/sync');
-    _refresh();
+    setState(() => _busy = true);
+    try {
+      await client.postJson('/admin/api/v1/permissions/sync');
+      _refresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -65,7 +71,9 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasError) {
           return Scaffold(
@@ -78,43 +86,160 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           appBar: AppBar(
             title: const Text('权限列表'),
             actions: [
-              TextButton(onPressed: _sync, child: const Text('同步')),
+              TextButton(
+                onPressed: _busy ? null : _sync,
+                child: const Text('同步'),
+              ),
               TextButton(onPressed: _refresh, child: const Text('刷新')),
             ],
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
+          body: Stack(
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _keywordController,
-                          decoration: const InputDecoration(labelText: '搜索'),
+              RefreshIndicator(
+                onRefresh: () async => _refresh(),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.rule_folder_outlined, color: Colors.white),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '支持搜索、同步、编辑权限显示名与排序',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _keywordController,
+                              decoration: const InputDecoration(
+                                labelText: '搜索权限编码/名称/分类',
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: _refresh,
+                                    child: const Text('应用过滤'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: FilledButton(
+                                    onPressed: _busy ? null : _sync,
+                                    child: const Text('同步权限'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      FilledButton(onPressed: _refresh, child: const Text('应用')),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (items.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 28),
+                        child: Center(child: Text('暂无权限')),
+                      )
+                    else
+                      ...items.map(
+                        (item) => Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: InkWell(
+                            onTap: () => _edit(item),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF1E88E5,
+                                    ).withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.verified_user_outlined,
+                                    color: Color(0xFF1E88E5),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.label,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        item.code,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        item.category.isEmpty
+                                            ? '未分组'
+                                            : item.category,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.edit_outlined, size: 18),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
-              if (items.isEmpty)
-                const Center(child: Text('暂无权限'))
-              else
-                ...items.map(
-                  (item) => Card(
-                    child: ListTile(
-                      title: Text(item.label),
-                      subtitle: Text('${item.code} · ${item.category}'),
-                      trailing: const Icon(Icons.edit),
-                      onTap: () => _edit(item),
-                    ),
-                  ),
+              if (_busy)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: LinearProgressIndicator(minHeight: 2),
                 ),
             ],
           ),
@@ -136,10 +261,22 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '名称')),
-            TextField(controller: friendlyCtl, decoration: const InputDecoration(labelText: '显示名')),
-            TextField(controller: categoryCtl, decoration: const InputDecoration(labelText: '分类')),
-            TextField(controller: parentCtl, decoration: const InputDecoration(labelText: '父级编码')),
+            TextField(
+              controller: nameCtl,
+              decoration: const InputDecoration(labelText: '名称'),
+            ),
+            TextField(
+              controller: friendlyCtl,
+              decoration: const InputDecoration(labelText: '显示名'),
+            ),
+            TextField(
+              controller: categoryCtl,
+              decoration: const InputDecoration(labelText: '分类'),
+            ),
+            TextField(
+              controller: parentCtl,
+              decoration: const InputDecoration(labelText: '父级编码'),
+            ),
             TextField(
               controller: sortCtl,
               keyboardType: TextInputType.number,
@@ -148,21 +285,30 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
     if (ok != true) return;
     final client = context.read<AppState>().apiClient;
     if (client == null) return;
-    await client.patchJson('/admin/api/v1/permissions/${item.code}', body: {
-      'name': nameCtl.text.trim(),
-      'friendly_name': friendlyCtl.text.trim(),
-      'category': categoryCtl.text.trim(),
-      'parent_code': parentCtl.text.trim(),
-      'sort_order': int.tryParse(sortCtl.text.trim()) ?? 0,
-    });
+    await client.patchJson(
+      '/admin/api/v1/permissions/${item.code}',
+      body: {
+        'name': nameCtl.text.trim(),
+        'friendly_name': friendlyCtl.text.trim(),
+        'category': categoryCtl.text.trim(),
+        'parent_code': parentCtl.text.trim(),
+        'sort_order': int.tryParse(sortCtl.text.trim()) ?? 0,
+      },
+    );
     _refresh();
   }
 }
@@ -184,7 +330,8 @@ class PermissionItem {
     required this.sortOrder,
   });
 
-  String get label => friendlyName.isNotEmpty ? friendlyName : (name.isNotEmpty ? name : code);
+  String get label =>
+      friendlyName.isNotEmpty ? friendlyName : (name.isNotEmpty ? name : code);
 
   factory PermissionItem.fromJson(Map<String, dynamic> json) {
     return PermissionItem(

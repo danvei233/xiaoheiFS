@@ -21,9 +21,10 @@
               :key="provider.key"
               :value="provider.key"
             >
-              {{ provider.name }}
+              {{ providerLabel(provider) }}
             </a-select-option>
           </a-select>
+          <div class="form-tip">建议选择完整 key（含 instance_id）的服务商，避免多实例同名选错。</div>
         </a-form-item>
 
         <a-form-item label="限制的操作">
@@ -86,6 +87,14 @@ const handleSave = async () => {
   } finally {
     saving.value = false;
   }
+};
+
+const providerLabel = (provider: any) => {
+  const name = String(provider?.name || "");
+  const key = String(provider?.key || "");
+  if (!key) return name || "-";
+  if (!name) return key;
+  return `${name} (${key})`;
 };
 
 onMounted(() => {

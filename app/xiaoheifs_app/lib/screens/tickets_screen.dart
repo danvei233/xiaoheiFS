@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -69,8 +69,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('加载失败：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('加载失败：$e')));
       }
     }
   }
@@ -83,7 +84,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
         final user = await client.getJson('/admin/api/v1/users/$id');
         final map = user['user'] is Map<String, dynamic>
             ? user['user'] as Map<String, dynamic>
-            : (user['data'] is Map<String, dynamic> ? user['data'] as Map<String, dynamic> : user);
+            : (user['data'] is Map<String, dynamic>
+                  ? user['data'] as Map<String, dynamic>
+                  : user);
         final name = map['username'] as String?;
         if (name == null || name.isEmpty) continue;
         for (final item in items) {
@@ -109,86 +112,97 @@ class _TicketsScreenState extends State<TicketsScreen> {
     return Material(
       child: Stack(
         children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
-            children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 16),
               children: [
-                Text(
-                  '工单管理',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                      ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _loading ? null : () => _refresh(),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    minimumSize: const Size(0, 30),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    textStyle: const TextStyle(fontSize: 12),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE5EAF2)),
                   ),
-                  icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('刷新'),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '工单管理 · 下拉可刷新，快速定位用户问题',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      OutlinedButton.icon(
+                        onPressed: _loading ? null : () => _refresh(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          minimumSize: const Size(0, 30),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: const TextStyle(fontSize: 12),
+                        ),
+                        icon: const Icon(Icons.refresh, size: 16),
+                        label: const Text('刷新'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                _FilterCard(
+                  status: _status,
+                  onStatusChanged: (value) {
+                    _status = value;
+                    _page = 1;
+                    _refresh();
+                  },
+                  userIdController: _userIdController,
+                  qController: _qController,
+                  onSearch: () {
+                    _page = 1;
+                    _refresh();
+                  },
+                  onReset: _resetFilters,
+                ),
+                const SizedBox(height: 10),
+                if (_items.isEmpty && !_loading)
+                  const _EmptyState()
+                else
+                  ..._items.map(
+                    (item) => _TicketCard(item: item, onTap: _openDetail),
+                  ),
+                const SizedBox(height: 10),
+                _PaginationBar(
+                  page: _page,
+                  pageSize: _pageSize,
+                  total: _total,
+                  onPrev: _page > 1
+                      ? () {
+                          _page -= 1;
+                          _refresh();
+                        }
+                      : null,
+                  onNext: _page * _pageSize < _total
+                      ? () {
+                          _page += 1;
+                          _refresh();
+                        }
+                      : null,
                 ),
               ],
             ),
-            const SizedBox(height: 6),
-            Text(
-              '处理用户提交的技术支持与咨询工单',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: 8),
-            _FilterCard(
-              status: _status,
-              onStatusChanged: (value) {
-                _status = value;
-                _page = 1;
-                _refresh();
-              },
-              userIdController: _userIdController,
-              qController: _qController,
-              onSearch: () {
-                _page = 1;
-                _refresh();
-              },
-              onReset: _resetFilters,
-            ),
-            const SizedBox(height: 10),
-            if (_items.isEmpty && !_loading)
-              const _EmptyState()
-            else
-              ..._items.map((item) => _TicketCard(item: item, onTap: _openDetail)),
-            const SizedBox(height: 10),
-            _PaginationBar(
-              page: _page,
-              pageSize: _pageSize,
-              total: _total,
-              onPrev: _page > 1
-                  ? () {
-                      _page -= 1;
-                      _refresh();
-                    }
-                  : null,
-              onNext: _page * _pageSize < _total
-                  ? () {
-                      _page += 1;
-                      _refresh();
-                    }
-                  : null,
-            ),
-          ],
-        ),
-        if (_loading)
-          const Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: LinearProgressIndicator(minHeight: 2),
           ),
+          if (_loading)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
         ],
       ),
     );
@@ -249,7 +263,10 @@ class _FilterCard extends StatelessWidget {
                     hintText: '关键词（标题/内容）',
                     prefixIcon: Icon(Icons.search, size: 16),
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
                   ),
                 ),
               ),
@@ -257,7 +274,10 @@ class _FilterCard extends StatelessWidget {
               FilledButton.icon(
                 onPressed: onSearch,
                 style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   minimumSize: const Size(0, 30),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   textStyle: const TextStyle(fontSize: 12),
@@ -316,7 +336,10 @@ class _FilterCard extends StatelessWidget {
                     hintText: '用户 ID',
                     prefixIcon: Icon(Icons.person_outline, size: 16),
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
                   ),
                 ),
               ),
@@ -324,7 +347,10 @@ class _FilterCard extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onReset,
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
                   minimumSize: const Size(0, 30),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   textStyle: const TextStyle(fontSize: 12),
@@ -360,8 +386,7 @@ class _StatusFilterChip extends StatelessWidget {
     final borderColor = selected
         ? colorScheme.primary
         : colorScheme.outlineVariant.withOpacity(0.7);
-    final textColor =
-        selected ? colorScheme.primary : colorScheme.onSurface;
+    final textColor = selected ? colorScheme.primary : colorScheme.onSurface;
 
     return Material(
       color: Colors.transparent,
@@ -420,7 +445,9 @@ class _TicketCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withOpacity(0.5),
+            ),
             boxShadow: [
               BoxShadow(
                 color: colorScheme.shadow.withOpacity(0.05),
@@ -548,7 +575,10 @@ class _PaginationBar extends StatelessWidget {
                 OutlinedButton(
                   onPressed: onPrev,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     minimumSize: const Size(0, 30),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     textStyle: const TextStyle(fontSize: 12),
@@ -558,7 +588,10 @@ class _PaginationBar extends StatelessWidget {
                 OutlinedButton(
                   onPressed: onNext,
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     minimumSize: const Size(0, 30),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     textStyle: const TextStyle(fontSize: 12),
@@ -590,7 +623,11 @@ class _StatusTag extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -609,13 +646,21 @@ _StatusMeta _ticketStatusMeta(String status) {
     case 'open':
       return const _StatusMeta('待处理', Icons.report, Color(0xFF1E88E5));
     case 'waiting_user':
-      return const _StatusMeta('等待用户', Icons.hourglass_bottom, Color(0xFFEF6C00));
+      return const _StatusMeta(
+        '等待用户',
+        Icons.hourglass_bottom,
+        Color(0xFFEF6C00),
+      );
     case 'waiting_admin':
       return const _StatusMeta('处理中', Icons.support_agent, Color(0xFF7B1FA2));
     case 'closed':
       return const _StatusMeta('已关闭', Icons.check_circle, Color(0xFF00A68C));
     default:
-      return _StatusMeta(status.isEmpty ? '未知' : status, Icons.info, const Color(0xFF546E7A));
+      return _StatusMeta(
+        status.isEmpty ? '未知' : status,
+        Icons.info,
+        const Color(0xFF546E7A),
+      );
   }
 }
 

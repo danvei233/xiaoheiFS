@@ -8,7 +8,7 @@ Xiaohei-to-Xiaohei proxy automation plugin.
 {
   "base_url": "https://upstream.example.com",
   "open_akid": "uak_xxx",
-  "open_secret": "<secret returned when creating user api key>",
+  "open_key": "<key returned when creating user api key>",
   "admin_api_key": "<optional but recommended>",
   "price_rate": 1.0,
   "goods_type_id": 0,
@@ -20,7 +20,8 @@ Xiaohei-to-Xiaohei proxy automation plugin.
 
 ## Upstream requirements
 
-- `open_akid/open_secret` must belong to a user with enough wallet balance for instant orders.
+- `open_akid/open_key` must belong to a user with enough wallet balance for instant orders.
+- `open_secret` is still accepted as a legacy alias of `open_key`.
 - `admin_api_key` should have permissions for:
   - catalog read (`regions/plan-groups/packages/system-images`)
   - optional admin VPS actions (`lock/unlock/delete`)

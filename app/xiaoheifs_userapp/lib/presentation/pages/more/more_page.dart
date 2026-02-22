@@ -5,13 +5,38 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/avatar_url.dart';
+import '../../../core/utils/date_formatter.dart';
 import '../../providers/auth_provider.dart';
 
-class MorePage extends ConsumerWidget {
+class MorePage extends ConsumerStatefulWidget {
   const MorePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MorePage> createState() => _MorePageState();
+}
+
+class _MorePageState extends ConsumerState<MorePage> {
+  Map<String, dynamic> _tier = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadTier);
+  }
+
+  Future<void> _loadTier() async {
+    try {
+      final tier = await ref.read(authRepositoryProvider).getMyUserTier();
+      if (!mounted) return;
+      setState(() => _tier = tier);
+    } catch (_) {
+      // Keep silent when tier API is unavailable.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ref = this.ref;
     final user = ref.watch(authProvider).user;
     final isDesktop = MediaQuery.of(context).size.width >= 1024;
 
@@ -19,7 +44,7 @@ class MorePage extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _buildUserCard(context, user),
+          _buildUserCard(context, user, _tier),
           if (!isDesktop) ...[
             const SizedBox(height: 16),
             _buildItem(
@@ -48,12 +73,17 @@ class MorePage extends ConsumerWidget {
             ),
             _buildItem(
               context,
+              icon: Icons.key_outlined,
+              title: AppStrings.navApiManagement,
+              route: '/console/api-keys',
+            ),
+            _buildItem(
+              context,
               icon: Icons.settings_outlined,
               title: AppStrings.navProfile,
               route: '/console/profile',
             ),
           ],
-          const SizedBox(height: 8),
           _buildItem(
             context,
             icon: Icons.security_outlined,
@@ -67,7 +97,11 @@ class MorePage extends ConsumerWidget {
     );
   }
 
-  Widget _buildUserCard(BuildContext context, dynamic user) {
+  Widget _buildUserCard(
+    BuildContext context,
+    dynamic user,
+    Map<String, dynamic> tier,
+  ) {
     final avatar = resolveUserAvatarUrl(
       baseUrl: ApiClient.instance.dio.options.baseUrl,
       qq: user?.qq?.toString(),
@@ -76,6 +110,14 @@ class MorePage extends ConsumerWidget {
     );
     final username = user?.username ?? '未登录';
     final email = user?.email ?? '';
+    final tierName = (tier['group_name'] ?? '').toString().trim();
+    final tierColor = _resolveTierColor((tier['group_color'] ?? '').toString());
+    final tierIcon = _resolveTierIcon((tier['group_icon'] ?? '').toString());
+    final tierExpireRaw = (tier['expire_at'] ?? '').toString().trim();
+    final tierExpireText = tierExpireRaw.isEmpty
+        ? ''
+        : DateFormatter.formatIso(tierExpireRaw, DateFormatter.formatCompact);
+
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -122,6 +164,51 @@ class MorePage extends ConsumerWidget {
                         ),
                       ),
                     ],
+                    if (tierName.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: tierColor.withValues(alpha: 0.16),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: tierColor.withValues(alpha: 0.36),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(tierIcon, size: 12, color: tierColor),
+                                const SizedBox(width: 4),
+                                Text(
+                                  tierName,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: tierColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (tierExpireText.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          '到期：$tierExpireText',
+                          style: const TextStyle(
+                            color: AppColors.gray500,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
                   ],
                 ),
               ),
@@ -165,5 +252,31 @@ class MorePage extends ConsumerWidget {
         },
       ),
     );
+  }
+
+  Color _resolveTierColor(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) {
+      return AppColors.primary;
+    }
+    final hex = value.startsWith('#') ? value.substring(1) : value;
+    if (hex.length != 6 && hex.length != 8) {
+      return AppColors.primary;
+    }
+    final parsed = int.tryParse(hex, radix: 16);
+    if (parsed == null) {
+      return AppColors.primary;
+    }
+    return hex.length == 6 ? Color(0xFF000000 | parsed) : Color(parsed);
+  }
+
+  IconData _resolveTierIcon(String raw) {
+    final icon = raw.trim().toLowerCase();
+    if (icon == 'vip' || icon == 'crown') return Icons.workspace_premium;
+    if (icon == 'star') return Icons.star;
+    if (icon == 'rocket') return Icons.rocket_launch;
+    if (icon == 'diamond' || icon == 'gem') return Icons.diamond;
+    if (icon == 'shield' || icon == 'badge') return Icons.verified_user;
+    return Icons.military_tech;
   }
 }

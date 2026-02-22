@@ -145,6 +145,14 @@ class AuthRepository {
     }
   }
 
+  Future<Map<String, dynamic>> getMyUserTier() async {
+    try {
+      return await _authApi.getMyUserTier();
+    } catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   Future<void> changeMyPassword(Map<String, dynamic> payload) async {
     try {
       await _authApi.changeMyPassword(payload);

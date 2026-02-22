@@ -52,6 +52,7 @@ class AppStrings {
   static const String navProfile = '个人设置';
   static const String navMore = '更多';
   static const String navNotifications = '消息中心';
+  static const String navApiManagement = 'API 管理';
 
   // Dashboard
   static const String dashboard = '控制台';
@@ -172,4 +173,3 @@ class AppStrings {
   static const String requestTimeout = '请求超时';
   static const String unknownError = '未知错误';
 }
-

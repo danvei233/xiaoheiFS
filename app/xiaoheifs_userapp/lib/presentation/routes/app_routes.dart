@@ -21,6 +21,7 @@ import '../pages/profile/profile_page.dart';
 import '../pages/profile/security_center_page.dart';
 import '../pages/more/more_page.dart';
 import '../pages/notifications/notifications_page.dart';
+import '../pages/api_keys/api_keys_page.dart';
 import '../../core/navigation/app_navigator.dart';
 import '../providers/auth_provider.dart';
 
@@ -192,6 +193,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               key: state.pageKey,
               child: const NotificationsPage(),
             ),
+          ),
+          GoRoute(
+            path: '/console/api-keys',
+            name: 'api_keys',
+            pageBuilder: (context, state) =>
+                MaterialPage(key: state.pageKey, child: const ApiKeysPage()),
           ),
         ],
       ),

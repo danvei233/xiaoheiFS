@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -112,65 +112,94 @@ class _UsersScreenState extends State<UsersScreen> {
     return Material(
       child: Stack(
         children: [
-          ListView(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
-            children: [
-              Row(
-                children: [
-                  Text(
-                    '用户管理',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
+          RefreshIndicator(
+            onRefresh: () async => _refresh(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE5EAF2)),
                   ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              _FilterBar(
-                keywordController: _keywordController,
-                status: _statusFilter,
-                onStatusChanged: (value) => _statusFilter = value,
-                onSearch: () {
-                  _page = 1;
-                  _refresh();
-                },
-                onReset: _resetFilters,
-                onRefresh: _refresh,
-              ),
-              const SizedBox(height: 8),
-              if (_items.isEmpty && !_loading)
-                const _EmptyState()
-              else
-                ..._items.map(
-                  (item) => _UserItem(
-                    item: item,
-                    onDetail: () => _openDetail(item),
-                    onEdit: () => _openEdit(item),
-                    onResetPassword: () => _openReset(item),
-                    onToggle: () => _toggleStatus(item),
-                    onImpersonate: () => _impersonate(item),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '用户管理',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 18,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '下拉即可刷新列表与状态',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.people_alt_outlined, size: 22),
+                    ],
                   ),
                 ),
-              const SizedBox(height: 8),
-              _PaginationBar(
-                page: _page,
-                pageSize: _pageSize,
-                total: _total,
-                onPrev: _page > 1
-                    ? () {
-                        _page -= 1;
-                        _refresh();
-                      }
-                    : null,
-                onNext: _page * _pageSize < _total
-                    ? () {
-                        _page += 1;
-                        _refresh();
-                      }
-                    : null,
-              ),
-            ],
+                const SizedBox(height: 8),
+                _FilterBar(
+                  keywordController: _keywordController,
+                  status: _statusFilter,
+                  onStatusChanged: (value) => _statusFilter = value,
+                  onSearch: () {
+                    _page = 1;
+                    _refresh();
+                  },
+                  onReset: _resetFilters,
+                  onRefresh: _refresh,
+                ),
+                const SizedBox(height: 8),
+                _UserStatsStrip(items: _items),
+                const SizedBox(height: 8),
+                if (_items.isEmpty && !_loading)
+                  const _EmptyState()
+                else
+                  ..._items.map(
+                    (item) => _UserItem(
+                      item: item,
+                      onDetail: () => _openDetail(item),
+                      onEdit: () => _openEdit(item),
+                      onResetPassword: () => _openReset(item),
+                      onToggle: () => _toggleStatus(item),
+                      onImpersonate: () => _impersonate(item),
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                _PaginationBar(
+                  page: _page,
+                  pageSize: _pageSize,
+                  total: _total,
+                  onPrev: _page > 1
+                      ? () {
+                          _page -= 1;
+                          _refresh();
+                        }
+                      : null,
+                  onNext: _page * _pageSize < _total
+                      ? () {
+                          _page += 1;
+                          _refresh();
+                        }
+                      : null,
+                ),
+              ],
+            ),
           ),
           if (_loading)
             const Positioned(
@@ -194,7 +223,7 @@ class _UsersScreenState extends State<UsersScreen> {
     );
   }
 
-Future<void> _openDetail(UserItem item) async {
+  Future<void> _openDetail(UserItem item) async {
     final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => UserDetailScreen(userId: item.id)),
@@ -500,7 +529,7 @@ class _FilterBar extends StatelessWidget {
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(12),
         child: Column(
           children: [
             Row(
@@ -510,19 +539,23 @@ class _FilterBar extends StatelessWidget {
                     controller: keywordController,
                     decoration: const InputDecoration(
                       hintText: '关键词（ID/用户名/邮箱/手机号）',
-                      prefixIcon: Icon(Icons.search, size: 18),
-                      isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                      prefixIcon: Icon(Icons.search, size: 20),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 12,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 4),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    minimumSize: const Size(0, 30),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    textStyle: const TextStyle(fontSize: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    minimumSize: const Size(0, 38),
+                    textStyle: const TextStyle(fontSize: 13),
                   ),
                   onPressed: onSearch,
                   icon: const Icon(Icons.search_rounded),
@@ -532,7 +565,7 @@ class _FilterBar extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             SizedBox(
-              height: 30,
+              height: 40,
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: [
@@ -562,10 +595,12 @@ class _FilterBar extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      minimumSize: const Size(0, 30),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      textStyle: const TextStyle(fontSize: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      minimumSize: const Size(0, 38),
+                      textStyle: const TextStyle(fontSize: 13),
                     ),
                     onPressed: onReset,
                     icon: const Icon(Icons.restart_alt_rounded),
@@ -576,10 +611,12 @@ class _FilterBar extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      minimumSize: const Size(0, 30),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      textStyle: const TextStyle(fontSize: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      minimumSize: const Size(0, 38),
+                      textStyle: const TextStyle(fontSize: 13),
                     ),
                     onPressed: onRefresh,
                     icon: const Icon(Icons.refresh_rounded),
@@ -615,8 +652,7 @@ class _FilterChip extends StatelessWidget {
     final borderColor = selected
         ? colorScheme.primary
         : colorScheme.outlineVariant.withOpacity(0.7);
-    final textColor =
-        selected ? colorScheme.primary : colorScheme.onSurface;
+    final textColor = selected ? colorScheme.primary : colorScheme.onSurface;
 
     return Material(
       color: Colors.transparent,
@@ -624,7 +660,7 @@ class _FilterChip extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           decoration: BoxDecoration(
             color: bgColor,
             borderRadius: BorderRadius.circular(8),
@@ -642,7 +678,7 @@ class _FilterChip extends StatelessWidget {
                 style: TextStyle(
                   color: textColor,
                   fontWeight: FontWeight.w600,
-                  fontSize: 11,
+                  fontSize: 13,
                 ),
               ),
             ],
@@ -682,10 +718,10 @@ class _UserItem extends StatelessWidget {
       avatarUrl: item.avatarUrl.isNotEmpty ? item.avatarUrl : null,
     );
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
         boxShadow: [
           BoxShadow(
@@ -697,17 +733,17 @@ class _UserItem extends StatelessWidget {
       ),
       child: InkWell(
         onTap: onDetail,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Avatar(url: avatarUrl, radius: 14),
-                  const SizedBox(width: 6),
+                  _Avatar(url: avatarUrl, radius: 18),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -719,8 +755,8 @@ class _UserItem extends StatelessWidget {
                                 item.username,
                                 style: theme.textTheme.titleSmall?.copyWith(
                                   fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                  ),
+                                  fontSize: 16,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -736,7 +772,7 @@ class _UserItem extends StatelessWidget {
                           item.contact,
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
-                            fontSize: 11,
+                            fontSize: 13,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -744,7 +780,7 @@ class _UserItem extends StatelessWidget {
                           'ID ${item.id} · ${item.roleLabel}',
                           style: theme.textTheme.labelSmall?.copyWith(
                             color: colorScheme.onSurfaceVariant,
-                            fontSize: 10,
+                            fontSize: 12,
                           ),
                         ),
                       ],
@@ -773,7 +809,10 @@ class _UserItem extends StatelessWidget {
                     itemBuilder: (context) => const [
                       PopupMenuItem(value: 'detail', child: Text('详情')),
                       PopupMenuItem(value: 'edit', child: Text('编辑')),
-                      PopupMenuItem(value: 'impersonate', child: Text('以此用户登录')),
+                      PopupMenuItem(
+                        value: 'impersonate',
+                        child: Text('以此用户登录'),
+                      ),
                       PopupMenuItem(value: 'toggle', child: Text('禁用/启用')),
                       PopupMenuItem(value: 'reset', child: Text('重置密码')),
                     ],
@@ -831,7 +870,7 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
@@ -841,8 +880,75 @@ class _StatusPill extends StatelessWidget {
         style: TextStyle(
           color: color,
           fontWeight: FontWeight.w600,
-          fontSize: 10,
+          fontSize: 12,
         ),
+      ),
+    );
+  }
+}
+
+class _UserStatsStrip extends StatelessWidget {
+  final List<UserItem> items;
+
+  const _UserStatsStrip({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    int countBy(String status) => items.where((e) => e.status == status).length;
+    final all = items.length;
+    final active = countBy('active');
+    final blocked = countBy('blocked');
+    final pending = countBy('pending');
+    final cards = [
+      ('当前页', '$all', const Color(0xFF1E88E5), Icons.groups_2_outlined),
+      ('正常', '$active', const Color(0xFF00A68C), Icons.check_circle_outline),
+      ('待审核', '$pending', const Color(0xFFEF6C00), Icons.pending_outlined),
+      ('禁用', '$blocked', const Color(0xFFD32F2F), Icons.block_outlined),
+    ];
+    return SizedBox(
+      height: 82,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: cards.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final c = cards[i];
+          return Container(
+            width: 116,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: c.$3.withOpacity(0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(c.$4, size: 16, color: c.$3),
+                const SizedBox(height: 6),
+                Text(
+                  c.$2,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: c.$3,
+                  ),
+                ),
+                Text(
+                  c.$1,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -869,18 +975,18 @@ class _MiniActionButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 12, color: colorScheme.primary),
+              Icon(icon, size: 14, color: colorScheme.primary),
               const SizedBox(width: 4),
               Text(
                 label,
                 style: TextStyle(
                   color: colorScheme.primary,
                   fontWeight: FontWeight.w600,
-                  fontSize: 10,
+                  fontSize: 12,
                 ),
               ),
             ],
@@ -1032,18 +1138,46 @@ class _PaginationBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalPages = (total / pageSize).ceil();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text('第 $page / $totalPages 页 · 共 $total 条'),
-        Row(
-          children: [
-            OutlinedButton(onPressed: onPrev, child: const Text('上一页')),
-            const SizedBox(width: 4),
-            OutlinedButton(onPressed: onNext, child: const Text('下一页')),
-          ],
-        ),
-      ],
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 4, 2, 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            '第 $page / $totalPages 页 · 共 $total 条',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(fontSize: 13),
+          ),
+          Row(
+            children: [
+              OutlinedButton(
+                onPressed: onPrev,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 38),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+                child: const Text('上一页', style: TextStyle(fontSize: 13)),
+              ),
+              const SizedBox(width: 6),
+              OutlinedButton(
+                onPressed: onNext,
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 38),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+                child: const Text('下一页', style: TextStyle(fontSize: 13)),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1065,5 +1199,3 @@ int _asInt(dynamic value) {
   if (value is String) return int.tryParse(value) ?? 0;
   return 0;
 }
-
-

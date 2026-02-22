@@ -74,7 +74,11 @@ func (h *Handler) OpenUserAPIKeyCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"item": toUserAPIKeyDTO(result.Key), "secret": result.Secret})
+	c.JSON(http.StatusOK, gin.H{
+		"item":   toUserAPIKeyDTO(result.Key),
+		"key":    result.Secret,
+		"secret": result.Secret,
+	})
 }
 
 func (h *Handler) OpenUserAPIKeyPatch(c *gin.Context) {

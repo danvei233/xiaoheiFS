@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
+import '../services/api_client.dart';
 
 class ServersScreen extends StatefulWidget {
   const ServersScreen({super.key});
@@ -32,10 +33,13 @@ class _ServersScreenState extends State<ServersScreen> {
   Future<List<VpsItem>> _load(client) async {
     setState(() => _loading = true);
     try {
-      final resp = await client.getJson('/admin/api/v1/vps', query: {
-        'limit': _pageSize.toString(),
-        'offset': ((_page - 1) * _pageSize).toString(),
-      });
+      final resp = await client.getJson(
+        '/admin/api/v1/vps',
+        query: {
+          'limit': _pageSize.toString(),
+          'offset': ((_page - 1) * _pageSize).toString(),
+        },
+      );
       final items = (resp['items'] as List<dynamic>? ?? [])
           .map((e) => VpsItem.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -63,7 +67,9 @@ class _ServersScreenState extends State<ServersScreen> {
         final user = await client.getJson('/admin/api/v1/users/$id');
         final map = user['user'] is Map<String, dynamic>
             ? user['user'] as Map<String, dynamic>
-            : (user['data'] is Map<String, dynamic> ? user['data'] as Map<String, dynamic> : user);
+            : (user['data'] is Map<String, dynamic>
+                  ? user['data'] as Map<String, dynamic>
+                  : user);
         final name = map['username'] as String?;
         final role = map['role'] as String?;
         if (name == null || name.isEmpty) continue;
@@ -93,58 +99,110 @@ class _ServersScreenState extends State<ServersScreen> {
           return Center(child: Text('加载失败：$snapshot'));
         }
         final items = snapshot.data ?? [];
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '服务器管理',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+        return RefreshIndicator(
+          onRefresh: () async => _refresh(),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                OutlinedButton.icon(
-                  onPressed: _loading ? null : _refresh,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('刷新'),
-                )
-              ],
-            ),
-            const SizedBox(height: 10),
-            _StatusTabs(
-              value: _statusFilter,
-              onChanged: (value) {
-                _statusFilter = value;
-                _page = 1;
-                _refresh();
-              },
-            ),
-            const SizedBox(height: 12),
-            if (items.isEmpty)
-              const Center(child: Text('暂无实例'))
-            else
-              ...items.map((item) => _VpsTile(item: item, onAction: _handleAction)),
-            const SizedBox(height: 12),
-            _PaginationBar(
-              page: _page,
-              pageSize: _pageSize,
-              total: _total,
-              onPrev: _page > 1
-                  ? () {
-                      _page -= 1;
-                      _refresh();
-                    }
-                  : null,
-              onNext: _page * _pageSize < _total
-                  ? () {
-                      _page += 1;
-                      _refresh();
-                    }
-                  : null,
-            ),
-          ],
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '服务器管理',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '下拉可快速刷新，支持前端同款新建记录',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Colors.white.withOpacity(0.9),
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.dns_outlined, color: Colors.white),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _loading ? null : _openCreateRecord,
+                      icon: const Icon(Icons.add),
+                      label: const Text('新建记录'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _loading ? null : _refresh,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('刷新数据'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _StatusTabs(
+                value: _statusFilter,
+                onChanged: (value) {
+                  _statusFilter = value;
+                  _page = 1;
+                  _refresh();
+                },
+              ),
+              const SizedBox(height: 12),
+              _VpsStatsStrip(items: items),
+              const SizedBox(height: 10),
+              if (items.isEmpty)
+                const Center(child: Text('暂无实例'))
+              else
+                ...items.map(
+                  (item) => _VpsTile(item: item, onAction: _handleAction),
+                ),
+              const SizedBox(height: 12),
+              _PaginationBar(
+                page: _page,
+                pageSize: _pageSize,
+                total: _total,
+                onPrev: _page > 1
+                    ? () {
+                        _page -= 1;
+                        _refresh();
+                      }
+                    : null,
+                onNext: _page * _pageSize < _total
+                    ? () {
+                        _page += 1;
+                        _refresh();
+                      }
+                    : null,
+              ),
+            ],
+          ),
         );
       },
     );
@@ -167,22 +225,49 @@ class _ServersScreenState extends State<ServersScreen> {
         await client.postJson('/admin/api/v1/vps/${item.id}/emergency-renew');
         break;
       case 'delete':
-        await client.postJson('/admin/api/v1/vps/${item.id}/delete', body: {'reason': item.deleteReason});
+        await client.postJson(
+          '/admin/api/v1/vps/${item.id}/delete',
+          body: {'reason': item.deleteReason},
+        );
         break;
       case 'resize':
-        await client.postJson('/admin/api/v1/vps/${item.id}/resize', body: item.resizePayload);
+        await client.postJson(
+          '/admin/api/v1/vps/${item.id}/resize',
+          body: item.resizePayload,
+        );
         break;
       case 'status':
-        await client.postJson('/admin/api/v1/vps/${item.id}/status', body: item.statusPayload);
+        await client.postJson(
+          '/admin/api/v1/vps/${item.id}/status',
+          body: item.statusPayload,
+        );
         break;
       case 'expire':
-        await client.patchJson('/admin/api/v1/vps/${item.id}/expire-at', body: item.expirePayload);
+        await client.patchJson(
+          '/admin/api/v1/vps/${item.id}/expire-at',
+          body: item.expirePayload,
+        );
         break;
       case 'edit':
-        await client.patchJson('/admin/api/v1/vps/${item.id}', body: item.editPayload);
+        await client.patchJson(
+          '/admin/api/v1/vps/${item.id}',
+          body: item.editPayload,
+        );
         break;
     }
     _refresh();
+  }
+
+  Future<void> _openCreateRecord() async {
+    final client = context.read<AppState>().apiClient;
+    if (client == null) return;
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (context) => _CreateVpsRecordDialog(client: client),
+    );
+    if (created == true) {
+      _refresh();
+    }
   }
 }
 
@@ -211,10 +296,17 @@ class _VpsTile extends StatelessWidget {
             controller: controller,
             padding: const EdgeInsets.all(16),
             children: [
-              Text('实例 #${item.id}', style: Theme.of(context).textTheme.titleMedium),
+              Text(
+                '实例 #${item.id}',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
               const SizedBox(height: 4),
-              Text('用户 ${item.username ?? item.userId} · ${_statusLabel(item.status)}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54)),
+              Text(
+                '用户 ${item.username ?? item.userId} · ${_statusLabel(item.status)}',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+              ),
               const SizedBox(height: 12),
               _ActionGroup(
                 title: '常用操作',
@@ -291,7 +383,11 @@ class _VpsTile extends StatelessWidget {
                     subtitle: '立即创建紧急续费订单',
                     color: Colors.orange,
                     onTap: () async {
-                      final ok = await _confirm(context, '紧急续费', '确认对该实例执行紧急续费？');
+                      final ok = await _confirm(
+                        context,
+                        '紧急续费',
+                        '确认对该实例执行紧急续费？',
+                      );
                       if (ok) {
                         Navigator.pop(context);
                         await onAction(item, 'emergency');
@@ -362,16 +458,18 @@ class _VpsTile extends StatelessWidget {
         onTap: () => _openActionSheet(context, item, onAction),
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: colorScheme.surface,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.5)),
+            border: Border.all(
+              color: colorScheme.outlineVariant.withOpacity(0.5),
+            ),
             boxShadow: [
               BoxShadow(
-                color: colorScheme.shadow.withOpacity(0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+                color: colorScheme.shadow.withOpacity(0.08),
+                blurRadius: 14,
+                offset: const Offset(0, 6),
               ),
             ],
           ),
@@ -416,50 +514,90 @@ class _VpsTile extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 runSpacing: 6,
                 children: [statusChip, adminChip],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFD),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.place_outlined,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${item.region.isEmpty ? '-' : item.region} · ${item.packageName.isEmpty ? '-' : item.packageName}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.tune_rounded,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '${item.cpu}C / ${item.memoryGb}G / ${item.diskGb}G / ${item.bandwidthMbps}Mbps',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.payments_outlined,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            '月费 ￥${item.monthlyPrice.toStringAsFixed(2)} · 到期 ${_formatLocal(item.expireAt)}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
-                  Icon(Icons.place_outlined,
-                      size: 16, color: colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
-                      '${item.region.isEmpty ? '-' : item.region} · ${item.packageName.isEmpty ? '-' : item.packageName}',
-                      style: theme.textTheme.bodySmall,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openPanel(context, item),
+                      icon: const Icon(Icons.login, size: 16),
+                      label: const Text('登录面板'),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.tune_rounded,
-                      size: 16, color: colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      '${item.cpu}C / ${item.memoryGb}G / ${item.diskGb}G / ${item.bandwidthMbps}Mbps',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(Icons.payments_outlined,
-                      size: 16, color: colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      '月费 ￥${item.monthlyPrice.toStringAsFixed(2)} · 到期 ${_formatLocal(item.expireAt)}',
-                      style: theme.textTheme.bodySmall,
+                    child: OutlinedButton.icon(
+                      onPressed: () => onAction(item, 'refresh'),
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('刷新实例'),
                     ),
                   ),
                 ],
@@ -501,16 +639,19 @@ class _VpsTile extends StatelessWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
     if (ok == true) {
-      item.statusPayload = {
-        'status': status,
-        'reason': reasonCtl.text.trim(),
-      };
+      item.statusPayload = {'status': status, 'reason': reasonCtl.text.trim()};
       await onAction(item, 'status');
     }
   }
@@ -527,15 +668,37 @@ class _VpsTile extends StatelessWidget {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: cpu, decoration: const InputDecoration(labelText: 'CPU'), keyboardType: TextInputType.number),
-            TextField(controller: mem, decoration: const InputDecoration(labelText: '内存GB'), keyboardType: TextInputType.number),
-            TextField(controller: disk, decoration: const InputDecoration(labelText: '磁盘GB'), keyboardType: TextInputType.number),
-            TextField(controller: bw, decoration: const InputDecoration(labelText: '带宽Mbps'), keyboardType: TextInputType.number),
+            TextField(
+              controller: cpu,
+              decoration: const InputDecoration(labelText: 'CPU'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: mem,
+              decoration: const InputDecoration(labelText: '内存GB'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: disk,
+              decoration: const InputDecoration(labelText: '磁盘GB'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: bw,
+              decoration: const InputDecoration(labelText: '带宽Mbps'),
+              keyboardType: TextInputType.number,
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
@@ -573,19 +736,33 @@ class _VpsTile extends StatelessWidget {
                   initialTime: TimeOfDay.fromDateTime(DateTime.now()),
                 );
                 if (time == null) return;
-                selected = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                selected = DateTime(
+                  date.year,
+                  date.month,
+                  date.day,
+                  time.hour,
+                  time.minute,
+                );
               },
               icon: const Icon(Icons.calendar_today),
               label: const Text('选择日期时间'),
             ),
             const SizedBox(height: 8),
             Text('当前：${_formatLocal(item.expireAt)}'),
-            Text('新值：${selected == null ? '-' : _formatLocal(selected!.toIso8601String())}'),
+            Text(
+              '新值：${selected == null ? '-' : _formatLocal(selected!.toIso8601String())}',
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
@@ -605,7 +782,9 @@ class _VpsTile extends StatelessWidget {
     final bw = TextEditingController(text: item.bandwidthMbps.toString());
     final port = TextEditingController(text: item.portNum.toString());
     String status = item.status.isNotEmpty ? item.status : 'running';
-    String adminStatus = item.adminStatus.isNotEmpty ? item.adminStatus : 'normal';
+    String adminStatus = item.adminStatus.isNotEmpty
+        ? item.adminStatus
+        : 'normal';
     final systemId = TextEditingController(text: item.systemId.toString());
     final packageId = TextEditingController(text: item.packageId.toString());
     String syncMode = 'local';
@@ -628,14 +807,45 @@ class _VpsTile extends StatelessWidget {
                 decoration: const InputDecoration(labelText: '同步模式'),
               ),
               const SizedBox(height: 8),
-              TextField(controller: packageId, decoration: const InputDecoration(labelText: '套餐 ID'), keyboardType: TextInputType.number),
-              TextField(controller: monthly, decoration: const InputDecoration(labelText: '月费'), keyboardType: TextInputType.number),
-              TextField(controller: pkgName, decoration: const InputDecoration(labelText: '套餐名')),
-              TextField(controller: cpu, decoration: const InputDecoration(labelText: 'CPU'), keyboardType: TextInputType.number),
-              TextField(controller: mem, decoration: const InputDecoration(labelText: '内存GB'), keyboardType: TextInputType.number),
-              TextField(controller: disk, decoration: const InputDecoration(labelText: '磁盘GB'), keyboardType: TextInputType.number),
-              TextField(controller: bw, decoration: const InputDecoration(labelText: '带宽Mbps'), keyboardType: TextInputType.number),
-              TextField(controller: port, decoration: const InputDecoration(labelText: '端口数'), keyboardType: TextInputType.number),
+              TextField(
+                controller: packageId,
+                decoration: const InputDecoration(labelText: '套餐 ID'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: monthly,
+                decoration: const InputDecoration(labelText: '月费'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: pkgName,
+                decoration: const InputDecoration(labelText: '套餐名'),
+              ),
+              TextField(
+                controller: cpu,
+                decoration: const InputDecoration(labelText: 'CPU'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: mem,
+                decoration: const InputDecoration(labelText: '内存GB'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: disk,
+                decoration: const InputDecoration(labelText: '磁盘GB'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: bw,
+                decoration: const InputDecoration(labelText: '带宽Mbps'),
+                keyboardType: TextInputType.number,
+              ),
+              TextField(
+                controller: port,
+                decoration: const InputDecoration(labelText: '端口数'),
+                keyboardType: TextInputType.number,
+              ),
               DropdownButtonFormField<String>(
                 value: status,
                 items: const [
@@ -657,13 +867,23 @@ class _VpsTile extends StatelessWidget {
                 onChanged: (value) => adminStatus = value ?? adminStatus,
                 decoration: const InputDecoration(labelText: '管理状态'),
               ),
-              TextField(controller: systemId, decoration: const InputDecoration(labelText: '系统镜像ID'), keyboardType: TextInputType.number),
+              TextField(
+                controller: systemId,
+                decoration: const InputDecoration(labelText: '系统镜像ID'),
+                keyboardType: TextInputType.number,
+              ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
@@ -692,10 +912,19 @@ class _VpsTile extends StatelessWidget {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('删除实例'),
-        content: TextField(controller: reason, decoration: const InputDecoration(labelText: '删除原因')),
+        content: TextField(
+          controller: reason,
+          decoration: const InputDecoration(labelText: '删除原因'),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('删除')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('删除'),
+          ),
         ],
       ),
     );
@@ -711,7 +940,9 @@ class _VpsTile extends StatelessWidget {
     final session = context.read<AppState>().session;
     if (item.userId <= 0) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('用户信息缺失')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('用户信息缺失')));
       }
       return;
     }
@@ -727,9 +958,9 @@ class _VpsTile extends StatelessWidget {
         }
         final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
         if (!ok && context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('无法打开面板链接，请检查系统浏览器设置')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('无法打开面板链接，请检查系统浏览器设置')));
         }
         return ok;
       }
@@ -739,7 +970,9 @@ class _VpsTile extends StatelessWidget {
           final detail = await client.getJson('/admin/api/v1/vps/${item.id}');
           final data = detail['vps'] is Map<String, dynamic>
               ? detail['vps'] as Map<String, dynamic>
-              : (detail['data'] is Map<String, dynamic> ? detail['data'] as Map<String, dynamic> : detail);
+              : (detail['data'] is Map<String, dynamic>
+                    ? detail['data'] as Map<String, dynamic>
+                    : detail);
           item.panelUrlCache = data['panel_url_cache']?.toString() ?? '';
         }
         if (item.panelUrlCache.isNotEmpty) {
@@ -759,29 +992,37 @@ class _VpsTile extends StatelessWidget {
         final normalizedBase = client.baseUrl.endsWith('/')
             ? client.baseUrl.substring(0, client.baseUrl.length - 1)
             : client.baseUrl;
-        final adminPanelUri = Uri.parse('$normalizedBase/api/v1/vps/${item.id}/panel')
-            .replace(queryParameters: {'token': adminToken});
+        final adminPanelUri = Uri.parse(
+          '$normalizedBase/api/v1/vps/${item.id}/panel',
+        ).replace(queryParameters: {'token': adminToken});
         await launchPanelUrl(adminPanelUri.toString());
         return;
       }
 
-      final resp = await client.postJson('/admin/api/v1/users/${item.userId}/impersonate');
+      final resp = await client.postJson(
+        '/admin/api/v1/users/${item.userId}/impersonate',
+      );
       final token = resp['access_token']?.toString() ?? '';
       if (token.isEmpty) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未获取到用户令牌')));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('未获取到用户令牌')));
         }
         return;
       }
       final normalizedBase = client.baseUrl.endsWith('/')
           ? client.baseUrl.substring(0, client.baseUrl.length - 1)
           : client.baseUrl;
-      final uri = Uri.parse('$normalizedBase/api/v1/vps/${item.id}/panel')
-          .replace(queryParameters: {'token': token});
+      final uri = Uri.parse(
+        '$normalizedBase/api/v1/vps/${item.id}/panel',
+      ).replace(queryParameters: {'token': token});
       await launchPanelUrl(uri.toString());
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('打开面板失败：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('打开面板失败：$e')));
       }
     }
   }
@@ -840,13 +1081,16 @@ class VpsItem {
 
   factory VpsItem.fromJson(Map<String, dynamic> json) {
     final rawAutomation = json['automation_state'] as int? ?? 0;
-    final resolvedStatus = _statusFromAutomation(rawAutomation, json['status']?.toString() ?? '');
+    final resolvedStatus = _statusFromAutomation(
+      rawAutomation,
+      json['status']?.toString() ?? '',
+    );
     return VpsItem(
       id: json['id'] as int? ?? 0,
       userId: json['user_id'] as int? ?? 0,
       region: json['region'] as String? ?? '',
       packageName: json['package_name'] as String? ?? '',
-      monthlyPrice: (json['monthly_price'] as num?)?.toDouble() ?? 0,
+      monthlyPrice: (json['monthly_price'] as num?)?.toDouble() ?? 0.0,
       status: resolvedStatus,
       adminStatus: json['admin_status'] as String? ?? '',
       expireAt: json['expire_at']?.toString() ?? '',
@@ -888,6 +1132,565 @@ String _statusFromAutomation(int state, String fallback) {
   }
 }
 
+class _CreateVpsRecordDialog extends StatefulWidget {
+  final ApiClient client;
+
+  const _CreateVpsRecordDialog({required this.client});
+
+  @override
+  State<_CreateVpsRecordDialog> createState() => _CreateVpsRecordDialogState();
+}
+
+class _CreateVpsRecordDialogState extends State<_CreateVpsRecordDialog> {
+  final _nameCtl = TextEditingController();
+  final _monthlyPriceCtl = TextEditingController(text: '0');
+
+  bool _submitting = false;
+  bool _loadingUsers = false;
+  bool _loadingGoodsTypes = false;
+  bool _loadingRegions = false;
+  bool _loadingLines = false;
+  bool _loadingPackages = false;
+
+  List<_SimpleOption> _users = [];
+  List<_SimpleOption> _goodsTypes = [];
+  List<_SimpleRegion> _regions = [];
+  List<_SimpleLine> _lines = [];
+  List<_SimplePackage> _packages = [];
+
+  int? _userId;
+  int? _goodsTypeId;
+  int? _regionId;
+  int? _lineId;
+  int? _packageId;
+  DateTime? _expireAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitial();
+  }
+
+  @override
+  void dispose() {
+    _nameCtl.dispose();
+    _monthlyPriceCtl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitial() async {
+    await Future.wait([_loadUsers(), _loadGoodsTypes()]);
+  }
+
+  Future<void> _loadUsers() async {
+    setState(() => _loadingUsers = true);
+    try {
+      final res = await widget.client.getJson(
+        '/admin/api/v1/users',
+        query: {'limit': '200', 'offset': '0'},
+      );
+      final items = _readItems(res);
+      final users = <_SimpleOption>[];
+      for (final row in items) {
+        final id = _asInt(row['id'] ?? row['ID']);
+        if (id <= 0) continue;
+        final username = _asString(row['username'] ?? row['Username']);
+        final email = _asString(row['email'] ?? row['Email']);
+        final suffix = email.isEmpty ? '' : ' - $email';
+        final label =
+            '${username.isEmpty ? '用户#$id' : username} (ID:$id)$suffix';
+        users.add(_SimpleOption(id: id, label: label));
+      }
+      if (!mounted) return;
+      setState(() => _users = users);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('加载用户失败：$e')));
+    } finally {
+      if (mounted) setState(() => _loadingUsers = false);
+    }
+  }
+
+  Future<void> _loadGoodsTypes() async {
+    setState(() => _loadingGoodsTypes = true);
+    try {
+      final res = await widget.client.getJson('/admin/api/v1/goods-types');
+      final items = _readItems(res);
+      final data = <_SimpleOption>[];
+      for (final row in items) {
+        final id = _asInt(row['id'] ?? row['ID']);
+        if (id <= 0) continue;
+        final name = _asString(row['name'] ?? row['Name']);
+        final code = _asString(row['code'] ?? row['Code']);
+        data.add(
+          _SimpleOption(
+            id: id,
+            label: name.isEmpty ? (code.isEmpty ? '$id' : code) : name,
+          ),
+        );
+      }
+      if (!mounted) return;
+      setState(() => _goodsTypes = data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('加载商品类型失败：$e')));
+    } finally {
+      if (mounted) setState(() => _loadingGoodsTypes = false);
+    }
+  }
+
+  Future<void> _loadRegions(int goodsTypeId) async {
+    setState(() => _loadingRegions = true);
+    try {
+      final res = await widget.client.getJson(
+        '/admin/api/v1/regions',
+        query: {'goods_type_id': goodsTypeId.toString()},
+      );
+      final items = _readItems(res);
+      final data = <_SimpleRegion>[];
+      for (final row in items) {
+        final id = _asInt(row['id'] ?? row['ID']);
+        if (id <= 0) continue;
+        final name = _asString(row['name'] ?? row['Name']);
+        data.add(_SimpleRegion(id: id, name: name.isEmpty ? '$id' : name));
+      }
+      if (!mounted) return;
+      setState(() => _regions = data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('加载地区失败：$e')));
+    } finally {
+      if (mounted) setState(() => _loadingRegions = false);
+    }
+  }
+
+  Future<void> _loadLines(int goodsTypeId, {int? regionId}) async {
+    setState(() => _loadingLines = true);
+    try {
+      final res = await widget.client.getJson(
+        '/admin/api/v1/plan-groups',
+        query: {'goods_type_id': goodsTypeId.toString()},
+      );
+      final items = _readItems(res);
+      final data = <_SimpleLine>[];
+      for (final row in items) {
+        final id = _asInt(row['id'] ?? row['ID']);
+        if (id <= 0) continue;
+        final rid = _asInt(row['region_id'] ?? row['RegionID']);
+        if (regionId != null && regionId > 0 && rid != regionId) continue;
+        final name = _asString(row['name'] ?? row['Name']);
+        data.add(
+          _SimpleLine(id: id, regionId: rid, name: name.isEmpty ? '$id' : name),
+        );
+      }
+      if (!mounted) return;
+      setState(() => _lines = data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('加载线路失败：$e')));
+    } finally {
+      if (mounted) setState(() => _loadingLines = false);
+    }
+  }
+
+  Future<void> _loadPackages(int goodsTypeId, int lineId) async {
+    setState(() => _loadingPackages = true);
+    try {
+      final res = await widget.client.getJson(
+        '/admin/api/v1/packages',
+        query: {
+          'goods_type_id': goodsTypeId.toString(),
+          'plan_group_id': lineId.toString(),
+        },
+      );
+      final items = _readItems(res);
+      final data = <_SimplePackage>[];
+      for (final row in items) {
+        final id = _asInt(row['id'] ?? row['ID']);
+        if (id <= 0) continue;
+        final name = _asString(row['name'] ?? row['Name']);
+        final price = _asDouble(
+          row['monthly_price'] ?? row['MonthlyPrice'] ?? row['Monthly'],
+        );
+        final cores = _asDouble(row['cores'] ?? row['Cores']);
+        final memoryGb = _asDouble(row['memory_gb'] ?? row['MemoryGB']);
+        data.add(
+          _SimplePackage(
+            id: id,
+            name: name.isEmpty ? '$id' : name,
+            monthlyPrice: price,
+            cores: cores,
+            memoryGb: memoryGb,
+          ),
+        );
+      }
+      if (!mounted) return;
+      setState(() => _packages = data);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('加载套餐失败：$e')));
+    } finally {
+      if (mounted) setState(() => _loadingPackages = false);
+    }
+  }
+
+  Future<void> _selectExpireAt() async {
+    final now = DateTime.now();
+    final initial = _expireAt ?? now;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(initial),
+    );
+    if (time == null || !mounted) return;
+    setState(() {
+      _expireAt = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_userId == null ||
+        _goodsTypeId == null ||
+        _regionId == null ||
+        _lineId == null ||
+        _packageId == null ||
+        _nameCtl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请完整填写必填项')));
+      return;
+    }
+    setState(() => _submitting = true);
+    try {
+      final payload = <String, dynamic>{
+        'user_id': _userId,
+        'name': _nameCtl.text.trim(),
+        'goods_type_id': _goodsTypeId,
+        'region_id': _regionId,
+        'line_id': _lineId,
+        'package_id': _packageId,
+        'monthly_price': _asDouble(_monthlyPriceCtl.text.trim()),
+        'provision': false,
+        if (_expireAt != null)
+          'expire_at': _expireAt!.toUtc().toIso8601String(),
+      };
+      await widget.client.postJson('/admin/api/v1/vps', body: payload);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('记录添加成功')));
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('添加记录失败：${e.message}')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('添加记录失败：$e')));
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('新建记录'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<int>(
+                value: _userId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: '用户*'),
+                items: _users
+                    .map(
+                      (e) => DropdownMenuItem<int>(
+                        value: e.id,
+                        child: Text(e.label, overflow: TextOverflow.ellipsis),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _loadingUsers
+                    ? null
+                    : (v) => setState(() => _userId = v),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _nameCtl,
+                decoration: const InputDecoration(
+                  labelText: '机器名*',
+                  hintText: '必须与自动化系统机器名一致',
+                ),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                value: _goodsTypeId,
+                decoration: const InputDecoration(labelText: '商品类型*'),
+                items: _goodsTypes
+                    .map(
+                      (e) => DropdownMenuItem<int>(
+                        value: e.id,
+                        child: Text(e.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _loadingGoodsTypes
+                    ? null
+                    : (v) async {
+                        if (v == null) return;
+                        setState(() {
+                          _goodsTypeId = v;
+                          _regionId = null;
+                          _lineId = null;
+                          _packageId = null;
+                          _regions = [];
+                          _lines = [];
+                          _packages = [];
+                          _monthlyPriceCtl.text = '0';
+                        });
+                        await _loadRegions(v);
+                        await _loadLines(v);
+                      },
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                value: _regionId,
+                decoration: const InputDecoration(labelText: '地区*'),
+                items: _regions
+                    .map(
+                      (e) => DropdownMenuItem<int>(
+                        value: e.id,
+                        child: Text(e.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (_loadingRegions || _goodsTypeId == null)
+                    ? null
+                    : (v) async {
+                        setState(() {
+                          _regionId = v;
+                          _lineId = null;
+                          _packageId = null;
+                          _lines = [];
+                          _packages = [];
+                          _monthlyPriceCtl.text = '0';
+                        });
+                        if (_goodsTypeId != null) {
+                          await _loadLines(_goodsTypeId!, regionId: v);
+                        }
+                      },
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                value: _lineId,
+                decoration: const InputDecoration(labelText: '线路*'),
+                items: _lines
+                    .map(
+                      (e) => DropdownMenuItem<int>(
+                        value: e.id,
+                        child: Text(e.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (_loadingLines || _goodsTypeId == null)
+                    ? null
+                    : (v) async {
+                        setState(() {
+                          _lineId = v;
+                          _packageId = null;
+                          _packages = [];
+                          _monthlyPriceCtl.text = '0';
+                        });
+                        if (_goodsTypeId != null && v != null) {
+                          await _loadPackages(_goodsTypeId!, v);
+                        }
+                      },
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<int>(
+                value: _packageId,
+                decoration: const InputDecoration(labelText: '套餐*'),
+                items: _packages
+                    .map(
+                      (e) => DropdownMenuItem<int>(
+                        value: e.id,
+                        child: Text(e.displayName),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (_loadingPackages || _lineId == null)
+                    ? null
+                    : (v) {
+                        setState(() => _packageId = v);
+                        _SimplePackage? pkg;
+                        for (final it in _packages) {
+                          if (it.id == v) {
+                            pkg = it;
+                            break;
+                          }
+                        }
+                        if (pkg != null) {
+                          _monthlyPriceCtl.text = pkg.monthlyPrice.toString();
+                        }
+                      },
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _monthlyPriceCtl,
+                decoration: const InputDecoration(labelText: '价格(月费)'),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _expireAt == null
+                          ? '到期时间：未设置'
+                          : '到期时间：${_formatLocal(_expireAt!.toIso8601String())}',
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _selectExpireAt,
+                    icon: const Icon(Icons.calendar_today),
+                    label: const Text('选择'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: _submitting ? null : _submit,
+          child: Text(_submitting ? '提交中...' : '创建'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SimpleOption {
+  final int id;
+  final String label;
+
+  const _SimpleOption({required this.id, required this.label});
+}
+
+class _SimpleRegion {
+  final int id;
+  final String name;
+
+  const _SimpleRegion({required this.id, required this.name});
+}
+
+class _SimpleLine {
+  final int id;
+  final int regionId;
+  final String name;
+
+  const _SimpleLine({
+    required this.id,
+    required this.regionId,
+    required this.name,
+  });
+}
+
+class _SimplePackage {
+  final int id;
+  final String name;
+  final double monthlyPrice;
+  final double cores;
+  final double memoryGb;
+
+  const _SimplePackage({
+    required this.id,
+    required this.name,
+    required this.monthlyPrice,
+    required this.cores,
+    required this.memoryGb,
+  });
+
+  String get displayName {
+    final cpu = cores == cores.roundToDouble()
+        ? cores.toInt().toString()
+        : cores.toString();
+    final mem = memoryGb == memoryGb.roundToDouble()
+        ? memoryGb.toInt().toString()
+        : memoryGb.toString();
+    return '$name（$cpu核${mem}G）';
+  }
+}
+
+List<Map<String, dynamic>> _readItems(Map<String, dynamic> res) {
+  final data = res['data'];
+  if (data is List) {
+    return data.whereType<Map<String, dynamic>>().toList();
+  }
+  if (data is Map<String, dynamic> && data['items'] is List) {
+    return (data['items'] as List).whereType<Map<String, dynamic>>().toList();
+  }
+  if (res['items'] is List) {
+    return (res['items'] as List).whereType<Map<String, dynamic>>().toList();
+  }
+  return const [];
+}
+
+int _asInt(dynamic value) {
+  if (value is int) return value;
+  if (value is double) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
+}
+
+double _asDouble(dynamic value) {
+  if (value == null) return 0.0;
+  if (value is num) return value.toDouble();
+  if (value is String) {
+    final parsed = double.tryParse(value.trim());
+    return parsed ?? 0.0;
+  }
+  return 0.0;
+}
+
+String _asString(dynamic value) => value?.toString() ?? '';
+
 class _StatusTabs extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
@@ -928,6 +1731,89 @@ class _StatusTabs extends StatelessWidget {
   }
 }
 
+class _VpsStatsStrip extends StatelessWidget {
+  final List<VpsItem> items;
+
+  const _VpsStatsStrip({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    int c(Set<String> s) => items.where((e) => s.contains(e.status)).length;
+    final cards = [
+      (
+        '当前页',
+        '${items.length}',
+        const Color(0xFF1E88E5),
+        Icons.inventory_2_outlined,
+      ),
+      (
+        '运行中',
+        '${c({'running'})}',
+        const Color(0xFF00A68C),
+        Icons.play_circle_outline,
+      ),
+      (
+        '处理中',
+        '${c({'provisioning', 'reinstalling', 'deleting'})}',
+        const Color(0xFFEF6C00),
+        Icons.hourglass_top,
+      ),
+      (
+        '异常',
+        '${c({'failed', 'reinstall_failed', 'locked', 'stopped'})}',
+        const Color(0xFFD32F2F),
+        Icons.error_outline,
+      ),
+    ];
+    return SizedBox(
+      height: 82,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: cards.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final c = cards[i];
+          return Container(
+            width: 124,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: c.$3.withOpacity(0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(c.$4, size: 16, color: c.$3),
+                const SizedBox(height: 6),
+                Text(
+                  c.$2,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: c.$3,
+                  ),
+                ),
+                Text(
+                  c.$1,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _StatusFilterChip extends StatelessWidget {
   final String label;
   final bool selected;
@@ -948,8 +1834,7 @@ class _StatusFilterChip extends StatelessWidget {
     final borderColor = selected
         ? colorScheme.primary
         : colorScheme.outlineVariant.withOpacity(0.7);
-    final textColor =
-        selected ? colorScheme.primary : colorScheme.onSurface;
+    final textColor = selected ? colorScheme.primary : colorScheme.onSurface;
 
     return Material(
       color: Colors.transparent,
@@ -972,10 +1857,7 @@ class _StatusFilterChip extends StatelessWidget {
               ],
               Text(
                 label,
-                style: TextStyle(
-                  color: textColor,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -1001,7 +1883,11 @@ class _StatusChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1091,7 +1977,12 @@ class _ActionGroup extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54)),
+        Text(
+          title,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: Colors.black54),
+        ),
         const SizedBox(height: 6),
         ...children,
       ],
@@ -1130,15 +2021,25 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-Future<bool> _confirm(BuildContext context, String title, String message) async {
+Future<bool> _confirm(
+  BuildContext context,
+  String title,
+  String message,
+) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       title: Text(title),
       content: Text(message),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认')),
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('确认'),
+        ),
       ],
     ),
   );
@@ -1173,7 +2074,7 @@ class _PaginationBar extends StatelessWidget {
             const SizedBox(width: 8),
             OutlinedButton(onPressed: onNext, child: const Text('下一页')),
           ],
-        )
+        ),
       ],
     );
   }

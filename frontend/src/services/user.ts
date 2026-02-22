@@ -177,7 +177,7 @@ export const triggerRobotWebhook = (payload: Record<string, unknown>, headers?: 
 export const listUserApiKeys = (params?: Record<string, unknown>) =>
   http.get<ApiList<UserAPIKey>>("/api/v1/open/me/api-keys", { params });
 export const createUserApiKey = (payload: { name: string; scopes?: string[] }) =>
-  http.post<{ item?: UserAPIKey; secret?: string }>("/api/v1/open/me/api-keys", payload);
+  http.post<{ item?: UserAPIKey; key?: string; secret?: string }>("/api/v1/open/me/api-keys", payload);
 export const updateUserApiKeyStatus = (id: number | string, payload: { status: "active" | "disabled" }) =>
   http.patch(`/api/v1/open/me/api-keys/${id}`, payload);
 export const deleteUserApiKey = (id: number | string) => http.delete(`/api/v1/open/me/api-keys/${id}`);

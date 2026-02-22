@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 
 /// 状态标签组件
@@ -21,32 +21,32 @@ class StatusTag extends StatelessWidget {
 
     switch (status?.toLowerCase()) {
       case 'running':
-        bgColor = AppColors.vpsRunning.withOpacity(0.1);
+        bgColor = AppColors.vpsRunning.withValues(alpha: 0.1);
         textColor = AppColors.vpsRunning;
         break;
       case 'stopped':
-        bgColor = AppColors.vpsStopped.withOpacity(0.1);
+        bgColor = AppColors.vpsStopped.withValues(alpha: 0.1);
         textColor = AppColors.vpsStopped;
         break;
       case 'pending':
       case 'provisioning':
       case 'reinstalling':
       case 'deleting':
-        bgColor = AppColors.vpsPending.withOpacity(0.1);
+        bgColor = AppColors.vpsPending.withValues(alpha: 0.1);
         textColor = AppColors.vpsPending;
         break;
       case 'reinstall_failed':
       case 'failed':
       case 'error':
-        bgColor = AppColors.danger.withOpacity(0.1);
+        bgColor = AppColors.danger.withValues(alpha: 0.1);
         textColor = AppColors.danger;
         break;
       case 'locked':
-        bgColor = AppColors.warning.withOpacity(0.1);
+        bgColor = AppColors.warning.withValues(alpha: 0.1);
         textColor = AppColors.warning;
         break;
       case 'suspended':
-        bgColor = AppColors.vpsSuspended.withOpacity(0.1);
+        bgColor = AppColors.vpsSuspended.withValues(alpha: 0.1);
         textColor = AppColors.vpsSuspended;
         break;
       default:
@@ -68,44 +68,44 @@ class StatusTag extends StatelessWidget {
 
     switch (status?.toLowerCase()) {
       case 'pending_payment':
-        bgColor = AppColors.orderPending.withOpacity(0.1);
+        bgColor = AppColors.orderPending.withValues(alpha: 0.1);
         textColor = AppColors.orderPending;
         break;
       case 'provisioning':
-        bgColor = AppColors.orderPending.withOpacity(0.1);
+        bgColor = AppColors.orderPending.withValues(alpha: 0.1);
         textColor = AppColors.orderPending;
         break;
       case 'active':
-        bgColor = AppColors.orderPaid.withOpacity(0.1);
+        bgColor = AppColors.orderPaid.withValues(alpha: 0.1);
         textColor = AppColors.orderPaid;
         break;
       case 'pending_review':
-        bgColor = AppColors.orderPending.withOpacity(0.1);
+        bgColor = AppColors.orderPending.withValues(alpha: 0.1);
         textColor = AppColors.orderPending;
         break;
       case 'pending':
-        bgColor = AppColors.orderPending.withOpacity(0.1);
+        bgColor = AppColors.orderPending.withValues(alpha: 0.1);
         textColor = AppColors.orderPending;
         break;
       case 'failed':
-        bgColor = AppColors.danger.withOpacity(0.1);
+        bgColor = AppColors.danger.withValues(alpha: 0.1);
         textColor = AppColors.danger;
         break;
       case 'paid':
-        bgColor = AppColors.orderPaid.withOpacity(0.1);
+        bgColor = AppColors.orderPaid.withValues(alpha: 0.1);
         textColor = AppColors.orderPaid;
         break;
       case 'cancelled':
       case 'canceled':
-        bgColor = AppColors.orderCancelled.withOpacity(0.1);
+        bgColor = AppColors.orderCancelled.withValues(alpha: 0.1);
         textColor = AppColors.orderCancelled;
         break;
       case 'refunded':
-        bgColor = AppColors.orderRefunded.withOpacity(0.1);
+        bgColor = AppColors.orderRefunded.withValues(alpha: 0.1);
         textColor = AppColors.orderRefunded;
         break;
       case 'completed':
-        bgColor = AppColors.orderCompleted.withOpacity(0.1);
+        bgColor = AppColors.orderCompleted.withValues(alpha: 0.1);
         textColor = AppColors.orderCompleted;
         break;
       default:
@@ -177,18 +177,33 @@ class StatusTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    final resolvedBg =
+        backgroundColor ??
+        (isLight
+            ? cs.surfaceContainerHighest
+            : AppColors.gray700.withValues(alpha: 0.5));
+    final resolvedText =
+        textColor ?? (isLight ? cs.onSurfaceVariant : AppColors.gray300);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: backgroundColor ?? AppColors.gray200,
+        color: resolvedBg,
         borderRadius: BorderRadius.circular(4),
+        border: Border.all(
+          color: isLight
+              ? resolvedText.withValues(alpha: 0.24)
+              : Colors.transparent,
+        ),
       ),
       child: Text(
         text,
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w500,
-          color: textColor ?? AppColors.gray700,
+          color: resolvedText,
         ),
       ),
     );

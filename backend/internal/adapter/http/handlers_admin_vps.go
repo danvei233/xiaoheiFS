@@ -33,7 +33,7 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 		Status               string         `json:"status"`
 		AutomationState      int            `json:"automation_state"`
 		AdminStatus          string         `json:"admin_status"`
-		ExpireAt             string         `json:"expire_at"`
+		ExpireAt             *string        `json:"expire_at"`
 		PanelURLCache        string         `json:"panel_url_cache"`
 		Spec                 map[string]any `json:"spec"`
 		AccessInfo           map[string]any `json:"access_info"`
@@ -98,8 +98,8 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 		}
 	}
 	var expireAt *time.Time
-	if payload.ExpireAt != "" {
-		t, err := time.Parse(time.RFC3339, payload.ExpireAt)
+	if payload.ExpireAt != nil && strings.TrimSpace(*payload.ExpireAt) != "" {
+		t, err := time.Parse(time.RFC3339, strings.TrimSpace(*payload.ExpireAt))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidExpireAt.Error()})
 			return

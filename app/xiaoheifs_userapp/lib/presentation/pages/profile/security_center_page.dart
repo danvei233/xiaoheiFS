@@ -449,86 +449,96 @@ class _SecurityCenterPageState extends ConsumerState<SecurityCenterPage> {
     );
     return Scaffold(
       body: SafeArea(
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildTopProfileRow(user, avatarUrl),
-                  const SizedBox(height: 16),
-                  _buildSecurityScoreStrip(),
-                  const SizedBox(height: 16),
-                  _buildActionRow(
-                    icon: Icons.person_outline,
-                    title: '用户名',
-                    subtitle: user.username?.trim().isEmpty == true
-                        ? '未设置'
-                        : user.username!,
-                    onTap: () => _openPanel(
-                      '修改用户名',
-                      (refresh) => _buildUsernamePanel(refresh),
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: _loading
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 220),
+                    Center(child: CircularProgressIndicator()),
+                  ],
+                )
+              : ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    _buildTopProfileRow(user, avatarUrl),
+                    const SizedBox(height: 16),
+                    _buildSecurityScoreStrip(),
+                    const SizedBox(height: 16),
+                    _buildActionRow(
+                      icon: Icons.person_outline,
+                      title: '用户名',
+                      subtitle: user.username?.trim().isEmpty == true
+                          ? '未设置'
+                          : user.username!,
+                      onTap: () => _openPanel(
+                        '修改用户名',
+                        (refresh) => _buildUsernamePanel(refresh),
+                      ),
                     ),
-                  ),
-                  _buildActionRow(
-                    icon: Icons.lock_outline,
-                    title: '登录密码',
-                    subtitle: _twofaEnabled ? '已启用2FA校验' : '可直接修改',
-                    onTap: () => _openPanel(
-                      '修改密码',
-                      (refresh) => _buildPasswordPanel(refresh),
+                    _buildActionRow(
+                      icon: Icons.lock_outline,
+                      title: '登录密码',
+                      subtitle: _twofaEnabled ? '已启用2FA校验' : '可直接修改',
+                      onTap: () => _openPanel(
+                        '修改密码',
+                        (refresh) => _buildPasswordPanel(refresh),
+                      ),
                     ),
-                  ),
-                  _buildActionRow(
-                    icon: Icons.shield_outlined,
-                    title: '双重验证 (2FA)',
-                    subtitle: _twofaEnabled ? '已启用' : '未启用',
-                    onTap: () {
-                      setState(() {
-                        _otpAuthUrl = '';
-                        _twofaConfirmCode.clear();
-                      });
-                      _openPanel(
-                        '2FA 设置',
-                        (refresh) => _buildTwofaPanel(refresh),
-                      );
-                    },
-                  ),
-                  _buildActionRow(
-                    icon: Icons.mail_outline,
-                    title: '邮箱绑定',
-                    subtitle: _emailBound
-                        ? (_emailMasked.isEmpty ? '已绑定' : _emailMasked)
-                        : '未绑定',
-                    onTap: () {
-                      setState(() {
-                        _emailTicket = '';
-                        _emailPasswordVerified = false;
-                      });
-                      _openPanel(
-                        '邮箱绑定 / 换绑',
-                        (refresh) => _buildEmailPanel(refresh),
-                      );
-                    },
-                  ),
-                  _buildActionRow(
-                    icon: Icons.phone_outlined,
-                    title: '手机绑定',
-                    subtitle: _phoneBound
-                        ? (_phoneMasked.isEmpty ? '已绑定' : _phoneMasked)
-                        : '未绑定',
-                    onTap: () {
-                      setState(() {
-                        _phoneTicket = '';
-                        _phonePasswordVerified = false;
-                      });
-                      _openPanel(
-                        '手机号绑定 / 换绑',
-                        (refresh) => _buildPhonePanel(refresh),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                    _buildActionRow(
+                      icon: Icons.shield_outlined,
+                      title: '双重验证 (2FA)',
+                      subtitle: _twofaEnabled ? '已启用' : '未启用',
+                      onTap: () {
+                        setState(() {
+                          _otpAuthUrl = '';
+                          _twofaConfirmCode.clear();
+                        });
+                        _openPanel(
+                          '2FA 设置',
+                          (refresh) => _buildTwofaPanel(refresh),
+                        );
+                      },
+                    ),
+                    _buildActionRow(
+                      icon: Icons.mail_outline,
+                      title: '邮箱绑定',
+                      subtitle: _emailBound
+                          ? (_emailMasked.isEmpty ? '已绑定' : _emailMasked)
+                          : '未绑定',
+                      onTap: () {
+                        setState(() {
+                          _emailTicket = '';
+                          _emailPasswordVerified = false;
+                        });
+                        _openPanel(
+                          '邮箱绑定 / 换绑',
+                          (refresh) => _buildEmailPanel(refresh),
+                        );
+                      },
+                    ),
+                    _buildActionRow(
+                      icon: Icons.phone_outlined,
+                      title: '手机绑定',
+                      subtitle: _phoneBound
+                          ? (_phoneMasked.isEmpty ? '已绑定' : _phoneMasked)
+                          : '未绑定',
+                      onTap: () {
+                        setState(() {
+                          _phoneTicket = '';
+                          _phonePasswordVerified = false;
+                        });
+                        _openPanel(
+                          '手机号绑定 / 换绑',
+                          (refresh) => _buildPhonePanel(refresh),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -607,7 +617,16 @@ class _SecurityCenterPageState extends ConsumerState<SecurityCenterPage> {
                     child: CircularProgressIndicator(
                       value: _score / 100,
                       strokeWidth: 8,
-                      backgroundColor: AppColors.gray700,
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withValues(
+                            alpha:
+                                Theme.of(context).colorScheme.brightness ==
+                                    Brightness.light
+                                ? 0.9
+                                : 0.62,
+                          ),
                       valueColor: AlwaysStoppedAnimation(color),
                     ),
                   ),
@@ -724,6 +743,8 @@ class _SecurityCenterPageState extends ConsumerState<SecurityCenterPage> {
   }
 
   Widget _buildStepLine({required int current, required List<String> labels}) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     return Row(
       children: List.generate(labels.length, (index) {
         final step = index + 1;
@@ -735,14 +756,25 @@ class _SecurityCenterPageState extends ConsumerState<SecurityCenterPage> {
                 width: 22,
                 height: 22,
                 decoration: BoxDecoration(
-                  color: active ? AppColors.primary : AppColors.gray700,
+                  color: active
+                      ? cs.primary
+                      : cs.surfaceContainerHighest.withValues(
+                          alpha: isLight ? 0.95 : 0.62,
+                        ),
                   shape: BoxShape.circle,
+                  border: Border.all(
+                    color: active
+                        ? cs.primary.withValues(alpha: 0.75)
+                        : cs.outlineVariant.withValues(
+                            alpha: isLight ? 0.48 : 0.3,
+                          ),
+                  ),
                 ),
                 alignment: Alignment.center,
                 child: Text(
                   '$step',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: active ? Colors.white : cs.onSurfaceVariant,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -754,7 +786,7 @@ class _SecurityCenterPageState extends ConsumerState<SecurityCenterPage> {
                   labels[index],
                   style: TextStyle(
                     fontSize: 12,
-                    color: active ? AppColors.gray100 : AppColors.gray500,
+                    color: active ? cs.onSurface : cs.onSurfaceVariant,
                   ),
                 ),
               ),

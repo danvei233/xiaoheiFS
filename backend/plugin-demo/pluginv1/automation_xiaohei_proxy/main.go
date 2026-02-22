@@ -16,6 +16,7 @@ import (
 type config struct {
 	BaseURL     string  `json:"base_url"`
 	OpenAKID    string  `json:"open_akid"`
+	OpenKey     string  `json:"open_key"`
 	OpenSecret  string  `json:"open_secret"`
 	AdminAPIKey string  `json:"admin_api_key"`
 	PriceRate   float64 `json:"price_rate"`
@@ -62,18 +63,20 @@ func (s *coreServer) GetConfigSchema(ctx context.Context, _ *pluginv1.Empty) (*p
   "type": "object",
   "properties": {
     "base_url": { "type": "string", "title": "Base URL", "description": "e.g. https://upstream.example.com" },
-    "open_akid": { "type": "string", "title": "Open AKID" },
-    "open_secret": { "type": "string", "title": "Open Secret", "format": "password" },
+    "open_akid": { "type": "string", "title": "Open AKID", "description": "AKID from upstream user console -> API key management" },
+    "open_key": { "type": "string", "title": "Open Key", "format": "password", "description": "Key returned when creating upstream user API key (preferred)" },
+    "open_secret": { "type": "string", "title": "Open Secret (Deprecated)", "format": "password", "description": "legacy alias of open_key" },
     "admin_api_key": { "type": "string", "title": "Admin API Key", "format": "password", "description": "for catalog sync and admin lifecycle actions" },
     "price_rate": { "type": "number", "title": "Price Rate", "default": 1.0, "minimum": 0.1, "maximum": 10.0 },
-    "goods_type_id": { "type": "integer", "title": "Upstream Goods Type ID", "default": 0, "minimum": 0 },
+    "goods_type_id": { "type": "integer", "title": "Upstream Goods Type ID", "description": "Must be upstream goods_type_id, not local ID", "default": 0, "minimum": 0 },
     "timeout_sec": { "type": "integer", "title": "Timeout (sec)", "default": 12, "minimum": 1, "maximum": 60 },
     "retry": { "type": "integer", "title": "Retry", "default": 1, "minimum": 0, "maximum": 5 },
     "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
   },
-  "required": ["base_url","open_akid","open_secret","goods_type_id"]
+  "required": ["base_url","open_akid","goods_type_id"]
 }`,
 		UiSchema: `{
+  "open_key": { "ui:widget": "password" },
   "open_secret": { "ui:widget": "password" },
   "admin_api_key": { "ui:widget": "password" }
 }`,
@@ -86,8 +89,12 @@ func (s *coreServer) ValidateConfig(ctx context.Context, req *pluginv1.ValidateC
 	if err := json.Unmarshal([]byte(req.GetConfigJson()), &cfg); err != nil {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "invalid json"}, nil
 	}
-	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.OpenAKID) == "" || strings.TrimSpace(cfg.OpenSecret) == "" {
-		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "base_url/open_akid/open_secret required"}, nil
+	openKey := strings.TrimSpace(cfg.OpenKey)
+	if openKey == "" {
+		openKey = strings.TrimSpace(cfg.OpenSecret)
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.OpenAKID) == "" || openKey == "" {
+		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "base_url/open_akid/open_key required"}, nil
 	}
 	if cfg.GoodsTypeID <= 0 {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "goods_type_id required"}, nil
@@ -143,11 +150,15 @@ func (s *coreServer) Health(ctx context.Context, req *pluginv1.HealthCheckReques
 
 func (s *coreServer) newClient() (*Client, error) {
 	cfg := s.cfg
-	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.OpenAKID) == "" || strings.TrimSpace(cfg.OpenSecret) == "" {
+	openKey := strings.TrimSpace(cfg.OpenKey)
+	if openKey == "" {
+		openKey = strings.TrimSpace(cfg.OpenSecret)
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.OpenAKID) == "" || openKey == "" {
 		return nil, fmt.Errorf("missing config")
 	}
 	timeout := time.Duration(cfg.TimeoutSec) * time.Second
-	return NewClient(cfg.BaseURL, cfg.OpenAKID, cfg.OpenSecret, cfg.AdminAPIKey, cfg.PriceRate, cfg.GoodsTypeID, timeout), nil
+	return NewClient(cfg.BaseURL, cfg.OpenAKID, openKey, cfg.AdminAPIKey, cfg.PriceRate, cfg.GoodsTypeID, timeout), nil
 }
 
 func (s *coreServer) newClientWithTrace() (*Client, *HTTPLogEntry, error) {

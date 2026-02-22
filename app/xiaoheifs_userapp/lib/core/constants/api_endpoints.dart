@@ -21,6 +21,7 @@ class ApiEndpoints {
   static const String authPasswordResetConfirm =
       '$v1/auth/password-reset/confirm';
   static const String me = '$v1/me';
+  static const String meUserTier = '$v1/me/user-tier';
   static const String mePasswordChange = '$v1/me/password/change';
   static const String meSecurityContacts = '$v1/me/security/contacts';
   static const String meSecurityEmailVerify2fa =
@@ -64,6 +65,7 @@ class ApiEndpoints {
   static String orderRefresh(int id) => '$v1/orders/$id/refresh';
   static String orderPayments(int id) => '$v1/orders/$id/payments';
   static String orderEvents(int id) => '$v1/orders/$id/events';
+  static const String couponsPreview = '$v1/coupons/preview';
 
   // Payments
   static const String paymentProviders = '$v1/payments/providers';
@@ -126,6 +128,10 @@ class ApiEndpoints {
   // Realname
   static const String realnameStatus = '$v1/realname/status';
   static const String realnameVerify = '$v1/realname/verify';
+
+  // Open API Keys
+  static const String openApiKeys = '$v1/open/me/api-keys';
+  static String openApiKeyDetail(int id) => '$v1/open/me/api-keys/$id';
 
   // Site/CMS
   static const String siteSettings = '$v1/site/settings';

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import 'scheduled_task_runs_screen.dart';
 
 class ScheduledTasksScreen extends StatefulWidget {
   const ScheduledTasksScreen({super.key});
@@ -41,7 +42,9 @@ class _ScheduledTasksScreenState extends State<ScheduledTasksScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasError) {
           return Scaffold(
@@ -57,122 +60,182 @@ class _ScheduledTasksScreenState extends State<ScheduledTasksScreen> {
               IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
             ],
           ),
-          body: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-            itemCount: items.isEmpty ? 1 : items.length,
-            itemBuilder: (context, index) {
-              if (items.isEmpty) {
-                return const Center(child: Text('暂无任务'));
-              }
-              final item = items[index];
-              final theme = Theme.of(context);
-              final colorScheme = theme.colorScheme;
-              final statusColor =
-                  item.enabled ? const Color(0xFF00A68C) : const Color(0xFF546E7A);
-              return Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: () => _openConfig(item),
-                  child: Container(
+          body: RefreshIndicator(
+            onRefresh: () async => _refresh(),
+            child: ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              itemCount: items.isEmpty ? 2 : items.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: colorScheme.surface,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: colorScheme.outlineVariant.withOpacity(0.5),
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: colorScheme.shadow.withOpacity(0.05),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    child: const Row(
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: statusColor.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Icon(
-                                Icons.schedule,
-                                color: statusColor,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: theme.textTheme.titleSmall?.copyWith(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    item.description,
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                      color: colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Switch(
-                              value: item.enabled,
-                              onChanged:
-                                  _busy ? null : (value) => _toggle(item.key, value),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: [
-                            _InfoPill(
-                              label: item.strategy,
-                              color: colorScheme.primary,
-                            ),
-                            _InfoPill(
-                              label: '上次 ${_formatLocal(item.lastRunAt)}',
-                              color: colorScheme.onSurfaceVariant,
-                              outlined: true,
-                            ),
-                            _InfoPill(
-                              label: '下次 ${_formatLocal(item.nextRunAt)}',
-                              color: colorScheme.onSurfaceVariant,
-                              outlined: true,
-                            ),
-                          ],
-                        ),
-                        if (item.lastStatus.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            '状态：${item.lastStatus}${item.lastError.isNotEmpty ? ' · ${item.lastError}' : ''}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: item.lastStatus.toLowerCase().contains('fail')
-                                  ? const Color(0xFFD32F2F)
-                                  : colorScheme.onSurfaceVariant,
+                        Icon(Icons.schedule_outlined, color: Colors.white),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '点击任务卡片可编辑策略，支持查看运行记录',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                        ],
+                        ),
                       ],
                     ),
+                  );
+                }
+                if (items.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.only(top: 30),
+                    child: Center(child: Text('暂无任务')),
+                  );
+                }
+                final item = items[index - 1];
+                final theme = Theme.of(context);
+                final colorScheme = theme.colorScheme;
+                final statusColor = item.enabled
+                    ? const Color(0xFF00A68C)
+                    : const Color(0xFF546E7A);
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => _openConfig(item),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: colorScheme.outlineVariant.withOpacity(0.5),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: colorScheme.shadow.withOpacity(0.05),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(Icons.schedule, color: statusColor),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item.description,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Switch(
+                                value: item.enabled,
+                                onChanged: _busy
+                                    ? null
+                                    : (value) => _toggle(item.key, value),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              _InfoPill(
+                                label: item.strategy,
+                                color: colorScheme.primary,
+                              ),
+                              _InfoPill(
+                                label: '上次 ${_formatLocal(item.lastRunAt)}',
+                                color: colorScheme.onSurfaceVariant,
+                                outlined: true,
+                              ),
+                              _InfoPill(
+                                label: '下次 ${_formatLocal(item.nextRunAt)}',
+                                color: colorScheme.onSurfaceVariant,
+                                outlined: true,
+                              ),
+                            ],
+                          ),
+                          if (item.lastStatus.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              '状态：${item.lastStatus}${item.lastError.isNotEmpty ? ' · ${item.lastError}' : ''}',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color:
+                                    item.lastStatus.toLowerCase().contains(
+                                      'fail',
+                                    )
+                                    ? const Color(0xFFD32F2F)
+                                    : colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => ScheduledTaskRunsScreen(
+                                        taskKey: item.key,
+                                        title: item.name,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.history, size: 16),
+                                label: const Text('运行记录'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         );
       },
@@ -195,7 +258,9 @@ class _ScheduledTasksScreenState extends State<ScheduledTasksScreen> {
   }
 
   Future<void> _openConfig(TaskItem item) async {
-    final intervalCtl = TextEditingController(text: item.intervalSec?.toString() ?? '3600');
+    final intervalCtl = TextEditingController(
+      text: item.intervalSec?.toString() ?? '3600',
+    );
     final dailyCtl = TextEditingController(text: item.dailyAt ?? '00:00');
     String strategy = item.strategy;
     bool enabled = item.enabled;
@@ -239,8 +304,14 @@ class _ScheduledTasksScreenState extends State<ScheduledTasksScreen> {
           },
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
@@ -258,7 +329,10 @@ class _ScheduledTasksScreenState extends State<ScheduledTasksScreen> {
       } else {
         payload['daily_at'] = dailyCtl.text.trim();
       }
-      await client.patchJson('/admin/api/v1/scheduled-tasks/${item.key}', body: payload);
+      await client.patchJson(
+        '/admin/api/v1/scheduled-tasks/${item.key}',
+        body: payload,
+      );
       _refresh();
     } finally {
       if (mounted) setState(() => _busy = false);

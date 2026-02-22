@@ -94,15 +94,19 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           ),
           const SizedBox(height: 6),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final msg = _messages[index];
-                final isAdmin =
-                    (msg['sender_role']?.toString() ?? '') == 'admin';
-                return _MessageBubble(message: msg, isMe: isAdmin);
-              },
+            child: RefreshIndicator(
+              onRefresh: () => _loadAll(showSpinner: false),
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                itemCount: _messages.length,
+                itemBuilder: (context, index) {
+                  final msg = _messages[index];
+                  final isAdmin =
+                      (msg['sender_role']?.toString() ?? '') == 'admin';
+                  return _MessageBubble(message: msg, isMe: isAdmin);
+                },
+              ),
             ),
           ),
           _ComposerBar(
@@ -504,7 +508,10 @@ class _TicketHeader extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    _StatusPill(label: statusMeta.label, color: statusMeta.color),
+                    _StatusPill(
+                      label: statusMeta.label,
+                      color: statusMeta.color,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 3),
@@ -591,7 +598,10 @@ class _MessageBubble extends StatelessWidget {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 300),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: bg,
                       borderRadius: BorderRadius.only(
@@ -681,8 +691,14 @@ class _ComposerBar extends StatelessWidget {
                     iconSize: 16,
                     dropdownColor: null,
                     items: const [
-                      DropdownMenuItem(value: '', child: Text('\u4e0d\u4fee\u6539')),
-                      DropdownMenuItem(value: 'open', child: Text('\u5f85\u5904\u7406')),
+                      DropdownMenuItem(
+                        value: '',
+                        child: Text('\u4e0d\u4fee\u6539'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'open',
+                        child: Text('\u5f85\u5904\u7406'),
+                      ),
                       DropdownMenuItem(
                         value: 'waiting_user',
                         child: Text('\u7b49\u5f85\u7528\u6237'),
@@ -691,7 +707,10 @@ class _ComposerBar extends StatelessWidget {
                         value: 'waiting_admin',
                         child: Text('\u5904\u7406\u4e2d'),
                       ),
-                      DropdownMenuItem(value: 'closed', child: Text('\u5df2\u5173\u95ed')),
+                      DropdownMenuItem(
+                        value: 'closed',
+                        child: Text('\u5df2\u5173\u95ed'),
+                      ),
                     ],
                     onChanged: onStatusChanged,
                     decoration: const InputDecoration(
@@ -717,7 +736,10 @@ class _ComposerBar extends StatelessWidget {
                       hintText: '\u8f93\u5165\u56de\u590d\u5185\u5bb9...',
                       prefixIcon: Icon(Icons.edit_outlined, size: 14),
                       isDense: true,
-                      contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
                     ),
                   ),
                 ),
@@ -725,7 +747,10 @@ class _ComposerBar extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: busy ? null : onSend,
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     minimumSize: const Size(0, 28),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     textStyle: const TextStyle(fontSize: 11),
@@ -735,7 +760,6 @@ class _ComposerBar extends StatelessWidget {
                 ),
               ],
             ),
-
           ],
         ),
       ),

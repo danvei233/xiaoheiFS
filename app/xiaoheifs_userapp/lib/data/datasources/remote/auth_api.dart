@@ -99,6 +99,12 @@ class AuthApi {
     return User.fromJson(_asMap(response.data));
   }
 
+  /// 获取当前用户等级/分组信息
+  Future<Map<String, dynamic>> getMyUserTier() async {
+    final response = await _dio.get(ApiEndpoints.meUserTier);
+    return _asMap(response.data);
+  }
+
   /// 修改密码
   Future<void> changeMyPassword(Map<String, dynamic> payload) async {
     await _dio.post(ApiEndpoints.mePasswordChange, data: payload);
