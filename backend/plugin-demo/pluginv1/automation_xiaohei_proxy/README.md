@@ -42,5 +42,5 @@ Xiaohei-to-Xiaohei proxy automation plugin.
 
 - Stock sync uses `capacity_remaining` from upstream package list.
 - `price_rate` applies an upstream price multiplier when returning package prices.
-- `goods_type_id > 0` limits catalog sync to a specific upstream goods type.
+- `goods_type_id` is required and limits catalog sync/order selection to the specified upstream goods type.
 - If upstream plugin does not expose inventory, stock may remain `-1` (unlimited semantic).

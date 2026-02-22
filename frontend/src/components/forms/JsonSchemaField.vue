@@ -30,8 +30,8 @@
         allow-clear
         :placeholder="placeholder"
       >
-        <a-select-option v-for="opt in schema.enum" :key="String(opt)" :value="opt">
-          {{ String(opt) }}
+        <a-select-option v-for="(opt, idx) in schema.enum" :key="String(opt)" :value="opt">
+          {{ enumLabel(idx, opt) }}
         </a-select-option>
       </a-select>
 
@@ -136,6 +136,13 @@ const setValue = (v: any) => {
   if (isSecret.value && (v === undefined || v === null)) v = "";
   setPathValue(props.model, props.path, v);
 };
+
+const enumLabel = (idx: number, opt: any) => {
+  const names = Array.isArray(props.schema?.enumNames) ? props.schema.enumNames : [];
+  const title = names[idx];
+  if (title != null && String(title).trim() !== "") return String(title);
+  return String(opt);
+};
 </script>
 
 <style scoped>
@@ -162,4 +169,3 @@ const setValue = (v: any) => {
   font-weight: 600;
 }
 </style>
-

@@ -1,6 +1,6 @@
 {
   "plugin_id": "xiaohei_proxy",
-  "name": "Xiaohei Proxy Automation (Built-in)",
+  "name": "Xiaohei Proxy Automation",
   "version": "0.1.0",
   "description": "Built-in proxy automation plugin for another Xiaohei node via open API + admin API.",
   "binaries": {

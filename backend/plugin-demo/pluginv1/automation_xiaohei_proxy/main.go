@@ -71,7 +71,7 @@ func (s *coreServer) GetConfigSchema(ctx context.Context, _ *pluginv1.Empty) (*p
     "retry": { "type": "integer", "title": "Retry", "default": 1, "minimum": 0, "maximum": 5 },
     "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
   },
-  "required": ["base_url","open_akid","open_secret"]
+  "required": ["base_url","open_akid","open_secret","goods_type_id"]
 }`,
 		UiSchema: `{
   "open_secret": { "ui:widget": "password" },
@@ -88,6 +88,9 @@ func (s *coreServer) ValidateConfig(ctx context.Context, req *pluginv1.ValidateC
 	}
 	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.OpenAKID) == "" || strings.TrimSpace(cfg.OpenSecret) == "" {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "base_url/open_akid/open_secret required"}, nil
+	}
+	if cfg.GoodsTypeID <= 0 {
+		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "goods_type_id required"}, nil
 	}
 	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 60 {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "timeout_sec out of range"}, nil

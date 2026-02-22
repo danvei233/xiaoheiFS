@@ -44,5 +44,5 @@
     },
     "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
   },
-  "required": ["base_url", "open_akid", "open_secret"]
+  "required": ["base_url", "open_akid", "open_secret", "goods_type_id"]
 }
