@@ -138,7 +138,12 @@ func fixMySQLPartialUniqueIndexes(db *gorm.DB) error {
 			return err
 		}
 	}
-	if err := db.Exec("CREATE INDEX idx_packages_gt_integration_unique ON packages(integration_package_id)").Error; err != nil {
+	if db.Migrator().HasIndex(&packageRow{}, "idx_packages_integration") {
+		if err := db.Exec("DROP INDEX idx_packages_integration ON packages").Error; err != nil {
+			return err
+		}
+	}
+	if err := db.Exec("CREATE INDEX idx_packages_integration ON packages(integration_package_id)").Error; err != nil {
 		return err
 	}
 
@@ -150,6 +155,7 @@ func fixMySQLTextColumns(db *gorm.DB) error {
 		"ALTER TABLE cms_blocks MODIFY COLUMN content_json LONGTEXT NOT NULL",
 		"ALTER TABLE cms_blocks MODIFY COLUMN custom_html LONGTEXT NOT NULL",
 		"ALTER TABLE cms_posts MODIFY COLUMN content_html LONGTEXT NOT NULL",
+		"ALTER TABLE user_tier_auto_rules MODIFY COLUMN conditions_json LONGTEXT NOT NULL",
 	}
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {
