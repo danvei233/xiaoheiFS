@@ -156,7 +156,6 @@ func fixMySQLTextColumns(db *gorm.DB) error {
 		"ALTER TABLE cms_blocks MODIFY COLUMN custom_html LONGTEXT NOT NULL",
 		"ALTER TABLE cms_posts MODIFY COLUMN content_html LONGTEXT NOT NULL",
 		"ALTER TABLE user_tier_auto_rules MODIFY COLUMN conditions_json LONGTEXT NOT NULL",
-		"ALTER TABLE coupon_product_groups MODIFY COLUMN rules_json LONGTEXT NOT NULL",
 	}
 	for _, stmt := range stmts {
 		if err := db.Exec(stmt).Error; err != nil {
