@@ -220,7 +220,7 @@ func (s *OrderService) completeProvision(ctx context.Context, job domain.Provisi
 		}
 		_ = s.vps.UpdateInstanceAccessInfo(ctx, inst.ID, accessInfo)
 	} else if err == ErrNotFound {
-		snap := s.buildVPSLocalSnapshot(ctx, item)
+		snap := s.buildVPSLocalSnapshot(ctx, order.UserID, item)
 		newInst := domain.VPSInstance{
 			UserID:               order.UserID,
 			OrderItemID:          item.ID,

@@ -9,6 +9,7 @@ func (userRoutesRegistrar) Register(r *gin.Engine, handler *Handler, middleware 
 	user.Use(middleware.RequireUser())
 	{
 		user.GET("/me", handler.Me)
+		user.GET("/me/user-tier", handler.MeUserTier)
 		user.PATCH("/me", handler.UpdateProfile)
 		user.POST("/me/password/change", handler.MePasswordChange)
 		user.GET("/me/security/contacts", handler.MeSecurityContacts)
@@ -39,6 +40,7 @@ func (userRoutesRegistrar) Register(r *gin.Engine, handler *Handler, middleware 
 		user.DELETE("/cart/:id", handler.CartDelete)
 		user.POST("/orders", handler.OrderCreate)
 		user.POST("/orders/items", handler.OrderCreateItems)
+		user.POST("/coupons/preview", handler.CouponPreview)
 		user.GET("/orders", handler.OrderList)
 		user.GET("/orders/:id", handler.OrderDetail)
 		user.POST("/orders/:id/pay", handler.OrderPay)

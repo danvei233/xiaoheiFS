@@ -111,6 +111,23 @@
               <span class="info-value">{{ profile?.role || "-" }}</span>
             </div>
           </div>
+          <div class="info-item">
+            <IdcardOutlined class="item-icon" />
+            <div class="info-content">
+              <span class="info-label">用户组</span>
+              <a-tag :color="myTier.group_color || 'default'" class="tier-tag">
+                <component :is="tierIconComp" v-if="tierIconComp" class="tier-tag-icon" />
+                {{ myTier.group_name || "-" }}
+              </a-tag>
+            </div>
+          </div>
+          <div class="info-item">
+            <CalendarOutlined class="item-icon" />
+            <div class="info-content">
+              <span class="info-label">用户组到期</span>
+              <span class="info-value">{{ formatTime(myTier.expire_at) }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -419,7 +436,16 @@ import {
   CloseCircleOutlined,
   InfoCircleOutlined,
   KeyOutlined,
-  LockOutlined
+  LockOutlined,
+  FireOutlined,
+  GiftOutlined,
+  HeartOutlined,
+  StarOutlined,
+  CrownOutlined,
+  RocketOutlined,
+  ThunderboltOutlined,
+  TrophyOutlined,
+  SafetyCertificateOutlined
 } from "@ant-design/icons-vue";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -428,6 +454,7 @@ import {
   confirmMyPhoneBind,
   confirmTwoFA,
   getMySecurityContacts,
+  getMyUserTier,
   getRealNameStatus,
   getTwoFAStatus,
   getWallet,
@@ -458,6 +485,28 @@ const auth = useAuthStore();
 const profile = computed(() => auth.profile);
 const wallet = ref({ balance: 0, currency: "CNY" });
 const realname = ref(null);
+const myTier = ref({
+  group_id: 0,
+  group_name: "",
+  group_color: "",
+  group_icon: "",
+  expire_at: ""
+});
+
+const tierIconComp = computed(() => {
+  const icon = String(myTier.value?.group_icon || "").trim().toLowerCase();
+  if (!icon) return null;
+  if (icon === "fire") return FireOutlined;
+  if (icon === "gift") return GiftOutlined;
+  if (icon === "heart") return HeartOutlined;
+  if (icon === "star") return StarOutlined;
+  if (icon === "crown") return CrownOutlined;
+  if (icon === "rocket") return RocketOutlined;
+  if (icon === "thunder") return ThunderboltOutlined;
+  if (icon === "trophy") return TrophyOutlined;
+  if (icon === "badge") return SafetyCertificateOutlined;
+  return SafetyCertificateOutlined;
+});
 const editModalVisible = ref(false);
 const passwordModalVisible = ref(false);
 const securityModalVisible = ref(false);
@@ -865,9 +914,10 @@ const handleSubmit = async () => {
 
 const fetchExtras = async () => {
   try {
-    const [walletRes, realnameRes] = await Promise.all([getWallet(), getRealNameStatus()]);
+    const [walletRes, realnameRes, tierRes] = await Promise.all([getWallet(), getRealNameStatus(), getMyUserTier()]);
     wallet.value = normalizeWallet(walletRes.data) || wallet.value;
     realname.value = realnameRes.data || realname.value;
+    myTier.value = tierRes.data || myTier.value;
   } catch {
     // ignore
   }
@@ -1635,6 +1685,19 @@ const securityModalTitle = computed(() => {
 .info-item-balance .item-icon {
   color: var(--success);
   font-size: 20px;
+}
+
+.tier-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tier-tag-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 /* Modal */

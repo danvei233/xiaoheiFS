@@ -275,6 +275,10 @@ func (a *automationServer) ListPackages(ctx context.Context, req *pluginv1.ListP
 			BandwidthMbps: int32(it.Bandwidth),
 			PortNum:       int32(it.PortNum),
 			MonthlyPrice:  it.Price,
+			CapacityRemaining: func(v int) *int32 {
+				n := int32(v)
+				return &n
+			}(it.CapacityRemaining),
 		})
 	}
 	return &pluginv1.ListPackagesResponse{Items: out}, nil

@@ -468,6 +468,8 @@ func (h *Handler) AdminUserUpdate(c *gin.Context) {
 		Role              *string `json:"role"`
 		Status            *string `json:"status"`
 		PermissionGroupID *int64  `json:"permission_group_id"`
+		UserTierGroupID   *int64  `json:"user_tier_group_id"`
+		UserTierExpireAt  *string `json:"user_tier_expire_at"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -512,6 +514,20 @@ func (h *Handler) AdminUserUpdate(c *gin.Context) {
 	}
 	if payload.PermissionGroupID != nil {
 		user.PermissionGroupID = payload.PermissionGroupID
+	}
+	if payload.UserTierGroupID != nil {
+		user.UserTierGroupID = payload.UserTierGroupID
+	}
+	if payload.UserTierExpireAt != nil {
+		raw := strings.TrimSpace(*payload.UserTierExpireAt)
+		if raw == "" {
+			user.UserTierExpireAt = nil
+		} else if v, err := time.Parse(time.RFC3339, raw); err == nil {
+			user.UserTierExpireAt = &v
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidExpireAt.Error()})
+			return
+		}
 	}
 	if err := h.adminSvc.UpdateUser(c, getUserID(c), user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

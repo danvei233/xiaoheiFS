@@ -4,6 +4,6 @@ package http
 // without requiring a configured database connection.
 func NewInstallBootstrapServer(jwtSecret string) *Server {
 	handler := NewHandler(HandlerDeps{JWTSecret: jwtSecret})
-	middleware := NewMiddleware(jwtSecret, nil, nil, nil, nil)
+	middleware := NewMiddleware(jwtSecret, nil, nil, nil, nil, nil)
 	return NewServer(handler, middleware)
 }

@@ -14,12 +14,21 @@ type Service struct {
 	cart    appports.CartRepository
 	catalog appports.CatalogRepository
 	billing appports.BillingCycleRepository
+	pricer  userTierPricingResolver
 }
 
 type CartSpec = appshared.CartSpec
 
 func NewService(cart appports.CartRepository, catalog appports.CatalogRepository, billing appports.BillingCycleRepository) *Service {
 	return &Service{cart: cart, catalog: catalog, billing: billing}
+}
+
+type userTierPricingResolver interface {
+	ResolvePackagePricing(ctx context.Context, userID, packageID int64) (domain.UserTierPriceCache, int64, error)
+}
+
+func (s *Service) SetUserTierPricingResolver(resolver userTierPricingResolver) {
+	s.pricer = resolver
 }
 
 func (s *Service) List(ctx context.Context, userID int64) ([]domain.CartItem, error) {
@@ -50,7 +59,20 @@ func (s *Service) Add(ctx context.Context, userID int64, packageID int64, system
 	}
 	spec.DurationMonths = months
 	baseMonthly := pkg.Monthly
-	addonMonthly := int64(spec.AddCores)*plan.UnitCore + int64(spec.AddMemGB)*plan.UnitMem + int64(spec.AddDiskGB)*plan.UnitDisk + int64(spec.AddBWMbps)*plan.UnitBW
+	unitCore := plan.UnitCore
+	unitMem := plan.UnitMem
+	unitDisk := plan.UnitDisk
+	unitBW := plan.UnitBW
+	if s.pricer != nil {
+		if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, userID, packageID); err == nil {
+			baseMonthly = pricing.MonthlyPrice
+			unitCore = pricing.UnitCore
+			unitMem = pricing.UnitMem
+			unitDisk = pricing.UnitDisk
+			unitBW = pricing.UnitBW
+		}
+	}
+	addonMonthly := int64(spec.AddCores)*unitCore + int64(spec.AddMemGB)*unitMem + int64(spec.AddDiskGB)*unitDisk + int64(spec.AddBWMbps)*unitBW
 	unitAmount := int64(math.Round(float64(baseMonthly+addonMonthly) * multiplier))
 	specJSON := mustJSON(spec)
 	item := domain.CartItem{
@@ -105,7 +127,20 @@ func (s *Service) Update(ctx context.Context, userID int64, itemID int64, spec C
 	}
 	spec.DurationMonths = months
 	baseMonthly := pkg.Monthly
-	addonMonthly := int64(spec.AddCores)*plan.UnitCore + int64(spec.AddMemGB)*plan.UnitMem + int64(spec.AddDiskGB)*plan.UnitDisk + int64(spec.AddBWMbps)*plan.UnitBW
+	unitCore := plan.UnitCore
+	unitMem := plan.UnitMem
+	unitDisk := plan.UnitDisk
+	unitBW := plan.UnitBW
+	if s.pricer != nil {
+		if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, userID, target.PackageID); err == nil {
+			baseMonthly = pricing.MonthlyPrice
+			unitCore = pricing.UnitCore
+			unitMem = pricing.UnitMem
+			unitDisk = pricing.UnitDisk
+			unitBW = pricing.UnitBW
+		}
+	}
+	addonMonthly := int64(spec.AddCores)*unitCore + int64(spec.AddMemGB)*unitMem + int64(spec.AddDiskGB)*unitDisk + int64(spec.AddBWMbps)*unitBW
 	unitAmount := int64(math.Round(float64(baseMonthly+addonMonthly) * multiplier))
 	updated := domain.CartItem{
 		ID:        itemID,

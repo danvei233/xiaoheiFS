@@ -85,6 +85,21 @@
             <a-select-option value="blocked">blocked</a-select-option>
           </a-select>
         </a-form-item>
+        <a-form-item label="用户组">
+          <a-select v-model:value="editForm.user_tier_group_id" allow-clear placeholder="请选择用户组">
+            <a-select-option v-for="g in tierGroups" :key="g.id" :value="g.id">
+              {{ g.name }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="用户组到期时间">
+          <a-date-picker
+            v-model:value="editForm.user_tier_expire_at"
+            show-time
+            style="width: 100%"
+            placeholder="为空表示无限"
+          />
+        </a-form-item>
         <a-divider />
         <a-form-item label="实名认证状态">
           <a-space align="start" :size="12">
@@ -116,6 +131,8 @@
         <a-descriptions-item label="用户名">{{ detail?.username || '-' }}</a-descriptions-item>
         <a-descriptions-item label="邮箱">{{ detail?.email || '-' }}</a-descriptions-item>
         <a-descriptions-item label="状态">{{ detail?.status || '-' }}</a-descriptions-item>
+        <a-descriptions-item label="用户组">{{ groupNameById(detail?.user_tier_group_id) }}</a-descriptions-item>
+        <a-descriptions-item label="到期时间">{{ formatDate(detail?.user_tier_expire_at) }}</a-descriptions-item>
       </a-descriptions>
 
       <a-divider />
@@ -174,6 +191,7 @@
 <script setup>
 import { reactive, ref } from "vue";
 import { UserOutlined } from "@ant-design/icons-vue";
+import dayjs from "dayjs";
 import { useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import FilterBar from "@/components/FilterBar.vue";
@@ -190,6 +208,8 @@ import {
   adminImpersonateUser,
   listAdminOrders,
   listRealNameRecords,
+  listUserTierGroups,
+  setAdminUserTier,
   getAdminWalletInfo,
   listAdminWalletTransactions
 } from "@/services/admin";
@@ -218,6 +238,7 @@ const resetPassword = ref("");
 const activeRecord = ref(null);
 const detail = ref(null);
 const detailLoading = ref(false);
+const tierGroups = ref([]);
 const walletInfo = ref(null);
 const orderRecords = ref([]);
 const walletTransactions = ref([]);
@@ -231,7 +252,9 @@ const editForm = reactive({
   email: "",
   qq: "",
   avatar: "",
-  status: "active"
+  status: "active",
+  user_tier_group_id: undefined,
+  user_tier_expire_at: null
 });
 
 const columns = [
@@ -239,6 +262,7 @@ const columns = [
   { title: "头像", key: "avatar", width: 60 },
   { title: "用户名", dataIndex: "username", key: "username" },
   { title: "邮箱", dataIndex: "email", key: "email" },
+  { title: "用户组", dataIndex: "user_tier_group_name", key: "user_tier_group_name", width: 120 },
   { title: "状态", dataIndex: "status", key: "status", width: 90 },
   { title: "注册时间", dataIndex: "created_at", key: "created_at", width: 170 },
   { title: "操作", key: "action", width: 320, fixed: "right" }
@@ -251,8 +275,21 @@ const normalize = (row) => ({
   avatar: row.avatar ?? row.avatar_url ?? row.AvatarURL,
   status: row.status ?? row.Status,
   role: row.role ?? row.Role,
-  created_at: row.created_at ?? row.CreatedAt
+  created_at: row.created_at ?? row.CreatedAt,
+  user_tier_group_id: row.user_tier_group_id ?? row.UserTierGroupID,
+  user_tier_expire_at: row.user_tier_expire_at ?? row.UserTierExpireAt,
+  user_tier_group_name: "-"
 });
+
+const groupNameById = (id) => {
+  const hit = tierGroups.value.find((i) => Number(i.id) === Number(id));
+  return hit?.name || "-";
+};
+
+const attachTierName = (list) => (list || []).map((item) => ({
+  ...item,
+  user_tier_group_name: groupNameById(item.user_tier_group_id)
+}));
 
 const formatAmount = (value) => Number(value || 0).toFixed(2);
 
@@ -314,7 +351,7 @@ const fetchData = async () => {
       offset: (pagination.current - 1) * pagination.pageSize
     });
     const payload = res.data || {};
-    dataSource.value = (payload.items || []).map(normalize).filter((item) => item.role !== "admin");
+    dataSource.value = attachTierName((payload.items || []).map(normalize).filter((item) => item.role !== "admin"));
     if (filters.status) {
       dataSource.value = dataSource.value.filter((item) => item.status === filters.status);
     }
@@ -442,6 +479,8 @@ const openEdit = async (record) => {
   editForm.qq = record.qq || "";
   editForm.avatar = record.avatar || "";
   editForm.status = record.status || "active";
+  editForm.user_tier_group_id = record.user_tier_group_id ?? undefined;
+  editForm.user_tier_expire_at = record.user_tier_expire_at ? dayjs(record.user_tier_expire_at) : null;
   editOpen.value = true;
   await fetchUserExtras(record.id);
 };
@@ -516,11 +555,25 @@ const submitEdit = async () => {
     avatar: editForm.avatar,
     status: editForm.status
   });
+  await setAdminUserTier(editForm.id, {
+    group_id: Number(editForm.user_tier_group_id || 0),
+    expire_at: editForm.user_tier_expire_at ? editForm.user_tier_expire_at.toDate().toISOString() : ""
+  });
   message.success("已更新用户资料");
   editOpen.value = false;
   fetchData();
 };
 
-fetchData();
+const fetchTierGroups = async () => {
+  const res = await listUserTierGroups();
+  tierGroups.value = res.data?.items || [];
+};
+
+const init = async () => {
+  await fetchTierGroups();
+  await fetchData();
+};
+
+init();
 </script>
 

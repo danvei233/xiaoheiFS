@@ -16,7 +16,7 @@ func TestOrderService_CreateOrderFromCartInvalid(t *testing.T) {
 	user := testutil.CreateUser(t, repo, "cartbad", "cartbad@example.com", "pass")
 
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
-	if _, _, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", ""); err != appshared.ErrInvalidInput {
+	if _, _, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", "", ""); err != appshared.ErrInvalidInput {
 		t.Fatalf("expected invalid input, got %v", err)
 	}
 }
@@ -29,7 +29,7 @@ func TestOrderService_CreateOrderFromItemsInvalidSpec(t *testing.T) {
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
 	_, _, err := svc.CreateOrderFromItems(context.Background(), user.ID, "CNY", []appshared.OrderItemInput{
 		{PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Qty: 1, Spec: appshared.CartSpec{AddCores: -1}},
-	}, "")
+	}, "", "")
 	if err != appshared.ErrInvalidInput {
 		t.Fatalf("expected invalid input, got %v", err)
 	}
@@ -48,7 +48,7 @@ func TestOrderService_CreateOrderFromItemsInvalidBillingCycle(t *testing.T) {
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
 	_, _, err := svc.CreateOrderFromItems(context.Background(), user.ID, "CNY", []appshared.OrderItemInput{
 		{PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Qty: 1, Spec: appshared.CartSpec{BillingCycleID: cycle.ID, CycleQty: 1}},
-	}, "")
+	}, "", "")
 	if err != appshared.ErrInvalidInput {
 		t.Fatalf("expected invalid input, got %v", err)
 	}
@@ -79,7 +79,7 @@ func TestOrderService_CreateOrderFromCartValidatesAddonLimit(t *testing.T) {
 	}
 
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
-	if _, _, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", ""); err != appshared.ErrInvalidInput {
+	if _, _, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", "", ""); err != appshared.ErrInvalidInput {
 		t.Fatalf("expected invalid input, got %v", err)
 	}
 }

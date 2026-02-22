@@ -29,6 +29,8 @@ func toUserRow(u domain.User) userRow {
 		Bio:                  u.Bio,
 		Intro:                u.Intro,
 		PermissionGroupID:    u.PermissionGroupID,
+		UserTierGroupID:      u.UserTierGroupID,
+		UserTierExpireAt:     u.UserTierExpireAt,
 		PasswordHash:         u.PasswordHash,
 		PasswordChangedAt:    u.PasswordChangedAt,
 		Role:                 string(u.Role),
@@ -60,6 +62,8 @@ func fromUserRow(r userRow) domain.User {
 		Bio:                  r.Bio,
 		Intro:                r.Intro,
 		PermissionGroupID:    r.PermissionGroupID,
+		UserTierGroupID:      r.UserTierGroupID,
+		UserTierExpireAt:     r.UserTierExpireAt,
 		PasswordHash:         r.PasswordHash,
 		PasswordChangedAt:    r.PasswordChangedAt,
 		Role:                 domain.UserRole(r.Role),
@@ -103,13 +107,21 @@ func toOrderRow(order domain.Order) orderRow {
 		v := strings.TrimSpace(order.IdempotencyKey)
 		idem = &v
 	}
+	source := strings.TrimSpace(order.Source)
+	if source == "" {
+		source = "user_ui"
+	}
 	return orderRow{
 		ID:             order.ID,
 		UserID:         order.UserID,
 		OrderNo:        order.OrderNo,
+		Source:         source,
 		Status:         string(order.Status),
 		TotalAmount:    order.TotalAmount,
 		Currency:       order.Currency,
+		CouponID:       order.CouponID,
+		CouponCode:     order.CouponCode,
+		CouponDiscount: order.CouponDiscount,
 		IdempotencyKey: idem,
 		PendingReason:  order.PendingReason,
 		ApprovedBy:     order.ApprovedBy,
@@ -125,9 +137,13 @@ func fromOrderRow(r orderRow) domain.Order {
 		ID:             r.ID,
 		UserID:         r.UserID,
 		OrderNo:        r.OrderNo,
+		Source:         r.Source,
 		Status:         domain.OrderStatus(r.Status),
 		TotalAmount:    r.TotalAmount,
 		Currency:       r.Currency,
+		CouponID:       r.CouponID,
+		CouponCode:     r.CouponCode,
+		CouponDiscount: r.CouponDiscount,
 		PendingReason:  r.PendingReason,
 		ApprovedBy:     r.ApprovedBy,
 		ApprovedAt:     r.ApprovedAt,

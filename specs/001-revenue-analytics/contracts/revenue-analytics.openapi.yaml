@@ -1,0 +1,290 @@
+﻿openapi: 3.0.3
+info:
+  title: Revenue Analytics Admin API
+  version: 1.0.0
+  description: 后台收入统计初版
+servers:
+  - url: /admin/api/v1
+paths:
+  /dashboard/revenue-analytics/overview:
+    post:
+      summary: 收入总览
+      operationId: revenueOverview
+      tags: [Dashboard]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevenueAnalyticsQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [summary, share_items, top_items]
+                properties:
+                  summary:
+                    $ref: '#/components/schemas/RevenueSummary'
+                  share_items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RevenueShareItem'
+                  top_items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RevenueTopItem'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /dashboard/revenue-analytics/trend:
+    post:
+      summary: 收入趋势
+      operationId: revenueTrend
+      tags: [Dashboard]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevenueAnalyticsQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RevenueTrendPoint'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /dashboard/revenue-analytics/top:
+    post:
+      summary: 收入Top5
+      operationId: revenueTop
+      tags: [Dashboard]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevenueAnalyticsQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RevenueTopItem'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /dashboard/revenue-analytics/details:
+    post:
+      summary: 收入明细
+      operationId: revenueDetails
+      tags: [Dashboard]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RevenueAnalyticsQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, page, page_size, total]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RevenueDetailRecord'
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+                  total:
+                    type: integer
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  responses:
+    BadRequest:
+      description: 参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 无权限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    RevenueAnalyticsQuery:
+      type: object
+      required: [from_at, to_at, level]
+      properties:
+        from_at:
+          type: string
+          format: date-time
+        to_at:
+          type: string
+          format: date-time
+        level:
+          type: string
+          enum: [goods_type, region, line, package]
+        goods_type_id:
+          type: integer
+          format: int64
+        region_id:
+          type: integer
+          format: int64
+        line_id:
+          type: integer
+          format: int64
+        package_id:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          minimum: 1
+          default: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 20
+        sort_field:
+          type: string
+          enum: [paid_at, amount]
+          default: paid_at
+        sort_order:
+          type: string
+          enum: [asc, desc]
+          default: desc
+    RevenueSummary:
+      type: object
+      required: [total_revenue_cents, order_count, yoy_comparable, mom_comparable]
+      properties:
+        total_revenue_cents:
+          type: integer
+          format: int64
+        order_count:
+          type: integer
+        yoy_ratio:
+          type: number
+          nullable: true
+        mom_ratio:
+          type: number
+          nullable: true
+        yoy_comparable:
+          type: boolean
+        mom_comparable:
+          type: boolean
+    RevenueShareItem:
+      type: object
+      required: [dimension_id, dimension_name, revenue_cents, ratio]
+      properties:
+        dimension_id:
+          type: integer
+          format: int64
+        dimension_name:
+          type: string
+        revenue_cents:
+          type: integer
+          format: int64
+        ratio:
+          type: number
+    RevenueTrendPoint:
+      type: object
+      required: [bucket, revenue_cents, order_count]
+      properties:
+        bucket:
+          type: string
+          format: date-time
+        revenue_cents:
+          type: integer
+          format: int64
+        order_count:
+          type: integer
+    RevenueTopItem:
+      type: object
+      required: [rank, dimension_id, dimension_name, revenue_cents, ratio]
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+          maximum: 5
+        dimension_id:
+          type: integer
+          format: int64
+        dimension_name:
+          type: string
+        revenue_cents:
+          type: integer
+          format: int64
+        ratio:
+          type: number
+    RevenueDetailRecord:
+      type: object
+      required: [payment_id, order_id, order_no, user_id, amount_cents, paid_at, status]
+      properties:
+        payment_id:
+          type: integer
+          format: int64
+        order_id:
+          type: integer
+          format: int64
+        order_no:
+          type: string
+        user_id:
+          type: integer
+          format: int64
+        goods_type_id:
+          type: integer
+          format: int64
+        region_id:
+          type: integer
+          format: int64
+        line_id:
+          type: integer
+          format: int64
+        package_id:
+          type: integer
+          format: int64
+        amount_cents:
+          type: integer
+          format: int64
+        paid_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [approved]
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        trace_id:
+          type: string

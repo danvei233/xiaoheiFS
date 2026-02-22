@@ -922,14 +922,15 @@ func (c *Client) ListProducts(ctx context.Context, lineID int64) ([]appshared.Au
 	for _, item := range raw {
 		price, _ := money.ParseNumberStringToCents(item.Price)
 		out = append(out, appshared.AutomationProduct{
-			ID:        item.ID,
-			Name:      item.Name,
-			CPU:       item.CPU,
-			MemoryGB:  item.MemoryGB,
-			DiskGB:    item.DiskGB,
-			Bandwidth: item.Bandwidth,
-			Price:     price,
-			PortNum:   item.NatPortNum,
+			ID:                item.ID,
+			Name:              item.Name,
+			CPU:               item.CPU,
+			MemoryGB:          item.MemoryGB,
+			DiskGB:            item.DiskGB,
+			Bandwidth:         item.Bandwidth,
+			Price:             price,
+			PortNum:           item.NatPortNum,
+			CapacityRemaining: -1,
 		})
 	}
 	return out, nil

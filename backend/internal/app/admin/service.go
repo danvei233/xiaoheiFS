@@ -22,17 +22,26 @@ type (
 )
 
 type Service struct {
-	users    appports.UserRepository
-	orders   appports.OrderRepository
-	vps      appports.VPSRepository
-	keys     appports.APIKeyRepository
-	settings appports.SettingsRepository
-	audit    appports.AuditRepository
-	groups   appports.PermissionGroupRepository
+	users            appports.UserRepository
+	orders           appports.OrderRepository
+	vps              appports.VPSRepository
+	keys             appports.APIKeyRepository
+	settings         appports.SettingsRepository
+	audit            appports.AuditRepository
+	groups           appports.PermissionGroupRepository
+	userTierAssigner userTierAssigner
+}
+
+type userTierAssigner interface {
+	EnsureUserHasGroup(ctx context.Context, userID int64) error
 }
 
 func NewService(users appports.UserRepository, orders appports.OrderRepository, vps appports.VPSRepository, keys appports.APIKeyRepository, settings appports.SettingsRepository, audit appports.AuditRepository, groups appports.PermissionGroupRepository) *Service {
 	return &Service{users: users, orders: orders, vps: vps, keys: keys, settings: settings, audit: audit, groups: groups}
+}
+
+func (s *Service) SetUserTierAssigner(assigner userTierAssigner) {
+	s.userTierAssigner = assigner
 }
 
 func (s *Service) ListUsers(ctx context.Context, limit, offset int) ([]domain.User, int, error) {
@@ -102,6 +111,14 @@ func (s *Service) CreateUser(ctx context.Context, adminID int64, user domain.Use
 	}
 	if err := s.users.CreateUser(ctx, &user); err != nil {
 		return domain.User{}, err
+	}
+	if s.userTierAssigner != nil && user.Role == domain.UserRoleUser && user.ID > 0 {
+		if err := s.userTierAssigner.EnsureUserHasGroup(ctx, user.ID); err != nil {
+			return domain.User{}, err
+		}
+		if refreshed, err := s.users.GetUserByID(ctx, user.ID); err == nil {
+			user = refreshed
+		}
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "user.create", TargetType: "user", TargetID: toString(user.ID), DetailJSON: mustJSON(map[string]any{"role": user.Role})})

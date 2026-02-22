@@ -259,6 +259,7 @@ const hasAnyPermission = (requirements) => {
 
 const menuTree = [
   { key: "/admin/console", label: "总览", icon: DashboardOutlined, requireAny: ["dashboard.overview"] },
+  { key: "/admin/revenue-analytics", label: "收入统计", icon: DollarOutlined, requireAny: ["dashboard.revenue_analytics_overview", "dashboard.revenue"] },
   {
     key: "group-trade",
     label: "交易与资源",
@@ -282,6 +283,8 @@ const menuTree = [
     icon: TeamOutlined,
     children: [
       { key: "/admin/users", label: "用户管理", icon: TeamOutlined, requireAny: ["user.list"] },
+      { key: "/admin/user-tiers", label: "用户等级", icon: SafetyCertificateOutlined, requireAny: ["user.list"] },
+      { key: "/admin/coupons", label: "优惠码", icon: DollarOutlined, requireAny: ["settings.view"] },
       { key: "/admin/tickets", label: "工单管理", icon: CustomerServiceOutlined, requireAny: ["tickets.list"] },
       { key: "/admin/realname/providers", label: "实名供应商", icon: AppstoreOutlined, requireAny: ["realname.list"] },
       { key: "/admin/realname/config", label: "实名认证配置", icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
@@ -393,6 +396,7 @@ const selectedKey = computed(() => {
   if (route.path.startsWith("/admin/audit")) return "/admin/audit";
   if (route.path.startsWith("/admin/debug")) return "/admin/debug";
   if (route.path.startsWith("/admin/console")) return "/admin/console";
+  if (route.path.startsWith("/admin/revenue-analytics")) return "/admin/revenue-analytics";
   if (route.path === "/admin") return "/admin/console";
   return route.path;
 });

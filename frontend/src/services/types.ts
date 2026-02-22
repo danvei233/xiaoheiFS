@@ -162,6 +162,19 @@ export interface User {
   created_at?: string;
   updated_at?: string;
   balance?: number;
+  user_tier_group_id?: number;
+  user_tier_expire_at?: string;
+}
+
+export interface UserAPIKey {
+  id?: number;
+  name?: string;
+  akid?: string;
+  status?: string;
+  scopes_json?: string;
+  last_used_at?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Region {
@@ -278,6 +291,9 @@ export interface Order {
   status?: string;
   total_amount?: number;
   currency?: string;
+  coupon_id?: number;
+  coupon_code?: string;
+  coupon_discount?: number;
   idempotency_key?: string;
   pending_reason?: string;
   approved_by?: number;
@@ -328,6 +344,7 @@ export interface OrderDetailResponse {
 }
 
 export interface OrderCreateRequest {
+  coupon_code?: string;
   items?: Array<{
     package_id?: number;
     system_id?: number;
@@ -579,6 +596,56 @@ export interface GoodsType {
   updated_at?: string;
 }
 
+export interface CouponProductGroup {
+  id?: number;
+  name?: string;
+  rules?: CouponProductRule[];
+  scope?: string;
+  goods_type_id?: number;
+  region_id?: number;
+  plan_group_id?: number;
+  package_id?: number;
+  addon_core?: number;
+  addon_mem_gb?: number;
+  addon_disk_gb?: number;
+  addon_bw_mbps?: number;
+}
+
+export interface CouponProductRule {
+  scope?: string;
+  goods_type_id?: number;
+  region_id?: number;
+  plan_group_id?: number;
+  package_id?: number;
+  addon_core_enabled?: boolean;
+  addon_mem_enabled?: boolean;
+  addon_disk_enabled?: boolean;
+  addon_bw_enabled?: boolean;
+}
+
+export interface CouponPreviewResponse {
+  coupon_code?: string;
+  original_total?: number;
+  discount?: number;
+  final_total?: number;
+}
+
+export interface Coupon {
+  id?: number;
+  code?: string;
+  discount_permille?: number;
+  product_group_id?: number;
+  total_limit?: number;
+  per_user_limit?: number;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  new_user_only?: boolean;
+  active?: boolean;
+  note?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface DashboardOverview {
   total_revenue?: number;
   today_revenue?: number;
@@ -598,12 +665,95 @@ export interface DashboardStatus {
   points?: StatusPoint[];
 }
 
+export type RevenueAnalyticsLevel = "overall" | "goods_type" | "region" | "line" | "package";
+
+export interface RevenueAnalyticsQuery {
+  from_at: string;
+  to_at: string;
+  level: RevenueAnalyticsLevel;
+  goods_type_id?: number;
+  region_id?: number;
+  line_id?: number;
+  package_id?: number;
+  page?: number;
+  page_size?: number;
+  sort_field?: "paid_at" | "amount";
+  sort_order?: "asc" | "desc";
+}
+
+export interface RevenueAnalyticsSummary {
+  total_revenue_cents?: number;
+  order_count?: number;
+  yoy_ratio?: number | null;
+  mom_ratio?: number | null;
+  yoy_comparable?: boolean;
+  mom_comparable?: boolean;
+}
+
+export interface RevenueAnalyticsShareItem {
+  dimension_id?: number;
+  dimension_name?: string;
+  revenue_cents?: number;
+  ratio?: number;
+}
+
+export interface RevenueAnalyticsTopItem {
+  rank?: number;
+  dimension_id?: number;
+  dimension_name?: string;
+  revenue_cents?: number;
+  ratio?: number;
+}
+
+export interface RevenueAnalyticsTrendPoint {
+  bucket?: string;
+  revenue_cents?: number;
+  order_count?: number;
+}
+
+export interface RevenueAnalyticsDetailRecord {
+  payment_id?: number;
+  order_id?: number;
+  order_no?: string;
+  user_id?: number;
+  goods_type_id?: number;
+  region_id?: number;
+  line_id?: number;
+  package_id?: number;
+  amount_cents?: number;
+  paid_at?: string;
+  status?: string;
+}
+
+export interface RevenueAnalyticsOverviewResponse {
+  summary?: RevenueAnalyticsSummary;
+  share_items?: RevenueAnalyticsShareItem[];
+  top_items?: RevenueAnalyticsTopItem[];
+}
+
+export interface RevenueAnalyticsDetailsResponse {
+  items?: RevenueAnalyticsDetailRecord[];
+  page?: number;
+  page_size?: number;
+  total?: number;
+}
+
 export interface UserDashboard {
   orders?: number;
   vps?: number;
   expiring?: number;
   pending_review?: number;
   spend_30d?: number;
+}
+
+export interface UserTierSelf {
+  group_id?: number;
+  group_name?: string;
+  group_color?: string;
+  group_icon?: string;
+  group_priority?: number;
+  is_default?: boolean;
+  expire_at?: string;
 }
 
 export interface RobotConfig {
@@ -657,6 +807,44 @@ export interface AdminUser {
   status?: string;
   created_at?: string;
   updated_at?: string;
+  user_tier_group_id?: number;
+  user_tier_expire_at?: string;
+}
+
+export interface UserTierGroup {
+  id?: number;
+  name?: string;
+  color?: string;
+  icon?: string;
+  priority?: number;
+  auto_approve_enabled?: boolean;
+  is_default?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface UserTierDiscountRule {
+  id?: number;
+  group_id?: number;
+  scope?: string;
+  goods_type_id?: number;
+  region_id?: number;
+  plan_group_id?: number;
+  package_id?: number;
+  discount_permille?: number;
+  fixed_price?: number | null;
+  add_core_permille?: number;
+  add_mem_permille?: number;
+  add_disk_permille?: number;
+  add_bw_permille?: number;
+}
+
+export interface UserTierAutoRule {
+  id?: number;
+  group_id?: number;
+  duration_days?: number;
+  conditions_json?: string;
+  sort_order?: number;
 }
 
 export interface PermissionItem {

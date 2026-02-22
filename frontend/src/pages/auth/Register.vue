@@ -1,26 +1,39 @@
-﻿<template>
-  <div class="auth-page register-page">
-    <div class="register-noise" aria-hidden="true"></div>
-    <div class="register-orb register-orb-a" aria-hidden="true"></div>
-    <div class="register-orb register-orb-b" aria-hidden="true"></div>
-    <div class="auth-shell">
-      <div class="auth-banner register-banner">
-        <div class="auth-logo register-logo" aria-hidden="true">
-          <SiteLogoMedia :size="24" />
+<template>
+  <a-config-provider :theme="darkTheme">
+    <div class="auth-page register-page console-dark">
+      <div class="auth-shell">
+        <div class="auth-banner register-banner">
+          <div class="banner-content">
+            <div class="banner-logo" aria-hidden="true">
+              <SiteLogoMedia :size="32" />
+            </div>
+            <div class="banner-text">
+              <p class="banner-eyebrow">XIAOHEI CLOUD</p>
+              <h1 class="banner-title">注册账户</h1>
+              <p class="banner-desc">开启您的云端之旅</p>
+            </div>
+            <div class="banner-divider"></div>
+            <div class="banner-stats">
+              <div class="stat-item">
+                <span class="stat-value">99.9%</span>
+                <span class="stat-label">服务可用性</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-value">100+</span>
+                <span class="stat-label">数据中心</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-value">24/7</span>
+                <span class="stat-label">技术支持</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <p class="banner-eyebrow">XIAOHEI CLOUD</p>
-        <h1 class="banner-title">开始使用小黑云</h1>
-        <p class="banner-desc">注册后即可进入控制台，选购 VPS 并跟踪订单进度。</p>
-        <div class="banner-points">
-          <div class="banner-point">快速开通实例</div>
-          <div class="banner-point">订单状态实时同步</div>
-          <div class="banner-point">工单支持与通知提醒</div>
+        <a-card class="auth-card register-card" :bordered="false">
+        <div class="card-header">
+          <h2 class="section-title">创建账户</h2>
+          <p class="register-subtitle">填写以下信息完成注册</p>
         </div>
-        <div class="subtle banner-tip">请确保验证码正确以完成注册。</div>
-      </div>
-      <a-card class="card auth-card register-card" :bordered="false">
-        <div class="section-title register-title">用户注册</div>
-        <p class="register-subtitle">创建账户后即可使用完整功能</p>
         <a-alert
           v-if="!settings.register_enabled"
           type="warning"
@@ -28,33 +41,44 @@
           message="当前已关闭注册"
           style="margin-bottom: 16px"
         />
-        <a-form :model="form" layout="vertical" @finish="onSubmit">
+        <a-form :model="form" layout="vertical" @finish="onSubmit" class="register-form">
+          <a-tabs
+            v-if="showChannelTabs"
+            v-model:activeKey="activeRegisterTab"
+            class="register-tabs"
+          >
+            <a-tab-pane key="email" tab="邮箱注册" />
+            <a-tab-pane key="sms" tab="手机号注册" />
+          </a-tabs>
           <a-form-item
             label="用户名"
             name="username"
             :rules="[{ required: isRequired('username'), message: '请输入用户名' }]"
           >
-            <a-input v-model:value="form.username" :maxlength="INPUT_LIMITS.USERNAME" />
+            <a-input v-model:value="form.username" placeholder="请输入用户名" size="large">
+              <template #prefix>
+                <UserOutlined />
+              </template>
+            </a-input>
           </a-form-item>
-          <a-tabs
-            v-if="showChannelTabs"
-            v-model:activeKey="activeRegisterTab"
-            size="small"
-            style="margin-bottom: 8px"
-          >
-            <a-tab-pane key="email" tab="邮箱注册" />
-            <a-tab-pane key="sms" tab="手机号注册" />
-          </a-tabs>
           <a-form-item
             v-if="showEmailField"
             :label="verifyChannel === 'email' ? '邮箱' : '邮箱（选填）'"
             name="email"
             :rules="[{ required: verifyChannel === 'email', message: '请输入邮箱' }]"
           >
-            <a-input v-model:value="form.email" :maxlength="INPUT_LIMITS.EMAIL" />
+            <a-input v-model:value="form.email" placeholder="请输入邮箱地址" size="large">
+              <template #prefix>
+                <MailOutlined />
+              </template>
+            </a-input>
           </a-form-item>
           <a-form-item v-if="showField('qq')" label="QQ" name="qq" :rules="[{ required: isRequired('qq'), message: '请输入QQ' }]">
-            <a-input v-model:value="form.qq" :maxlength="INPUT_LIMITS.QQ" />
+            <a-input v-model:value="form.qq" placeholder="请输入QQ号" size="large">
+              <template #prefix>
+                <QqOutlined />
+              </template>
+            </a-input>
           </a-form-item>
           <a-form-item
             v-if="showPhoneField"
@@ -62,14 +86,22 @@
             name="phone"
             :rules="[{ required: isRequired('phone') || verifyChannel === 'sms', message: '请输入手机号' }]"
           >
-            <a-input v-model:value="form.phone" :maxlength="INPUT_LIMITS.PHONE" />
+            <a-input v-model:value="form.phone" placeholder="请输入手机号" size="large">
+              <template #prefix>
+                <PhoneOutlined />
+              </template>
+            </a-input>
           </a-form-item>
           <a-form-item
             label="密码"
             name="password"
             :rules="[{ required: isRequired('password'), message: '请输入密码' }]"
           >
-            <a-input-password v-model:value="form.password" :maxlength="INPUT_LIMITS.PASSWORD" />
+            <a-input-password v-model:value="form.password" placeholder="请设置登录密码" size="large">
+              <template #prefix>
+                <LockOutlined />
+              </template>
+            </a-input-password>
           </a-form-item>
           <a-form-item
             v-if="settings.register_captcha_enabled"
@@ -77,15 +109,15 @@
             name="captcha_code"
             :rules="settings.captcha_provider === 'geetest' ? [] : [{ required: true, message: '请输入验证码' }]"
           >
-            <div v-if="settings.captcha_provider !== 'geetest'" class="captcha form-inline">
-              <a-input v-model:value="form.captcha_code" placeholder="验证码" />
+            <div v-if="settings.captcha_provider !== 'geetest'" class="captcha">
+              <a-input v-model:value="form.captcha_code" placeholder="请输入验证码" size="large" class="captcha-input" />
               <div class="captcha-img" @click="refreshCaptcha">
                 <img v-if="captchaImage" :src="captchaImage" alt="captcha" />
-                <span v-else>点击刷新</span>
+                <span v-else>加载中</span>
               </div>
             </div>
             <div v-else class="captcha-geetest">
-              <a-button @click="verifyGeeTest" :disabled="!geetest.ready" :loading="geetest.loading">
+              <a-button @click="verifyGeeTest" :disabled="!geetest.ready" :loading="geetest.loading" block>
                 {{ geetest.passed ? "已通过验证，点击重试" : "点击完成极验验证" }}
               </a-button>
               <span class="captcha-geetest-status">{{ geetest.passed ? "验证通过" : "未验证" }}</span>
@@ -97,32 +129,96 @@
             name="verify_code"
             :rules="[{ required: true, message: '请输入验证码' }]"
           >
-            <div class="verify-code form-inline">
-              <a-input v-model:value="form.verify_code" placeholder="验证码" />
-              <a-button :disabled="sendCooling || !canSendCode" @click="sendCode">
-                {{ sendCooling ? `${sendCount}s` : "发送验证码" }}
+            <div class="verify-code">
+              <a-input v-model:value="form.verify_code" placeholder="请输入验证码" size="large" class="verify-input" />
+              <a-button :disabled="sendCooling || !canSendCode" @click="sendCode" size="large" class="verify-btn">
+                {{ sendCooling ? `${sendCount}s` : "获取验证码" }}
               </a-button>
             </div>
           </a-form-item>
-          <a-button type="primary" html-type="submit" block :loading="loading">注册</a-button>
+          <a-button type="primary" html-type="submit" block :loading="loading" size="large" class="submit-btn">
+            立即注册
+          </a-button>
         </a-form>
         <div class="auth-footer">
-          已有账号？<router-link to="/login">去登录</router-link>
+          <span>已有账号？</span>
+          <router-link to="/login" class="login-link">立即登录</router-link>
         </div>
       </a-card>
     </div>
   </div>
+  </a-config-provider>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted, computed, watch } from "vue";
-import { message } from "ant-design-vue";
+import { message, ConfigProvider, theme } from "ant-design-vue";
+import { UserOutlined, MailOutlined, LockOutlined, PhoneOutlined, QqOutlined } from "@ant-design/icons-vue";
 import { getCaptcha, userRegister, getAuthSettings, requestRegisterCode } from "@/services/user";
 import { useRouter } from "vue-router";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
 import { INPUT_LIMITS } from "@/constants/inputLimits";
 
 const router = useRouter();
+
+const darkTheme = {
+  algorithm: theme.darkAlgorithm,
+  token: {
+    colorPrimary: '#3b82f6',
+    colorBgBase: '#1e2433',
+    colorBgContainer: '#1e2433',
+    colorBgElevated: '#252b3d',
+    colorBorder: '#2d3748',
+    colorText: '#f1f5f9',
+    colorTextSecondary: '#94a3b8',
+    colorTextTertiary: '#64748b',
+    colorTextQuaternary: '#4a5568',
+    colorBorderSecondary: '#374151',
+    colorFillAlter: '#252b3d',
+    colorFillContent: '#252b3d',
+    colorFillTextHover: 'rgba(59, 130, 246, 0.08)',
+    colorFill: '#252b3d',
+    colorFillTertiary: '#2d3748',
+    colorBgLayout: '#0f1419',
+    colorBgSpotlight: '#252b3d',
+    borderRadius: 8,
+    fontSize: 14,
+    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto',
+  },
+  components: {
+    Input: {
+      colorBgContainer: '#252b3d',
+      colorBorder: '#2d3748',
+      colorTextPlaceholder: '#64748b',
+      colorText: '#f1f5f9',
+    },
+    InputNumber: {
+      colorBgContainer: '#252b3d',
+      colorBorder: '#2d3748',
+    },
+    Select: {
+      colorBgElevated: '#252b3d',
+      colorBgSpotlight: '#2d3748',
+    },
+    Button: {
+      colorPrimary: '#3b82f6',
+      colorPrimaryHover: '#60a5fa',
+      colorPrimaryActive: '#2563eb',
+      colorBgTextHover: 'rgba(59, 130, 246, 0.08)',
+    },
+    Alert: {
+      colorWarningBg: 'rgba(245, 158, 11, 0.15)',
+      colorWarningBorder: 'rgba(245, 158, 11, 0.3)',
+      colorWarningText: '#fbbf24',
+    },
+    Tabs: {
+      inkBarColor: '#3b82f6',
+      itemActiveColor: '#3b82f6',
+      itemSelectedColor: '#3b82f6',
+    },
+  },
+};
+
 const loading = ref(false);
 const captchaId = ref("");
 const captchaImage = ref("");
@@ -401,265 +497,377 @@ onMounted(loadSettings);
 </script>
 
 <style scoped>
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap");
-
 .auth-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 32px 24px;
-}
-
-.register-page {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  background:
-    radial-gradient(1200px 460px at 10% -10%, rgba(38, 132, 255, 0.24), transparent 70%),
-    radial-gradient(900px 400px at 90% 110%, rgba(16, 185, 129, 0.2), transparent 65%),
-    linear-gradient(145deg, #f5f9ff 0%, #edf6ff 45%, #f7fff9 100%);
-}
-
-.register-noise {
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(rgba(18, 32, 68, 0.08) 0.6px, transparent 0.6px);
-  background-size: 4px 4px;
-  opacity: 0.3;
-  pointer-events: none;
-  z-index: -2;
-}
-
-.register-orb {
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(5px);
-  pointer-events: none;
-  z-index: -1;
-}
-
-.register-orb-a {
-  width: 320px;
-  height: 320px;
-  top: -120px;
-  right: -60px;
-  background: radial-gradient(circle at 35% 35%, rgba(37, 99, 235, 0.62), rgba(37, 99, 235, 0));
-}
-
-.register-orb-b {
-  width: 280px;
-  height: 280px;
-  bottom: -120px;
-  left: -90px;
-  background: radial-gradient(circle at 45% 45%, rgba(5, 150, 105, 0.55), rgba(5, 150, 105, 0));
+  padding: 24px;
+  background: var(--bg-primary);
 }
 
 .auth-shell {
   display: grid;
-  grid-template-columns: minmax(280px, 1.15fr) minmax(340px, 0.85fr);
-  gap: 28px;
-  width: min(1040px, 100%);
-  position: relative;
-  z-index: 1;
+  grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr);
+  gap: 0;
+  width: min(1000px, 100%);
+  background: var(--card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
 }
 
 .auth-banner {
-  border-radius: 28px;
-  padding: 36px;
-  color: #f8fbff;
-}
-
-.register-banner {
-  position: relative;
-  overflow: hidden;
-  background:
-    linear-gradient(150deg, rgba(19, 31, 70, 0.96) 0%, rgba(12, 20, 52, 0.92) 52%, rgba(7, 29, 44, 0.92) 100%),
-    radial-gradient(600px 280px at 10% 8%, rgba(45, 114, 255, 0.38), transparent 72%);
-  border: 1px solid rgba(120, 167, 255, 0.2);
-  box-shadow: 0 24px 70px rgba(12, 18, 44, 0.35);
-}
-
-.register-banner::before {
-  content: "";
-  position: absolute;
-  inset: auto -40% -52% auto;
-  width: 76%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 1px solid rgba(167, 215, 255, 0.18);
-  transform: rotate(-15deg);
-}
-
-.auth-logo {
-  width: 52px;
-  height: 52px;
-  border-radius: 14px;
+  padding: 0;
+  background: #1a1f2e;
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 14px;
+  position: relative;
 }
 
-.register-logo {
-  background: linear-gradient(140deg, #2f7bff 0%, #5ed3ff 100%);
-  box-shadow: 0 10px 28px rgba(46, 129, 255, 0.45);
+.auth-banner::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 35%),
+    radial-gradient(circle at 60% 80%, rgba(59, 130, 246, 0.02) 0%, transparent 30%);
+  pointer-events: none;
+}
+
+.auth-banner::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image:
+    linear-gradient(45deg, transparent 48%, rgba(59, 130, 246, 0.015) 50%, transparent 52%),
+    linear-gradient(-45deg, transparent 48%, rgba(59, 130, 246, 0.015) 50%, transparent 52%);
+  background-size: 60px 60px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.banner-content {
+  padding: 48px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  position: relative;
+  z-index: 1;
+}
+
+.banner-logo {
+  align-self: flex-start;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  background: rgba(59, 130, 246, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #3b82f6;
+}
+
+.banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .banner-eyebrow {
-  margin: 0 0 6px;
-  letter-spacing: 0.22em;
+  margin: 0;
   font-size: 11px;
-  font-family: Outfit, "Segoe UI", sans-serif;
-  color: rgba(169, 214, 255, 0.95);
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .banner-title {
   margin: 0;
-  font-family: Outfit, "Noto Sans SC", "PingFang SC", sans-serif;
-  font-size: clamp(28px, 3.4vw, 38px);
-  line-height: 1.12;
-  letter-spacing: 0.01em;
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
 }
 
 .banner-desc {
-  margin: 14px 0 18px;
-  color: rgba(228, 244, 255, 0.9);
-  line-height: 1.7;
-  max-width: 38ch;
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.5;
 }
 
-.banner-points {
-  display: grid;
-  gap: 10px;
+.banner-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
-.banner-point {
-  position: relative;
-  padding: 10px 12px 10px 34px;
-  border-radius: 12px;
-  background: rgba(132, 172, 255, 0.12);
-  border: 1px solid rgba(165, 209, 255, 0.16);
-  color: rgba(236, 247, 255, 0.98);
-  backdrop-filter: blur(2px);
+.banner-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.banner-point::before {
-  content: "";
-  position: absolute;
-  left: 13px;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  transform: translateY(-50%);
-  background: linear-gradient(140deg, #55ccff, #77f3ba);
-  box-shadow: 0 0 0 4px rgba(110, 230, 255, 0.16);
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-.banner-tip {
-  margin-top: 16px;
-  color: rgba(194, 228, 255, 0.72);
+.stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #3b82f6;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .auth-card {
   width: 100%;
-  border-radius: 26px;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .register-card {
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(178, 205, 255, 0.3);
-  box-shadow: 0 20px 54px rgba(16, 56, 123, 0.14);
-  backdrop-filter: blur(12px);
+  background: var(--card) !important;
+  border: none;
 }
 
-.register-title {
-  margin-bottom: 4px;
-  font-family: Outfit, "Noto Sans SC", "PingFang SC", sans-serif;
-  font-size: 24px;
+.register-card :deep(.ant-card-body) {
+  background: var(--card) !important;
+}
+
+.register-card :deep(.ant-alert-warning) {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.register-card :deep(.ant-alert-warning .ant-alert-message) {
+  color: #fbbf24;
+}
+
+.card-header {
+  padding: 36px 40px 20px;
+  text-align: center;
+}
+
+.section-title {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.5px;
 }
 
 .register-subtitle {
-  margin: 0 0 14px;
-  color: #51607a;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
-.register-card :deep(.ant-form-item-label > label) {
-  color: #1a2a49;
+.register-form {
+  padding: 0 40px 32px;
+}
+
+.register-tabs {
+  margin-bottom: 16px;
+}
+
+.register-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 0;
+}
+
+.register-tabs :deep(.ant-tabs-tab) {
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.register-tabs :deep(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: var(--primary);
   font-weight: 600;
 }
 
-.register-card :deep(.ant-input),
-.register-card :deep(.ant-input-affix-wrapper),
-.register-card :deep(.ant-input-password),
-.register-card :deep(.ant-input-number),
-.register-card :deep(.ant-select-selector) {
-  border-radius: 11px;
-  border-color: #c7d8fb;
-  background: rgba(255, 255, 255, 0.92);
+.register-tabs :deep(.ant-tabs-ink-bar) {
+  background: var(--primary-gradient);
 }
 
-.register-card :deep(.ant-input:focus),
-.register-card :deep(.ant-input-affix-wrapper-focused),
-.register-card :deep(.ant-input-password:focus),
-.register-card :deep(.ant-select-focused .ant-select-selector) {
-  border-color: #2a7dff;
-  box-shadow: 0 0 0 2px rgba(42, 125, 255, 0.16);
+.register-form :deep(.ant-form-item) {
+  margin-bottom: 16px;
 }
 
-.register-card :deep(.ant-btn-primary),
-.register-card :deep(.ant-btn-default) {
-  height: 42px;
-  border-radius: 11px;
+.register-form :deep(.ant-form-item-label > label) {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 13px;
+  height: auto;
 }
 
-.register-card :deep(.ant-btn-primary) {
+.register-form :deep(.ant-input),
+.register-form :deep(.ant-input-affix-wrapper),
+.register-form :deep(.ant-input-password),
+.register-form :deep(.ant-input-number),
+.register-form :deep(.ant-select-selector) {
+  border-radius: var(--radius-md);
+  border-color: var(--border);
+  background: var(--bg-primary);
+  font-size: 14px;
+}
+
+/* Fix browser autofill background color */
+.register-form :deep(input:-webkit-autofill),
+.register-form :deep(input:-webkit-autofill:hover),
+.register-form :deep(input:-webkit-autofill:focus),
+.register-form :deep(input:-webkit-autofill:active),
+.register-form :deep(textarea:-webkit-autofill),
+.register-form :deep(textarea:-webkit-autofill:hover),
+.register-form :deep(textarea:-webkit-autofill:focus),
+.register-form :deep(textarea:-webkit-autofill:active),
+.register-form :deep(select:-webkit-autofill),
+.register-form :deep(select:-webkit-autofill:hover),
+.register-form :deep(select:-webkit-autofill:focus) {
+  -webkit-box-shadow: 0 0 0 30px #252b3d inset !important;
+  -webkit-text-fill-color: #f1f5f9 !important;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: #f1f5f9;
+}
+
+.register-form :deep(input:-webkit-autofill::first-line),
+.register-form :deep(textarea:-webkit-autofill::first-line) {
+  color: #f1f5f9 !important;
+  font-size: 14px;
+}
+
+.register-form :deep(.ant-input:hover),
+.register-form :deep(.ant-input-affix-wrapper:hover),
+.register-form :deep(.ant-input-password:hover) {
+  border-color: var(--primary-light);
+}
+
+.register-form :deep(.ant-input:focus),
+.register-form :deep(.ant-input-affix-wrapper-focused),
+.register-form :deep(.ant-input-password:focus),
+.register-form :deep(.ant-select-focused .ant-select-selector) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.register-form :deep(.ant-input-affix-wrapper-focused),
+.register-form :deep(.ant-input-password-focused) {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.register-form :deep(.ant-input-affix-wrapper > .ant-input),
+.register-form :deep(.ant-input-password) {
+  font-size: 14px;
+}
+
+.register-form :deep(.anticon) {
+  color: var(--text-tertiary);
+}
+
+.register-form :deep(.ant-btn-primary),
+.register-form :deep(.ant-btn-default) {
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+
+.register-form :deep(.ant-btn-primary) {
+  background: var(--primary-gradient);
   border: none;
-  background: linear-gradient(130deg, #1a74ff 0%, #2c8bff 48%, #26b4ff 100%);
-  box-shadow: 0 10px 20px rgba(41, 124, 255, 0.25);
+  box-shadow: var(--shadow-md), var(--shadow-glow-sm);
+}
+
+.register-form :deep(.ant-btn-primary:hover) {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%);
+  box-shadow: var(--shadow-lg), var(--shadow-glow);
+}
+
+.register-form :deep(.ant-btn-default) {
+  border-color: var(--border-dark);
+  color: var(--text-primary);
+}
+
+.register-form :deep(.ant-btn-default:hover:not(:disabled)) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-gradient-subtle);
+}
+
+.submit-btn {
+  margin-top: 8px;
+  height: 42px;
 }
 
 .auth-footer {
-  margin-top: 14px;
+  margin-top: 16px;
   text-align: center;
-  color: #5d6a82;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.login-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+  transition: color var(--transition-base);
+}
+
+.login-link:hover {
+  color: var(--primary-dark);
 }
 
 .captcha {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
-.verify-code {
-  display: flex;
-  gap: 8px;
-}
-
-.verify-code :deep(.ant-btn) {
-  flex: 0 0 120px;
-}
-
-.form-inline :deep(.ant-input) {
-  height: 40px;
+.captcha-input {
+  flex: 1;
 }
 
 .captcha-img {
   flex: 0 0 120px;
-  height: 40px;
-  border: 1px dashed #adc5f7;
-  border-radius: 10px;
-  background: rgba(250, 253, 255, 0.96);
+  height: 36px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   overflow: hidden;
+  background: var(--bg-primary);
+  transition: border-color var(--transition-base);
+}
+
+.captcha-img:hover {
+  border-color: var(--primary);
 }
 
 .captcha-img img {
   height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+
+.captcha-img span {
+  font-size: 11px;
+  color: var(--text-tertiary);
 }
 
 .captcha-geetest {
@@ -668,36 +876,79 @@ onMounted(loadSettings);
   gap: 10px;
 }
 
-.captcha-geetest-status {
-  color: #5d6a82;
-  font-size: 12px;
+.captcha-geetest :deep(.ant-btn) {
+  flex: 1;
 }
 
-@media (max-width: 768px) {
+.captcha-geetest-status {
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.verify-code {
+  display: flex;
+  gap: 10px;
+}
+
+.verify-input {
+  flex: 1;
+}
+
+.verify-btn {
+  flex: 0 0 110px;
+}
+
+@media (max-width: 1024px) {
   .auth-shell {
     grid-template-columns: 1fr;
-    gap: 16px;
+    max-width: 420px;
   }
 
   .auth-banner {
-    order: 2;
-    padding: 24px;
+    display: none;
   }
 
-  .banner-title {
-    font-size: 30px;
+  .card-header {
+    padding: 32px 28px 18px;
   }
 
-  .register-card {
-    border-radius: 20px;
+  .register-form {
+    padding: 0 28px 28px;
   }
 
-  .register-page {
-    padding: 20px 14px 26px;
+  .section-title {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-page {
+    padding: 16px;
   }
 
-  .verify-code :deep(.ant-btn) {
-    flex-basis: 112px;
+  .auth-shell {
+    border-radius: var(--radius-lg);
+  }
+
+  .card-header {
+    padding: 28px 20px 16px;
+  }
+
+  .register-form {
+    padding: 0 20px 24px;
+  }
+
+  .section-title {
+    font-size: 18px;
+  }
+
+  .verify-btn {
+    flex-basis: 95px;
+  }
+
+  .captcha-img {
+    flex-basis: 95px;
   }
 }
 </style>

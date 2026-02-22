@@ -134,6 +134,8 @@ func (r *GormRepo) UpdateUser(ctx context.Context, user domain.User) error {
 		"bio":                     user.Bio,
 		"intro":                   user.Intro,
 		"permission_group_id":     user.PermissionGroupID,
+		"user_tier_group_id":      user.UserTierGroupID,
+		"user_tier_expire_at":     user.UserTierExpireAt,
 		"role":                    user.Role,
 		"status":                  user.Status,
 		"updated_at":              time.Now(),

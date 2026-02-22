@@ -93,6 +93,12 @@ type ProbeNodeFilter struct {
 	Status  string
 }
 
+type CouponFilter struct {
+	Keyword        string
+	ProductGroupID int64
+	Active         *bool
+}
+
 type OrderItemInput struct {
 	PackageID int64    `json:"package_id"`
 	SystemID  int64    `json:"system_id"`
@@ -269,14 +275,15 @@ type AutomationArea struct {
 }
 
 type AutomationProduct struct {
-	ID        int64
-	Name      string
-	CPU       int
-	MemoryGB  int
-	DiskGB    int
-	Bandwidth int
-	Price     int64
-	PortNum   int
+	ID                int64
+	Name              string
+	CPU               int
+	MemoryGB          int
+	DiskGB            int
+	Bandwidth         int
+	Price             int64
+	PortNum           int
+	CapacityRemaining int
 }
 
 type AutomationMonitor struct {

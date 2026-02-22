@@ -150,17 +150,18 @@ func (x *AutomationLine) GetState() int32 {
 }
 
 type AutomationPackage struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Cpu           int32                  `protobuf:"varint,3,opt,name=cpu,proto3" json:"cpu,omitempty"`
-	MemoryGb      int32                  `protobuf:"varint,4,opt,name=memory_gb,json=memoryGb,proto3" json:"memory_gb,omitempty"`
-	DiskGb        int32                  `protobuf:"varint,5,opt,name=disk_gb,json=diskGb,proto3" json:"disk_gb,omitempty"`
-	BandwidthMbps int32                  `protobuf:"varint,6,opt,name=bandwidth_mbps,json=bandwidthMbps,proto3" json:"bandwidth_mbps,omitempty"`
-	PortNum       int32                  `protobuf:"varint,7,opt,name=port_num,json=portNum,proto3" json:"port_num,omitempty"`
-	MonthlyPrice  int64                  `protobuf:"varint,8,opt,name=monthly_price,json=monthlyPrice,proto3" json:"monthly_price,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Id                int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name              string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Cpu               int32                  `protobuf:"varint,3,opt,name=cpu,proto3" json:"cpu,omitempty"`
+	MemoryGb          int32                  `protobuf:"varint,4,opt,name=memory_gb,json=memoryGb,proto3" json:"memory_gb,omitempty"`
+	DiskGb            int32                  `protobuf:"varint,5,opt,name=disk_gb,json=diskGb,proto3" json:"disk_gb,omitempty"`
+	BandwidthMbps     int32                  `protobuf:"varint,6,opt,name=bandwidth_mbps,json=bandwidthMbps,proto3" json:"bandwidth_mbps,omitempty"`
+	PortNum           int32                  `protobuf:"varint,7,opt,name=port_num,json=portNum,proto3" json:"port_num,omitempty"`
+	MonthlyPrice      int64                  `protobuf:"varint,8,opt,name=monthly_price,json=monthlyPrice,proto3" json:"monthly_price,omitempty"`
+	CapacityRemaining *int32                 `protobuf:"varint,9,opt,name=capacity_remaining,json=capacityRemaining,proto3,oneof" json:"capacity_remaining,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *AutomationPackage) Reset() {
@@ -245,6 +246,13 @@ func (x *AutomationPackage) GetPortNum() int32 {
 func (x *AutomationPackage) GetMonthlyPrice() int64 {
 	if x != nil {
 		return x.MonthlyPrice
+	}
+	return 0
+}
+
+func (x *AutomationPackage) GetCapacityRemaining() int32 {
+	if x != nil && x.CapacityRemaining != nil {
+		return *x.CapacityRemaining
 	}
 	return 0
 }
@@ -3231,7 +3239,7 @@ const file_plugin_v1_automation_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x17\n" +
 	"\aarea_id\x18\x03 \x01(\x03R\x06areaId\x12\x14\n" +
-	"\x05state\x18\x04 \x01(\x05R\x05state\"\xe6\x01\n" +
+	"\x05state\x18\x04 \x01(\x05R\x05state\"\xb1\x02\n" +
 	"\x11AutomationPackage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
@@ -3240,7 +3248,9 @@ const file_plugin_v1_automation_proto_rawDesc = "" +
 	"\adisk_gb\x18\x05 \x01(\x05R\x06diskGb\x12%\n" +
 	"\x0ebandwidth_mbps\x18\x06 \x01(\x05R\rbandwidthMbps\x12\x19\n" +
 	"\bport_num\x18\a \x01(\x05R\aportNum\x12#\n" +
-	"\rmonthly_price\x18\b \x01(\x03R\fmonthlyPrice\"I\n" +
+	"\rmonthly_price\x18\b \x01(\x03R\fmonthlyPrice\x122\n" +
+	"\x12capacity_remaining\x18\t \x01(\x05H\x00R\x11capacityRemaining\x88\x01\x01B\x15\n" +
+	"\x13_capacity_remaining\"I\n" +
 	"\x0fAutomationImage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
@@ -3670,6 +3680,7 @@ func file_plugin_v1_automation_proto_init() {
 		return
 	}
 	file_plugin_v1_types_proto_init()
+	file_plugin_v1_automation_proto_msgTypes[2].OneofWrappers = []any{}
 	file_plugin_v1_automation_proto_msgTypes[23].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

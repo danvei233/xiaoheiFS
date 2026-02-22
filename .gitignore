@@ -101,3 +101,10 @@ app/xiaoheifs_userapp/assets/nul
 /app/userapp/
 /docs/duanxinbao/
 /docs/shiming/
+
+# Added by speckit implement
+*.log
+.env
+.env.*
+/.codex/
+/.specify/

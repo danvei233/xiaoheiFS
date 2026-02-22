@@ -1,0 +1,4 @@
+{
+  "open_secret": { "ui:widget": "password" },
+  "admin_api_key": { "ui:widget": "password" }
+}

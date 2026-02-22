@@ -11,6 +11,7 @@ func defaultRouteRegistrars() []RouteRegistrar {
 	return []RouteRegistrar{
 		publicRoutesRegistrar{},
 		userRoutesRegistrar{},
+		openRoutesRegistrar{},
 		integrationRoutesRegistrar{},
 		adminRoutesRegistrar{},
 		adminPublicAuthRoutesRegistrar{},

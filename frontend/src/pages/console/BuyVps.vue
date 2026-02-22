@@ -319,6 +319,26 @@
                 </div>
               </div>
               <a-divider style="margin: 12px 0" />
+              <a-form-item label="优惠码" style="margin-bottom: 12px">
+                <a-input-group compact>
+                  <a-input v-model:value="form.couponCode" placeholder="可选，输入优惠码" style="width: calc(100% - 90px)" />
+                  <a-button style="width: 90px" :loading="couponPreviewLoading" @click="applyCouponPreview">使用</a-button>
+                </a-input-group>
+              </a-form-item>
+              <div class="summary-grid" style="margin-bottom: 12px" v-if="couponPreview">
+                <div class="summary-row">
+                  <span class="summary-key">原价</span>
+                  <span class="summary-val">¥{{ Number(couponPreview.original_total || computedOriginalTotal).toFixed(2) }}</span>
+                </div>
+                <div class="summary-row">
+                  <span class="summary-key">优惠</span>
+                  <span class="summary-val" style="color: var(--success)">-¥{{ Number(couponPreview.discount || 0).toFixed(2) }}</span>
+                </div>
+                <div class="summary-row">
+                  <span class="summary-key">优惠后</span>
+                  <span class="summary-val">¥{{ Number(couponPreview.final_total || computedOriginalTotal).toFixed(2) }}</span>
+                </div>
+              </div>
               <a-space style="width: 100%" direction="vertical" :size="12">
                 <a-button size="large" block @click="addToCart" :disabled="!canCheckout">
                   加入购物车
@@ -339,7 +359,7 @@
 import { computed, onMounted, reactive, ref, watch } from "vue";
 import { useCatalogStore } from "@/stores/catalog";
 import { useCartStore } from "@/stores/cart";
-import { listSystemImages, createOrder } from "@/services/user";
+import { listSystemImages, createOrder, previewCoupon } from "@/services/user";
 import { message, Empty } from "ant-design-vue";
 import { useRouter } from "vue-router";
 import { CheckCircleFilled } from "@ant-design/icons-vue";
@@ -361,11 +381,14 @@ const form = reactive({
   add_bw_mbps: 0,
   billingCycleId: null,
   cycleQty: 1,
-  qty: 1
+  qty: 1,
+  couponCode: ""
 });
 
 const systemImages = ref([]);
 const loadingImages = ref(false);
+const couponPreviewLoading = ref(false);
+const couponPreview = ref(null);
 
 const goodsTypes = computed(() => (catalog.goodsTypes || []).filter((gt) => gt.active !== false));
 const goodsTypeOptions = computed(() => goodsTypes.value.map((gt) => ({ label: gt.name, value: gt.id })));
@@ -486,6 +509,9 @@ const hasAddons = computed(() =>
 );
 
 const canCheckout = computed(() => form.packageId && form.systemId);
+const computedOriginalTotal = computed(() =>
+  (basePrice.value + addonPrice.value) * cycleMultiplier.value * Number(form.qty || 1)
+);
 
 const getCapacityLabel = (value) => {
   const remaining = Number(value);
@@ -662,6 +688,41 @@ const addToCart = async () => {
   message.success("已加入购物车");
 };
 
+const buildPreviewItems = () => [
+  {
+    package_id: form.packageId,
+    system_id: form.systemId,
+    spec: buildOrderSpecPayload(),
+    qty: form.qty
+  }
+];
+
+const applyCouponPreview = async () => {
+  if (!canCheckout.value) {
+    message.warning("请先完成套餐与系统选择");
+    return;
+  }
+  const code = (form.couponCode || "").trim();
+  if (!code) {
+    message.warning("请先输入优惠码");
+    return;
+  }
+  couponPreviewLoading.value = true;
+  try {
+    const res = await previewCoupon({
+      coupon_code: code,
+      items: buildPreviewItems()
+    });
+    couponPreview.value = res.data || null;
+    message.success("优惠码已应用");
+  } catch (err) {
+    couponPreview.value = null;
+    message.error(err?.response?.data?.error || "优惠码不可用");
+  } finally {
+    couponPreviewLoading.value = false;
+  }
+};
+
 const createOrderNow = async () => {
   if (!canCheckout.value) {
     message.error("请选择套餐与系统镜像");
@@ -669,6 +730,7 @@ const createOrderNow = async () => {
   }
   const res = await createOrder(
     {
+      coupon_code: (form.couponCode || "").trim() || undefined,
       items: [
         {
           package_id: form.packageId,
@@ -686,6 +748,27 @@ const createOrderNow = async () => {
     router.push(`/console/orders/${orderId}`);
   }
 };
+
+watch(
+  () => [
+    form.packageId,
+    form.systemId,
+    form.add_cores,
+    form.add_mem_gb,
+    form.add_disk_gb,
+    form.add_bw_mbps,
+    form.billingCycleId,
+    form.cycleQty,
+    form.qty
+  ].join("|"),
+  () => {
+    couponPreview.value = null;
+  }
+);
+
+watch(() => form.couponCode, () => {
+  couponPreview.value = null;
+});
 
 onMounted(() => {
   catalog.fetchCatalog();

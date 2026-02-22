@@ -78,6 +78,7 @@ const router = createRouter({
         { path: "orders", name: "console-orders", component: () => import("@/pages/console/Orders.vue") },
         { path: "orders/:id", name: "console-order-detail", component: () => import("@/pages/console/OrderDetail.vue") },
         { path: "billing", name: "console-billing", component: () => import("@/pages/console/Billing.vue") },
+        { path: "api-keys", name: "console-api-keys", component: () => import("@/pages/console/ApiKeys.vue") },
         { path: "realname", name: "console-realname", component: () => import("@/pages/console/Realname.vue") },
         { path: "tickets", name: "console-tickets", component: () => import("@/pages/console/Tickets.vue") },
         { path: "tickets/:id", name: "console-ticket-detail", component: () => import("@/pages/console/TicketDetail.vue") }
@@ -93,12 +94,15 @@ const router = createRouter({
       children: [
         { path: "", redirect: "console" },
         { path: "console", name: "admin-dashboard", component: () => import("@/pages/admin/Dashboard.vue") },
+        { path: "revenue-analytics", name: "admin-revenue-analytics", component: () => import("@/pages/admin/RevenueAnalytics.vue") },
         { path: "orders", name: "admin-orders", component: () => import("@/pages/admin/Orders.vue") },
         { path: "wallet/orders", name: "admin-wallet-orders", component: () => import("@/pages/admin/WalletOrders.vue") },
         { path: "vps", name: "admin-vps", component: () => import("@/pages/admin/Vps.vue") },
         { path: "probes", name: "admin-probes", component: () => import("@/pages/admin/Probes.vue") },
         { path: "probes/:id", name: "admin-probe-detail", component: () => import("@/pages/admin/ProbeDetail.vue") },
         { path: "users", name: "admin-users", component: () => import("@/pages/admin/Users.vue") },
+        { path: "user-tiers", name: "admin-user-tiers", component: () => import("@/pages/admin/UserTiers.vue") },
+        { path: "coupons", name: "admin-coupons", component: () => import("@/pages/admin/Coupons.vue") },
         { path: "admins", name: "admin-admins", component: () => import("@/pages/admin/Admins.vue") },
         { path: "permission-groups", name: "admin-permission-groups", component: () => import("@/pages/admin/PermissionGroups.vue") },
         { path: "profile", name: "admin-profile", component: () => import("@/pages/admin/Profile.vue") },

@@ -24,3 +24,4 @@ demo-plugins:
 	go build -o plugins/sms/tencent_sms/plugin.exe ./plugin-demo/pluginv1/sms_tencent_mock
 	go build -o plugins/kyc/aliyun_kyc/plugin.exe ./plugin-demo/pluginv1/kyc_aliyun_mock
 	go build -o plugins/kyc/tencent_kyc/plugin.exe ./plugin-demo/pluginv1/kyc_tencent_mock
+	go build -o plugins/automation/xiaohei_proxy/plugin.exe ./plugin-demo/pluginv1/automation_xiaohei_proxy

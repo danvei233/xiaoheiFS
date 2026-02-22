@@ -145,7 +145,7 @@ func TestReportService_OverviewAndSeries(t *testing.T) {
 	inst := domain.VPSInstance{UserID: user.ID, OrderItemID: items[0].ID, Name: "vm", Status: domain.VPSStatusRunning, SpecJSON: "{}"}
 	_ = repo.CreateInstance(context.Background(), &inst)
 
-	svc := appreport.NewService(repo, repo, repo)
+	svc := appreport.NewService(repo, repo, repo, repo, repo, repo)
 	if _, err := svc.Overview(context.Background()); err != nil {
 		t.Fatalf("overview: %v", err)
 	}

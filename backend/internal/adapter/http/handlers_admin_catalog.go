@@ -425,20 +425,21 @@ func (h *Handler) AdminProductCreate(c *gin.Context) {
 func (h *Handler) AdminPackageUpdate(c *gin.Context) {
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var payload struct {
-		PlanGroupID       *int64   `json:"plan_group_id"`
-		ProductID         *int64   `json:"product_id"`
-		Name              *string  `json:"name"`
-		Cores             *int     `json:"cores"`
-		MemoryGB          *int     `json:"memory_gb"`
-		DiskGB            *int     `json:"disk_gb"`
-		BandwidthMB       *int     `json:"bandwidth_mbps"`
-		CPUModel          *string  `json:"cpu_model"`
-		MonthlyPrice      *float64 `json:"monthly_price"`
-		PortNum           *int     `json:"port_num"`
-		SortOrder         *int     `json:"sort_order"`
-		Active            *bool    `json:"active"`
-		Visible           *bool    `json:"visible"`
-		CapacityRemaining *int     `json:"capacity_remaining"`
+		PlanGroupID          *int64   `json:"plan_group_id"`
+		ProductID            *int64   `json:"product_id"`
+		IntegrationPackageID *int64   `json:"integration_package_id"`
+		Name                 *string  `json:"name"`
+		Cores                *int     `json:"cores"`
+		MemoryGB             *int     `json:"memory_gb"`
+		DiskGB               *int     `json:"disk_gb"`
+		BandwidthMB          *int     `json:"bandwidth_mbps"`
+		CPUModel             *string  `json:"cpu_model"`
+		MonthlyPrice         *float64 `json:"monthly_price"`
+		PortNum              *int     `json:"port_num"`
+		SortOrder            *int     `json:"sort_order"`
+		Active               *bool    `json:"active"`
+		Visible              *bool    `json:"visible"`
+		CapacityRemaining    *int     `json:"capacity_remaining"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -461,6 +462,9 @@ func (h *Handler) AdminPackageUpdate(c *gin.Context) {
 	}
 	if payload.ProductID != nil {
 		pkg.ProductID = *payload.ProductID
+	}
+	if payload.IntegrationPackageID != nil {
+		pkg.IntegrationPackageID = *payload.IntegrationPackageID
 	}
 	if payload.Name != nil {
 		pkg.Name = *payload.Name

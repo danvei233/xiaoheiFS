@@ -18,9 +18,13 @@ type Order struct {
 	ID             int64
 	UserID         int64
 	OrderNo        string
+	Source         string
 	Status         OrderStatus
 	TotalAmount    int64
 	Currency       string
+	CouponID       *int64
+	CouponCode     string
+	CouponDiscount int64
 	IdempotencyKey string
 	PendingReason  string
 	ApprovedBy     *int64

@@ -9,6 +9,11 @@ import type {
   DashboardOverview,
   DashboardRevenue,
   DashboardStatus,
+  RevenueAnalyticsQuery,
+  RevenueAnalyticsOverviewResponse,
+  RevenueAnalyticsTrendPoint,
+  RevenueAnalyticsTopItem,
+  RevenueAnalyticsDetailsResponse,
   CMSBlock,
   CMSCategory,
   CMSPost,
@@ -36,6 +41,9 @@ import type {
   SystemImage,
   Ticket,
   TicketDetailResponse,
+  UserTierAutoRule,
+  UserTierDiscountRule,
+  UserTierGroup,
   UploadItem,
   UploadListResponse,
   User,
@@ -47,7 +55,9 @@ import type {
   PluginListItem,
   PluginDiscoverItem,
   PluginPaymentMethodItem,
-  GoodsType
+  GoodsType,
+  Coupon,
+  CouponProductGroup
 } from "./types";
 
 export const adminLogin = (payload: Record<string, unknown>) => http.post("/admin/api/v1/auth/login", payload);
@@ -70,6 +80,53 @@ export const adminImpersonateUser = (id: number | string) =>
   http.post(`/admin/api/v1/users/${id}/impersonate`);
 export const resetUserPassword = (id: number | string, payload: Record<string, unknown>) =>
   http.post(`/admin/api/v1/users/${id}/reset-password`, payload);
+export const setAdminUserTier = (id: number | string, payload: { group_id: number; expire_at?: string }) =>
+  http.patch(`/admin/api/v1/users/${id}/tier`, payload);
+
+export const listUserTierGroups = () => http.get<ApiList<UserTierGroup>>("/admin/api/v1/user-tiers");
+export const createUserTierGroup = (payload: Record<string, unknown>) => http.post<UserTierGroup>("/admin/api/v1/user-tiers", payload);
+export const updateUserTierGroup = (id: number | string, payload: Record<string, unknown>) =>
+  http.patch<UserTierGroup>(`/admin/api/v1/user-tiers/${id}`, payload);
+export const deleteUserTierGroup = (id: number | string) => http.delete(`/admin/api/v1/user-tiers/${id}`);
+export const rebuildUserTierCaches = (id?: number | string) =>
+  http.post(id ? `/admin/api/v1/user-tiers/${id}/rebuild` : "/admin/api/v1/user-tiers/rebuild");
+
+export const listUserTierDiscountRules = (groupId: number | string) =>
+  http.get<ApiList<UserTierDiscountRule>>(`/admin/api/v1/user-tiers/${groupId}/discount-rules`);
+export const createUserTierDiscountRule = (groupId: number | string, payload: Record<string, unknown>) =>
+  http.post<UserTierDiscountRule>(`/admin/api/v1/user-tiers/${groupId}/discount-rules`, payload);
+export const updateUserTierDiscountRule = (groupId: number | string, ruleId: number | string, payload: Record<string, unknown>) =>
+  http.patch<UserTierDiscountRule>(`/admin/api/v1/user-tiers/${groupId}/discount-rules/${ruleId}`, payload);
+export const deleteUserTierDiscountRule = (groupId: number | string, ruleId: number | string) =>
+  http.delete(`/admin/api/v1/user-tiers/${groupId}/discount-rules/${ruleId}`);
+
+export const listUserTierAutoRules = (groupId: number | string) =>
+  http.get<ApiList<UserTierAutoRule>>(`/admin/api/v1/user-tiers/${groupId}/auto-rules`);
+export const createUserTierAutoRule = (groupId: number | string, payload: Record<string, unknown>) =>
+  http.post<UserTierAutoRule>(`/admin/api/v1/user-tiers/${groupId}/auto-rules`, payload);
+export const updateUserTierAutoRule = (groupId: number | string, ruleId: number | string, payload: Record<string, unknown>) =>
+  http.patch<UserTierAutoRule>(`/admin/api/v1/user-tiers/${groupId}/auto-rules/${ruleId}`, payload);
+export const deleteUserTierAutoRule = (groupId: number | string, ruleId: number | string) =>
+  http.delete(`/admin/api/v1/user-tiers/${groupId}/auto-rules/${ruleId}`);
+
+export const listCouponGroups = () => http.get<ApiList<CouponProductGroup>>("/admin/api/v1/coupon-groups");
+export const createCouponGroup = (payload: Record<string, unknown>) =>
+  http.post<CouponProductGroup>("/admin/api/v1/coupon-groups", payload);
+export const updateCouponGroup = (id: number | string, payload: Record<string, unknown>) =>
+  http.patch<CouponProductGroup>(`/admin/api/v1/coupon-groups/${id}`, payload);
+export const deleteCouponGroup = (id: number | string) =>
+  http.delete(`/admin/api/v1/coupon-groups/${id}`);
+
+export const listCoupons = (params?: Record<string, unknown>) =>
+  http.get<ApiList<Coupon>>("/admin/api/v1/coupons", { params });
+export const createCoupon = (payload: Record<string, unknown>) =>
+  http.post<Coupon>("/admin/api/v1/coupons", payload);
+export const updateCoupon = (id: number | string, payload: Record<string, unknown>) =>
+  http.patch<Coupon>(`/admin/api/v1/coupons/${id}`, payload);
+export const deleteCoupon = (id: number | string) =>
+  http.delete(`/admin/api/v1/coupons/${id}`);
+export const batchGenerateCoupons = (payload: Record<string, unknown>) =>
+  http.post<ApiList<Coupon>>("/admin/api/v1/coupons/batch-generate", payload);
 
 export const listAdminOrders = (params?: Record<string, unknown>) => http.get<ApiList<Order>>("/admin/api/v1/orders", { params });
 export const getAdminOrderDetail = (id: number | string) => http.get<OrderDetailResponse>(`/admin/api/v1/orders/${id}`);
@@ -237,6 +294,14 @@ export const getAdminDashboardRevenue = (params?: Record<string, unknown>) =>
   http.post<DashboardRevenue>("/admin/api/v1/dashboard/revenue", null, { params });
 export const getAdminDashboardVpsStatus = () => http.get<DashboardStatus>("/admin/api/v1/dashboard/vps-status");
 export const getServerStatus = () => http.get<ServerStatus>("/admin/api/v1/server/status");
+export const getRevenueAnalyticsOverview = (payload: RevenueAnalyticsQuery) =>
+  http.post<RevenueAnalyticsOverviewResponse>("/admin/api/v1/dashboard/revenue-analytics/overview", payload);
+export const getRevenueAnalyticsTrend = (payload: RevenueAnalyticsQuery) =>
+  http.post<{ items?: RevenueAnalyticsTrendPoint[] }>("/admin/api/v1/dashboard/revenue-analytics/trend", payload);
+export const getRevenueAnalyticsTop = (payload: RevenueAnalyticsQuery) =>
+  http.post<{ items?: RevenueAnalyticsTopItem[] }>("/admin/api/v1/dashboard/revenue-analytics/top", payload);
+export const getRevenueAnalyticsDetails = (payload: RevenueAnalyticsQuery) =>
+  http.post<RevenueAnalyticsDetailsResponse>("/admin/api/v1/dashboard/revenue-analytics/details", payload);
 
 // Probes
 export const listAdminProbes = (params?: Record<string, unknown>) =>

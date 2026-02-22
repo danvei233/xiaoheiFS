@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	appcoupon "xiaoheiplay/internal/app/coupon"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
@@ -40,6 +41,9 @@ type OrderService struct {
 	resizeTasks ResizeTaskRepository
 	messages    messageNotifier
 	realname    realNameActionChecker
+	pricer      userTierPricingResolver
+	userTiers   userTierAutoApprover
+	coupon      couponEngine
 }
 
 type messageNotifier interface {
@@ -54,8 +58,42 @@ type OrderItemInput = appshared.OrderItemInput
 
 type PaymentInput = appshared.PaymentInput
 
+type CouponPreview struct {
+	CouponCode string
+	Original   int64
+	Discount   int64
+	Final      int64
+}
+
 func NewOrderService(orders OrderRepository, items OrderItemRepository, cart CartRepository, catalog CatalogRepository, images SystemImageRepository, billing BillingCycleRepository, vps VPSRepository, wallets WalletRepository, payments PaymentRepository, events EventPublisher, automation AutomationClientResolver, robot RobotNotifier, audit AuditRepository, users UserRepository, email EmailSender, settings SettingsRepository, autoLogs AutomationLogRepository, provision ProvisionJobRepository, resizeTasks ResizeTaskRepository, messages messageNotifier, realname realNameActionChecker) *OrderService {
 	return &OrderService{orders: orders, items: items, cart: cart, catalog: catalog, images: images, billing: billing, vps: vps, wallets: wallets, payments: payments, events: events, automation: automation, robot: robot, audit: audit, users: users, email: email, settings: settings, autoLogs: autoLogs, provision: provision, resizeTasks: resizeTasks, messages: messages, realname: realname}
+}
+
+type userTierPricingResolver interface {
+	ResolvePackagePricing(ctx context.Context, userID, packageID int64) (domain.UserTierPriceCache, int64, error)
+}
+
+type userTierAutoApprover interface {
+	TryAutoApproveForUser(ctx context.Context, userID int64, reason string) error
+}
+
+type couponEngine interface {
+	PreviewDiscount(ctx context.Context, userID int64, code string, items []appcoupon.QuoteItem) (appcoupon.ApplyResult, error)
+	CreateRedemption(ctx context.Context, redemption *domain.CouponRedemption) error
+	MarkOrderCanceled(ctx context.Context, orderID int64) error
+	MarkOrderConfirmed(ctx context.Context, orderID int64) error
+}
+
+func (s *OrderService) SetUserTierPricingResolver(resolver userTierPricingResolver) {
+	s.pricer = resolver
+}
+
+func (s *OrderService) SetUserTierAutoApprover(approver userTierAutoApprover) {
+	s.userTiers = approver
+}
+
+func (s *OrderService) SetCouponService(coupon couponEngine) {
+	s.coupon = coupon
 }
 
 func (s *OrderService) client(ctx context.Context, goodsTypeID int64) (AutomationClient, error) {
@@ -65,7 +103,7 @@ func (s *OrderService) client(ctx context.Context, goodsTypeID int64) (Automatio
 	return s.automation.ClientForGoodsType(ctx, goodsTypeID)
 }
 
-func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, currency string, idemKey string) (domain.Order, []domain.OrderItem, error) {
+func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, currency string, idemKey string, couponCode string) (domain.Order, []domain.OrderItem, error) {
 	if s.realname != nil {
 		if err := s.realname.RequireAction(ctx, userID, "purchase_vps"); err != nil {
 			return domain.Order{}, nil, err
@@ -87,20 +125,33 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 	if currency == "" {
 		currency = "CNY"
 	}
-	var total int64
 	orderNo := fmt.Sprintf("ORD-%d-%d", userID, time.Now().Unix())
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
+		Source:         resolveOrderSource(ctx),
 		Status:         domain.OrderStatusPendingPayment,
-		TotalAmount:    total,
+		TotalAmount:    0,
 		Currency:       currency,
 		IdempotencyKey: idemKey,
 	}
-
-	var orderItems []domain.OrderItem
+	couponCode = strings.ToUpper(strings.TrimSpace(couponCode))
+	quotes := make([]appcoupon.QuoteItem, 0, len(items))
+	metas := make([]struct {
+		PackageID int64
+		SystemID  int64
+		SpecJSON  string
+		Months    int
+		Qty       int
+		UnitTotal int64
+	}, 0, len(items))
+	var total int64
 	for _, item := range items {
 		pkg, err := s.catalog.GetPackage(ctx, item.PackageID)
+		if err != nil {
+			return domain.Order{}, nil, err
+		}
+		plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
 		if err != nil {
 			return domain.Order{}, nil, err
 		}
@@ -108,34 +159,95 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 		if err := normalizeCartSpec(&spec); err != nil {
 			return domain.Order{}, nil, err
 		}
-		unitAmount, months, err := s.priceForPackage(ctx, item.PackageID, spec)
+		unitTotal, unitBase, addonCore, addonMem, addonDisk, addonBW, months, err := s.priceBreakdownForPackage(ctx, userID, pkg, plan, spec)
 		if err != nil {
 			return domain.Order{}, nil, err
 		}
 		spec.DurationMonths = months
-		durationMonths := months
 		specJSON := mustJSON(spec)
 		qty := item.Qty
 		if qty <= 0 {
 			qty = 1
 		}
-		total += unitAmount * int64(qty)
+		metas = append(metas, struct {
+			PackageID int64
+			SystemID  int64
+			SpecJSON  string
+			Months    int
+			Qty       int
+			UnitTotal int64
+		}{
+			PackageID: item.PackageID,
+			SystemID:  item.SystemID,
+			SpecJSON:  specJSON,
+			Months:    months,
+			Qty:       qty,
+			UnitTotal: unitTotal,
+		})
+		quotes = append(quotes, appcoupon.QuoteItem{
+			PackageID:       pkg.ID,
+			GoodsTypeID:     pkg.GoodsTypeID,
+			RegionID:        plan.RegionID,
+			PlanGroupID:     plan.ID,
+			AddonCore:       spec.AddCores,
+			AddonMemGB:      spec.AddMemGB,
+			AddonDiskGB:     spec.AddDiskGB,
+			AddonBWMbps:     spec.AddBWMbps,
+			UnitBaseAmount:  unitBase,
+			UnitAddonAmount: addonCore + addonMem + addonDisk + addonBW,
+			UnitAddonCore:   addonCore,
+			UnitAddonMem:    addonMem,
+			UnitAddonDisk:   addonDisk,
+			UnitAddonBW:     addonBW,
+			UnitTotalAmount: unitTotal,
+			Qty:             qty,
+		})
+		total += unitTotal * int64(qty)
+	}
+	order.TotalAmount = total
+	var couponResult *appcoupon.ApplyResult
+	if couponCode != "" {
+		if s.coupon == nil {
+			return domain.Order{}, nil, ErrInvalidInput
+		}
+		res, err := s.coupon.PreviewDiscount(ctx, userID, couponCode, quotes)
+		if err != nil {
+			return domain.Order{}, nil, err
+		}
+		couponResult = &res
+		order.CouponCode = res.Coupon.Code
+		order.CouponID = &res.Coupon.ID
+		order.CouponDiscount = res.TotalDiscount
+		if order.CouponDiscount > order.TotalAmount {
+			order.CouponDiscount = order.TotalAmount
+		}
+		order.TotalAmount -= order.CouponDiscount
+	}
+	var orderItems []domain.OrderItem
+	for idx, meta := range metas {
+		unitAmount := meta.UnitTotal
+		if couponResult != nil && idx < len(couponResult.UnitDiscount) {
+			unitAmount -= couponResult.UnitDiscount[idx]
+			if unitAmount < 0 {
+				unitAmount = 0
+			}
+		}
+		qty := meta.Qty
 		for i := 0; i < qty; i++ {
 			orderItems = append(orderItems, domain.OrderItem{
 				OrderID:        order.ID,
-				PackageID:      item.PackageID,
-				SystemID:       item.SystemID,
-				SpecJSON:       specJSON,
+				PackageID:      meta.PackageID,
+				SystemID:       meta.SystemID,
+				SpecJSON:       meta.SpecJSON,
 				Qty:            1,
 				Amount:         unitAmount,
 				Status:         domain.OrderItemStatusPendingPayment,
-				GoodsTypeID:    pkg.GoodsTypeID,
+				GoodsTypeID:    quotes[idx].GoodsTypeID,
 				Action:         "create",
-				DurationMonths: durationMonths,
+				DurationMonths: meta.Months,
 			})
 		}
 	}
-	order.TotalAmount = total
 
 	type orderFromCartAtomicCreator interface {
 		CreateOrderFromCartAtomic(ctx context.Context, order domain.Order, items []domain.OrderItem) (domain.Order, []domain.OrderItem, error)
@@ -161,16 +273,28 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 			return domain.Order{}, nil, err
 		}
 	}
+	if couponResult != nil && order.CouponID != nil && s.coupon != nil {
+		if err := s.coupon.CreateRedemption(ctx, &domain.CouponRedemption{
+			CouponID:       *order.CouponID,
+			OrderID:        order.ID,
+			UserID:         order.UserID,
+			Status:         domain.CouponRedemptionStatusApplied,
+			DiscountAmount: order.CouponDiscount,
+		}); err != nil {
+			_ = s.orders.DeleteOrder(ctx, order.ID)
+			return domain.Order{}, nil, err
+		}
+	}
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.pending_payment", map[string]any{
 			"status": order.Status,
-			"total":  total,
+			"total":  order.TotalAmount,
 		})
 	}
 	return order, orderItems, nil
 }
 
-func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, currency string, inputs []OrderItemInput, idemKey string) (domain.Order, []domain.OrderItem, error) {
+func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, currency string, inputs []OrderItemInput, idemKey string, couponCode string) (domain.Order, []domain.OrderItem, error) {
 	if len(inputs) == 0 {
 		return domain.Order{}, nil, ErrInvalidInput
 	}
@@ -189,7 +313,15 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 		currency = "CNY"
 	}
 	var total int64
-	var orderItems []domain.OrderItem
+	quotes := make([]appcoupon.QuoteItem, 0, len(inputs))
+	metas := make([]struct {
+		PackageID int64
+		SystemID  int64
+		SpecJSON  string
+		Months    int
+		Qty       int
+		UnitTotal int64
+	}, 0, len(inputs))
 	for _, in := range inputs {
 		if in.PackageID == 0 || in.SystemID == 0 {
 			return domain.Order{}, nil, ErrInvalidInput
@@ -197,11 +329,15 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 		if err := normalizeCartSpec(&in.Spec); err != nil {
 			return domain.Order{}, nil, err
 		}
-		unitAmount, months, err := s.priceForPackage(ctx, in.PackageID, in.Spec)
+		pkg, err := s.catalog.GetPackage(ctx, in.PackageID)
 		if err != nil {
 			return domain.Order{}, nil, err
 		}
-		pkg, err := s.catalog.GetPackage(ctx, in.PackageID)
+		plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
+		if err != nil {
+			return domain.Order{}, nil, err
+		}
+		unitTotal, unitBase, addonCore, addonMem, addonDisk, addonBW, months, err := s.priceBreakdownForPackage(ctx, userID, pkg, plan, in.Spec)
 		if err != nil {
 			return domain.Order{}, nil, err
 		}
@@ -209,21 +345,76 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 		if qty <= 0 {
 			qty = 1
 		}
-		total += unitAmount * int64(qty)
 		in.Spec.DurationMonths = months
 		specJSON := mustJSON(in.Spec)
-		for i := 0; i < qty; i++ {
+		metas = append(metas, struct {
+			PackageID int64
+			SystemID  int64
+			SpecJSON  string
+			Months    int
+			Qty       int
+			UnitTotal int64
+		}{
+			PackageID: in.PackageID,
+			SystemID:  in.SystemID,
+			SpecJSON:  specJSON,
+			Months:    months,
+			Qty:       qty,
+			UnitTotal: unitTotal,
+		})
+		quotes = append(quotes, appcoupon.QuoteItem{
+			PackageID:       pkg.ID,
+			GoodsTypeID:     pkg.GoodsTypeID,
+			RegionID:        plan.RegionID,
+			PlanGroupID:     plan.ID,
+			AddonCore:       in.Spec.AddCores,
+			AddonMemGB:      in.Spec.AddMemGB,
+			AddonDiskGB:     in.Spec.AddDiskGB,
+			AddonBWMbps:     in.Spec.AddBWMbps,
+			UnitBaseAmount:  unitBase,
+			UnitAddonAmount: addonCore + addonMem + addonDisk + addonBW,
+			UnitAddonCore:   addonCore,
+			UnitAddonMem:    addonMem,
+			UnitAddonDisk:   addonDisk,
+			UnitAddonBW:     addonBW,
+			UnitTotalAmount: unitTotal,
+			Qty:             qty,
+		})
+		total += unitTotal * int64(qty)
+	}
+	couponCode = strings.ToUpper(strings.TrimSpace(couponCode))
+	var couponResult *appcoupon.ApplyResult
+	if couponCode != "" {
+		if s.coupon == nil {
+			return domain.Order{}, nil, ErrInvalidInput
+		}
+		res, err := s.coupon.PreviewDiscount(ctx, userID, couponCode, quotes)
+		if err != nil {
+			return domain.Order{}, nil, err
+		}
+		couponResult = &res
+	}
+	var orderItems []domain.OrderItem
+	for idx, meta := range metas {
+		unitAmount := meta.UnitTotal
+		if couponResult != nil && idx < len(couponResult.UnitDiscount) {
+			unitAmount -= couponResult.UnitDiscount[idx]
+			if unitAmount < 0 {
+				unitAmount = 0
+			}
+		}
+		for i := 0; i < meta.Qty; i++ {
 			orderItems = append(orderItems, domain.OrderItem{
 				OrderID:        0,
-				PackageID:      in.PackageID,
-				SystemID:       in.SystemID,
-				SpecJSON:       specJSON,
+				PackageID:      meta.PackageID,
+				SystemID:       meta.SystemID,
+				SpecJSON:       meta.SpecJSON,
 				Qty:            1,
 				Amount:         unitAmount,
 				Status:         domain.OrderItemStatusPendingPayment,
-				GoodsTypeID:    pkg.GoodsTypeID,
+				GoodsTypeID:    quotes[idx].GoodsTypeID,
 				Action:         "create",
-				DurationMonths: months,
+				DurationMonths: meta.Months,
 			})
 		}
 	}
@@ -231,10 +422,20 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
+		Source:         resolveOrderSource(ctx),
 		Status:         domain.OrderStatusPendingPayment,
 		TotalAmount:    total,
 		Currency:       currency,
 		IdempotencyKey: idemKey,
+	}
+	if couponResult != nil {
+		order.CouponCode = couponResult.Coupon.Code
+		order.CouponID = &couponResult.Coupon.ID
+		order.CouponDiscount = couponResult.TotalDiscount
+		if order.CouponDiscount > order.TotalAmount {
+			order.CouponDiscount = order.TotalAmount
+		}
+		order.TotalAmount -= order.CouponDiscount
 	}
 	if err := s.orders.CreateOrder(ctx, &order); err != nil {
 		return domain.Order{}, nil, err
@@ -245,13 +446,122 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 	if err := s.items.CreateOrderItems(ctx, orderItems); err != nil {
 		return domain.Order{}, nil, err
 	}
+	if couponResult != nil && order.CouponID != nil && s.coupon != nil {
+		if err := s.coupon.CreateRedemption(ctx, &domain.CouponRedemption{
+			CouponID:       *order.CouponID,
+			OrderID:        order.ID,
+			UserID:         order.UserID,
+			Status:         domain.CouponRedemptionStatusApplied,
+			DiscountAmount: order.CouponDiscount,
+		}); err != nil {
+			_ = s.orders.DeleteOrder(ctx, order.ID)
+			return domain.Order{}, nil, err
+		}
+	}
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.pending_payment", map[string]any{
 			"status": order.Status,
-			"total":  total,
+			"total":  order.TotalAmount,
 		})
 	}
 	return order, orderItems, nil
+}
+
+func (s *OrderService) PreviewCouponFromItems(ctx context.Context, userID int64, inputs []OrderItemInput, couponCode string) (CouponPreview, error) {
+	if len(inputs) == 0 || strings.TrimSpace(couponCode) == "" || s.coupon == nil {
+		return CouponPreview{}, ErrInvalidInput
+	}
+	quotes, total, err := s.buildCouponQuotesFromInputs(ctx, userID, inputs)
+	if err != nil {
+		return CouponPreview{}, err
+	}
+	res, err := s.coupon.PreviewDiscount(ctx, userID, couponCode, quotes)
+	if err != nil {
+		return CouponPreview{}, err
+	}
+	discount := res.TotalDiscount
+	if discount > total {
+		discount = total
+	}
+	return CouponPreview{
+		CouponCode: res.Coupon.Code,
+		Original:   total,
+		Discount:   discount,
+		Final:      total - discount,
+	}, nil
+}
+
+func (s *OrderService) PreviewCouponFromCart(ctx context.Context, userID int64, couponCode string) (CouponPreview, error) {
+	if strings.TrimSpace(couponCode) == "" || s.coupon == nil {
+		return CouponPreview{}, ErrInvalidInput
+	}
+	items, err := s.cart.ListCartItems(ctx, userID)
+	if err != nil {
+		return CouponPreview{}, err
+	}
+	if len(items) == 0 {
+		return CouponPreview{}, ErrInvalidInput
+	}
+	inputs := make([]OrderItemInput, 0, len(items))
+	for _, item := range items {
+		spec := parseCartSpecJSON(item.SpecJSON)
+		inputs = append(inputs, OrderItemInput{
+			PackageID: item.PackageID,
+			SystemID:  item.SystemID,
+			Spec:      spec,
+			Qty:       item.Qty,
+		})
+	}
+	return s.PreviewCouponFromItems(ctx, userID, inputs, couponCode)
+}
+
+func (s *OrderService) buildCouponQuotesFromInputs(ctx context.Context, userID int64, inputs []OrderItemInput) ([]appcoupon.QuoteItem, int64, error) {
+	quotes := make([]appcoupon.QuoteItem, 0, len(inputs))
+	var total int64
+	for _, in := range inputs {
+		if in.PackageID == 0 || in.SystemID == 0 {
+			return nil, 0, ErrInvalidInput
+		}
+		if err := normalizeCartSpec(&in.Spec); err != nil {
+			return nil, 0, err
+		}
+		pkg, err := s.catalog.GetPackage(ctx, in.PackageID)
+		if err != nil {
+			return nil, 0, err
+		}
+		plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
+		if err != nil {
+			return nil, 0, err
+		}
+		unitTotal, unitBase, addonCore, addonMem, addonDisk, addonBW, _, err := s.priceBreakdownForPackage(ctx, userID, pkg, plan, in.Spec)
+		if err != nil {
+			return nil, 0, err
+		}
+		qty := in.Qty
+		if qty <= 0 {
+			qty = 1
+		}
+		quotes = append(quotes, appcoupon.QuoteItem{
+			PackageID:       pkg.ID,
+			GoodsTypeID:     pkg.GoodsTypeID,
+			RegionID:        plan.RegionID,
+			PlanGroupID:     plan.ID,
+			AddonCore:       in.Spec.AddCores,
+			AddonMemGB:      in.Spec.AddMemGB,
+			AddonDiskGB:     in.Spec.AddDiskGB,
+			AddonBWMbps:     in.Spec.AddBWMbps,
+			UnitBaseAmount:  unitBase,
+			UnitAddonAmount: addonCore + addonMem + addonDisk + addonBW,
+			UnitAddonCore:   addonCore,
+			UnitAddonMem:    addonMem,
+			UnitAddonDisk:   addonDisk,
+			UnitAddonBW:     addonBW,
+			UnitTotalAmount: unitTotal,
+			Qty:             qty,
+		})
+		total += unitTotal * int64(qty)
+	}
+	return quotes, total, nil
 }
 
 func (s *OrderService) GetOrder(ctx context.Context, orderID int64, userID int64) (domain.Order, []domain.OrderItem, error) {
@@ -355,6 +665,9 @@ func (s *OrderService) SubmitPayment(ctx context.Context, userID int64, orderID 
 	if input.Amount <= 0 {
 		return domain.OrderPayment{}, ErrInvalidInput
 	}
+	if input.Amount != order.TotalAmount {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
 	if input.Currency == "" {
 		input.Currency = order.Currency
 	}
@@ -436,6 +749,9 @@ func (s *OrderService) CancelOrder(ctx context.Context, userID int64, orderID in
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.canceled", map[string]any{"status": order.Status})
 	}
+	if s.coupon != nil {
+		_ = s.coupon.MarkOrderCanceled(ctx, order.ID)
+	}
 	return nil
 }
 
@@ -471,6 +787,9 @@ func (s *OrderService) MarkPaid(ctx context.Context, adminID int64, orderID int6
 		return domain.OrderPayment{}, ErrNoPaymentRequired
 	}
 	if input.Amount <= 0 {
+		return domain.OrderPayment{}, ErrInvalidInput
+	}
+	if input.Amount != order.TotalAmount {
 		return domain.OrderPayment{}, ErrInvalidInput
 	}
 	if input.Currency == "" {
@@ -682,8 +1001,14 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "order.approve", TargetType: "order", TargetID: fmt.Sprintf("%d", order.ID), DetailJSON: "{}"})
 	}
+	if s.coupon != nil {
+		_ = s.coupon.MarkOrderConfirmed(ctx, order.ID)
+	}
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.approved", map[string]any{"status": domain.OrderStatusApproved})
+	}
+	if s.userTiers != nil {
+		_ = s.userTiers.TryAutoApproveForUser(ctx, order.UserID, "order_success")
 	}
 	s.notifyOrderDecision(ctx, order.UserID, order.OrderNo, "order_approved", "Order Approved: {{.order.no}}", "Your order has been approved.")
 	if hasResize && s.resizeTasks != nil {
@@ -778,6 +1103,9 @@ func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID i
 	}
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.rejected", map[string]any{"status": domain.OrderStatusRejected, "reason": normalizedReason})
+	}
+	if s.coupon != nil {
+		_ = s.coupon.MarkOrderCanceled(ctx, order.ID)
 	}
 	s.notifyOrderDecision(ctx, order.UserID, order.OrderNo, "order_rejected", "Order Rejected: {{.order.no}}", normalizedReason)
 	return nil
@@ -1026,7 +1354,7 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 	if exp == nil {
 		exp = &expireAt
 	}
-	snap := s.buildVPSLocalSnapshot(ctx, item)
+	snap := s.buildVPSLocalSnapshot(ctx, order.UserID, item)
 	specJSON := setCurrentPeriod(item.SpecJSON, time.Now(), *exp)
 	inst := domain.VPSInstance{
 		UserID:               order.UserID,
@@ -1611,7 +1939,7 @@ func (s *OrderService) notifyOrderDecision(ctx context.Context, userID int64, or
 	_ = s.email.Send(ctx, user.Email, subject, body)
 }
 
-func (s *OrderService) priceForPackage(ctx context.Context, packageID int64, spec CartSpec) (int64, int, error) {
+func (s *OrderService) priceForPackage(ctx context.Context, userID int64, packageID int64, spec CartSpec) (int64, int, error) {
 	pkg, err := s.catalog.GetPackage(ctx, packageID)
 	if err != nil {
 		return 0, 0, err
@@ -1620,17 +1948,47 @@ func (s *OrderService) priceForPackage(ctx context.Context, packageID int64, spe
 	if err != nil {
 		return 0, 0, err
 	}
-	if err := validateAddonSpec(spec, plan); err != nil {
-		return 0, 0, err
-	}
-	months, multiplier, err := resolveBillingCycle(ctx, s.billing, spec)
+	total, _, _, _, _, _, months, err := s.priceBreakdownForPackage(ctx, userID, pkg, plan, spec)
 	if err != nil {
 		return 0, 0, err
 	}
-	baseMonthly := pkg.Monthly
-	addonMonthly := int64(spec.AddCores)*plan.UnitCore + int64(spec.AddMemGB)*plan.UnitMem + int64(spec.AddDiskGB)*plan.UnitDisk + int64(spec.AddBWMbps)*plan.UnitBW
-	total := int64(math.Round(float64(baseMonthly+addonMonthly) * multiplier))
 	return total, months, nil
+}
+
+func (s *OrderService) priceBreakdownForPackage(ctx context.Context, userID int64, pkg domain.Package, plan domain.PlanGroup, spec CartSpec) (int64, int64, int64, int64, int64, int64, int, error) {
+	if err := validateAddonSpec(spec, plan); err != nil {
+		return 0, 0, 0, 0, 0, 0, 0, err
+	}
+	months, multiplier, err := resolveBillingCycle(ctx, s.billing, spec)
+	if err != nil {
+		return 0, 0, 0, 0, 0, 0, 0, err
+	}
+	baseMonthly := pkg.Monthly
+	unitCore := plan.UnitCore
+	unitMem := plan.UnitMem
+	unitDisk := plan.UnitDisk
+	unitBW := plan.UnitBW
+	if s.pricer != nil && userID > 0 {
+		if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, userID, pkg.ID); err == nil {
+			baseMonthly = pricing.MonthlyPrice
+			unitCore = pricing.UnitCore
+			unitMem = pricing.UnitMem
+			unitDisk = pricing.UnitDisk
+			unitBW = pricing.UnitBW
+		}
+	}
+	coreMonthly := int64(spec.AddCores) * unitCore
+	memMonthly := int64(spec.AddMemGB) * unitMem
+	diskMonthly := int64(spec.AddDiskGB) * unitDisk
+	bwMonthly := int64(spec.AddBWMbps) * unitBW
+	baseAmount := int64(math.Round(float64(baseMonthly) * multiplier))
+	coreAmount := int64(math.Round(float64(coreMonthly) * multiplier))
+	memAmount := int64(math.Round(float64(memMonthly) * multiplier))
+	diskAmount := int64(math.Round(float64(diskMonthly) * multiplier))
+	bwAmount := int64(math.Round(float64(bwMonthly) * multiplier))
+	addonAmount := coreAmount + memAmount + diskAmount + bwAmount
+	total := baseAmount + addonAmount
+	return total, baseAmount, coreAmount, memAmount, diskAmount, bwAmount, months, nil
 }
 
 func resolveBillingCycle(ctx context.Context, billing BillingCycleRepository, spec CartSpec) (int, float64, error) {
@@ -1693,7 +2051,7 @@ type vpsLocalSnapshot struct {
 	MonthlyPrice int64
 }
 
-func (s *OrderService) buildVPSLocalSnapshot(ctx context.Context, item domain.OrderItem) vpsLocalSnapshot {
+func (s *OrderService) buildVPSLocalSnapshot(ctx context.Context, userID int64, item domain.OrderItem) vpsLocalSnapshot {
 	snap := vpsLocalSnapshot{PackageID: item.PackageID}
 	pkg, err := s.catalog.GetPackage(ctx, item.PackageID)
 	if err != nil {
@@ -1710,6 +2068,19 @@ func (s *OrderService) buildVPSLocalSnapshot(ctx context.Context, item domain.Or
 	if err == nil {
 		snap.LineID = plan.LineID
 		snap.RegionID = plan.RegionID
+		unitCore := plan.UnitCore
+		unitMem := plan.UnitMem
+		unitDisk := plan.UnitDisk
+		unitBW := plan.UnitBW
+		if s.pricer != nil && userID > 0 {
+			if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, userID, item.PackageID); err == nil {
+				snap.MonthlyPrice = pricing.MonthlyPrice
+				unitCore = pricing.UnitCore
+				unitMem = pricing.UnitMem
+				unitDisk = pricing.UnitDisk
+				unitBW = pricing.UnitBW
+			}
+		}
 		addon := int64(0)
 		var spec CartSpec
 		if err := json.Unmarshal([]byte(item.SpecJSON), &spec); err == nil {
@@ -1717,10 +2088,10 @@ func (s *OrderService) buildVPSLocalSnapshot(ctx context.Context, item domain.Or
 			snap.MemoryGB += spec.AddMemGB
 			snap.DiskGB += spec.AddDiskGB
 			snap.BandwidthMB += spec.AddBWMbps
-			addon = int64(spec.AddCores)*plan.UnitCore +
-				int64(spec.AddMemGB)*plan.UnitMem +
-				int64(spec.AddDiskGB)*plan.UnitDisk +
-				int64(spec.AddBWMbps)*plan.UnitBW
+			addon = int64(spec.AddCores)*unitCore +
+				int64(spec.AddMemGB)*unitMem +
+				int64(spec.AddDiskGB)*unitDisk +
+				int64(spec.AddBWMbps)*unitBW
 		}
 		snap.MonthlyPrice += addon
 		if region, err := s.catalog.GetRegion(ctx, plan.RegionID); err == nil {
@@ -1774,7 +2145,7 @@ func (s *OrderService) ensureProvisioningInstance(ctx context.Context, order dom
 	if !errors.Is(err, ErrNotFound) {
 		return err
 	}
-	snap := s.buildVPSLocalSnapshot(ctx, item)
+	snap := s.buildVPSLocalSnapshot(ctx, order.UserID, item)
 	inst = domain.VPSInstance{
 		UserID:               order.UserID,
 		OrderItemID:          item.ID,
@@ -1983,6 +2354,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
+		Source:      resolveOrderSource(ctx),
 		Status:      domain.OrderStatusPendingPayment,
 		TotalAmount: amount,
 		Currency:    "CNY",
@@ -2046,6 +2418,7 @@ func (s *OrderService) CreateEmergencyRenewOrder(ctx context.Context, userID int
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
+		Source:      resolveOrderSource(ctx),
 		Status:      domain.OrderStatusPendingReview,
 		TotalAmount: 0,
 		Currency:    "CNY",
@@ -2130,6 +2503,7 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
+		Source:      resolveOrderSource(ctx),
 		Status:      status,
 		TotalAmount: amount,
 		Currency:    "CNY",
@@ -2217,6 +2591,7 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
+		Source:         resolveOrderSource(ctx),
 		Status:         domain.OrderStatusPendingReview,
 		TotalAmount:    -amount,
 		Currency:       "CNY",
@@ -2249,7 +2624,15 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 		}
 		return domain.Order{}, 0, err
 	}
-	if s.events != nil {
+	if !policy.RequireApproval || resolveOrderSource(ctx) == OrderSourceUserAPIKey {
+		if err := s.ApproveOrder(ctx, 0, order.ID); err != nil {
+			return domain.Order{}, 0, err
+		}
+		if updated, err := s.orders.GetOrder(ctx, order.ID); err == nil {
+			order = updated
+		}
+	}
+	if s.events != nil && order.Status == domain.OrderStatusPendingReview {
 		_, _ = s.events.Publish(ctx, order.ID, "order.pending_review", map[string]any{"status": order.Status, "total": order.TotalAmount})
 	}
 	return order, amount, nil

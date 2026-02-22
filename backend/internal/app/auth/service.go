@@ -25,9 +25,14 @@ import (
 )
 
 type Service struct {
-	users    appports.UserRepository
-	captchas appports.CaptchaRepository
-	verify   appports.VerificationCodeRepository
+	users            appports.UserRepository
+	captchas         appports.CaptchaRepository
+	verify           appports.VerificationCodeRepository
+	userTierAssigner userTierAssigner
+}
+
+type userTierAssigner interface {
+	EnsureUserHasGroup(ctx context.Context, userID int64) error
 }
 
 const (
@@ -41,6 +46,10 @@ type UpdateProfileInput = appshared.UpdateProfileInput
 
 func NewService(users appports.UserRepository, captchas appports.CaptchaRepository, verify appports.VerificationCodeRepository) *Service {
 	return &Service{users: users, captchas: captchas, verify: verify}
+}
+
+func (s *Service) SetUserTierAssigner(assigner userTierAssigner) {
+	s.userTierAssigner = assigner
 }
 
 func (s *Service) CreateCaptcha(ctx context.Context, ttl time.Duration) (domain.Captcha, string, error) {
@@ -114,6 +123,14 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (domain.User, 
 	}
 	if err := s.users.CreateUser(ctx, &user); err != nil {
 		return domain.User{}, err
+	}
+	if s.userTierAssigner != nil && user.ID > 0 {
+		if err := s.userTierAssigner.EnsureUserHasGroup(ctx, user.ID); err != nil {
+			return domain.User{}, err
+		}
+		if refreshed, err := s.users.GetUserByID(ctx, user.ID); err == nil {
+			user = refreshed
+		}
 	}
 	return user, nil
 }

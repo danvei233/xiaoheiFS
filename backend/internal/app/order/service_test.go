@@ -19,7 +19,7 @@ func TestOrderService_CreateOrderFromItems(t *testing.T) {
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
 	order, items, err := svc.CreateOrderFromItems(context.Background(), user.ID, "CNY", []appshared.OrderItemInput{
 		{PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Qty: 1},
-	}, "idem-1")
+	}, "idem-1", "")
 	if err != nil {
 		t.Fatalf("create order: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestOrderService_CreateOrderFromCartAndCancel(t *testing.T) {
 	}
 
 	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
-	order, items, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", "idem-cart")
+	order, items, err := svc.CreateOrderFromCart(context.Background(), user.ID, "CNY", "idem-cart", "")
 	if err != nil {
 		t.Fatalf("create order: %v", err)
 	}
@@ -205,5 +205,94 @@ func TestOrderService_CreateRefundOrder_UsesInstanceMonthlyPrice(t *testing.T) {
 	}
 	if refundOrder.TotalAmount != -3000 {
 		t.Fatalf("expected refund order total -3000, got %d", refundOrder.TotalAmount)
+	}
+}
+
+func TestOrderService_CreateRefundOrder_UserAPIKeySourceAutoApprove(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "refundapikey", "refundapikey@example.com", "pass")
+	_ = repo.UpsertSetting(context.Background(), domain.Setting{Key: "refund_requires_approval", ValueJSON: "true"})
+
+	baseOrder := domain.Order{
+		UserID:      user.ID,
+		OrderNo:     "ORD-REFUND-APIKEY-BASE",
+		Status:      domain.OrderStatusActive,
+		TotalAmount: 200000,
+		Currency:    "CNY",
+	}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:   baseOrder.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    200000,
+		Status:    domain.OrderItemStatusActive,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	items, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	if err != nil || len(items) == 0 {
+		t.Fatalf("list base items: %v", err)
+	}
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		GoodsTypeID:          1,
+		AutomationInstanceID: "1001",
+		Name:                 "vm-refund-apikey",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         3000,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		CreatedAt:            time.Now(),
+	}
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	inst.ExpireAt = &expire
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	wBefore, err := repo.GetWallet(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("wallet before: %v", err)
+	}
+
+	automationResolver := &testutil.FakeAutomationResolver{Client: &testutil.FakeAutomationClient{}}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, automationResolver, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	ctx := apporder.WithOrderSource(context.Background(), apporder.OrderSourceUserAPIKey)
+	refundOrder, amount, err := svc.CreateRefundOrder(ctx, user.ID, inst.ID, "apikey refund")
+	if err != nil {
+		t.Fatalf("create refund order: %v", err)
+	}
+	if amount != 3000 {
+		t.Fatalf("expected refund amount 3000, got %d", amount)
+	}
+	if refundOrder.Status == domain.OrderStatusPendingReview {
+		t.Fatalf("expected user_apikey source auto-approved, got pending_review")
+	}
+
+	wAfter, err := repo.GetWallet(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("wallet after: %v", err)
+	}
+	if wAfter.Balance-wBefore.Balance != 3000 {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+			wAfter, err = repo.GetWallet(context.Background(), user.ID)
+			if err == nil && wAfter.Balance-wBefore.Balance == 3000 {
+				break
+			}
+		}
+	}
+	if wAfter.Balance-wBefore.Balance != 3000 {
+		t.Fatalf("expected wallet credited 3000, delta=%d", wAfter.Balance-wBefore.Balance)
 	}
 }

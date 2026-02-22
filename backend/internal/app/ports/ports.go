@@ -109,6 +109,25 @@ type PaymentRepository interface {
 	ListPayments(ctx context.Context, filter appshared.PaymentFilter, limit, offset int) ([]domain.OrderPayment, int, error)
 }
 
+type RevenueAnalyticsRepository interface {
+	ListRevenueAnalyticsRows(ctx context.Context, fromAt, toAt time.Time) ([]RevenueAnalyticsRow, error)
+}
+
+type RevenueAnalyticsRow struct {
+	PaymentID    int64
+	OrderID      int64
+	OrderNo      string
+	UserID       int64
+	Amount       int64
+	PaidAt       time.Time
+	GoodsTypeID  int64
+	RegionID     int64
+	LineID       int64
+	PackageID    int64
+	DimensionID  int64
+	DimensionStr string
+}
+
 type VPSRepository interface {
 	CreateInstance(ctx context.Context, inst *domain.VPSInstance) error
 	GetInstance(ctx context.Context, id int64) (domain.VPSInstance, error)
@@ -142,6 +161,15 @@ type APIKeyRepository interface {
 	ListAPIKeys(ctx context.Context, limit, offset int) ([]domain.APIKey, int, error)
 	UpdateAPIKeyStatus(ctx context.Context, id int64, status domain.APIKeyStatus) error
 	TouchAPIKey(ctx context.Context, id int64) error
+}
+
+type UserAPIKeyRepository interface {
+	CreateUserAPIKey(ctx context.Context, key *domain.UserAPIKey) error
+	GetUserAPIKeyByAKID(ctx context.Context, akid string) (domain.UserAPIKey, error)
+	ListUserAPIKeys(ctx context.Context, userID int64, limit, offset int) ([]domain.UserAPIKey, int, error)
+	UpdateUserAPIKeyStatus(ctx context.Context, userID, id int64, status domain.APIKeyStatus) error
+	DeleteUserAPIKey(ctx context.Context, userID, id int64) error
+	TouchUserAPIKey(ctx context.Context, id int64) error
 }
 
 type SettingsRepository interface {
@@ -217,6 +245,53 @@ type PermissionGroupRepository interface {
 	CreatePermissionGroup(ctx context.Context, group *domain.PermissionGroup) error
 	UpdatePermissionGroup(ctx context.Context, group domain.PermissionGroup) error
 	DeletePermissionGroup(ctx context.Context, id int64) error
+}
+
+type UserTierRepository interface {
+	ListUserTierGroups(ctx context.Context) ([]domain.UserTierGroup, error)
+	GetUserTierGroup(ctx context.Context, id int64) (domain.UserTierGroup, error)
+	CreateUserTierGroup(ctx context.Context, group *domain.UserTierGroup) error
+	UpdateUserTierGroup(ctx context.Context, group domain.UserTierGroup) error
+	DeleteUserTierGroup(ctx context.Context, id int64) error
+
+	ListUserTierDiscountRules(ctx context.Context, groupID int64) ([]domain.UserTierDiscountRule, error)
+	CreateUserTierDiscountRule(ctx context.Context, rule *domain.UserTierDiscountRule) error
+	UpdateUserTierDiscountRule(ctx context.Context, rule domain.UserTierDiscountRule) error
+	DeleteUserTierDiscountRule(ctx context.Context, id int64) error
+
+	ListUserTierAutoRules(ctx context.Context, groupID int64) ([]domain.UserTierAutoRule, error)
+	CreateUserTierAutoRule(ctx context.Context, rule *domain.UserTierAutoRule) error
+	UpdateUserTierAutoRule(ctx context.Context, rule domain.UserTierAutoRule) error
+	DeleteUserTierAutoRule(ctx context.Context, id int64) error
+
+	GetUserTierMembership(ctx context.Context, userID int64) (domain.UserTierMembership, error)
+	UpsertUserTierMembership(ctx context.Context, item *domain.UserTierMembership) error
+	ClearUserTierMembership(ctx context.Context, userID int64) error
+	ListExpiredUserTierMemberships(ctx context.Context, now time.Time, limit int) ([]domain.UserTierMembership, error)
+
+	GetUserTierPriceCache(ctx context.Context, groupID int64, packageID int64) (domain.UserTierPriceCache, error)
+	DeleteUserTierPriceCachesByGroup(ctx context.Context, groupID int64) error
+	UpsertUserTierPriceCaches(ctx context.Context, items []domain.UserTierPriceCache) error
+}
+
+type CouponRepository interface {
+	ListCouponProductGroups(ctx context.Context) ([]domain.CouponProductGroup, error)
+	GetCouponProductGroup(ctx context.Context, id int64) (domain.CouponProductGroup, error)
+	CreateCouponProductGroup(ctx context.Context, group *domain.CouponProductGroup) error
+	UpdateCouponProductGroup(ctx context.Context, group domain.CouponProductGroup) error
+	DeleteCouponProductGroup(ctx context.Context, id int64) error
+
+	ListCoupons(ctx context.Context, filter appshared.CouponFilter, limit, offset int) ([]domain.Coupon, int, error)
+	GetCoupon(ctx context.Context, id int64) (domain.Coupon, error)
+	GetCouponByCode(ctx context.Context, code string) (domain.Coupon, error)
+	CreateCoupon(ctx context.Context, coupon *domain.Coupon) error
+	UpdateCoupon(ctx context.Context, coupon domain.Coupon) error
+	DeleteCoupon(ctx context.Context, id int64) error
+
+	CountCouponRedemptions(ctx context.Context, couponID int64, userID *int64, statuses []string) (int64, error)
+	CreateCouponRedemption(ctx context.Context, redemption *domain.CouponRedemption) error
+	UpdateCouponRedemptionStatusByOrder(ctx context.Context, orderID int64, fromStatuses []string, toStatus string) error
+	CountUserSuccessfulOrders(ctx context.Context, userID int64) (int64, error)
 }
 
 type PasswordResetTokenRepository interface {

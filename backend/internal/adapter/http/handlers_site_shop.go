@@ -9,11 +9,13 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	apporder "xiaoheiplay/internal/app/order"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
 
 func (h *Handler) Catalog(c *gin.Context) {
+	userID := getUserID(c)
 	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
 	regions, plans, packages, images, cycles, err := h.catalogSvc.Catalog(c)
 	if err != nil {
@@ -45,6 +47,7 @@ func (h *Handler) Catalog(c *gin.Context) {
 	}
 	plans = filterVisiblePlanGroups(plans)
 	packages = filterVisiblePackages(packages, plans)
+	packages = h.applyUserTierPackagePricing(c, userID, packages)
 	if len(plans) == 0 {
 		images = []domain.SystemImage{}
 	} else {
@@ -183,6 +186,7 @@ func (h *Handler) PlanGroups(c *gin.Context) {
 }
 
 func (h *Handler) Packages(c *gin.Context) {
+	userID := getUserID(c)
 	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
 	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
 	items, err := h.catalogSvc.ListPackages(c)
@@ -210,7 +214,24 @@ func (h *Handler) Packages(c *gin.Context) {
 		}
 		items = filtered
 	}
+	items = h.applyUserTierPackagePricing(c, userID, items)
 	c.JSON(http.StatusOK, gin.H{"items": toPackageDTOs(items)})
+}
+
+func (h *Handler) applyUserTierPackagePricing(ctx context.Context, userID int64, items []domain.Package) []domain.Package {
+	if h.userTierSvc == nil || userID <= 0 || len(items) == 0 {
+		return items
+	}
+	out := make([]domain.Package, len(items))
+	copy(out, items)
+	for i := range out {
+		pricing, _, err := h.userTierSvc.ResolvePackagePricing(ctx, userID, out[i].ID)
+		if err != nil {
+			continue
+		}
+		out[i].Monthly = pricing.MonthlyPrice
+	}
+	return out
 }
 
 func (h *Handler) BillingCycles(c *gin.Context) {
@@ -318,7 +339,8 @@ func (h *Handler) CartClear(c *gin.Context) {
 
 func (h *Handler) OrderCreate(c *gin.Context) {
 	var payload struct {
-		Items []appshared.OrderItemInput `json:"items"`
+		Items      []appshared.OrderItemInput `json:"items"`
+		CouponCode string                     `json:"coupon_code"`
 	}
 	if c.Request.ContentLength > 0 {
 		if err := bindJSON(c, &payload); err != nil {
@@ -331,9 +353,9 @@ func (h *Handler) OrderCreate(c *gin.Context) {
 	var items []domain.OrderItem
 	var err error
 	if len(payload.Items) > 0 {
-		order, items, err = h.orderSvc.CreateOrderFromItems(c, getUserID(c), "CNY", payload.Items, idem)
+		order, items, err = h.orderSvc.CreateOrderFromItems(c, getUserID(c), "CNY", payload.Items, idem, payload.CouponCode)
 	} else {
-		order, items, err = h.orderSvc.CreateOrderFromCart(c, getUserID(c), "CNY", idem)
+		order, items, err = h.orderSvc.CreateOrderFromCart(c, getUserID(c), "CNY", idem, payload.CouponCode)
 	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -344,7 +366,8 @@ func (h *Handler) OrderCreate(c *gin.Context) {
 
 func (h *Handler) OrderCreateItems(c *gin.Context) {
 	var payload struct {
-		Items []appshared.OrderItemInput `json:"items"`
+		Items      []appshared.OrderItemInput `json:"items"`
+		CouponCode string                     `json:"coupon_code"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -355,12 +378,47 @@ func (h *Handler) OrderCreateItems(c *gin.Context) {
 		return
 	}
 	idem := c.GetHeader("Idempotency-Key")
-	order, items, err := h.orderSvc.CreateOrderFromItems(c, getUserID(c), "CNY", payload.Items, idem)
+	order, items, err := h.orderSvc.CreateOrderFromItems(c, getUserID(c), "CNY", payload.Items, idem, payload.CouponCode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"order": toOrderDTO(order), "items": toOrderItemDTOs(items)})
+}
+
+func (h *Handler) CouponPreview(c *gin.Context) {
+	var payload struct {
+		CouponCode string                     `json:"coupon_code"`
+		Items      []appshared.OrderItemInput `json:"items"`
+	}
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	code := strings.TrimSpace(payload.CouponCode)
+	if code == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	var (
+		resp apporder.CouponPreview
+		err  error
+	)
+	if len(payload.Items) > 0 {
+		resp, err = h.orderSvc.PreviewCouponFromItems(c, getUserID(c), payload.Items, code)
+	} else {
+		resp, err = h.orderSvc.PreviewCouponFromCart(c, getUserID(c), code)
+	}
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"coupon_code":    resp.CouponCode,
+		"original_total": centsToFloat(resp.Original),
+		"discount":       centsToFloat(resp.Discount),
+		"final_total":    centsToFloat(resp.Final),
+	})
 }
 
 func (h *Handler) OrderPayment(c *gin.Context) {
