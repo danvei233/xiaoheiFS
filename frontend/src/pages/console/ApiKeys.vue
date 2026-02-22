@@ -4,7 +4,7 @@
     <div class="page-header">
       <div class="page-header-left">
         <h1 class="page-title">API 密钥管理</h1>
-        <p class="page-subtitle">管理用于开放接口鉴权的 AKID/Secret 凭证</p>
+        <p class="page-subtitle">管理用于开放接口鉴权的 AKID/Key 凭证</p>
       </div>
       <div class="page-header-actions">
         <a-button type="primary" @click="openCreate">
@@ -132,7 +132,7 @@
           <PlusOutlined />
         </div>
         <h3>创建新 API 密钥</h3>
-        <p>生成新的 AKID/Secret 凭证对，Secret 仅在创建时展示一次</p>
+        <p>生成新的 AKID/Key 凭证对，Key 仅在创建时展示一次</p>
       </div>
       <a-form layout="vertical">
         <a-form-item label="密钥名称" required>
@@ -146,7 +146,7 @@
       </a-form>
     </a-modal>
 
-    <!-- Secret Modal -->
+    <!-- Key Modal -->
     <a-modal
       v-model:open="secretOpen"
       title=""
@@ -159,7 +159,7 @@
           type="warning"
           show-icon
           message="重要提示"
-          description="窗口关闭后将无法再次查看 Secret，请务必立即复制保存"
+          description="窗口关闭后将无法再次查看 Key，请务必立即复制保存"
           class="secret-alert"
         />
         <div class="secret-form">
@@ -173,10 +173,10 @@
             </div>
           </div>
           <div class="secret-field secret-field-highlight">
-            <label class="field-label">Secret (访问密钥)</label>
+            <label class="field-label">Key (访问密钥)</label>
             <div class="field-input-wrapper">
-              <a-input :value="newKey.secret" readonly size="large" class="readonly-input" />
-              <a-button type="primary" @click="copySecret">
+              <a-input :value="newKey.key" readonly size="large" class="readonly-input" />
+              <a-button type="primary" @click="copyKey">
                 <CopyOutlined />
               </a-button>
             </div>
@@ -184,9 +184,9 @@
         </div>
         <div class="secret-actions">
           <a-button size="large" @click="secretOpen = false">关闭窗口</a-button>
-          <a-button type="primary" size="large" @click="copySecret">
+          <a-button type="primary" size="large" @click="copyKey">
             <template #icon><CopyOutlined /></template>
-            复制 Secret
+            复制 Key
           </a-button>
         </div>
       </div>
@@ -214,7 +214,7 @@ const rows = ref([]);
 const createOpen = ref(false);
 const secretOpen = ref(false);
 const createForm = reactive({ name: "" });
-const newKey = reactive({ akid: "", secret: "" });
+const newKey = reactive({ akid: "", key: "" });
 
 const columns = [
   { title: "ID", dataIndex: "id", key: "id", width: 70, className: "id-column" },
@@ -231,14 +231,15 @@ const signSnippet = computed(
 const method = "POST";
 const path = "/api/v1/open/orders/instant/create";
 const query = "";
-const ts = String(Math.floor(Date.now() / 1000));
+const ts = new Date().toISOString(); // RFC3339
 const nonce = crypto.randomUUID().replace(/-/g, "");
 const body = JSON.stringify({
   items: [{ package_id: 1, system_id: 1, qty: 1 }]
 });
 
-const canonical = [method.toUpperCase(), path, query, ts, nonce, body].join("\\n");
-const sig = crypto.createHmac("sha256", process.env.OPEN_SECRET)
+const bodyHash = crypto.createHash("sha256").update(body).digest("hex");
+const canonical = [method.toUpperCase(), path, query, ts, nonce, bodyHash].join("\\n");
+const sig = crypto.createHmac("sha256", process.env.OPEN_KEY)
                 .update(canonical)
                 .digest("hex");`
 );
@@ -279,7 +280,7 @@ const create = async () => {
   const res = await createUserApiKey({ name, scopes: [] });
   createOpen.value = false;
   newKey.akid = String(res.data?.item?.akid || "");
-  newKey.secret = String(res.data?.secret || "");
+  newKey.key = String(res.data?.key || res.data?.secret || "");
   secretOpen.value = true;
   await fetchData();
 };
@@ -297,9 +298,9 @@ const remove = async (record) => {
   await fetchData();
 };
 
-const copySecret = async () => {
-  await navigator.clipboard.writeText(newKey.secret || "");
-  message.success("Secret 已复制到剪贴板");
+const copyKey = async () => {
+  await navigator.clipboard.writeText(newKey.key || "");
+  message.success("Key 已复制到剪贴板");
 };
 
 const copyText = async (text) => {

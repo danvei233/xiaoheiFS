@@ -70,7 +70,11 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
     try {
       final ts = DateTime.now().millisecondsSinceEpoch;
       final results = await Future.wait([
-        _api!.getProbeDetail(widget.probeId, refreshSnapshot: forceSnapshot, timestamp: ts),
+        _api!.getProbeDetail(
+          widget.probeId,
+          refreshSnapshot: forceSnapshot,
+          timestamp: ts,
+        ),
         _api!.getProbeSla(widget.probeId, days: 7, timestamp: ts),
       ]);
       if (!mounted) return;
@@ -82,9 +86,9 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('刷新失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('刷新失败: $e')));
     } finally {
       _refreshInFlight = false;
       if (mounted) setState(() => _loading = false);
@@ -118,7 +122,10 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
       final headers = <String, String>{
         if (auth.isNotEmpty) 'Authorization': 'Bearer $auth',
       };
-      final url = _toAbsoluteUrl(appState.session?.apiUrl ?? '', session.streamPath);
+      final url = _toAbsoluteUrl(
+        appState.session?.apiUrl ?? '',
+        session.streamPath,
+      );
 
       _logConn = SseClient.connect(
         url,
@@ -126,9 +133,9 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
         onMessage: _onLogMessage,
         onError: (error) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('日志连接中断，请重试')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('日志连接中断，请重试')));
           setState(() {
             _logRunning = false;
             _logLoading = false;
@@ -154,9 +161,9 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
         _logRunning = false;
         _logLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('启动日志失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('启动日志失败: $e')));
     }
   }
 
@@ -213,7 +220,9 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
 
   String _toAbsoluteUrl(String baseUrl, String path) {
     if (path.startsWith('http://') || path.startsWith('https://')) return path;
-    final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final base = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     final p = path.startsWith('/') ? path : '/$path';
     return '$base$p';
   }
@@ -244,7 +253,12 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
                   if (_error.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Text('刷新失败：$_error', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                      child: Text(
+                        '刷新失败：$_error',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
+                      ),
                     ),
                   _buildMetrics(probe, isNarrow),
                   const SizedBox(height: 8),
@@ -265,11 +279,14 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
 
   Widget _buildHeader(ProbeNode? probe) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,16 +296,25 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
               Expanded(
                 child: Text(
                   probe?.name.isNotEmpty == true ? probe!.name : '-',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
                 ),
               ),
               _StatusPill(status: probe?.status ?? ''),
             ],
           ),
           const SizedBox(height: 6),
-          Text('ID: ${probe?.id ?? '-'} · Agent: ${probe?.agentId.isNotEmpty == true ? probe!.agentId : '-'}'),
+          Text(
+            'ID: ${probe?.id ?? '-'} · Agent: ${probe?.agentId.isNotEmpty == true ? probe!.agentId : '-'}',
+            style: const TextStyle(color: Colors.white),
+          ),
           const SizedBox(height: 4),
-          Text('上次刷新：${_formatDateTime(_lastRefreshAt?.toIso8601String() ?? '')}'),
+          Text(
+            '上次刷新：${_formatDateTime(_lastRefreshAt?.toIso8601String() ?? '')}',
+            style: const TextStyle(color: Colors.white70),
+          ),
         ],
       ),
     );
@@ -296,31 +322,53 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
 
   Widget _buildMetrics(ProbeNode? probe, bool isNarrow) {
     final items = [
-      _MetricItem('系统运行时长', _formatUptime(_system(probe)['uptime'] ?? _system(probe)['uptime_seconds']), '持续运行中'),
-      _MetricItem('7天 SLA', '${(_sla?.uptimePercent ?? 0).toStringAsFixed(2)}%', '在线 ${_sla?.onlineSeconds ?? 0} 秒'),
-      _MetricItem('最后心跳', _formatDateShort(probe?.lastHeartbeatAt ?? ''), _fromNow(probe?.lastHeartbeatAt ?? '')),
-      _MetricItem('最后快照', _formatDateShort(probe?.lastSnapshotAt ?? ''), _fromNow(probe?.lastSnapshotAt ?? '')),
+      _MetricItem(
+        '系统运行时长',
+        _formatUptime(
+          _system(probe)['uptime'] ?? _system(probe)['uptime_seconds'],
+        ),
+        '持续运行中',
+      ),
+      _MetricItem(
+        '7天 SLA',
+        '${(_sla?.uptimePercent ?? 0).toStringAsFixed(2)}%',
+        '在线 ${_sla?.onlineSeconds ?? 0} 秒',
+      ),
+      _MetricItem(
+        '最后心跳',
+        _formatDateShort(probe?.lastHeartbeatAt ?? ''),
+        _fromNow(probe?.lastHeartbeatAt ?? ''),
+      ),
+      _MetricItem(
+        '最后快照',
+        _formatDateShort(probe?.lastSnapshotAt ?? ''),
+        _fromNow(probe?.lastSnapshotAt ?? ''),
+      ),
     ];
 
     if (isNarrow) {
       return Column(
         children: items
-            .map((e) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: _MetricCard(item: e),
-                ))
+            .map(
+              (e) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _MetricCard(item: e),
+              ),
+            )
             .toList(),
       );
     }
 
     return Row(
       children: items
-          .map((e) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: _MetricCard(item: e),
-                ),
-              ))
+          .map(
+            (e) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: _MetricCard(item: e),
+              ),
+            ),
+          )
           .toList(),
     );
   }
@@ -343,21 +391,23 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
         detail1: '总量：${_formatBytes(_memory(probe)['total'])}',
         detail2: '已用：${_formatBytes(_memory(probe)['used'])}',
       ),
-      ...disks.map((d) => _ResourceCard(
-            title: '磁盘 ${_str(d['mount'])}',
-            percent: _num(d['usage_percent']),
-            detail1: '${_formatBytes(d['used'])} / ${_formatBytes(d['total'])}',
-            detail2: _str(d['fs']),
-          )),
+      ...disks.map(
+        (d) => _ResourceCard(
+          title: '磁盘 ${_str(d['mount'])}',
+          percent: _num(d['usage_percent']),
+          detail1: '${_formatBytes(d['used'])} / ${_formatBytes(d['total'])}',
+          detail2: _str(d['fs']),
+        ),
+      ),
     ];
 
     if (isNarrow) {
       return Column(
         children: cards
-            .map((w) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: w,
-                ))
+            .map(
+              (w) =>
+                  Padding(padding: const EdgeInsets.only(bottom: 8), child: w),
+            )
             .toList(),
       );
     }
@@ -365,12 +415,14 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: cards
-          .map((w) => Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: w,
-                ),
-              ))
+          .map(
+            (w) => Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: w,
+              ),
+            ),
+          )
           .toList(),
     );
   }
@@ -382,7 +434,10 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
         children: [
           _kv('主机名', _str(_system(probe)['hostname'])),
           _kv('平台', _str(_system(probe)['platform'])),
-          _kv('内核', _str(_system(probe)['kernel'] ?? _system(probe)['kernel_version'])),
+          _kv(
+            '内核',
+            _str(_system(probe)['kernel'] ?? _system(probe)['kernel_version']),
+          ),
           _kv('OS 类型', probe?.osType ?? '-'),
         ],
       ),
@@ -401,12 +456,18 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
             DataColumn(label: Text('使用率')),
           ],
           rows: diskRows
-              .map((d) => DataRow(cells: [
+              .map(
+                (d) => DataRow(
+                  cells: [
                     DataCell(Text(_str(d['mount']))),
                     DataCell(Text(_str(d['fs']))),
                     DataCell(Text(_formatBytes(d['total']))),
-                    DataCell(Text('${_num(d['usage_percent']).toStringAsFixed(1)}%')),
-                  ]))
+                    DataCell(
+                      Text('${_num(d['usage_percent']).toStringAsFixed(1)}%'),
+                    ),
+                  ],
+                ),
+              )
               .toList(),
         ),
       ),
@@ -414,11 +475,7 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
 
     if (isNarrow) {
       return Column(
-        children: [
-          systemCard,
-          const SizedBox(height: 8),
-          diskCard,
-        ],
+        children: [systemCard, const SizedBox(height: 8), diskCard],
       );
     }
 
@@ -446,12 +503,16 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
             DataColumn(label: Text('进程')),
           ],
           rows: ports
-              .map((p) => DataRow(cells: [
+              .map(
+                (p) => DataRow(
+                  cells: [
                     DataCell(Text('${p['port'] ?? '-'}')),
                     DataCell(Text(_str(p['proto']))),
                     DataCell(Text((p['listen'] == true) ? '监听' : '未监听')),
                     DataCell(Text(_str(p['process_name']))),
-                  ]))
+                  ],
+                ),
+              )
               .toList(),
         ),
       ),
@@ -484,29 +545,42 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
                 width: 220,
                 child: DropdownButtonFormField<String>(
                   value: _logSource,
-                  decoration: const InputDecoration(isDense: true, labelText: '日志源'),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '日志源',
+                  ),
                   items: sourceOptions
-                      .map((e) => DropdownMenuItem(value: e.$2, child: Text(e.$1)))
+                      .map(
+                        (e) => DropdownMenuItem(value: e.$2, child: Text(e.$1)),
+                      )
                       .toList(),
-                  onChanged: (value) => setState(() => _logSource = value ?? _logSource),
+                  onChanged: (value) =>
+                      setState(() => _logSource = value ?? _logSource),
                 ),
               ),
               SizedBox(
                 width: 180,
                 child: TextField(
                   controller: _keywordCtl,
-                  decoration: const InputDecoration(isDense: true, labelText: '关键字过滤'),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '关键字过滤',
+                  ),
                 ),
               ),
               SizedBox(
                 width: 120,
                 child: DropdownButtonFormField<int>(
                   value: _logLines,
-                  decoration: const InputDecoration(isDense: true, labelText: '行数'),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: '行数',
+                  ),
                   items: const [50, 100, 300, 500, 1000, 2000]
                       .map((v) => DropdownMenuItem(value: v, child: Text('$v')))
                       .toList(),
-                  onChanged: (value) => setState(() => _logLines = value ?? _logLines),
+                  onChanged: (value) =>
+                      setState(() => _logLines = value ?? _logLines),
                 ),
               ),
               SizedBox(
@@ -531,7 +605,9 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
               ),
               FilledButton.icon(
                 onPressed: _logLoading ? null : _startLog,
-                icon: Icon(_logRunning ? Icons.pause_circle : Icons.play_circle),
+                icon: Icon(
+                  _logRunning ? Icons.pause_circle : Icons.play_circle,
+                ),
                 label: Text(_logRunning ? '重新开始' : '开始'),
               ),
               OutlinedButton.icon(
@@ -567,7 +643,10 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
                     itemBuilder: (context, index) {
                       final line = _logRows[index];
                       return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 2,
+                        ),
                         child: Text(
                           line,
                           style: TextStyle(
@@ -585,18 +664,26 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
     );
   }
 
-  Map<String, dynamic> _system(ProbeNode? probe) => probe?.snapshot.system ?? const {};
-  Map<String, dynamic> _cpu(ProbeNode? probe) => probe?.snapshot.cpu ?? const {};
-  Map<String, dynamic> _memory(ProbeNode? probe) => probe?.snapshot.memory ?? const {};
-  List<Map<String, dynamic>> _disks(ProbeNode? probe) => probe?.snapshot.disks ?? const [];
-  List<Map<String, dynamic>> _ports(ProbeNode? probe) => probe?.snapshot.ports ?? const [];
+  Map<String, dynamic> _system(ProbeNode? probe) =>
+      probe?.snapshot.system ?? const {};
+  Map<String, dynamic> _cpu(ProbeNode? probe) =>
+      probe?.snapshot.cpu ?? const {};
+  Map<String, dynamic> _memory(ProbeNode? probe) =>
+      probe?.snapshot.memory ?? const {};
+  List<Map<String, dynamic>> _disks(ProbeNode? probe) =>
+      probe?.snapshot.disks ?? const [];
+  List<Map<String, dynamic>> _ports(ProbeNode? probe) =>
+      probe?.snapshot.ports ?? const [];
 
   Widget _kv(String k, String v) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
-          SizedBox(width: 100, child: Text(k, style: const TextStyle(color: Colors.black54))),
+          SizedBox(
+            width: 100,
+            child: Text(k, style: const TextStyle(color: Colors.black54)),
+          ),
           Expanded(child: Text(v)),
         ],
       ),
@@ -605,7 +692,9 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
 
   Color _logColor(String line) {
     final s = line.toLowerCase();
-    if (s.contains('[error]') || s.contains('[critical]') || s.contains('[fail]')) {
+    if (s.contains('[error]') ||
+        s.contains('[critical]') ||
+        s.contains('[fail]')) {
       return const Color(0xFFF87171);
     }
     if (s.contains('[warning]') || s.contains('[warn]')) {
@@ -625,7 +714,9 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
     return input.replaceAllMapped(re, (m) {
       final ms = int.tryParse(m.group(1) ?? '');
       if (ms == null) return m.group(0) ?? '';
-      return _formatDateTime(DateTime.fromMillisecondsSinceEpoch(ms).toIso8601String());
+      return _formatDateTime(
+        DateTime.fromMillisecondsSinceEpoch(ms).toIso8601String(),
+      );
     });
   }
 
@@ -712,18 +803,34 @@ class _MetricCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 0),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(item.title, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          Text(
+            item.title,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
           const SizedBox(height: 6),
-          Text(item.value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          Text(
+            item.value,
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 4),
-          Text(item.subtitle, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          Text(
+            item.subtitle,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
         ],
       ),
     );
@@ -749,15 +856,22 @@ class _ResourceCard extends StatelessWidget {
     final color = v < 60
         ? const Color(0xFF2E7D32)
         : v < 85
-            ? const Color(0xFFEF6C00)
-            : const Color(0xFFD32F2F);
+        ? const Color(0xFFEF6C00)
+        : const Color(0xFFD32F2F);
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -776,8 +890,14 @@ class _ResourceCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text('${v.toStringAsFixed(1)}%'),
           const SizedBox(height: 4),
-          Text(detail1, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-          Text(detail2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+          Text(
+            detail1,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
+          Text(
+            detail2,
+            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          ),
         ],
       ),
     );
@@ -796,9 +916,16 @@ class _Panel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x120F172A),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -808,7 +935,10 @@ class _Panel extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
                 ),
               ),
               if (extra != null) extra!,
@@ -830,16 +960,19 @@ class _StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final online = status.toLowerCase() == 'online';
-    final color = online ? const Color(0xFF2E7D32) : const Color(0xFF546E7A);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: Colors.white.withOpacity(0.2),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white24),
       ),
       child: Text(
         online ? '在线' : '离线',
-        style: TextStyle(color: color, fontWeight: FontWeight.w600),
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }

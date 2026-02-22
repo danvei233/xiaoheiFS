@@ -89,26 +89,31 @@ class _ProbesScreenState extends State<ProbesScreen> {
       setState(() {
         _refreshError = e.toString();
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('刷新失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('刷新失败: $e')));
     } finally {
       _listInFlight = false;
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<Map<int, double?>> _loadSlaForRows(List<ProbeNode> rows, int ts) async {
+  Future<Map<int, double?>> _loadSlaForRows(
+    List<ProbeNode> rows,
+    int ts,
+  ) async {
     if (_api == null) return {};
     final result = <int, double?>{};
-    await Future.wait(rows.map((row) async {
-      try {
-        final sla = await _api!.getProbeSla(row.id, days: 7, timestamp: ts);
-        result[row.id] = sla?.uptimePercent;
-      } catch (_) {
-        result[row.id] = null;
-      }
-    }));
+    await Future.wait(
+      rows.map((row) async {
+        try {
+          final sla = await _api!.getProbeSla(row.id, days: 7, timestamp: ts);
+          result[row.id] = sla?.uptimePercent;
+        } catch (_) {
+          result[row.id] = null;
+        }
+      }),
+    );
     return result;
   }
 
@@ -143,9 +148,13 @@ class _ProbesScreenState extends State<ProbesScreen> {
                       decoration: const InputDecoration(labelText: 'OS 类型'),
                       items: const [
                         DropdownMenuItem(value: 'linux', child: Text('Linux')),
-                        DropdownMenuItem(value: 'windows', child: Text('Windows')),
+                        DropdownMenuItem(
+                          value: 'windows',
+                          child: Text('Windows'),
+                        ),
                       ],
-                      onChanged: (value) => setModalState(() => osType = value ?? 'linux'),
+                      onChanged: (value) =>
+                          setModalState(() => osType = value ?? 'linux'),
                     ),
                     TextField(
                       controller: tagsCtl,
@@ -158,8 +167,14 @@ class _ProbesScreenState extends State<ProbesScreen> {
                 ),
               ),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('创建')),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('创建'),
+                ),
               ],
             );
           },
@@ -171,7 +186,9 @@ class _ProbesScreenState extends State<ProbesScreen> {
       if (_api == null) return;
       final agentId = agentCtl.text.trim();
       if (agentId.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请输入 Agent ID')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('请输入 Agent ID')));
         return;
       }
       setState(() => _creating = true);
@@ -188,7 +205,9 @@ class _ProbesScreenState extends State<ProbesScreen> {
           tags: tags,
         );
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('创建成功')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('创建成功')));
         _fetchList();
         final token = result.enrollToken ?? '';
         if (token.isNotEmpty) {
@@ -196,7 +215,9 @@ class _ProbesScreenState extends State<ProbesScreen> {
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('创建失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('创建失败: $e')));
       } finally {
         if (mounted) setState(() => _creating = false);
       }
@@ -213,14 +234,20 @@ class _ProbesScreenState extends State<ProbesScreen> {
       final token = await _api!.resetEnrollToken(row.id);
       if (!mounted) return;
       if (token == null || token.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未获取到注册码')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('未获取到注册码')));
         return;
       }
       _showTokenDialog(token, title: '一次性注册码');
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已重置注册码')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已重置注册码')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('重置失败: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('重置失败: $e')));
     }
   }
 
@@ -239,7 +266,10 @@ class _ProbesScreenState extends State<ProbesScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
@@ -291,8 +321,8 @@ class _ProbesScreenState extends State<ProbesScreen> {
                           ],
                         )
                       : isWide
-                          ? _buildDesktopTable()
-                          : _buildMobileCards(),
+                      ? _buildDesktopTable()
+                      : _buildMobileCards(),
                 ),
               ),
               _buildPagination(),
@@ -304,19 +334,44 @@ class _ProbesScreenState extends State<ProbesScreen> {
   }
 
   Widget _buildHeaderInfo() {
-    final refreshText = _lastRefreshAt == null ? '-' : _formatTime(_lastRefreshAt!.toIso8601String());
+    final refreshText = _lastRefreshAt == null
+        ? '-'
+        : _formatTime(_lastRefreshAt!.toIso8601String());
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 6),
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
-      child: Text(
-        _refreshError.isEmpty ? '上次刷新：$refreshText' : '上次刷新：$refreshText，刷新失败：$_refreshError',
-        style: Theme.of(context).textTheme.bodySmall,
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white24,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.radar, color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _refreshError.isEmpty
+                  ? '探针概览 · 上次刷新：$refreshText'
+                  : '上次刷新：$refreshText，刷新失败：$_refreshError',
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: Colors.white),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -324,42 +379,50 @@ class _ProbesScreenState extends State<ProbesScreen> {
   Widget _buildFilters() {
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          SizedBox(
-            width: 240,
-            child: TextField(
-              controller: _keywordCtl,
-              decoration: const InputDecoration(
-                isDense: true,
-                hintText: '按名称/AgentID搜索',
-                prefixIcon: Icon(Icons.search),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            SizedBox(
+              width: 240,
+              child: TextField(
+                controller: _keywordCtl,
+                decoration: const InputDecoration(
+                  hintText: '按名称/AgentID搜索',
+                  prefixIcon: Icon(Icons.search),
+                ),
               ),
             ),
-          ),
-          SizedBox(
-            width: 140,
-            child: DropdownButtonFormField<String>(
-              value: _status.isEmpty ? null : _status,
-              decoration: const InputDecoration(isDense: true, hintText: '状态'),
-              items: const [
-                DropdownMenuItem(value: 'online', child: Text('在线')),
-                DropdownMenuItem(value: 'offline', child: Text('离线')),
-              ],
-              onChanged: (value) => setState(() => _status = value ?? ''),
+            SizedBox(
+              width: 140,
+              child: DropdownButtonFormField<String>(
+                value: _status.isEmpty ? null : _status,
+                decoration: const InputDecoration(hintText: '状态'),
+                items: const [
+                  DropdownMenuItem(value: 'online', child: Text('在线')),
+                  DropdownMenuItem(value: 'offline', child: Text('离线')),
+                ],
+                onChanged: (value) => setState(() => _status = value ?? ''),
+              ),
             ),
-          ),
-          FilledButton(
-            onPressed: () {
-              setState(() => _page = 1);
-              _fetchList();
-            },
-            child: const Text('查询'),
-          ),
-        ],
+            FilledButton.icon(
+              onPressed: () {
+                setState(() => _page = 1);
+                _fetchList();
+              },
+              icon: const Icon(Icons.search, size: 16),
+              label: const Text('查询'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -385,24 +448,34 @@ class _ProbesScreenState extends State<ProbesScreen> {
               DataColumn(label: Text('操作')),
             ],
             rows: _rows.map((row) {
-              return DataRow(cells: [
-                DataCell(Text('${row.id}')),
-                DataCell(Text(row.name.isEmpty ? '-' : row.name)),
-                DataCell(Text(row.agentId.isEmpty ? '-' : row.agentId)),
-                DataCell(_StatusChip(status: row.status)),
-                DataCell(Text(row.osType.isEmpty ? '-' : row.osType)),
-                DataCell(_UsageBar(value: _usage(row, 'cpu'))),
-                DataCell(_UsageBar(value: _usage(row, 'mem'))),
-                DataCell(Text(row.tags.isEmpty ? '-' : row.tags.join(', '))),
-                DataCell(Text(_formatTime(row.lastHeartbeatAt))),
-                DataCell(Text(_formatSla(row.id))),
-                DataCell(Row(
-                  children: [
-                    TextButton(onPressed: () => _openDetail(row), child: const Text('详情')),
-                    TextButton(onPressed: () => _resetEnroll(row), child: const Text('重置注册码')),
-                  ],
-                )),
-              ]);
+              return DataRow(
+                cells: [
+                  DataCell(Text('${row.id}')),
+                  DataCell(Text(row.name.isEmpty ? '-' : row.name)),
+                  DataCell(Text(row.agentId.isEmpty ? '-' : row.agentId)),
+                  DataCell(_StatusChip(status: row.status)),
+                  DataCell(Text(row.osType.isEmpty ? '-' : row.osType)),
+                  DataCell(_UsageBar(value: _usage(row, 'cpu'))),
+                  DataCell(_UsageBar(value: _usage(row, 'mem'))),
+                  DataCell(Text(row.tags.isEmpty ? '-' : row.tags.join(', '))),
+                  DataCell(Text(_formatTime(row.lastHeartbeatAt))),
+                  DataCell(Text(_formatSla(row.id))),
+                  DataCell(
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => _openDetail(row),
+                          child: const Text('详情'),
+                        ),
+                        TextButton(
+                          onPressed: () => _resetEnroll(row),
+                          child: const Text('重置注册码'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
             }).toList(),
           ),
         ),
@@ -417,51 +490,92 @@ class _ProbesScreenState extends State<ProbesScreen> {
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final row = _rows[index];
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      row.name.isEmpty ? row.agentId : row.name,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  _StatusChip(status: row.status),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text('Agent: ${row.agentId.isEmpty ? '-' : row.agentId}'),
-              Text('OS: ${row.osType.isEmpty ? '-' : row.osType} · SLA: ${_formatSla(row.id)}'),
-              Text('心跳: ${_formatTime(row.lastHeartbeatAt)}'),
-              if (row.tags.isNotEmpty) Text('标签: ${row.tags.join(', ')}'),
-              const SizedBox(height: 8),
-              _UsageLine(label: 'CPU', value: _usage(row, 'cpu')),
-              _UsageLine(label: '内存', value: _usage(row, 'mem')),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  SizedBox(
-                    height: 40,
-                    child: OutlinedButton(onPressed: () => _openDetail(row), child: const Text('详情')),
-                  ),
-                  SizedBox(
-                    height: 40,
-                    child: OutlinedButton(onPressed: () => _resetEnroll(row), child: const Text('重置注册码')),
+            onTap: () => _openDetail(row),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.outlineVariant.withOpacity(0.5),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Theme.of(context).shadowColor.withOpacity(0.06),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
                 ],
               ),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          row.name.isEmpty ? row.agentId : row.name,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      _StatusChip(status: row.status),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Agent: ${row.agentId.isEmpty ? '-' : row.agentId}'),
+                  Text(
+                    'OS: ${row.osType.isEmpty ? '-' : row.osType} · SLA: ${_formatSla(row.id)}',
+                  ),
+                  Text('心跳: ${_formatTime(row.lastHeartbeatAt)}'),
+                  if (row.tags.isNotEmpty) Text('标签: ${row.tags.join(', ')}'),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _ProbeQuickPill(
+                        label: row.osType.isEmpty ? 'OS:-' : row.osType,
+                        color: const Color(0xFF1E88E5),
+                      ),
+                      _ProbeQuickPill(
+                        label: 'SLA ${_formatSla(row.id)}',
+                        color: const Color(0xFF00A68C),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  _UsageLine(label: 'CPU', value: _usage(row, 'cpu')),
+                  _UsageLine(label: '内存', value: _usage(row, 'mem')),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      SizedBox(
+                        height: 40,
+                        child: FilledButton(
+                          onPressed: () => _openDetail(row),
+                          child: const Text('查看详情'),
+                        ),
+                      ),
+                      SizedBox(
+                        height: 40,
+                        child: OutlinedButton(
+                          onPressed: () => _resetEnroll(row),
+                          child: const Text('重置注册码'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },
@@ -475,7 +589,9 @@ class _ProbesScreenState extends State<ProbesScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Text('第 $_page / ${totalPages == 0 ? 1 : totalPages} 页 · 共 $_total 条'),
+            child: Text(
+              '第 $_page / ${totalPages == 0 ? 1 : totalPages} 页 · 共 $_total 条',
+            ),
           ),
           DropdownButton<int>(
             value: _pageSize,
@@ -525,9 +641,13 @@ class _ProbesScreenState extends State<ProbesScreen> {
   double? _usage(ProbeNode row, String kind) {
     dynamic value;
     if (kind == 'cpu') {
-      value = row.snapshot.cpu['usage_percent'] ?? row.snapshot.raw['cpu_usage_percent'];
+      value =
+          row.snapshot.cpu['usage_percent'] ??
+          row.snapshot.raw['cpu_usage_percent'];
     } else {
-      value = row.snapshot.memory['usage_percent'] ?? row.snapshot.raw['mem_usage_percent'];
+      value =
+          row.snapshot.memory['usage_percent'] ??
+          row.snapshot.raw['mem_usage_percent'];
     }
     final parsed = _asDouble(value);
     if (parsed == null) return null;
@@ -563,14 +683,56 @@ class _StatusChip extends StatelessWidget {
     final online = status.toLowerCase() == 'online';
     final color = online ? const Color(0xFF2E7D32) : const Color(0xFF546E7A);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            online ? Icons.check_circle : Icons.wifi_off,
+            size: 13,
+            color: color,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            online ? '在线' : '离线',
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProbeQuickPill extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _ProbeQuickPill({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withOpacity(0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        online ? '在线' : '离线',
-        style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600),
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11.5,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -588,8 +750,8 @@ class _UsageBar extends StatelessWidget {
     final color = v < 60
         ? const Color(0xFF2E7D32)
         : v < 85
-            ? const Color(0xFFEF6C00)
-            : const Color(0xFFD32F2F);
+        ? const Color(0xFFEF6C00)
+        : const Color(0xFFD32F2F);
     return SizedBox(
       width: 120,
       child: Row(

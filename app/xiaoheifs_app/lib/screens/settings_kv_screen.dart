@@ -13,6 +13,7 @@ class SettingsKvScreen extends StatefulWidget {
 class _SettingsKvScreenState extends State<SettingsKvScreen> {
   Future<List<SettingItem>>? _future;
   final _keywordController = TextEditingController();
+  bool _busy = false;
 
   @override
   void didChangeDependencies() {
@@ -36,7 +37,9 @@ class _SettingsKvScreenState extends State<SettingsKvScreen> {
         .toList();
     final keyword = _keywordController.text.trim().toLowerCase();
     if (keyword.isEmpty) return items;
-    return items.where((item) => item.key.toLowerCase().contains(keyword)).toList();
+    return items
+        .where((item) => item.key.toLowerCase().contains(keyword))
+        .toList();
   }
 
   void _refresh() {
@@ -50,7 +53,9 @@ class _SettingsKvScreenState extends State<SettingsKvScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasError) {
           return Scaffold(
@@ -62,47 +67,139 @@ class _SettingsKvScreenState extends State<SettingsKvScreen> {
         return Scaffold(
           appBar: AppBar(
             title: const Text('系统设置'),
-            actions: [
-              TextButton(onPressed: _refresh, child: const Text('刷新')),
-            ],
+            actions: [TextButton(onPressed: _refresh, child: const Text('刷新'))],
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
+          body: Stack(
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _keywordController,
-                          decoration: const InputDecoration(labelText: '搜索 Key'),
+              RefreshIndicator(
+                onRefresh: () async => _refresh(),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.settings_applications,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '管理系统配置项，点击条目可直接编辑',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          children: [
+                            TextField(
+                              controller: _keywordController,
+                              decoration: const InputDecoration(
+                                labelText: '搜索 Key',
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: _refresh,
+                                    child: const Text('应用过滤'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      FilledButton(onPressed: _refresh, child: const Text('搜索')),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (items.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 28),
+                        child: Center(child: Text('暂无设置')),
+                      )
+                    else
+                      ...items.map(
+                        (item) => Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: InkWell(
+                            onTap: () => _edit(item),
+                            borderRadius: BorderRadius.circular(10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        item.key,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      item.updatedAt.isEmpty
+                                          ? '-'
+                                          : _formatLocal(item.updatedAt),
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  item.value.isEmpty ? '-' : item.value,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade800,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 12),
-              if (items.isEmpty)
-                const Center(child: Text('暂无设置'))
-              else
-                ...items.map(
-                  (item) => Card(
-                    child: ListTile(
-                      title: Text(item.key),
-                      subtitle: Text(
-                        item.value,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: Text(item.updatedAt.isEmpty ? '' : _formatLocal(item.updatedAt)),
-                      onTap: () => _edit(item),
-                    ),
-                  ),
+              if (_busy)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: LinearProgressIndicator(minHeight: 2),
                 ),
             ],
           ),
@@ -119,19 +216,30 @@ class _SettingsKvScreenState extends State<SettingsKvScreen> {
         title: Text('编辑 ${item.key}'),
         content: TextField(controller: controller, maxLines: 6),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
     if (ok != true) return;
     final client = context.read<AppState>().apiClient;
     if (client == null) return;
-    await client.patchJson('/admin/api/v1/settings', body: {
-      'key': item.key,
-      'value': controller.text,
-    });
-    _refresh();
+    setState(() => _busy = true);
+    try {
+      await client.patchJson(
+        '/admin/api/v1/settings',
+        body: {'key': item.key, 'value': controller.text},
+      );
+      _refresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 }
 

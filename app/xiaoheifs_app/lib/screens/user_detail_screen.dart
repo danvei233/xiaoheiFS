@@ -102,6 +102,17 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
     }
   }
 
+  Widget _buildRefreshTabList(List<Widget> children) {
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
+        children: children,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -130,16 +141,16 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
                     color: Theme.of(context).colorScheme.surface,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outlineVariant
-                          .withOpacity(0.5),
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outlineVariant.withOpacity(0.5),
                     ),
                   ),
                   child: TabBar(
                     labelColor: Theme.of(context).colorScheme.primary,
-                    unselectedLabelColor:
-                        Theme.of(context).colorScheme.onSurfaceVariant,
+                    unselectedLabelColor: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant,
                     indicatorColor: Theme.of(context).colorScheme.primary,
                     indicatorSize: TabBarIndicatorSize.tab,
                     labelStyle: const TextStyle(
@@ -160,102 +171,89 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
               Expanded(
                 child: TabBarView(
                   children: [
-                    ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
-                      children: [
-                        _UserHeader(
-                          user: _user,
-                          avatarUrl: _avatarUrl(
-                            _user,
-                            context.read<AppState>().apiClient?.baseUrl ?? '',
+                    _buildRefreshTabList([
+                      _UserHeader(
+                        user: _user,
+                        avatarUrl: _avatarUrl(
+                          _user,
+                          context.read<AppState>().apiClient?.baseUrl ?? '',
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      _QuickStatsRow(
+                        balance: _wallet['balance'],
+                        frozen: _wallet['frozen'],
+                        ordersCount: _orders.length,
+                        txCount: _walletTx.length,
+                      ),
+                      const SizedBox(height: 6),
+                      _UserInfoPanel(user: _user),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.outlineVariant.withOpacity(0.5),
                           ),
                         ),
-                        const SizedBox(height: 6),
-                        _QuickStatsRow(
-                          balance: _wallet['balance'],
-                          frozen: _wallet['frozen'],
-                          ordersCount: _orders.length,
-                          txCount: _walletTx.length,
-                        ),
-                        const SizedBox(height: 6),
-                        _UserInfoPanel(user: _user),
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .outlineVariant
-                                  .withOpacity(0.5),
-                            ),
-                          ),
-                          child: _ActionBar(
-                            busy: _busy,
-                            onToggle: _toggleStatus,
-                            onReset: _resetPassword,
-                            onImpersonate: _impersonate,
-                          ),
-                        ),
-                      ],
-                    ),
-                    ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
-                      children: [
-                        const _SectionHeader(
-                          title: '实名认证',
-                          icon: Icons.verified_user,
-                        ),
-                        _RealnameCard(
-                          status: _realnameStatus,
-                          reasonController: _realnameReason,
+                        child: _ActionBar(
                           busy: _busy,
-                          hasRecord: _realname != null,
-                          onStatusChanged: (value) =>
-                              setState(() => _realnameStatus = value),
-                          onSubmit: _updateRealname,
+                          onToggle: _toggleStatus,
+                          onReset: _resetPassword,
+                          onImpersonate: _impersonate,
                         ),
-                      ],
-                    ),
-                    ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
-                      children: [
-                        _SectionHeader(
-                          title: '订单记录',
-                          icon: Icons.receipt_long,
-                          count: _orders.length,
-                        ),
-                        if (_orders.isEmpty)
-                          const _EmptyLine(text: '暂无订单')
-                        else
-                          ..._orders.map((order) => _OrderTile(order: order)),
-                      ],
-                    ),
-                    ListView(
-                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
-                      children: [
-                        const _SectionHeader(
-                          title: '钱包余额',
-                          icon: Icons.account_balance_wallet,
-                        ),
-                        _WalletSummaryCard(
-                          balance: _wallet['balance'],
-                          frozen: _wallet['frozen'],
-                        ),
-                        const SizedBox(height: 6),
-                        _SectionHeader(
-                          title: '钱包记录',
-                          icon: Icons.history,
-                          count: _walletTx.length,
-                        ),
-                        if (_walletTx.isEmpty)
-                          const _EmptyLine(text: '暂无钱包记录')
-                        else
-                          ..._walletTx.map((tx) => _WalletTxTile(tx: tx)),
-                      ],
-                    ),
+                      ),
+                    ]),
+                    _buildRefreshTabList([
+                      const _SectionHeader(
+                        title: '实名认证',
+                        icon: Icons.verified_user,
+                      ),
+                      _RealnameCard(
+                        status: _realnameStatus,
+                        reasonController: _realnameReason,
+                        busy: _busy,
+                        hasRecord: _realname != null,
+                        onStatusChanged: (value) =>
+                            setState(() => _realnameStatus = value),
+                        onSubmit: _updateRealname,
+                      ),
+                    ]),
+                    _buildRefreshTabList([
+                      _SectionHeader(
+                        title: '订单记录',
+                        icon: Icons.receipt_long,
+                        count: _orders.length,
+                      ),
+                      if (_orders.isEmpty)
+                        const _EmptyLine(text: '暂无订单')
+                      else
+                        ..._orders.map((order) => _OrderTile(order: order)),
+                    ]),
+                    _buildRefreshTabList([
+                      const _SectionHeader(
+                        title: '钱包余额',
+                        icon: Icons.account_balance_wallet,
+                      ),
+                      _WalletSummaryCard(
+                        balance: _wallet['balance'],
+                        frozen: _wallet['frozen'],
+                      ),
+                      const SizedBox(height: 6),
+                      _SectionHeader(
+                        title: '钱包记录',
+                        icon: Icons.history,
+                        count: _walletTx.length,
+                      ),
+                      if (_walletTx.isEmpty)
+                        const _EmptyLine(text: '暂无钱包记录')
+                      else
+                        ..._walletTx.map((tx) => _WalletTxTile(tx: tx)),
+                    ]),
                   ],
                 ),
               ),
@@ -657,16 +655,16 @@ class _StatTile extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             value,
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 2),
           Text(
             label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -743,17 +741,17 @@ class _InfoRow extends StatelessWidget {
           child: Text(
             label,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
+              color: colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
         const SizedBox(width: 4),
         Expanded(
           child: Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
       ],
@@ -849,11 +847,7 @@ class _SectionHeader extends StatelessWidget {
   final IconData icon;
   final int? count;
 
-  const _SectionHeader({
-    required this.title,
-    required this.icon,
-    this.count,
-  });
+  const _SectionHeader({required this.title, required this.icon, this.count});
 
   @override
   Widget build(BuildContext context) {
@@ -978,9 +972,8 @@ class _RealnameCard extends StatelessWidget {
 class _InfoCard extends StatelessWidget {
   final String title;
   final List<String> lines;
-  final Widget? leading;
 
-  const _InfoCard({required this.title, required this.lines, this.leading});
+  const _InfoCard({required this.title, required this.lines});
 
   @override
   Widget build(BuildContext context) {
@@ -992,7 +985,6 @@ class _InfoCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                if (leading != null) ...[leading!, const SizedBox(width: 12)],
                 Text(title, style: Theme.of(context).textTheme.titleMedium),
               ],
             ),
@@ -1090,7 +1082,11 @@ class _OrderTile extends StatelessWidget {
               color: colorScheme.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(Icons.receipt_long, color: colorScheme.primary, size: 16),
+            child: Icon(
+              Icons.receipt_long,
+              color: colorScheme.primary,
+              size: 16,
+            ),
           ),
           const SizedBox(width: 4),
           Expanded(

@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -33,9 +33,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
   }
 
   @override
@@ -71,6 +72,27 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
         _fadeController.forward();
       }
     }
+  }
+
+  Future<void> _pullRefresh() async {
+    _load(animate: false);
+    final task = _future;
+    if (task != null) {
+      try {
+        await task;
+      } catch (_) {}
+    }
+  }
+
+  Widget _buildRefreshTabList(List<Widget> children) {
+    return RefreshIndicator(
+      onRefresh: _pullRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
+        children: children,
+      ),
+    );
   }
 
   @override
@@ -160,8 +182,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
           }
           final data = snapshot.data ?? {};
           final order = data['order'] as Map<String, dynamic>? ?? {};
-          final items =
-              (data['items'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+          final items = (data['items'] as List<dynamic>? ?? [])
+              .cast<Map<String, dynamic>>();
           final payments = (data['payments'] as List<dynamic>? ?? [])
               .cast<Map<String, dynamic>>();
           final events = _normalizeEvents(
@@ -184,7 +206,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                     child: Center(
                       child: SizedBox(
                         width: 14,
-                  height: 14,
+                        height: 14,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
                           color: colorScheme.primary,
@@ -257,7 +279,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                           unselectedLabelColor: colorScheme.onSurfaceVariant,
                           indicatorColor: colorScheme.primary,
                           indicatorSize: TabBarIndicatorSize.tab,
-                          labelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                          labelStyle: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
                           unselectedLabelStyle: const TextStyle(fontSize: 11),
                           labelPadding: const EdgeInsets.symmetric(vertical: 6),
                           tabs: const [
@@ -272,114 +297,105 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                     Expanded(
                       child: TabBarView(
                         children: [
-                          ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
-                            children: [
-                              _OrderInfoCard(
-                                order: order,
-                                status: status,
-                                statusInfo: statusInfo,
+                          _buildRefreshTabList([
+                            _OrderInfoCard(
+                              order: order,
+                              status: status,
+                              statusInfo: statusInfo,
+                            ),
+                            const SizedBox(height: 6),
+                            _UserInfoCard(
+                              orderId: order['user_id'] ?? '-',
+                              userFuture: _userFuture,
+                            ),
+                          ]),
+                          _buildRefreshTabList([
+                            _SectionHeader(
+                              title: '付款信息',
+                              icon: Icons.payments_rounded,
+                              count: payments.length,
+                            ),
+                            const SizedBox(height: 6),
+                            if (payments.isEmpty)
+                              const _EmptyState(
+                                icon: Icons.payments_outlined,
+                                text: '暂无付款记录',
+                              )
+                            else
+                              ...payments.map((p) => _PaymentCard(payment: p)),
+                          ]),
+                          _buildRefreshTabList([
+                            _SectionHeader(
+                              title: '订单项',
+                              icon: Icons.shopping_cart_rounded,
+                              count: items.length,
+                            ),
+                            const SizedBox(height: 6),
+                            if (items.isEmpty)
+                              const _EmptyState(
+                                icon: Icons.shopping_basket_outlined,
+                                text: '暂无订单项',
+                              )
+                            else
+                              FutureBuilder<_Catalog>(
+                                future: _catalogFuture,
+                                builder: (context, catSnap) {
+                                  final catalog = catSnap.data;
+                                  return Column(
+                                    children: items.map((item) {
+                                      final pkgId = _asInt(item['package_id']);
+                                      final pkg = catalog?.packages[pkgId];
+                                      final plan =
+                                          catalog?.planGroups[_asInt(
+                                            pkg?['plan_group_id'],
+                                          )];
+                                      final region = catalog
+                                          ?.regions[_asInt(plan?['region_id'])];
+                                      final regionName = (region?['name'] ?? '')
+                                          .toString();
+                                      final lineName = (plan?['name'] ?? '')
+                                          .toString();
+                                      final pkgName = (pkg?['name'] ?? '')
+                                          .toString();
+                                      final specRaw =
+                                          item['spec'] ?? item['Spec'];
+                                      final specText = _specSummary(
+                                        specRaw,
+                                        pkg,
+                                        item: item,
+                                      );
+                                      final specDetail = _specDetail(
+                                        specRaw,
+                                        item,
+                                      );
+                                      return _OrderItemCard(
+                                        pkgName: pkgName,
+                                        regionName: regionName,
+                                        lineName: lineName,
+                                        item: item,
+                                        specText: specText,
+                                        specDetail: specDetail,
+                                      );
+                                    }).toList(),
+                                  );
+                                },
                               ),
-                              const SizedBox(height: 6),
-                              _UserInfoCard(
-                                orderId: order['user_id'] ?? '-',
-                                userFuture: _userFuture,
-                              ),
-                            ],
-                          ),
-                          ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
-                            children: [
-                              _SectionHeader(
-                                title: '付款信息',
-                                icon: Icons.payments_rounded,
-                                count: payments.length,
-                              ),
-                              const SizedBox(height: 6),
-                              if (payments.isEmpty)
-                                const _EmptyState(
-                                  icon: Icons.payments_outlined,
-                                  text: '暂无付款记录',
-                                )
-                              else
-                                ...payments.map((p) => _PaymentCard(payment: p)),
-                            ],
-                          ),
-                          ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
-                            children: [
-                              _SectionHeader(
-                                title: '订单项',
-                                icon: Icons.shopping_cart_rounded,
-                                count: items.length,
-                              ),
-                              const SizedBox(height: 6),
-                              if (items.isEmpty)
-                                const _EmptyState(
-                                  icon: Icons.shopping_basket_outlined,
-                                  text: '暂无订单项',
-                                )
-                              else
-                                FutureBuilder<_Catalog>(
-                                  future: _catalogFuture,
-                                  builder: (context, catSnap) {
-                                    final catalog = catSnap.data;
-                                    return Column(
-                                      children: items.map((item) {
-                                        final pkgId = _asInt(item['package_id']);
-                                        final pkg = catalog?.packages[pkgId];
-                                        final plan = catalog?.planGroups[
-                                            _asInt(pkg?['plan_group_id'])];
-                                        final region = catalog
-                                            ?.regions[_asInt(plan?['region_id'])];
-                                        final regionName =
-                                            (region?['name'] ?? '').toString();
-                                        final lineName =
-                                            (plan?['name'] ?? '').toString();
-                                        final pkgName =
-                                            (pkg?['name'] ?? '').toString();
-                                        final specRaw = item['spec'] ?? item['Spec'];
-                                        final specText = _specSummary(
-                                          specRaw,
-                                          pkg,
-                                          item: item,
-                                        );
-                                        final specDetail = _specDetail(
-                                          specRaw,
-                                          item,
-                                        );
-                                        return _OrderItemCard(
-                                          pkgName: pkgName,
-                                          regionName: regionName,
-                                          lineName: lineName,
-                                          item: item,
-                                          specText: specText,
-                                          specDetail: specDetail,
-                                        );
-                                      }).toList(),
-                                    );
-                                  },
-                                ),
-                            ],
-                          ),
-                          ListView(
-                            padding: const EdgeInsets.fromLTRB(16, 6, 16, 64),
-                            children: [
-                              _SectionHeader(
-                                title: '事件流',
-                                icon: Icons.event_rounded,
-                                count: events.length,
-                              ),
-                              const SizedBox(height: 6),
-                              if (events.isEmpty)
-                                const _EmptyState(
-                                  icon: Icons.history_outlined,
-                                  text: '暂无事件记录',
-                                )
-                              else
-                                ...events.map((ev) => _EventTile(ev: ev)),
-                            ],
-                          ),
+                          ]),
+                          _buildRefreshTabList([
+                            _SectionHeader(
+                              title: '事件流',
+                              icon: Icons.event_rounded,
+                              count: events.length,
+                            ),
+                            const SizedBox(height: 6),
+                            if (events.isEmpty)
+                              const _EmptyState(
+                                icon: Icons.history_outlined,
+                                text: '暂无事件记录',
+                              )
+                            else
+                              ...events.map((ev) => _EventTile(ev: ev)),
+                          ]),
                         ],
                       ),
                     ),
@@ -413,9 +429,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
       _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          _ErrorSnackBar(message: '操作失败：$e'),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(_ErrorSnackBar(message: '操作失败：$e'));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -478,10 +494,7 @@ class _OrderStatusHeader extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: statusInfo.color.withOpacity(0.3),
-          width: 1,
-        ),
+        border: Border.all(color: statusInfo.color.withOpacity(0.3), width: 1),
       ),
       child: Row(
         children: [
@@ -537,11 +550,7 @@ class _StatusBadge extends StatelessWidget {
         color: color.withOpacity(0.2),
         shape: BoxShape.circle,
       ),
-      child: Icon(
-        icon,
-        color: color,
-        size: 12,
-      ),
+      child: Icon(icon, color: color, size: 12),
     );
   }
 }
@@ -550,15 +559,10 @@ class _StatusLabel extends StatelessWidget {
   final String status;
   final _StatusInfo statusInfo;
 
-  const _StatusLabel({
-    required this.status,
-    required this.statusInfo,
-  });
+  const _StatusLabel({required this.status, required this.statusInfo});
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
@@ -616,7 +620,8 @@ class _OrderInfoCard extends StatelessWidget {
         ),
         _InfoLine(
           label: '金额',
-          value: '${_money(order['total_amount'])} ${order['currency'] ?? 'CNY'}',
+          value:
+              '${_money(order['total_amount'])} ${order['currency'] ?? 'CNY'}',
           valueColor: colorScheme.primary,
           valueBold: true,
           icon: Icons.payments_rounded,
@@ -659,10 +664,7 @@ class _UserInfoCard extends StatelessWidget {
   final dynamic orderId;
   final Future<Map<String, dynamic>?>? userFuture;
 
-  const _UserInfoCard({
-    required this.orderId,
-    required this.userFuture,
-  });
+  const _UserInfoCard({required this.orderId, required this.userFuture});
 
   @override
   Widget build(BuildContext context) {
@@ -679,8 +681,7 @@ class _UserInfoCard extends StatelessWidget {
                   : raw);
         final err = raw['_error']?.toString();
         final qq = (user['qq'] ?? '').toString();
-        final baseUrl =
-            context.read<AppState>().apiClient?.baseUrl ?? '';
+        final baseUrl = context.read<AppState>().apiClient?.baseUrl ?? '';
         final avatarUrl = _resolveAvatar(
           user['avatar_url'] ?? user['avatar'],
           qq,
@@ -762,7 +763,8 @@ class _ActionBar extends StatelessWidget {
     final canApprove = status == 'pending_review' || status == 'rejected';
     final canReject = status == 'pending_review';
     final canRetry = status == 'failed';
-    final canDelete = status == 'pending_review' ||
+    final canDelete =
+        status == 'pending_review' ||
         status == 'rejected' ||
         status == 'failed' ||
         status == 'canceled';
@@ -892,11 +894,7 @@ class _ActionButton extends StatelessWidget {
                   ),
                 )
               else
-                Icon(
-                  icon,
-                  color: textColor,
-                  size: 12,
-                ),
+                Icon(icon, color: textColor, size: 12),
               const SizedBox(height: 2),
               Text(
                 label,
@@ -929,9 +927,7 @@ class _RejectDialog extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return AlertDialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       title: Row(
         children: [
           Container(
@@ -955,9 +951,7 @@ class _RejectDialog extends StatelessWidget {
         decoration: InputDecoration(
           hintText: '请输入驳回原因',
           filled: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
         ),
         maxLines: 3,
       ),
@@ -968,9 +962,7 @@ class _RejectDialog extends StatelessWidget {
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context, true),
-          style: FilledButton.styleFrom(
-            backgroundColor: colorScheme.error,
-          ),
+          style: FilledButton.styleFrom(backgroundColor: colorScheme.error),
           child: const Text('确认驳回'),
         ),
       ],
@@ -1006,11 +998,7 @@ class _SectionHeader extends StatelessWidget {
             color: colorScheme.primaryContainer.withOpacity(0.5),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(
-            icon,
-            size: 12,
-            color: colorScheme.primary,
-          ),
+          child: Icon(icon, size: 12, color: colorScheme.primary),
         ),
         const SizedBox(width: 6),
         Text(
@@ -1018,7 +1006,7 @@ class _SectionHeader extends StatelessWidget {
           style: theme.textTheme.bodyLarge?.copyWith(
             fontWeight: FontWeight.w700,
             color: colorScheme.onSurface,
-                    fontSize: 11,
+            fontSize: 11,
           ),
         ),
         if (count > 0) ...[
@@ -1069,9 +1057,12 @@ class _InfoCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    final headerPadding =
-        dense ? const EdgeInsets.fromLTRB(8, 8, 8, 6) : const EdgeInsets.fromLTRB(10, 10, 10, 8);
-    final contentPadding = dense ? const EdgeInsets.all(8) : const EdgeInsets.all(10);
+    final headerPadding = dense
+        ? const EdgeInsets.fromLTRB(8, 8, 8, 6)
+        : const EdgeInsets.fromLTRB(10, 10, 10, 8);
+    final contentPadding = dense
+        ? const EdgeInsets.all(8)
+        : const EdgeInsets.all(10);
 
     return Container(
       decoration: BoxDecoration(
@@ -1110,11 +1101,7 @@ class _InfoCard extends StatelessWidget {
                     color: colorScheme.primaryContainer.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Icon(
-                    icon,
-                    size: 12,
-                    color: colorScheme.primary,
-                  ),
+                  child: Icon(icon, size: 12, color: colorScheme.primary),
                 ),
                 const SizedBox(width: 6),
                 if (leading != null) ...[leading!, const SizedBox(width: 6)],
@@ -1147,7 +1134,9 @@ class _InfoCard extends StatelessWidget {
                             child: Divider(
                               height: 1,
                               thickness: 1,
-                              color: colorScheme.outlineVariant.withOpacity(0.3),
+                              color: colorScheme.outlineVariant.withOpacity(
+                                0.3,
+                              ),
                             ),
                           ),
                       ],
@@ -1157,11 +1146,14 @@ class _InfoCard extends StatelessWidget {
                     builder: (context, constraints) {
                       final spacing = 8.0;
                       final colWidth =
-                          (constraints.maxWidth - spacing * (columns - 1)) / columns;
-                      final compactLines =
-                          lines.where((line) => !line.fullWidth).toList();
-                      final fullLines =
-                          lines.where((line) => line.fullWidth).toList();
+                          (constraints.maxWidth - spacing * (columns - 1)) /
+                          columns;
+                      final compactLines = lines
+                          .where((line) => !line.fullWidth)
+                          .toList();
+                      final fullLines = lines
+                          .where((line) => line.fullWidth)
+                          .toList();
 
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1171,10 +1163,8 @@ class _InfoCard extends StatelessWidget {
                             runSpacing: 6,
                             children: compactLines
                                 .map(
-                                  (line) => SizedBox(
-                                    width: colWidth,
-                                    child: line,
-                                  ),
+                                  (line) =>
+                                      SizedBox(width: colWidth, child: line),
                                 )
                                 .toList(),
                           ),
@@ -1230,11 +1220,7 @@ class _InfoLine extends StatelessWidget {
               color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
               borderRadius: BorderRadius.circular(6),
             ),
-            child: Icon(
-              icon,
-              size: 12,
-              color: colorScheme.onSurfaceVariant,
-            ),
+            child: Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
           ),
         if (icon != null) const SizedBox(width: 6),
         SizedBox(
@@ -1272,10 +1258,7 @@ class _EmptyState extends StatelessWidget {
   final IconData icon;
   final String text;
 
-  const _EmptyState({
-    required this.icon,
-    required this.text,
-  });
+  const _EmptyState({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -1567,7 +1550,9 @@ class _OrderItemCard extends StatelessWidget {
                       label: '时长',
                       value: '${item['duration_months']} 个月',
                     ),
-                  if ((item['automation_instance_id'] ?? '').toString().isNotEmpty)
+                  if ((item['automation_instance_id'] ?? '')
+                      .toString()
+                      .isNotEmpty)
                     _DetailRow(
                       icon: Icons.cloud_rounded,
                       label: '实例',
@@ -1615,11 +1600,7 @@ class _DetailRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: 12,
-            color: colorScheme.onSurfaceVariant,
-          ),
+          Icon(icon, size: 12, color: colorScheme.onSurfaceVariant),
           const SizedBox(width: 6),
           Text(
             '$label：',
@@ -1634,7 +1615,7 @@ class _DetailRow extends StatelessWidget {
               value,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurface,
-                    fontSize: 11,
+                fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1681,11 +1662,7 @@ class _EventTile extends StatelessWidget {
                 color: meta.color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(
-                meta.icon,
-                color: meta.color,
-                size: 12,
-              ),
+              child: Icon(meta.icon, color: meta.color, size: 12),
             ),
             const SizedBox(width: 8),
             Expanded(
@@ -1697,7 +1674,7 @@ class _EventTile extends StatelessWidget {
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: colorScheme.onSurface,
-                    fontSize: 11,
+                      fontSize: 11,
                     ),
                   ),
                   if (_eventSummary(ev).isNotEmpty)
@@ -1811,10 +1788,7 @@ class _LoadingIndicator extends StatelessWidget {
     return SizedBox(
       width: 48,
       height: 48,
-      child: CircularProgressIndicator(
-        strokeWidth: 3,
-        color: color,
-      ),
+      child: CircularProgressIndicator(strokeWidth: 3, color: color),
     );
   }
 }
@@ -1827,17 +1801,17 @@ class _ErrorSnackBar extends SnackBar {
   final String message;
 
   _ErrorSnackBar({required this.message})
-      : super(
-          content: Row(
-            children: const [
-              Icon(Icons.error_outline_rounded, color: Colors.white),
-              SizedBox(width: 12),
-              Expanded(child: Text('操作失败，请稍后重试')),
-            ],
-          ),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        );
+    : super(
+        content: Row(
+          children: const [
+            Icon(Icons.error_outline_rounded, color: Colors.white),
+            SizedBox(width: 12),
+            Expanded(child: Text('操作失败，请稍后重试')),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      );
 }
 
 // =============================================================================
@@ -1877,17 +1851,35 @@ class _Catalog {
 _StatusInfo _getStatusInfo(String status) {
   switch (status) {
     case 'pending_payment':
-      return const _StatusInfo('待支付', Icons.schedule_rounded, Color(0xFFEF6C00));
+      return const _StatusInfo(
+        '待支付',
+        Icons.schedule_rounded,
+        Color(0xFFEF6C00),
+      );
     case 'pending_review':
       return const _StatusInfo(
-          '待审核', Icons.hourglass_top_rounded, Color(0xFFEF6C00));
+        '待审核',
+        Icons.hourglass_top_rounded,
+        Color(0xFFEF6C00),
+      );
     case 'approved':
-      return const _StatusInfo('已通过', Icons.check_circle_rounded, Color(0xFF00A68C));
+      return const _StatusInfo(
+        '已通过',
+        Icons.check_circle_rounded,
+        Color(0xFF00A68C),
+      );
     case 'provisioning':
       return const _StatusInfo(
-          '开通中', Icons.rocket_launch_rounded, Color(0xFF1E88E5));
+        '开通中',
+        Icons.rocket_launch_rounded,
+        Color(0xFF1E88E5),
+      );
     case 'active':
-      return const _StatusInfo('已完成', Icons.verified_rounded, Color(0xFF00A68C));
+      return const _StatusInfo(
+        '已完成',
+        Icons.verified_rounded,
+        Color(0xFF00A68C),
+      );
     case 'failed':
       return const _StatusInfo('失败', Icons.error_rounded, Color(0xFFD32F2F));
     case 'rejected':
@@ -2094,7 +2086,8 @@ String _specSummary(
     final targetMem = _numVal(parsed, ['target_mem_gb', 'targetMemGB']);
     final targetDisk = _numVal(parsed, ['target_disk_gb', 'targetDiskGB']);
     final targetBw = _numVal(parsed, ['target_bw_mbps', 'targetBwMbps']);
-    final hasResizeSpec = currentCpu > 0 ||
+    final hasResizeSpec =
+        currentCpu > 0 ||
         currentMem > 0 ||
         currentDisk > 0 ||
         currentBw > 0 ||
@@ -2116,10 +2109,16 @@ String _specSummary(
   final addMem = _asInt(parsed['add_mem_gb'] ?? parsed['AddMemGB']);
   final addDisk = _asInt(parsed['add_disk_gb'] ?? parsed['AddDiskGB']);
   final addBw = _asInt(parsed['add_bw_mbps'] ?? parsed['AddBWMbps']);
-  int cpu = _asInt(parsed['cpu'] ?? parsed['cores'] ?? parsed['CPU'] ?? parsed['Cores']);
-  int mem = _asInt(parsed['memory_gb'] ?? parsed['memory'] ?? parsed['MemoryGB']);
+  int cpu = _asInt(
+    parsed['cpu'] ?? parsed['cores'] ?? parsed['CPU'] ?? parsed['Cores'],
+  );
+  int mem = _asInt(
+    parsed['memory_gb'] ?? parsed['memory'] ?? parsed['MemoryGB'],
+  );
   int disk = _asInt(parsed['disk_gb'] ?? parsed['disk'] ?? parsed['DiskGB']);
-  int bw = _asInt(parsed['bandwidth_mbps'] ?? parsed['bandwidth'] ?? parsed['BandwidthMB']);
+  int bw = _asInt(
+    parsed['bandwidth_mbps'] ?? parsed['bandwidth'] ?? parsed['BandwidthMB'],
+  );
   final baseCpu = _asInt(pkg?['cores']);
   final baseMem = _asInt(pkg?['memory_gb']);
   final baseDisk = _asInt(pkg?['disk_gb']);
@@ -2133,7 +2132,12 @@ String _specSummary(
   final cycleQty = parsed['cycle_qty'] ?? parsed['CycleQty'];
   final hasAny = cpu > 0 || mem > 0 || disk > 0 || bw > 0;
   final parts = <String>[];
-  parts.add(hasAny ? '$cpu''C ${mem}G ${disk}G ${bw}M' : '默认规格');
+  parts.add(
+    hasAny
+        ? '$cpu'
+              'C ${mem}G ${disk}G ${bw}M'
+        : '默认规格',
+  );
   if (duration != null) parts.add('时长 $duration 个月');
   if (billing != null) parts.add('计费ID $billing');
   if (cycleQty != null) parts.add('周期 $cycleQty');
@@ -2152,13 +2156,18 @@ List<String> _specDetail(dynamic spec, Map<String, dynamic>? item) {
   final targetMem = _numVal(parsed, ['target_mem_gb', 'targetMemGB']);
   final targetDisk = _numVal(parsed, ['target_disk_gb', 'targetDiskGB']);
   final targetBw = _numVal(parsed, ['target_bw_mbps', 'targetBwMbps']);
-  final currentPkg = _asInt(parsed['current_package_id'] ?? parsed['currentPackageID']);
-  final targetPkg = _asInt(parsed['target_package_id'] ?? parsed['targetPackageID']);
+  final currentPkg = _asInt(
+    parsed['current_package_id'] ?? parsed['currentPackageID'],
+  );
+  final targetPkg = _asInt(
+    parsed['target_package_id'] ?? parsed['targetPackageID'],
+  );
   final currentMonthly = _numVal(parsed, ['current_monthly', 'currentMonthly']);
   final targetMonthly = _numVal(parsed, ['target_monthly', 'targetMonthly']);
   final chargeAmount = _numVal(parsed, ['charge_amount', 'chargeAmount']);
   final refundAmount = _numVal(parsed, ['refund_amount', 'refundAmount']);
-  final refundToWallet = (parsed['refund_to_wallet'] ?? parsed['refundToWallet']) == true;
+  final refundToWallet =
+      (parsed['refund_to_wallet'] ?? parsed['refundToWallet']) == true;
 
   final lines = <String>[
     '原配置：CPU ${_numText(currentCpu)}核 / 内存 ${_numText(currentMem)}G / 磁盘 ${_numText(currentDisk)}G / 带宽 ${_numText(currentBw)}M${currentPkg > 0 ? ' / 套餐ID $currentPkg' : ''}',
@@ -2171,12 +2180,16 @@ List<String> _specDetail(dynamic spec, Map<String, dynamic>? item) {
   _pushDelta(changes, '磁盘', currentDisk, targetDisk, 'G');
   _pushDelta(changes, '带宽', currentBw, targetBw, 'M');
   if (currentMonthly > 0 || targetMonthly > 0) {
-    changes.add('月费 ${_fmtMoney(currentMonthly)} -> ${_fmtMoney(targetMonthly)}');
+    changes.add(
+      '月费 ${_fmtMoney(currentMonthly)} -> ${_fmtMoney(targetMonthly)}',
+    );
   }
   if (chargeAmount > 0) {
     changes.add('补差价 ${_fmtMoney(chargeAmount)}');
   } else if (refundAmount > 0) {
-    changes.add('退款 ${_fmtMoney(refundAmount)}${refundToWallet ? '（退回钱包）' : ''}');
+    changes.add(
+      '退款 ${_fmtMoney(refundAmount)}${refundToWallet ? '（退回钱包）' : ''}',
+    );
   }
   lines.add('变动说明：${changes.isEmpty ? '无配置变化' : changes.join('，')}');
   return lines;
@@ -2198,9 +2211,14 @@ Map<String, dynamic>? _parseSpecMap(dynamic spec) {
 }
 
 bool _isResizeAction(Map<String, dynamic>? item, Map<String, dynamic> payload) {
-  final raw = (item?['action'] ?? item?['Action'] ?? payload['action'] ?? payload['Action'] ?? '')
-      .toString()
-      .toLowerCase();
+  final raw =
+      (item?['action'] ??
+              item?['Action'] ??
+              payload['action'] ??
+              payload['Action'] ??
+              '')
+          .toString()
+          .toLowerCase();
   return raw == 'resize';
 }
 
@@ -2229,7 +2247,13 @@ String _fmtPair(double from, double to) {
 
 String _fmtMoney(double value) => '¥${value.toStringAsFixed(2)}';
 
-void _pushDelta(List<String> out, String label, double from, double to, String unit) {
+void _pushDelta(
+  List<String> out,
+  String label,
+  double from,
+  double to,
+  String unit,
+) {
   final diff = to - from;
   if (diff == 0) {
     out.add('$label 无变化');
@@ -2275,6 +2299,3 @@ int _asInt(dynamic value) {
   if (value is String) return int.tryParse(value) ?? 0;
   return 0;
 }
-
-
-

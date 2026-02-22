@@ -1082,10 +1082,11 @@ const loadAutomationConfigTemplate = async () => {
       automationConfigError.value = "插件未返回有效 object schema";
       return;
     }
-    // If plugin exposes goods_type_id as plain integer, enhance to select list from local goods types.
     let properties = (schemaObj && schemaObj.properties) || {};
+    const pluginIDNorm = String(pluginID || "").trim().toLowerCase();
+    const isXiaoheiProxy = pluginIDNorm === "xiaohei_proxy" || pluginIDNorm.endsWith("/xiaohei_proxy");
     // Hard fallback: xiaohei_proxy must expose goods_type_id in UI even if plugin schema is stale.
-    if (pluginID === "xiaohei_proxy" && (!properties || !properties.goods_type_id)) {
+    if (isXiaoheiProxy && (!properties || !properties.goods_type_id)) {
       schemaObj.properties = schemaObj.properties || {};
       schemaObj.properties.goods_type_id = {
         type: "integer",
@@ -1098,29 +1099,14 @@ const loadAutomationConfigTemplate = async () => {
       schemaObj.required = req;
       properties = schemaObj.properties || {};
     }
-    if (
-      pluginID !== "xiaohei_proxy" &&
-      properties &&
-      properties.goods_type_id &&
-      !Array.isArray(properties.goods_type_id.enum) &&
-      goodsTypes.value.length > 0
-    ) {
-      const options = goodsTypes.value
-        .filter((g: any) => Number(g.id || 0) > 0)
-        .map((g: any) => ({ id: Number(g.id), label: `${g.name || g.code || g.id} (#${g.id})` }));
-      if (options.length > 0) {
-        properties.goods_type_id.enum = options.map((x: any) => x.id);
-        properties.goods_type_id.enumNames = options.map((x: any) => x.label);
-        uiObj.goods_type_id = {
-          ...(uiObj.goods_type_id || {}),
-          "ui:widget": "select"
-        };
-      }
-    }
-    if (pluginID === "xiaohei_proxy" && properties && properties.goods_type_id) {
+    if (isXiaoheiProxy && properties && properties.goods_type_id) {
       properties.goods_type_id.description = "填写上游系统的 goods_type_id（不是本地 ID）";
       properties.goods_type_id.enum = undefined;
       properties.goods_type_id.enumNames = undefined;
+      uiObj.goods_type_id = {
+        ...(uiObj.goods_type_id || {}),
+        "ui:widget": "updown"
+      };
     }
     automationConfigSchema.value = schemaObj;
     automationConfigUI.value = uiObj;

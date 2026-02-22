@@ -49,6 +49,18 @@ func TestHandlers_AdminVPSAndTickets(t *testing.T) {
 		ID int64 `json:"id"`
 	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &vpsResp)
+	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/vps", map[string]any{
+		"user_id":                user.ID,
+		"order_item_id":          orderItemID,
+		"automation_instance_id": "2",
+		"name":                   "vm-2",
+		"status":                 "running",
+		"admin_status":           "normal",
+		"expire_at":              nil,
+	}, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin vps create with null expire_at: %d", rec.Code)
+	}
 
 	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/admin/api/v1/vps", nil, token)
 	if rec.Code != http.StatusOK {

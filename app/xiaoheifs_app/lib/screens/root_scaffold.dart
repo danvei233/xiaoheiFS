@@ -63,7 +63,8 @@ class _RootScaffoldState extends State<RootScaffold> {
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
   }
 
@@ -74,10 +75,10 @@ class _RootScaffoldState extends State<RootScaffold> {
 
   Future<void> _registerToken(ApiClient client, String token) async {
     try {
-      await client.postJson('/admin/api/v1/push-tokens', body: {
-        'token': token,
-        'platform': 'android',
-      });
+      await client.postJson(
+        '/admin/api/v1/push-tokens',
+        body: {'token': token, 'platform': 'android'},
+      );
     } catch (_) {}
   }
 
@@ -142,37 +143,63 @@ class _RootScaffoldState extends State<RootScaffold> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 由各页面自行提供顶栏，底栏切换时不使用外层 AppBar
       body: IndexedStack(
         index: _index,
         children: _tabs.map((tab) => tab.widget).toList(),
       ),
       bottomNavigationBar: NavigationBarTheme(
-        data: const NavigationBarThemeData(
-          height: 48,
-          labelTextStyle: WidgetStatePropertyAll(
-            TextStyle(fontSize: 10, height: 1.0),
+        data: NavigationBarThemeData(
+          height: 72,
+          backgroundColor: Colors.white,
+          indicatorColor: Theme.of(
+            context,
+          ).colorScheme.primaryContainer.withOpacity(0.7),
+          labelTextStyle: const WidgetStatePropertyAll(
+            TextStyle(fontSize: 12, height: 1.1, fontWeight: FontWeight.w600),
           ),
-          iconTheme: WidgetStatePropertyAll(
-            IconThemeData(size: 18),
-          ),
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return IconThemeData(
+                size: 24,
+                color: Theme.of(context).colorScheme.primary,
+              );
+            }
+            return IconThemeData(
+              size: 22,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            );
+          }),
         ),
-        child: NavigationBar(
-          selectedIndex: _index,
-          labelBehavior: NavigationDestinationLabelBehavior.alwaysHide,
-          onDestinationSelected: (value) {
-            setState(() {
-              _index = value;
-            });
-          },
-          destinations: _tabs
-              .map(
-                (tab) => NavigationDestination(
-                  icon: Icon(tab.icon),
-                  label: tab.title,
+        child: SafeArea(
+          top: false,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x220F172A),
+                  blurRadius: 18,
+                  offset: Offset(0, 6),
                 ),
-              )
-              .toList(),
+              ],
+            ),
+            child: NavigationBar(
+              selectedIndex: _index,
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              onDestinationSelected: (value) => setState(() => _index = value),
+              destinations: _tabs
+                  .map(
+                    (tab) => NavigationDestination(
+                      icon: Icon(tab.icon),
+                      label: tab.title,
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
         ),
       ),
     );

@@ -12,6 +12,7 @@ class PaymentProvidersScreen extends StatefulWidget {
 
 class _PaymentProvidersScreenState extends State<PaymentProvidersScreen> {
   Future<List<PaymentProviderItem>>? _future;
+  bool _busy = false;
 
   @override
   void didChangeDependencies() {
@@ -40,7 +41,9 @@ class _PaymentProvidersScreenState extends State<PaymentProvidersScreen> {
       future: _future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (snapshot.hasError) {
           return Scaffold(
@@ -56,32 +59,155 @@ class _PaymentProvidersScreenState extends State<PaymentProvidersScreen> {
               IconButton(onPressed: _refresh, icon: const Icon(Icons.refresh)),
             ],
           ),
-          body: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: items.isEmpty ? 1 : items.length,
-            itemBuilder: (context, index) {
-              if (items.isEmpty) return const Center(child: Text('暂无渠道'));
-              final item = items[index];
-              return Card(
-                child: ListTile(
-                  title: Text(item.name),
-                  subtitle: Text(item.key),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.settings),
-                        onPressed: () => _editConfig(item),
+          body: Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: () async => _refresh(),
+                child: ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  itemCount: items.isEmpty ? 2 : items.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == 0) {
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(
+                              Icons.account_balance_wallet_outlined,
+                              color: Colors.white,
+                            ),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '在这里统一管理支付渠道状态与配置 JSON',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    if (items.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.only(top: 40),
+                        child: Center(child: Text('暂无渠道')),
+                      );
+                    }
+                    final item = items[index - 1];
+                    final statusColor = item.enabled
+                        ? const Color(0xFF00A68C)
+                        : const Color(0xFF546E7A);
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
-                      Switch(
-                        value: item.enabled,
-                        onChanged: (v) => _toggle(item, v),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  Icons.payments_outlined,
+                                  color: statusColor,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      item.key,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: statusColor.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  item.enabled ? '已启用' : '已停用',
+                                  style: TextStyle(
+                                    color: statusColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: () => _editConfig(item),
+                                icon: const Icon(Icons.settings, size: 16),
+                                label: const Text('配置'),
+                              ),
+                              Switch(
+                                value: item.enabled,
+                                onChanged: _busy
+                                    ? null
+                                    : (v) => _toggle(item, v),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+              if (_busy)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+            ],
           ),
         );
       },
@@ -91,11 +217,16 @@ class _PaymentProvidersScreenState extends State<PaymentProvidersScreen> {
   Future<void> _toggle(PaymentProviderItem item, bool enabled) async {
     final client = context.read<AppState>().apiClient;
     if (client == null) return;
-    await client.patchJson(
-      '/admin/api/v1/payments/providers/${item.key}',
-      body: {'enabled': enabled, 'config_json': item.configJson ?? ''},
-    );
-    _refresh();
+    setState(() => _busy = true);
+    try {
+      await client.patchJson(
+        '/admin/api/v1/payments/providers/${item.key}',
+        body: {'enabled': enabled, 'config_json': item.configJson ?? ''},
+      );
+      _refresh();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _editConfig(PaymentProviderItem item) async {
@@ -123,8 +254,14 @@ class _PaymentProvidersScreenState extends State<PaymentProvidersScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
