@@ -40,7 +40,7 @@ type userTierAutoRuleRow struct {
 	ID             int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	GroupID        int64     `gorm:"column:group_id;not null;index"`
 	DurationDays   int       `gorm:"column:duration_days;not null;default:-1"`
-	ConditionsJSON string    `gorm:"type:text;column:conditions_json;not null;default:[]"`
+	ConditionsJSON string    `gorm:"type:text;column:conditions_json;not null"`
 	SortOrder      int       `gorm:"column:sort_order;not null;default:0"`
 	CreatedAt      time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt      time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
