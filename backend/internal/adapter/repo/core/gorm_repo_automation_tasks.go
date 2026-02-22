@@ -100,16 +100,25 @@ func (r *GormRepo) ListDueProvisionJobs(ctx context.Context, limit int) ([]domai
 	if limit <= 0 {
 		limit = 20
 	}
+	now := time.Now()
+	fetchLimit := limit * 5
+	if fetchLimit < 50 {
+		fetchLimit = 50
+	}
+
 	var rows []provisionJobRow
 	if err := r.gdb.WithContext(ctx).
-		Where("status IN ? AND next_run_at <= ?", []string{"pending", "retry", "running"}, time.Now()).
+		Where("status IN ?", []string{"pending", "retry", "running"}).
 		Order("id ASC").
-		Limit(limit).
+		Limit(fetchLimit).
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	out := make([]domain.ProvisionJob, 0, len(rows))
+	out := make([]domain.ProvisionJob, 0, limit)
 	for _, row := range rows {
+		if row.NextRunAt.After(now) {
+			continue
+		}
 		out = append(out, domain.ProvisionJob{
 			ID:          row.ID,
 			OrderID:     row.OrderID,
@@ -123,6 +132,9 @@ func (r *GormRepo) ListDueProvisionJobs(ctx context.Context, limit int) ([]domai
 			CreatedAt:   row.CreatedAt,
 			UpdatedAt:   row.UpdatedAt,
 		})
+		if len(out) >= limit {
+			break
+		}
 	}
 	return out, nil
 }

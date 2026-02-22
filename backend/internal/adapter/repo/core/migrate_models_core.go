@@ -118,7 +118,7 @@ type packageRow struct {
 	GoodsTypeID          int64     `gorm:"column:goods_type_id;not null;default:0;index;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
 	PlanGroupID          int64     `gorm:"column:plan_group_id;not null;index;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
 	ProductID            int64     `gorm:"column:product_id;not null;default:0;uniqueIndex:idx_packages_gt_product_unique,where:product_id > 0"`
-	IntegrationPackageID int64     `gorm:"column:integration_package_id;not null;default:0;index:idx_packages_gt_integration_unique"`
+	IntegrationPackageID int64     `gorm:"column:integration_package_id;not null;default:0;index:idx_packages_integration"`
 	Name                 string    `gorm:"column:name;not null"`
 	Cores                int       `gorm:"column:cores;not null"`
 	MemoryGB             int       `gorm:"column:memory_gb;not null"`
