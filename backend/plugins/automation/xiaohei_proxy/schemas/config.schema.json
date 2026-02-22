@@ -1,0 +1,48 @@
+{
+  "title": "Xiaohei Proxy Automation",
+  "type": "object",
+  "properties": {
+    "base_url": {
+      "type": "string",
+      "title": "Base URL",
+      "description": "e.g. https://upstream.example.com"
+    },
+    "open_akid": { "type": "string", "title": "Open AKID" },
+    "open_secret": { "type": "string", "title": "Open Secret", "format": "password" },
+    "admin_api_key": {
+      "type": "string",
+      "title": "Admin API Key",
+      "format": "password",
+      "description": "for catalog sync and admin lifecycle actions"
+    },
+    "price_rate": {
+      "type": "number",
+      "title": "Price Rate",
+      "default": 1.0,
+      "minimum": 0.1,
+      "maximum": 10.0
+    },
+    "goods_type_id": {
+      "type": "integer",
+      "title": "Upstream Goods Type ID",
+      "default": 0,
+      "minimum": 0
+    },
+    "timeout_sec": {
+      "type": "integer",
+      "title": "Timeout (sec)",
+      "default": 12,
+      "minimum": 1,
+      "maximum": 60
+    },
+    "retry": {
+      "type": "integer",
+      "title": "Retry",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 5
+    },
+    "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+  },
+  "required": ["base_url", "open_akid", "open_secret"]
+}

@@ -1,0 +1,24 @@
+{
+  "plugin_id": "xiaohei_proxy",
+  "name": "Xiaohei Proxy Automation (Built-in)",
+  "version": "0.1.0",
+  "description": "Built-in proxy automation plugin for another Xiaohei node via open API + admin API.",
+  "binaries": {
+    "windows_amd64": "bin/windows_amd64/plugin.exe",
+    "linux_amd64": "bin/linux_amd64/plugin",
+    "darwin_amd64": "bin/darwin_amd64/plugin",
+    "darwin_arm64": "bin/darwin_arm64/plugin"
+  },
+  "capabilities": {
+    "automation": {
+      "features": [
+        "catalog_sync",
+        "lifecycle",
+        "port_mapping",
+        "backup",
+        "snapshot",
+        "firewall"
+      ]
+    }
+  }
+}

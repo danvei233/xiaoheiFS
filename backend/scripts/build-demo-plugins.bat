@@ -23,6 +23,7 @@ call :build_one "plugins\\kyc\\aliyun_kyc\\bin\\windows_amd64" "./plugin-demo/pl
 call :build_one "plugins\\kyc\\tencent_kyc\\bin\\windows_amd64" "./plugin-demo/pluginv1/kyc_tencent_mock"
 call :build_one "plugins\\kyc\\mangzhu_realname\\bin\\windows_amd64" "./plugin-demo/pluginv1/kyc_mangzhu_realname"
 call :build_one "plugins\\automation\\lightboat\\bin\\windows_amd64" "./plugin-demo/pluginv1/automation_lightboat"
+call :build_one "plugins\\automation\\xiaohei_proxy\\bin\\windows_amd64" "./plugin-demo/pluginv1/automation_xiaohei_proxy"
 
 set GOOS=%ORIG_GOOS%
 set GOARCH=%ORIG_GOARCH%
