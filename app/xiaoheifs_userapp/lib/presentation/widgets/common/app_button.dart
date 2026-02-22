@@ -71,17 +71,14 @@ class AppButton extends StatelessWidget {
         height: 24,
         child: CircularProgressIndicator(
           strokeWidth: 2,
+          backgroundColor: color.withValues(alpha: 0.26),
           valueColor: AlwaysStoppedAnimation<Color>(color),
         ),
       );
     }
     return Text(
       text,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: color,
-      ),
+      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: color),
     );
   }
 }

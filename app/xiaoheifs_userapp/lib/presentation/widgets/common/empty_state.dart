@@ -1,5 +1,4 @@
-﻿import 'package:flutter/material.dart';
-import '../../../core/constants/app_colors.dart';
+import 'package:flutter/material.dart';
 
 /// 空状态组件
 class EmptyState extends StatelessWidget {
@@ -18,6 +17,9 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isLight = colorScheme.brightness == Brightness.light;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -28,23 +30,40 @@ class EmptyState extends StatelessWidget {
               width: 92,
               height: 92,
               decoration: BoxDecoration(
-                color: AppColors.darkSurface.withOpacity(0.35),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    colorScheme.surfaceContainerHighest.withValues(
+                      alpha: isLight ? 0.72 : 0.52,
+                    ),
+                    colorScheme.surfaceContainerHigh.withValues(
+                      alpha: isLight ? 0.92 : 0.62,
+                    ),
+                  ],
+                ),
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppColors.gray700.withOpacity(0.4)),
+                border: Border.all(
+                  color: colorScheme.outlineVariant.withValues(
+                    alpha: isLight ? 0.42 : 0.32,
+                  ),
+                ),
               ),
               child: Icon(
                 icon,
                 size: 42,
-                color: AppColors.gray300,
+                color: colorScheme.primary.withValues(
+                  alpha: isLight ? 0.84 : 0.9,
+                ),
               ),
             ),
             const SizedBox(height: 16),
             Text(
               message,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
-                color: AppColors.gray500,
+                color: colorScheme.onSurfaceVariant,
               ),
               textAlign: TextAlign.center,
             ),
@@ -54,7 +73,10 @@ class EmptyState extends StatelessWidget {
                 onPressed: onAction,
                 style: ElevatedButton.styleFrom(
                   shape: const StadiumBorder(),
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
                 ),
                 child: Text(actionLabel!),
               ),

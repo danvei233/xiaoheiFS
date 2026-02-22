@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -53,7 +53,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       ref.read(catalogProvider.notifier).fetchCatalog();
       await _loadProviders();
     });
-    _detailSub = ref.listenManual<OrderDetailState>(orderDetailProvider, (prev, next) {
+    _detailSub = ref.listenManual<OrderDetailState>(orderDetailProvider, (
+      prev,
+      next,
+    ) {
       final isProv = _isProvisioning(next);
       if (isProv) {
         _startPolling();
@@ -75,12 +78,15 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
 
   Future<void> _loadProviders() async {
     try {
-      final res = await ref.read(orderRepositoryProvider).listPaymentProviders();
+      final res = await ref
+          .read(orderRepositoryProvider)
+          .listPaymentProviders();
       final items = res['items'];
       if (items is List) {
         setState(() {
-          _paymentProviders =
-              items.map((e) => e is Map<String, dynamic> ? e : <String, dynamic>{}).toList();
+          _paymentProviders = items
+              .map((e) => e is Map<String, dynamic> ? e : <String, dynamic>{})
+              .toList();
         });
       }
     } catch (_) {}
@@ -89,7 +95,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   Map<String, dynamic>? _findProvider(String? key) {
     if (key == null) return null;
     for (final provider in _paymentProviders) {
-      final providerKey = provider['key']?.toString() ?? provider['code']?.toString();
+      final providerKey =
+          provider['key']?.toString() ?? provider['code']?.toString();
       if (providerKey == key) return provider;
     }
     return null;
@@ -106,22 +113,26 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         return (parsed['fields'] as List).cast<Map<String, dynamic>>();
       }
       if (parsed is Map) {
-        final props = parsed['properties'] is Map ? parsed['properties'] as Map : {};
-        final required = parsed['required'] is List ? Set.from(parsed['required']) : <dynamic>{};
+        final props = parsed['properties'] is Map
+            ? parsed['properties'] as Map
+            : {};
+        final required = parsed['required'] is List
+            ? Set.from(parsed['required'])
+            : <dynamic>{};
         return props.keys.map<Map<String, dynamic>>((key) {
           final prop = props[key] is Map ? props[key] as Map : {};
           final enumValues = prop['enum'] is List ? prop['enum'] as List : null;
           final type = enumValues != null
               ? 'select'
               : prop['format'] == 'password'
-                  ? 'password'
-                  : prop['format'] == 'textarea'
-                      ? 'textarea'
-                      : prop['type'] == 'number' || prop['type'] == 'integer'
-                          ? 'number'
-                          : prop['type'] == 'boolean'
-                              ? 'boolean'
-                              : 'text';
+              ? 'password'
+              : prop['format'] == 'textarea'
+              ? 'textarea'
+              : prop['type'] == 'number' || prop['type'] == 'integer'
+              ? 'number'
+              : prop['type'] == 'boolean'
+              ? 'boolean'
+              : 'text';
           return {
             'key': key,
             'label': prop['title'] ?? prop['label'] ?? key,
@@ -130,7 +141,11 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             'placeholder': prop['description'] ?? prop['placeholder'] ?? '',
             'default': prop['default'],
             'options': enumValues != null
-                ? enumValues.map((value) => {'label': value.toString(), 'value': value}).toList()
+                ? enumValues
+                      .map(
+                        (value) => {'label': value.toString(), 'value': value},
+                      )
+                      .toList()
                 : <Map<String, dynamic>>[],
           };
         }).toList();
@@ -145,7 +160,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     try {
       final parsed = jsonDecode(configJson);
       if (parsed is Map) {
-        return parsed['instructions']?.toString() ?? parsed['notice']?.toString() ?? '';
+        return parsed['instructions']?.toString() ??
+            parsed['notice']?.toString() ??
+            '';
       }
     } catch (_) {}
     return '';
@@ -159,8 +176,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       body: state.loading
           ? const Center(child: CircularProgressIndicator())
           : state.error != null
-              ? Center(child: Text(state.error!))
-              : _buildContent(context, state),
+          ? Center(child: Text(state.error!))
+          : _buildContent(context, state),
     );
   }
 
@@ -170,7 +187,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     final orderNo = order['order_no'] ?? order['OrderNo'] ?? '';
     final total = order['total_amount'] ?? order['TotalAmount'] ?? 0;
     final createdAt = order['created_at'] ?? order['CreatedAt'] ?? '';
-    final totalValue = total is num ? total.toDouble() : double.tryParse(total.toString()) ?? 0;
+    final totalValue = total is num
+        ? total.toDouble()
+        : double.tryParse(total.toString()) ?? 0;
     final amountColor = totalValue < 0 ? AppColors.success : AppColors.primary;
     final packages = ref.watch(catalogProvider).packages;
     final stepIndex = _orderStepIndex(status);
@@ -223,12 +242,16 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     required String createdAt,
     required Color amountColor,
   }) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.darkSurface.withOpacity(0.5),
+        color: cs.surfaceContainerHigh.withValues(alpha: isLight ? 0.9 : 0.5),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.gray700.withOpacity(0.3)),
+        border: Border.all(
+          color: cs.outlineVariant.withValues(alpha: isLight ? 0.38 : 0.3),
+        ),
       ),
       child: Row(
         children: [
@@ -239,7 +262,13 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             onValueTap: orderNo.isEmpty ? null : () => _copyOrderNo(orderNo),
           ),
           _divider(),
-          _statItem(Icons.payments, '订单金额', total, valueColor: amountColor, valueSize: 18),
+          _statItem(
+            Icons.payments,
+            '订单金额',
+            total,
+            valueColor: amountColor,
+            valueSize: 18,
+          ),
           _divider(),
           _statItem(Icons.schedule, '创建时间', createdAt),
         ],
@@ -255,16 +284,23 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     double valueSize = 14,
     VoidCallback? onValueTap,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return Expanded(
       child: Row(
         children: [
-          Icon(icon, size: 18, color: AppColors.gray500),
+          Icon(icon, size: 18, color: cs.onSurfaceVariant),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 12, color: AppColors.gray500)),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: cs.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 GestureDetector(
                   onTap: onValueTap,
@@ -277,14 +313,18 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                           style: TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: valueSize,
-                            color: valueColor ?? AppColors.gray100,
+                            color: valueColor ?? cs.onSurface,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       if (onValueTap != null) ...[
                         const SizedBox(width: 4),
-                        const Icon(Icons.copy, size: 14, color: AppColors.gray500),
+                        Icon(
+                          Icons.copy,
+                          size: 14,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ],
                     ],
                   ),
@@ -300,29 +340,26 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   Future<void> _copyOrderNo(String orderNo) async {
     await Clipboard.setData(ClipboardData(text: orderNo));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('订单号已复制')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('订单号已复制')));
   }
 
   Widget _divider() {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     return Container(
       width: 1,
       height: 36,
       margin: const EdgeInsets.symmetric(horizontal: 12),
-      color: AppColors.gray700.withOpacity(0.4),
+      color: cs.outlineVariant.withValues(alpha: isLight ? 0.52 : 0.38),
     );
   }
 
   Widget _buildProgressSection(int stepIndex) {
-    final steps = const [
-      '草稿',
-      '待支付',
-      '待审核',
-      '已通过',
-      '开通中',
-      '已生效',
-    ];
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    final steps = const ['草稿', '待支付', '待审核', '已通过', '开通中', '已生效'];
     final current = stepIndex.clamp(0, steps.length - 1);
     return Card(
       child: Padding(
@@ -332,18 +369,29 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
           children: [
             Row(
               children: [
-                const Text('订单进度', style: TextStyle(fontWeight: FontWeight.w700)),
+                const Text(
+                  '订单进度',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.15),
+                    color: cs.primary.withValues(alpha: isLight ? 0.14 : 0.2),
                     borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: cs.primary.withValues(
+                        alpha: isLight ? 0.28 : 0.34,
+                      ),
+                    ),
                   ),
                   child: Text(
                     '当前：${steps[current]}',
-                    style: const TextStyle(
-                      color: AppColors.primary,
+                    style: TextStyle(
+                      color: cs.primary,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -361,7 +409,11 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     child: Container(
                       height: 2,
                       margin: const EdgeInsets.only(bottom: 18),
-                      color: done ? AppColors.success : AppColors.gray700,
+                      color: done
+                          ? AppColors.success
+                          : cs.outlineVariant.withValues(
+                              alpha: isLight ? 0.58 : 0.4,
+                            ),
                     ),
                   );
                 }
@@ -390,21 +442,23 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     required bool isDone,
     required bool isCurrent,
   }) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     final bg = isDone
         ? AppColors.success
         : isCurrent
-            ? AppColors.primary
-            : AppColors.darkSurface.withOpacity(0.8);
+        ? AppColors.primary
+        : cs.surfaceContainerHighest.withValues(alpha: isLight ? 0.95 : 0.68);
     final border = isDone
         ? AppColors.success
         : isCurrent
-            ? AppColors.primary
-            : AppColors.gray700;
+        ? AppColors.primary
+        : cs.outlineVariant.withValues(alpha: isLight ? 0.5 : 0.35);
     final labelColor = isDone
         ? AppColors.success
         : isCurrent
-            ? AppColors.primary
-            : AppColors.gray500;
+        ? AppColors.primary
+        : cs.onSurfaceVariant;
     return Column(
       children: [
         Container(
@@ -423,7 +477,7 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: isCurrent ? Colors.white : AppColors.gray400,
+                    color: isCurrent ? Colors.white : cs.onSurfaceVariant,
                   ),
                 ),
         ),
@@ -440,14 +494,14 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     );
   }
 
-
   Widget _buildActions(BuildContext context, String status, dynamic total) {
     return Wrap(
       spacing: 12,
       runSpacing: 8,
       children: [
         ElevatedButton.icon(
-          onPressed: () => ref.read(orderDetailProvider.notifier).refresh(widget.id),
+          onPressed: () =>
+              ref.read(orderDetailProvider.notifier).refresh(widget.id),
           icon: const Icon(Icons.refresh),
           label: const Text(AppStrings.refresh),
         ),
@@ -459,7 +513,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
           label: const Text(AppStrings.cancelOrder),
         ),
         ElevatedButton.icon(
-          onPressed: status == 'pending_payment' ? () => _openPayDialog(context, total) : null,
+          onPressed: status == 'pending_payment'
+              ? () => _openPayDialog(context, total)
+              : null,
           icon: const Icon(Icons.payments),
           label: const Text(AppStrings.payNow),
         ),
@@ -467,7 +523,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     );
   }
 
-  Widget _buildItems(List<Map<String, dynamic>> items, List<Map<String, dynamic>> packages) {
+  Widget _buildItems(
+    List<Map<String, dynamic>> items,
+    List<Map<String, dynamic>> packages,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -478,15 +537,24 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               children: [
                 const Icon(Icons.list_alt, size: 18, color: AppColors.primary),
                 const SizedBox(width: 6),
-                const Text('商品详情', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  '商品详情',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const Spacer(),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text('${items.length} 个商品', style: const TextStyle(fontSize: 12)),
+                  child: Text(
+                    '${items.length} 个商品',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
               ],
             ),
@@ -495,29 +563,47 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               const Text('暂无订单项')
             else
               ...items.map((item) {
-                final name = item['name'] ?? item['Name'] ?? item['product_name'] ?? '商品';
+                final name =
+                    item['name'] ??
+                    item['Name'] ??
+                    item['product_name'] ??
+                    '商品';
                 final amount = item['amount'] ?? item['price'] ?? 0;
                 final qty = item['qty'] ?? item['quantity'] ?? 1;
                 final status = item['status'] ?? item['Status'] ?? '';
                 final specText = _formatSpec(item, packages);
                 return ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-                  title: Text('$name', style: const TextStyle(fontWeight: FontWeight.w600)),
+                  contentPadding: const EdgeInsets.symmetric(
+                    vertical: 6,
+                    horizontal: 8,
+                  ),
+                  title: Text(
+                    '$name',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 4),
-                      Text(specText, style: const TextStyle(color: AppColors.gray500)),
+                      Text(
+                        specText,
+                        style: const TextStyle(color: AppColors.gray500),
+                      ),
                       const SizedBox(height: 4),
-                      Text('数量: $qty', style: const TextStyle(color: AppColors.gray500)),
+                      Text(
+                        '数量: $qty',
+                        style: const TextStyle(color: AppColors.gray500),
+                      ),
                     ],
                   ),
                   trailing: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(MoneyFormatter.format(amount),
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      Text(
+                        MoneyFormatter.format(amount),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
                       const SizedBox(height: 6),
                       StatusTag.order(status.toString()),
                     ],
@@ -580,10 +666,14 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     _pollingTimer = null;
   }
 
-  Future<void> _tryAutoNavigate(OrderDetailState? prev, OrderDetailState next) async {
+  Future<void> _tryAutoNavigate(
+    OrderDetailState? prev,
+    OrderDetailState next,
+  ) async {
     final prevStatus = prev?.order?['status'] ?? prev?.order?['Status'];
     final nextStatus = next.order?['status'] ?? next.order?['Status'];
-    if (prevStatus?.toString() != 'provisioning' || nextStatus?.toString() != 'active') {
+    if (prevStatus?.toString() != 'provisioning' ||
+        nextStatus?.toString() != 'active') {
       return;
     }
     if (next.items.length != 1) return;
@@ -618,7 +708,10 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     return idx < 0 ? 0 : idx;
   }
 
-  Map<String, dynamic>? _findPackage(List<Map<String, dynamic>> packages, dynamic packageId) {
+  Map<String, dynamic>? _findPackage(
+    List<Map<String, dynamic>> packages,
+    dynamic packageId,
+  ) {
     if (packageId == null) return null;
     final pid = packageId.toString();
     for (final pkg in packages) {
@@ -627,12 +720,17 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     return null;
   }
 
-  String _formatSpec(Map<String, dynamic> item, List<Map<String, dynamic>> packages) {
+  String _formatSpec(
+    Map<String, dynamic> item,
+    List<Map<String, dynamic>> packages,
+  ) {
     final rawSpec = item['spec'] ?? item['Spec'];
     Map<String, dynamic> specMap = {};
     if (rawSpec is String) {
       try {
-        specMap = jsonDecode(rawSpec) is Map ? Map<String, dynamic>.from(jsonDecode(rawSpec)) : {};
+        specMap = jsonDecode(rawSpec) is Map
+            ? Map<String, dynamic>.from(jsonDecode(rawSpec))
+            : {};
       } catch (_) {}
     } else if (rawSpec is Map) {
       specMap = rawSpec.cast<String, dynamic>();
@@ -641,7 +739,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     final packageId = item['package_id'] ?? item['PackageID'];
     final pkg = _findPackage(packages, packageId);
     final baseCores = int.tryParse('${pkg?['cores'] ?? pkg?['cpu'] ?? 0}') ?? 0;
-    final baseMem = int.tryParse('${pkg?['memory_gb'] ?? pkg?['mem_gb'] ?? 0}') ?? 0;
+    final baseMem =
+        int.tryParse('${pkg?['memory_gb'] ?? pkg?['mem_gb'] ?? 0}') ?? 0;
     final baseDisk = int.tryParse('${pkg?['disk_gb'] ?? 0}') ?? 0;
     final baseBw = int.tryParse('${pkg?['bandwidth_mbps'] ?? 0}') ?? 0;
 
@@ -656,7 +755,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     final totalBw = baseBw + addBw;
 
     final duration =
-        specMap['duration_months'] ?? item['duration_months'] ?? item['DurationMonths'];
+        specMap['duration_months'] ??
+        item['duration_months'] ??
+        item['DurationMonths'];
 
     final parts = <String>[];
     if (totalCores > 0 || totalMem > 0 || totalDisk > 0 || totalBw > 0) {
@@ -675,12 +776,16 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     try {
       await ref.read(orderRepositoryProvider).cancelOrder(widget.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('订单已取消')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('订单已取消')));
         await ref.read(orderDetailProvider.notifier).fetchDetail(widget.id);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -698,7 +803,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       final lower = key.toLowerCase();
       if (lower == 'method') return InputLimits.paymentMethod;
       if (lower == 'note') return InputLimits.paymentNote;
-      if (lower == 'approval' || lower.contains('approval') || lower.contains('reason')) {
+      if (lower == 'approval' ||
+          lower.contains('approval') ||
+          lower.contains('reason')) {
         return InputLimits.approval;
       }
       if (lower == 'screenshot_url') return InputLimits.screenshotUrl;
@@ -710,10 +817,17 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
       final provider = _findProvider(key);
       instructions = _providerInstructions(provider);
       if (provider != null &&
-          ['approval', 'balance', 'custom', 'yipay'].contains(provider['key'])) {
+          [
+            'approval',
+            'balance',
+            'custom',
+            'yipay',
+          ].contains(provider['key'])) {
         schemaFields = [];
       } else {
-        schemaFields = _normalizeSchemaFields(provider?['schema_json']?.toString());
+        schemaFields = _normalizeSchemaFields(
+          provider?['schema_json']?.toString(),
+        );
       }
       fieldControllers.clear();
       extraValues.clear();
@@ -722,8 +836,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
         final defaultValue = field['default'];
         extraValues[fieldKey] = defaultValue;
         if (field['type'] != 'boolean' && field['type'] != 'select') {
-          fieldControllers[fieldKey] =
-              TextEditingController(text: defaultValue?.toString() ?? '');
+          fieldControllers[fieldKey] = TextEditingController(
+            text: defaultValue?.toString() ?? '',
+          );
         }
       }
     }
@@ -741,10 +856,16 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   value: method,
                   decoration: const InputDecoration(labelText: '支付方式'),
                   items: _paymentProviders
-                      .map((e) => DropdownMenuItem<String>(
-                            value: e['key']?.toString() ?? e['code']?.toString(),
-                            child: Text(e['name']?.toString() ?? e['label']?.toString() ?? '方式'),
-                          ))
+                      .map(
+                        (e) => DropdownMenuItem<String>(
+                          value: e['key']?.toString() ?? e['code']?.toString(),
+                          child: Text(
+                            e['name']?.toString() ??
+                                e['label']?.toString() ??
+                                '方式',
+                          ),
+                        ),
+                      )
                       .toList(),
                   onChanged: (value) {
                     setModalState(() {
@@ -781,20 +902,29 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   final fieldKey = field['key']?.toString() ?? '';
                   final fieldLabel = field['label']?.toString() ?? fieldKey;
                   final fieldType = field['type']?.toString() ?? 'text';
-                  final fieldPlaceholder = field['placeholder']?.toString() ?? '';
+                  final fieldPlaceholder =
+                      field['placeholder']?.toString() ?? '';
                   final isRequired = field['required'] == true;
                   if (fieldType == 'select') {
-                    final options = field['options'] is List ? field['options'] as List : [];
+                    final options = field['options'] is List
+                        ? field['options'] as List
+                        : [];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: DropdownButtonFormField<dynamic>(
                         value: extraValues[fieldKey],
                         decoration: InputDecoration(labelText: fieldLabel),
                         items: options
-                            .map((opt) => DropdownMenuItem<dynamic>(
-                                  value: opt['value'],
-                                  child: Text(opt['label']?.toString() ?? opt['value']?.toString() ?? ''),
-                                ))
+                            .map(
+                              (opt) => DropdownMenuItem<dynamic>(
+                                value: opt['value'],
+                                child: Text(
+                                  opt['label']?.toString() ??
+                                      opt['value']?.toString() ??
+                                      '',
+                                ),
+                              ),
+                            )
                             .toList(),
                         onChanged: (value) => setModalState(() {
                           extraValues[fieldKey] = value;
@@ -814,8 +944,11 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     );
                   }
 
-                  final controller = fieldControllers[fieldKey] ??
-                      TextEditingController(text: extraValues[fieldKey]?.toString() ?? '');
+                  final controller =
+                      fieldControllers[fieldKey] ??
+                      TextEditingController(
+                        text: extraValues[fieldKey]?.toString() ?? '',
+                      );
                   fieldControllers[fieldKey] = controller;
                   final maxLength = schemaFieldLimit(fieldKey);
                   return Padding(
@@ -847,9 +980,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
             TextButton(
               onPressed: () async {
                 if (method == null || method!.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请选择支付方式')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('请选择支付方式')));
                   return;
                 }
                 final amountText = amountController.text.trim();
@@ -861,9 +994,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                 }
                 final amount = double.parse(amountText);
                 if (amount <= 0) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请输入有效金额')),
-                  );
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('请输入有效金额')));
                   return;
                 }
                 final note = noteController.text.trim();
@@ -877,9 +1010,15 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   final key = field['key']?.toString() ?? '';
                   final limit = schemaFieldLimit(key);
                   final val = extraValues[key];
-                  if (limit != null && val is String && runeLength(val.trim()) > limit) {
+                  if (limit != null &&
+                      val is String &&
+                      runeLength(val.trim()) > limit) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${field['label'] ?? key}长度不能超过 $limit 个字符')),
+                      SnackBar(
+                        content: Text(
+                          '${field['label'] ?? key}长度不能超过 $limit 个字符',
+                        ),
+                      ),
                     );
                     return;
                   }
@@ -896,20 +1035,23 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                 try {
                   if (method == 'approval') {
                     await ref.read(orderRepositoryProvider).submitOrderPayment(
-                          widget.id,
-                          {
-                            'method': method,
-                            'amount': amount,
-                            if (note.isNotEmpty) 'note': note,
-                          },
-                          idempotencyKey: 'pay-${DateTime.now().millisecondsSinceEpoch}',
-                        );
+                      widget.id,
+                      {
+                        'method': method,
+                        'amount': amount,
+                        if (note.isNotEmpty) 'note': note,
+                      },
+                      idempotencyKey:
+                          'pay-${DateTime.now().millisecondsSinceEpoch}',
+                    );
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('已提交审核支付信息')),
                       );
-                      await ref.read(orderDetailProvider.notifier).fetchDetail(widget.id);
+                      await ref
+                          .read(orderDetailProvider.notifier)
+                          .fetchDetail(widget.id);
                     }
                     return;
                   }
@@ -918,7 +1060,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                   for (final field in schemaFields) {
                     final key = field['key']?.toString() ?? '';
                     final value = extraValues[key];
-                    if (value != null && (!(value is String) || value.trim().isNotEmpty)) {
+                    if (value != null &&
+                        (!(value is String) || value.trim().isNotEmpty)) {
                       extra[key] = value;
                     }
                   }
@@ -933,19 +1076,22 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                     'notify_url': '$base/api/v1/payments/notify/$method',
                     'extra': extra,
                   };
-                  final res =
-                      await ref.read(orderRepositoryProvider).createOrderPayment(widget.id, payload);
+                  final res = await ref
+                      .read(orderRepositoryProvider)
+                      .createOrderPayment(widget.id, payload);
                   final result = res['data'] ?? res;
                   if (context.mounted) {
                     Navigator.pop(context);
                     await _handlePaymentResult(context, method ?? '', result);
-                    await ref.read(orderDetailProvider.notifier).fetchDetail(widget.id);
+                    await ref
+                        .read(orderDetailProvider.notifier)
+                        .fetchDetail(widget.id);
                   }
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(e.toString())),
-                    );
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(e.toString())));
                   }
                 }
               },
@@ -962,27 +1108,36 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   }
 
   Future<void> _handlePaymentResult(
-      BuildContext context, String method, Map<String, dynamic> result) async {
+    BuildContext context,
+    String method,
+    Map<String, dynamic> result,
+  ) async {
     final extra = result['extra'] is Map<String, dynamic>
         ? result['extra'] as Map<String, dynamic>
         : <String, dynamic>{};
     final payKind = (extra['pay_kind'] ?? '').toString().toLowerCase();
-    final payUrl = extra['code_url'] ?? result['pay_url'] ?? result['payUrl'] ?? result['url'];
+    final payUrl =
+        extra['code_url'] ??
+        result['pay_url'] ??
+        result['payUrl'] ??
+        result['url'];
     final urlScheme = extra['urlscheme'] ?? result['urlscheme'];
     final instructions = extra['instructions']?.toString();
 
     // balance/approval 不跳转 payUrl，直接提示结果
     if (method == 'balance' || method == 'approval') {
       if (instructions != null && instructions.isNotEmpty && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(instructions)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(instructions)));
       }
       return;
     }
 
     String manualLink = '';
-    if (payKind == 'urlscheme' && urlScheme != null && urlScheme.toString().isNotEmpty) {
+    if (payKind == 'urlscheme' &&
+        urlScheme != null &&
+        urlScheme.toString().isNotEmpty) {
       manualLink = urlScheme.toString();
     } else if (payKind == 'redirect' &&
         extra['pay_url'] != null &&
@@ -998,9 +1153,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     }
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('支付地址为空')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('支付地址为空')));
     }
     return;
   }
@@ -1031,9 +1186,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: text));
                 if (dialogContext.mounted) {
-                  ScaffoldMessenger.of(dialogContext).showSnackBar(
-                    const SnackBar(content: Text('支付链接已复制')),
-                  );
+                  ScaffoldMessenger.of(
+                    dialogContext,
+                  ).showSnackBar(const SnackBar(content: Text('支付链接已复制')));
                 }
               },
               child: const Text('复制链接'),
@@ -1044,4 +1199,3 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
     );
   }
 }
-

@@ -1,4 +1,6 @@
-﻿import 'package:dio/dio.dart';
+import 'dart:convert';
+
+import 'package:dio/dio.dart';
 import '../../core/constants/api_endpoints.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/map_utils.dart';
@@ -29,7 +31,8 @@ class VpsRepository {
   }
 
   Future<void> start(int id) async => _dio.post(ApiEndpoints.vpsStart(id));
-  Future<void> shutdown(int id) async => _dio.post(ApiEndpoints.vpsShutdown(id));
+  Future<void> shutdown(int id) async =>
+      _dio.post(ApiEndpoints.vpsShutdown(id));
   Future<void> reboot(int id) async => _dio.post(ApiEndpoints.vpsReboot(id));
 
   Future<Map<String, dynamic>> getMonitor(int id) async {
@@ -56,7 +59,8 @@ class VpsRepository {
     return [];
   }
 
-  Future<void> createSnapshot(int id) async => _dio.post(ApiEndpoints.vpsSnapshots(id));
+  Future<void> createSnapshot(int id) async =>
+      _dio.post(ApiEndpoints.vpsSnapshots(id));
   Future<void> deleteSnapshot(int id, int snapshotId) async =>
       _dio.delete(ApiEndpoints.vpsSnapshotDetail(id, snapshotId));
   Future<void> restoreSnapshot(int id, int snapshotId) async =>
@@ -73,7 +77,8 @@ class VpsRepository {
     return [];
   }
 
-  Future<void> createBackup(int id) async => _dio.post(ApiEndpoints.vpsBackups(id));
+  Future<void> createBackup(int id) async =>
+      _dio.post(ApiEndpoints.vpsBackups(id));
   Future<void> deleteBackup(int id, int backupId) async =>
       _dio.delete(ApiEndpoints.vpsBackupDetail(id, backupId));
   Future<void> restoreBackup(int id, int backupId) async =>
@@ -131,17 +136,29 @@ class VpsRepository {
     await _dio.delete(ApiEndpoints.vpsPortMapping(id, mappingId));
   }
 
-  Future<Map<String, dynamic>> createRenewOrder(int id, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> createRenewOrder(
+    int id,
+    Map<String, dynamic> payload,
+  ) async {
     final response = await _dio.post(ApiEndpoints.vpsRenew(id), data: payload);
     return ensureMap(response.data);
   }
 
-  Future<Map<String, dynamic>> quoteResize(int id, Map<String, dynamic> payload) async {
-    final response = await _dio.post(ApiEndpoints.vpsResizeQuote(id), data: payload);
+  Future<Map<String, dynamic>> quoteResize(
+    int id,
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _dio.post(
+      ApiEndpoints.vpsResizeQuote(id),
+      data: payload,
+    );
     return ensureMap(response.data);
   }
 
-  Future<Map<String, dynamic>> createResizeOrder(int id, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> createResizeOrder(
+    int id,
+    Map<String, dynamic> payload,
+  ) async {
     final response = await _dio.post(ApiEndpoints.vpsResize(id), data: payload);
     return ensureMap(response.data);
   }
@@ -150,8 +167,100 @@ class VpsRepository {
     await _dio.post(ApiEndpoints.vpsEmergencyRenew(id));
   }
 
-  Future<Map<String, dynamic>> requestRefund(int id, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> requestRefund(
+    int id,
+    Map<String, dynamic> payload,
+  ) async {
     final response = await _dio.post(ApiEndpoints.vpsRefund(id), data: payload);
     return ensureMap(response.data);
+  }
+
+  Future<String> resolveRemoteRedirect(int id, {required String action}) async {
+    final normalized = action.trim().toLowerCase();
+    final path = normalized == 'panel'
+        ? ApiEndpoints.vpsPanel(id)
+        : ApiEndpoints.vpsVnc(id);
+
+    final response = await _dio.get(
+      path,
+      options: Options(
+        followRedirects: false,
+        validateStatus: (_) => true,
+        responseType: ResponseType.plain,
+      ),
+    );
+
+    final status = response.statusCode ?? 0;
+    final location = response.headers.value('location')?.trim() ?? '';
+    if (_isRedirectStatus(status) && location.isNotEmpty) {
+      return location;
+    }
+
+    if (status >= 400) {
+      final msg = _extractErrorMessage(response.data);
+      throw Exception(msg.isNotEmpty ? msg : '跳转失败（HTTP $status）');
+    }
+
+    final map = _toMap(response.data);
+    final directUrl = _pickString(map, const [
+      'url',
+      'redirect_url',
+      'location',
+    ]);
+    if (directUrl.isNotEmpty) {
+      return directUrl;
+    }
+
+    if (location.isNotEmpty) {
+      return location;
+    }
+    throw Exception('未获取到跳转地址');
+  }
+
+  bool _isRedirectStatus(int code) =>
+      code == 301 || code == 302 || code == 303 || code == 307 || code == 308;
+
+  String _extractErrorMessage(dynamic data) {
+    final map = _toMap(data);
+    final msg = _pickString(map, const ['error', 'message', 'msg', 'detail']);
+    if (msg.isNotEmpty) {
+      return msg;
+    }
+    if (data is String && data.trim().isNotEmpty) {
+      return data.trim();
+    }
+    return '';
+  }
+
+  Map<String, dynamic> _toMap(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return ensureMap(data);
+    }
+    if (data is String) {
+      final text = data.trim();
+      if (text.isEmpty || (!text.startsWith('{') && !text.startsWith('['))) {
+        return {};
+      }
+      try {
+        final decoded = jsonDecode(text);
+        return ensureMap(decoded);
+      } catch (_) {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  String _pickString(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final value = map[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString().trim();
+      }
+    }
+    return '';
   }
 }

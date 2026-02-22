@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
@@ -28,7 +28,10 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
       _fetch(force: true);
       ref.read(notificationProvider.notifier).fetchUnreadCount();
     });
-    _refreshSub = ref.listenManual<RefreshEvent?>(pageRefreshProvider, (_, next) {
+    _refreshSub = ref.listenManual<RefreshEvent?>(pageRefreshProvider, (
+      _,
+      next,
+    ) {
       if (next?.route == '/console/notifications') {
         _fetch(force: true);
         ref.read(notificationProvider.notifier).fetchUnreadCount();
@@ -43,7 +46,9 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   }
 
   Future<void> _fetch({bool force = false}) async {
-    await ref.read(notificationProvider.notifier).fetchNotifications(
+    await ref
+        .read(notificationProvider.notifier)
+        .fetchNotifications(
           status: _status,
           limit: _pageSize,
           offset: (_page - 1) * _pageSize,
@@ -65,102 +70,120 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
               child: state.loading
                   ? const Center(child: CircularProgressIndicator())
                   : state.items.isEmpty
-                      ? const EmptyState(
-                          message: AppStrings.noNotifications,
-                          icon: Icons.notifications_off_outlined,
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: state.items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final item = state.items[index];
-                            final id = item['id'] ?? item['ID'];
-                            final title = item['title'] ?? item['type'] ?? AppStrings.notification;
-                            final content = item['content'] ?? item['message'] ?? '';
-                            final createdAt = item['created_at'] ?? item['CreatedAt'];
-                            final readAt = item['read_at'] ?? item['ReadAt'];
-                            final isUnread = readAt == null || readAt.toString().isEmpty;
-                            return InkWell(
+                  ? const EmptyState(
+                      message: AppStrings.noNotifications,
+                      icon: Icons.notifications_off_outlined,
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: state.items.length,
+                      separatorBuilder: (_, index) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
+                        final item = state.items[index];
+                        final id = item['id'] ?? item['ID'];
+                        final title =
+                            item['title'] ??
+                            item['type'] ??
+                            AppStrings.notification;
+                        final content =
+                            item['content'] ?? item['message'] ?? '';
+                        final createdAt =
+                            item['created_at'] ?? item['CreatedAt'];
+                        final readAt = item['read_at'] ?? item['ReadAt'];
+                        final isUnread =
+                            readAt == null || readAt.toString().isEmpty;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () async {
+                            if (id != null) {
+                              await ref
+                                  .read(notificationProvider.notifier)
+                                  .markRead(id);
+                              ref
+                                  .read(notificationProvider.notifier)
+                                  .fetchUnreadCount();
+                              await _fetch(force: true);
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surface,
                               borderRadius: BorderRadius.circular(12),
-                              onTap: () async {
-                                if (id != null) {
-                                  await ref.read(notificationProvider.notifier).markRead(id);
-                                  ref.read(notificationProvider.notifier).fetchUnreadCount();
-                                  await _fetch(force: true);
-                                }
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.surface,
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isUnread
-                                        ? AppColors.primary.withOpacity(0.3)
-                                        : Theme.of(context).colorScheme.outlineVariant,
+                              border: Border.all(
+                                color: isUnread
+                                    ? AppColors.primary.withValues(alpha: 0.3)
+                                    : Theme.of(
+                                        context,
+                                      ).colorScheme.outlineVariant,
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Icon(
+                                    Icons.notifications,
+                                    color: AppColors.primary,
+                                    size: 20,
                                   ),
                                 ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primary.withOpacity(0.12),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Icon(
-                                        Icons.notifications,
-                                        color: AppColors.primary,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
                                         children: [
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  '$title',
-                                                  style: TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
-                                                  ),
-                                                ),
+                                          Expanded(
+                                            child: Text(
+                                              '$title',
+                                              style: TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: isUnread
+                                                    ? FontWeight.bold
+                                                    : FontWeight.w600,
                                               ),
-                                              Text(
-                                                DateFormatter.formatIso(createdAt),
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  color: AppColors.gray500,
-                                                ),
-                                              ),
-                                            ],
+                                            ),
                                           ),
-                                          const SizedBox(height: 6),
                                           Text(
-                                            '$content',
-                                            maxLines: 3,
-                                            overflow: TextOverflow.ellipsis,
+                                            DateFormatter.formatIso(createdAt),
                                             style: TextStyle(
-                                              fontSize: 12,
-                                              color: AppColors.gray400,
+                                              fontSize: 11,
+                                              color: AppColors.gray500,
                                             ),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        '$content',
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.gray400,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ),
           Padding(
@@ -213,20 +236,70 @@ class _NotificationsPageState extends ConsumerState<NotificationsPage> {
   }
 
   Widget _buildSegmented(int unreadCount) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
+    final segmentStyle = ButtonStyle(
+      minimumSize: WidgetStateProperty.all(const Size(0, 32)),
+      maximumSize: WidgetStateProperty.all(const Size.fromHeight(32)),
+      padding: WidgetStateProperty.all(
+        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      ),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+      textStyle: WidgetStateProperty.all(
+        const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+      ),
+      shape: WidgetStateProperty.all(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      side: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return BorderSide(
+            color: cs.primary.withValues(alpha: isLight ? 0.45 : 0.6),
+          );
+        }
+        return BorderSide(
+          color: cs.outlineVariant.withValues(alpha: isLight ? 0.55 : 0.4),
+        );
+      }),
+      backgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return cs.primary.withValues(alpha: isLight ? 0.14 : 0.28);
+        }
+        return cs.surfaceContainerHighest.withValues(
+          alpha: isLight ? 0.75 : 0.42,
+        );
+      }),
+      foregroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return isLight ? cs.primary : Colors.white;
+        }
+        return cs.onSurfaceVariant;
+      }),
+    );
+
+    Widget segmentLabel(String text) {
+      return SizedBox(
+        width: 74,
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+        ),
+      );
+    }
+
     return SegmentedButton<String>(
+      showSelectedIcon: false,
+      style: segmentStyle,
       segments: [
         ButtonSegment<String>(
           value: 'unread',
-          label: Text('未读${unreadCount > 0 ? '($unreadCount)' : ''}'),
+          label: segmentLabel('未读${unreadCount > 0 ? '($unreadCount)' : ''}'),
         ),
-        const ButtonSegment<String>(
-          value: 'read',
-          label: Text('已读'),
-        ),
-        const ButtonSegment<String>(
-          value: 'all',
-          label: Text('全部'),
-        ),
+        ButtonSegment<String>(value: 'read', label: segmentLabel('已读')),
+        ButtonSegment<String>(value: 'all', label: segmentLabel('全部')),
       ],
       selected: {_status},
       onSelectionChanged: (value) {

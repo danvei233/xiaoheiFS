@@ -216,13 +216,15 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final compact = width < 430;
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: isLight ? cs.surface : AppColors.darkBackground,
       appBar: AppBar(
         title: const Text('找回密码'),
-        backgroundColor: AppColors.darkBackground,
-        foregroundColor: AppColors.gray100,
+        backgroundColor: isLight ? cs.surface : AppColors.darkBackground,
+        foregroundColor: isLight ? cs.onSurface : AppColors.gray100,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -241,10 +243,10 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     '重置账户密码',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: isLight ? cs.onSurface : Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
                     ),
@@ -256,8 +258,8 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
                         : _step == 2
                         ? '完成验证码校验后继续'
                         : '设置新密码并完成重置',
-                    style: const TextStyle(
-                      color: AppColors.gray400,
+                    style: TextStyle(
+                      color: isLight ? cs.onSurfaceVariant : AppColors.gray400,
                       fontSize: 13,
                     ),
                   ),
@@ -277,18 +279,30 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   }
 
   Widget _buildStepHeader(bool compact) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     return Row(
       children: [
         _stepDot(1, '账号', compact),
-        Expanded(child: Divider(color: AppColors.gray600.withOpacity(0.5))),
+        Expanded(
+          child: Divider(
+            color: cs.outlineVariant.withValues(alpha: isLight ? 0.6 : 0.45),
+          ),
+        ),
         _stepDot(2, '验证', compact),
-        Expanded(child: Divider(color: AppColors.gray600.withOpacity(0.5))),
+        Expanded(
+          child: Divider(
+            color: cs.outlineVariant.withValues(alpha: isLight ? 0.6 : 0.45),
+          ),
+        ),
         _stepDot(3, '新密码', compact),
       ],
     );
   }
 
   Widget _stepDot(int index, String title, bool compact) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     final active = _step >= index;
     return Column(
       children: [
@@ -297,8 +311,17 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
           width: compact ? 26 : 28,
           height: compact ? 26 : 28,
           decoration: BoxDecoration(
-            color: active ? AppColors.primary : AppColors.gray700,
+            color: active
+                ? cs.primary
+                : cs.surfaceContainerHighest.withValues(
+                    alpha: isLight ? 0.95 : 0.62,
+                  ),
             borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: active
+                  ? cs.primary.withValues(alpha: 0.75)
+                  : cs.outlineVariant.withValues(alpha: isLight ? 0.45 : 0.3),
+            ),
           ),
           child: Center(
             child: Text(
@@ -316,7 +339,7 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
           title,
           style: TextStyle(
             fontSize: compact ? 11 : 12,
-            color: active ? AppColors.gray100 : AppColors.gray400,
+            color: active ? cs.onSurface : cs.onSurfaceVariant,
           ),
         ),
       ],
@@ -342,10 +365,10 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           '重置方式',
           style: TextStyle(
-            color: AppColors.gray300,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -356,13 +379,18 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: AppColors.gray800,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.gray700),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
             child: Text(
               '您的手机号是${_maskedPhone.isEmpty ? '已绑定号码' : _maskedPhone}，请补全后发送验证码',
-              style: const TextStyle(color: AppColors.gray200, height: 1.35),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
+                height: 1.35,
+              ),
             ),
           ),
           const SizedBox(height: 10),
@@ -411,6 +439,8 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
   }
 
   Widget _buildResetChannelTabs() {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     final hasEmail = _channels.contains('email');
     final hasSms = _channels.contains('sms');
 
@@ -436,16 +466,20 @@ class _ForgotPasswordPageState extends ConsumerState<ForgotPasswordPage> {
 
     return Theme(
       data: Theme.of(context).copyWith(
-        cupertinoOverrideTheme: const CupertinoThemeData(
-          primaryColor: AppColors.primary,
-          barBackgroundColor: AppColors.gray800,
+        cupertinoOverrideTheme: CupertinoThemeData(
+          primaryColor: cs.primary,
+          barBackgroundColor: isLight
+              ? const Color(0xFFF2F4F7)
+              : AppColors.gray800,
         ),
       ),
       child: CupertinoSlidingSegmentedControl<String>(
         groupValue: _channel,
         children: children,
-        thumbColor: AppColors.primary,
-        backgroundColor: AppColors.gray800,
+        thumbColor: isLight ? const Color(0xFFDCEBFF) : cs.primary,
+        backgroundColor: isLight
+            ? const Color(0xFFF2F4F7)
+            : AppColors.gray800,
         onValueChanged: (value) {
           if (value == null || value == _channel) return;
           setState(() {

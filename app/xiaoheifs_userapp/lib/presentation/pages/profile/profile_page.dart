@@ -22,6 +22,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   final _qqController = TextEditingController();
   final _bioController = TextEditingController();
   bool _saving = false;
+  bool _emailBound = false;
+  bool _phoneBound = false;
+  String _emailMasked = '';
+  String _phoneMasked = '';
 
   @override
   void initState() {
@@ -31,6 +35,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       if (user == null) return;
       _qqController.text = _sanitizeQq(user.qq?.toString());
       _bioController.text = _sanitizeProfileValue(user.bio?.toString());
+      _loadSecurityContacts();
     });
   }
 
@@ -59,6 +64,49 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   int _runeLength(String text) => text.runes.length;
+
+  Future<void> _loadSecurityContacts() async {
+    try {
+      final repo = ref.read(authRepositoryProvider);
+      final contacts = await repo.getMySecurityContacts();
+      if (!mounted) return;
+      setState(() {
+        _emailBound = contacts['email_bound'] == true;
+        _phoneBound = contacts['phone_bound'] == true;
+        _emailMasked = (contacts['email_masked'] ?? '').toString();
+        _phoneMasked = (contacts['phone_masked'] ?? '').toString();
+      });
+    } catch (_) {
+      final user = ref.read(authProvider).user;
+      if (!mounted) return;
+      setState(() {
+        _emailMasked = (user?.email ?? '').toString();
+        _phoneMasked = (user?.phone ?? '').toString();
+        _emailBound = _emailMasked.trim().isNotEmpty;
+        _phoneBound = _phoneMasked.trim().isNotEmpty;
+      });
+    }
+  }
+
+  String _emailDisplay(dynamic user) {
+    final masked = _emailMasked.trim();
+    if (_emailBound) {
+      if (masked.isNotEmpty) return masked;
+      final raw = user?.email?.toString().trim() ?? '';
+      return raw.isNotEmpty ? raw : '已绑定邮箱';
+    }
+    return '未绑定邮箱';
+  }
+
+  String _phoneDisplay(dynamic user) {
+    final masked = _phoneMasked.trim();
+    if (_phoneBound) {
+      if (masked.isNotEmpty) return masked;
+      final raw = user?.phone?.toString().trim() ?? '';
+      return raw.isNotEmpty ? raw : '已绑定手机号';
+    }
+    return '未绑定手机号';
+  }
 
   Future<void> _save() async {
     if (_saving) return;
@@ -155,15 +203,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               ),
               const SizedBox(height: 3),
               Text(
-                user.email?.toString().trim().isEmpty == true
-                    ? '未绑定邮箱'
-                    : user.email.toString(),
+                _emailDisplay(user),
                 style: const TextStyle(color: AppColors.gray500, fontSize: 12),
               ),
               Text(
-                user.phone?.toString().trim().isEmpty == true
-                    ? '未绑定手机号'
-                    : user.phone.toString(),
+                _phoneDisplay(user),
                 style: const TextStyle(color: AppColors.gray500, fontSize: 12),
               ),
             ],

@@ -1,4 +1,4 @@
-﻿import 'package:dio/dio.dart';
+import 'package:dio/dio.dart';
 import '../../core/constants/api_endpoints.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/map_utils.dart';
@@ -27,12 +27,16 @@ class OrderRepository {
     return ensureMap(response.data);
   }
 
-  Future<Map<String, dynamic>> createOrderFromCart({String? idempotencyKey}) async {
+  Future<Map<String, dynamic>> createOrderFromCart({
+    String? idempotencyKey,
+  }) async {
     final response = await _dio.post(
       ApiEndpoints.orders,
-      options: Options(headers: {
-        if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
-      }),
+      options: Options(
+        headers: {
+          if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
+        },
+      ),
     );
     return ensureMap(response.data);
   }
@@ -44,9 +48,11 @@ class OrderRepository {
     final response = await _dio.post(
       ApiEndpoints.ordersItems,
       data: payload,
-      options: Options(headers: {
-        if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
-      }),
+      options: Options(
+        headers: {
+          if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
+        },
+      ),
     );
     return ensureMap(response.data);
   }
@@ -67,9 +73,11 @@ class OrderRepository {
     final response = await _dio.post(
       ApiEndpoints.orderPayments(id),
       data: payload,
-      options: Options(headers: {
-        if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
-      }),
+      options: Options(
+        headers: {
+          if (idempotencyKey != null) 'Idempotency-Key': idempotencyKey,
+        },
+      ),
     );
     return ensureMap(response.data);
   }
@@ -79,6 +87,16 @@ class OrderRepository {
     Map<String, dynamic> payload,
   ) async {
     final response = await _dio.post(ApiEndpoints.orderPay(id), data: payload);
+    return ensureMap(response.data);
+  }
+
+  Future<Map<String, dynamic>> previewCoupon(
+    Map<String, dynamic> payload,
+  ) async {
+    final response = await _dio.post(
+      ApiEndpoints.couponsPreview,
+      data: payload,
+    );
     return ensureMap(response.data);
   }
 

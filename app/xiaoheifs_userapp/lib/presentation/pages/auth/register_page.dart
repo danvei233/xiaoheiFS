@@ -390,13 +390,15 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final compact = width < 430;
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
 
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: isLight ? cs.surface : AppColors.darkBackground,
       appBar: AppBar(
         title: const Text('用户注册'),
-        backgroundColor: AppColors.darkBackground,
-        foregroundColor: AppColors.gray100,
+        backgroundColor: isLight ? cs.surface : AppColors.darkBackground,
+        foregroundColor: isLight ? cs.onSurface : AppColors.gray100,
         elevation: 0,
         scrolledUnderElevation: 0,
       ),
@@ -415,10 +417,10 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
+                  Text(
                     '创建新账号',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: isLight ? cs.onSurface : Colors.white,
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
                     ),
@@ -430,8 +432,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         : _step == 2
                         ? '完成验证码校验'
                         : '设置密码并提交注册',
-                    style: const TextStyle(
-                      color: AppColors.gray400,
+                    style: TextStyle(
+                      color: isLight ? cs.onSurfaceVariant : AppColors.gray400,
                       fontSize: 13,
                     ),
                   ),
@@ -443,15 +445,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                       padding: const EdgeInsets.all(10),
                       margin: const EdgeInsets.only(bottom: 14),
                       decoration: BoxDecoration(
-                        color: AppColors.warning.withOpacity(0.1),
+                        color: AppColors.warning.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: AppColors.warning.withOpacity(0.45),
+                          color: AppColors.warning.withValues(alpha: 0.45),
                         ),
                       ),
-                      child: const Text(
+                      child: Text(
                         '当前已关闭注册',
-                        style: TextStyle(color: AppColors.gray200),
+                        style: TextStyle(
+                          color: isLight ? cs.onSurface : AppColors.gray200,
+                        ),
                       ),
                     ),
                   if (_step == 1) _buildStepOne(),
@@ -474,18 +478,30 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Widget _buildStepHeader(bool compact) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     return Row(
       children: [
         _stepDot(1, '账号', compact),
-        Expanded(child: Divider(color: AppColors.gray600.withOpacity(0.5))),
+        Expanded(
+          child: Divider(
+            color: cs.outlineVariant.withValues(alpha: isLight ? 0.6 : 0.45),
+          ),
+        ),
         _stepDot(2, '验证', compact),
-        Expanded(child: Divider(color: AppColors.gray600.withOpacity(0.5))),
+        Expanded(
+          child: Divider(
+            color: cs.outlineVariant.withValues(alpha: isLight ? 0.6 : 0.45),
+          ),
+        ),
         _stepDot(3, '完成', compact),
       ],
     );
   }
 
   Widget _stepDot(int index, String title, bool compact) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     final active = _step >= index;
     return Column(
       children: [
@@ -494,8 +510,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           width: compact ? 26 : 28,
           height: compact ? 26 : 28,
           decoration: BoxDecoration(
-            color: active ? AppColors.primary : AppColors.gray700,
+            color: active
+                ? cs.primary
+                : cs.surfaceContainerHighest.withValues(
+                    alpha: isLight ? 0.95 : 0.62,
+                  ),
             borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: active
+                  ? cs.primary.withValues(alpha: 0.75)
+                  : cs.outlineVariant.withValues(alpha: isLight ? 0.45 : 0.3),
+            ),
           ),
           child: Center(
             child: Text(
@@ -513,7 +538,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           title,
           style: TextStyle(
             fontSize: compact ? 11 : 12,
-            color: active ? AppColors.gray100 : AppColors.gray400,
+            color: active ? cs.onSurface : cs.onSurfaceVariant,
           ),
         ),
       ],
@@ -660,6 +685,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Widget _buildVerifyChannelTabs() {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     final children = <String, Widget>{
       'email': const Padding(
         padding: EdgeInsets.symmetric(vertical: 6, horizontal: 14),
@@ -679,16 +706,20 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
     return Theme(
       data: Theme.of(context).copyWith(
-        cupertinoOverrideTheme: const CupertinoThemeData(
-          primaryColor: AppColors.primary,
-          barBackgroundColor: AppColors.gray800,
+        cupertinoOverrideTheme: CupertinoThemeData(
+          primaryColor: cs.primary,
+          barBackgroundColor: isLight
+              ? const Color(0xFFF2F4F7)
+              : AppColors.gray800,
         ),
       ),
       child: CupertinoSlidingSegmentedControl<String>(
         groupValue: _verifyChannel,
         children: children,
-        thumbColor: AppColors.primary,
-        backgroundColor: AppColors.gray800,
+        thumbColor: isLight ? const Color(0xFFDCEBFF) : cs.primary,
+        backgroundColor: isLight
+            ? const Color(0xFFF2F4F7)
+            : AppColors.gray800,
         onValueChanged: (value) {
           if (value == null || value == _verifyChannel) return;
           setState(() {
@@ -771,6 +802,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Widget _buildCaptchaWidget() {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     if (_captchaProvider == 'geetest') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -804,16 +837,22 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 height: 40,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.gray700),
-                  color: AppColors.gray900,
+                  border: Border.all(
+                    color: isLight ? cs.outlineVariant : AppColors.gray700,
+                  ),
+                  color: isLight
+                      ? cs.surfaceContainerHighest
+                      : AppColors.gray900,
                 ),
                 clipBehavior: Clip.hardEdge,
                 child: _captchaImageBase64.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
                           '点击刷新',
                           style: TextStyle(
-                            color: AppColors.gray400,
+                            color: isLight
+                                ? cs.onSurfaceVariant
+                                : AppColors.gray400,
                             fontSize: 12,
                           ),
                         ),
@@ -821,16 +860,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                     : Image.memory(
                         base64Decode(_captchaImageBase64),
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Center(
-                              child: Text(
-                                '点击刷新',
-                                style: TextStyle(
-                                  color: AppColors.gray400,
-                                  fontSize: 12,
-                                ),
-                              ),
+                        errorBuilder: (context, error, stackTrace) => Center(
+                          child: Text(
+                            '点击刷新',
+                            style: TextStyle(
+                              color: isLight
+                                  ? cs.onSurfaceVariant
+                                  : AppColors.gray400,
+                              fontSize: 12,
                             ),
+                          ),
+                        ),
                       ),
               ),
             ),
@@ -841,6 +881,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Widget _buildGeeTestActionButton() {
+    final isLight =
+        Theme.of(context).colorScheme.brightness == Brightness.light;
     final passed = _geetestResult.passed;
     final loading = _geetestLoading;
     final enabled = !loading && !passed;
@@ -854,8 +896,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
         borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: (passed ? AppColors.success : AppColors.primary).withOpacity(
-              0.28,
+            color: (passed ? AppColors.success : AppColors.primary).withValues(
+              alpha: isLight ? 0.18 : 0.28,
             ),
             blurRadius: passed ? 16 : 12,
             offset: const Offset(0, 6),
@@ -869,11 +911,12 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           onTap: enabled ? _verifyGeeTest : null,
           child: Center(
             child: loading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 22,
                     height: 22,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
+                      backgroundColor: Colors.white.withValues(alpha: 0.28),
                       valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                     ),
                   )

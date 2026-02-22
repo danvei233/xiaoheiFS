@@ -13,6 +13,7 @@ import '../../providers/nav_history_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/refresh_provider.dart';
 import '../../providers/site_provider.dart';
+import '../../providers/theme_provider.dart';
 
 /// 主布局组件
 /// 包含顶部栏、侧边/底部导航和用户菜单
@@ -36,23 +37,48 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     bool top = false,
     bool bottom = false,
   }) {
+    if (colorScheme.brightness == Brightness.light) {
+      return BoxDecoration(
+        color: colorScheme.surface.withValues(alpha: 0.96),
+        border: Border(
+          top: top
+              ? BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+                )
+              : BorderSide.none,
+          bottom: bottom
+              ? BorderSide(
+                  color: colorScheme.outlineVariant.withValues(alpha: 0.4),
+                )
+              : BorderSide.none,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: Offset(0, top ? -3 : 3),
+          ),
+        ],
+      );
+    }
+
     return BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          colorScheme.surface.withOpacity(0.56),
-          colorScheme.surface.withOpacity(0.36),
+          colorScheme.surface.withValues(alpha: 0.56),
+          colorScheme.surface.withValues(alpha: 0.36),
         ],
       ),
       boxShadow: [
         BoxShadow(
-          color: Colors.black.withOpacity(0.28),
+          color: Colors.black.withValues(alpha: 0.28),
           blurRadius: 20,
           offset: const Offset(0, 6),
         ),
         BoxShadow(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           blurRadius: 10,
           offset: const Offset(0, -1),
         ),
@@ -105,6 +131,12 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       selectedIcon: Icons.support_agent,
       label: AppStrings.navTickets,
       route: '/console/tickets',
+    ),
+    NavigationItem(
+      icon: Icons.key_outlined,
+      selectedIcon: Icons.key,
+      label: AppStrings.navApiManagement,
+      route: '/console/api-keys',
     ),
     NavigationItem(
       icon: Icons.verified_user_outlined,
@@ -289,8 +321,9 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     if (location.startsWith('/console/orders')) return 3;
     if (location.startsWith('/console/billing')) return 4;
     if (location.startsWith('/console/tickets')) return 5;
-    if (location.startsWith('/console/realname')) return 6;
-    if (location.startsWith('/console/profile')) return 7;
+    if (location.startsWith('/console/api-keys')) return 6;
+    if (location.startsWith('/console/realname')) return 7;
+    if (location.startsWith('/console/profile')) return 8;
     return 0;
   }
 
@@ -303,6 +336,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     if (location.startsWith('/console/orders')) return 3;
     if (location.startsWith('/console/billing') ||
         location.startsWith('/console/tickets') ||
+        location.startsWith('/console/api-keys') ||
         location.startsWith('/console/realname') ||
         location.startsWith('/console/profile') ||
         location.startsWith('/console/more')) {
@@ -374,6 +408,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
     String siteName,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
+    final blurSigma = colorScheme.brightness == Brightness.light ? 10.0 : 30.0;
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -385,7 +420,7 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
       ),
       bottomNavigationBar: ClipRect(
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
           child: Container(
             decoration: _glassDecoration(colorScheme, top: true),
             child: BottomNavigationBar(
@@ -395,6 +430,8 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
               type: BottomNavigationBarType.fixed,
               backgroundColor: Colors.transparent,
               elevation: 0,
+              selectedItemColor: colorScheme.primary,
+              unselectedItemColor: colorScheme.onSurfaceVariant,
               items: _mobilePrimaryItems
                   .map(
                     (item) => BottomNavigationBarItem(
@@ -448,9 +485,10 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final onSurface = colorScheme.onSurface;
+    final blurSigma = colorScheme.brightness == Brightness.light ? 10.0 : 28.0;
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: _glassDecoration(colorScheme, bottom: true),
@@ -482,10 +520,11 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final onSurface = colorScheme.onSurface;
+    final blurSigma = colorScheme.brightness == Brightness.light ? 10.0 : 28.0;
     final isNarrow = MediaQuery.of(context).size.width < 390;
     return ClipRect(
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
         child: Container(
           padding: EdgeInsets.symmetric(
             horizontal: isNarrow ? 12 : 16,
@@ -513,8 +552,19 @@ class _MainLayoutState extends ConsumerState<MainLayout> {
   }
 
   Widget _buildHeaderActions(int unreadCount, String route) {
+    final themeMode = ref.watch(themeModeProvider);
+    final isDark = themeMode == ThemeMode.dark;
     return Row(
       children: [
+        IconButton(
+          onPressed: () =>
+              ref.read(themeModeProvider.notifier).toggleLightDark(),
+          icon: Icon(
+            isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+          ),
+          tooltip: isDark ? '切换亮色模式' : '切换暗色模式',
+        ),
+        const SizedBox(width: 4),
         IconButton(
           onPressed: () =>
               ref.read(pageRefreshProvider.notifier).state = RefreshEvent(

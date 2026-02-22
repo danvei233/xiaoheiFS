@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
@@ -45,13 +45,14 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : error != null
-              ? Center(child: Text(error))
-              : _buildContent(context),
+          ? Center(child: Text(error))
+          : _buildContent(context),
     );
   }
 
   Widget _buildContent(BuildContext context) {
-    final ticket = ref.watch(ticketDetailProvider.select((s) => s.ticket)) ?? {};
+    final ticket =
+        ref.watch(ticketDetailProvider.select((s) => s.ticket)) ?? {};
     final subject = ticket['subject'] ?? ticket['Subject'] ?? '';
     final status = ticket['status'] ?? ticket['Status'] ?? '';
     final createdAt = ticket['created_at'] ?? ticket['CreatedAt'] ?? '';
@@ -76,20 +77,33 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                   Row(
                     children: [
                       Expanded(
-                        child: Text(subject,
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          subject,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                       TextButton.icon(
-                        onPressed: status == 'closed' ? null : () => _closeTicket(context),
+                        onPressed: status == 'closed'
+                            ? null
+                            : () => _closeTicket(context),
                         icon: const Icon(Icons.lock_outline),
                         label: const Text(AppStrings.closeTicket),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text('状态: $status', style: TextStyle(color: AppColors.gray500)),
+                  Text(
+                    '状态: $status',
+                    style: TextStyle(color: AppColors.gray500),
+                  ),
                   const SizedBox(height: 4),
-                  Text('创建时间: $createdAt', style: TextStyle(color: AppColors.gray500)),
+                  Text(
+                    '创建时间: $createdAt',
+                    style: TextStyle(color: AppColors.gray500),
+                  ),
                 ],
               ),
             ),
@@ -107,12 +121,18 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
   }
 
   Widget _buildInputBar(BuildContext context, {required bool isClosed}) {
+    final cs = Theme.of(context).colorScheme;
+    final isLight = cs.brightness == Brightness.light;
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.darkSurface.withOpacity(0.92),
-          border: Border(top: BorderSide(color: Colors.transparent)),
+          color: cs.surface.withValues(alpha: isLight ? 0.98 : 0.92),
+          border: Border(
+            top: BorderSide(
+              color: cs.outlineVariant.withValues(alpha: isLight ? 0.45 : 0.28),
+            ),
+          ),
         ),
         child: Row(
           children: [
@@ -123,7 +143,33 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
                 maxLength: InputLimits.ticketContent,
                 decoration: InputDecoration(
                   hintText: isClosed ? '工单已关闭，无法回复' : '输入回复内容',
-                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: cs.surfaceContainerHighest.withValues(
+                    alpha: isLight ? 0.72 : 0.45,
+                  ),
+                  hintStyle: TextStyle(color: cs.onSurfaceVariant),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: cs.outlineVariant.withValues(
+                        alpha: isLight ? 0.45 : 0.3,
+                      ),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: cs.outlineVariant.withValues(
+                        alpha: isLight ? 0.45 : 0.3,
+                      ),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: cs.primary.withValues(alpha: 0.85),
+                    ),
+                  ),
                   isDense: true,
                 ),
               ),
@@ -141,15 +187,21 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
   }
 
   Future<void> _sendMessage(BuildContext context) async {
-    final status = ref.read(ticketDetailProvider).ticket?['status']?.toString().toLowerCase() ?? '';
+    final status =
+        ref
+            .read(ticketDetailProvider)
+            .ticket?['status']
+            ?.toString()
+            .toLowerCase() ??
+        '';
     if (status == 'closed') return;
     final text = _messageController.text.trim();
     if (text.isEmpty) return;
     if (runeLength(text) > InputLimits.ticketContent) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('回复内容长度不能超过 10000 个字符')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('回复内容长度不能超过 10000 个字符')));
       }
       return;
     }
@@ -161,9 +213,9 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -172,15 +224,15 @@ class _TicketDetailPageState extends ConsumerState<TicketDetailPage> {
     try {
       await ref.read(ticketDetailProvider.notifier).closeTicket(widget.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('工单已关闭')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('工单已关闭')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.toString())));
       }
     }
   }
@@ -224,16 +276,18 @@ class _MessageList extends StatelessWidget {
         final user = roleText == 'admin'
             ? '管理员'
             : (msg['sender_name'] ??
-                    msg['user_name'] ??
-                    msg['UserName'] ??
-                    msg['user'] ??
-                    '用户');
+                  msg['user_name'] ??
+                  msg['UserName'] ??
+                  msg['user'] ??
+                  '用户');
         final time = msg['created_at'] ?? msg['CreatedAt'] ?? '';
         final isAdmin = roleText == 'admin' || roleText == 'support';
         final bubbleColor = isAdmin
-            ? AppColors.darkSurface.withOpacity(0.75)
-            : AppColors.primary.withOpacity(0.22);
-        final align = isAdmin ? CrossAxisAlignment.start : CrossAxisAlignment.end;
+            ? AppColors.darkSurface.withValues(alpha: 0.75)
+            : AppColors.primary.withValues(alpha: 0.22);
+        final align = isAdmin
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.end;
         final radius = BorderRadius.only(
           topLeft: const Radius.circular(14),
           topRight: const Radius.circular(14),
@@ -245,11 +299,17 @@ class _MessageList extends StatelessWidget {
           child: Column(
             crossAxisAlignment: align,
             children: [
-              Text(user.toString(), style: TextStyle(fontSize: 12, color: AppColors.gray500)),
+              Text(
+                user.toString(),
+                style: TextStyle(fontSize: 12, color: AppColors.gray500),
+              ),
               const SizedBox(height: 4),
               Container(
                 constraints: const BoxConstraints(maxWidth: 520),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: bubbleColor,
                   borderRadius: radius,
