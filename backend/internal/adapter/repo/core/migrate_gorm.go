@@ -133,6 +133,15 @@ func fixMySQLPartialUniqueIndexes(db *gorm.DB) error {
 		return err
 	}
 
+	if db.Migrator().HasIndex(&packageRow{}, "idx_packages_gt_integration_unique") {
+		if err := db.Exec("DROP INDEX idx_packages_gt_integration_unique ON packages").Error; err != nil {
+			return err
+		}
+	}
+	if err := db.Exec("CREATE INDEX idx_packages_gt_integration_unique ON packages(integration_package_id)").Error; err != nil {
+		return err
+	}
+
 	return nil
 }
 
