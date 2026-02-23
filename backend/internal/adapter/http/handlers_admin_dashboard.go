@@ -187,6 +187,7 @@ func (h *Handler) auditRevenueQuery(c *gin.Context, action string, req revenueAn
 		"from_at":       req.FromAt,
 		"to_at":         req.ToAt,
 		"level":         req.Level,
+		"user_id":       req.UserID,
 		"goods_type_id": req.GoodsTypeID,
 		"region_id":     req.RegionID,
 		"line_id":       req.LineID,
@@ -194,6 +195,7 @@ func (h *Handler) auditRevenueQuery(c *gin.Context, action string, req revenueAn
 		"trace_id":      traceID,
 		"filter_summary": map[string]any{
 			"level":         req.Level,
+			"user_id":       req.UserID,
 			"goods_type_id": req.GoodsTypeID,
 			"region_id":     req.RegionID,
 			"line_id":       req.LineID,

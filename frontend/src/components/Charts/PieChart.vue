@@ -9,6 +9,7 @@ import { echarts } from "@/lib/echarts";
 const props = defineProps({
   data: { type: Array, default: () => [] }
 });
+const emit = defineEmits(["slice-click"]);
 
 const el = ref(null);
 let chart;
@@ -17,6 +18,10 @@ let resizeObserver;
 const render = () => {
   if (!el.value) return;
   chart = chart || echarts.init(el.value);
+  chart.off("click");
+  chart.on("click", (params) => {
+    emit("slice-click", params?.data || null);
+  });
   chart.setOption({
     tooltip: { trigger: "item" },
     series: [

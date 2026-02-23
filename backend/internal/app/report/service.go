@@ -2,6 +2,7 @@ package report
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -213,6 +214,7 @@ type RevenueAnalyticsQuery struct {
 	FromAt      time.Time
 	ToAt        time.Time
 	Level       RevenueAnalyticsLevel
+	UserID      int64
 	GoodsTypeID int64
 	RegionID    int64
 	LineID      int64
@@ -278,14 +280,29 @@ type paymentSlice struct {
 	amount  int64
 	dimID   int64
 	dimName string
+	goods   int64
 	region  int64
 	line    int64
+	pkg     int64
 	item    domain.OrderItem
 	order   domain.Order
 }
 
+type revenueScope struct {
+	goodsTypeID int64
+	regionID    int64
+	lineID      int64
+	packageID   int64
+	lineName    string
+}
+
 func (s *Service) RevenueAnalyticsOverview(ctx context.Context, q RevenueAnalyticsQuery) (RevenueOverview, error) {
 	data, total, err := s.collectRevenueData(ctx, q)
+	if err != nil {
+		return RevenueOverview{}, err
+	}
+	displayLevel := nextRevenueDimensionLevel(q.Level)
+	displayData, _, err := s.collectRevenueDataByDimension(ctx, q, displayLevel)
 	if err != nil {
 		return RevenueOverview{}, err
 	}
@@ -299,8 +316,8 @@ func (s *Service) RevenueAnalyticsOverview(ctx context.Context, q RevenueAnalyti
 	summary.MoMRatio, summary.MoMComparable = mom, momCmp
 	return RevenueOverview{
 		Summary:    summary,
-		ShareItems: buildShareItems(data, total),
-		TopItems:   buildTopItems(data, total, 5),
+		ShareItems: buildShareItems(displayData, total),
+		TopItems:   buildTopItems(displayData, total, 5),
 	}, nil
 }
 
@@ -331,7 +348,8 @@ func (s *Service) RevenueAnalyticsTrend(ctx context.Context, q RevenueAnalyticsQ
 }
 
 func (s *Service) RevenueAnalyticsTop(ctx context.Context, q RevenueAnalyticsQuery) ([]RevenueTopItem, error) {
-	data, total, err := s.collectRevenueData(ctx, q)
+	displayLevel := nextRevenueDimensionLevel(q.Level)
+	data, total, err := s.collectRevenueDataByDimension(ctx, q, displayLevel)
 	if err != nil {
 		return nil, err
 	}
@@ -382,10 +400,10 @@ func (s *Service) RevenueAnalyticsDetails(ctx context.Context, q RevenueAnalytic
 			OrderID:     row.order.ID,
 			OrderNo:     row.order.OrderNo,
 			UserID:      row.order.UserID,
-			GoodsTypeID: row.item.GoodsTypeID,
+			GoodsTypeID: row.goods,
 			RegionID:    row.dimRegionID(),
 			LineID:      row.dimLineID(),
-			PackageID:   row.item.PackageID,
+			PackageID:   row.pkg,
 			AmountCents: row.amount,
 			PaidAt:      row.payment.CreatedAt,
 			Status:      string(row.payment.Status),
@@ -439,26 +457,57 @@ func (s *Service) normalizeRevenueQuery(q RevenueAnalyticsQuery) (RevenueAnalyti
 }
 
 func (s *Service) collectRevenueData(ctx context.Context, q RevenueAnalyticsQuery) ([]paymentSlice, int64, error) {
+	return s.collectRevenueDataByDimension(ctx, q, q.Level)
+}
+
+func (s *Service) collectRevenueDataByDimension(ctx context.Context, q RevenueAnalyticsQuery, dimLevel RevenueAnalyticsLevel) ([]paymentSlice, int64, error) {
 	q, err := s.normalizeRevenueQuery(q)
 	if err != nil {
 		return nil, 0, err
 	}
-	payments, err := s.listAllPayments(ctx, appshared.PaymentFilter{
-		Status: string(domain.PaymentStatusApproved),
-		From:   &q.FromAt,
-		To:     &q.ToAt,
-	})
+	orders, err := s.listAllOrders(ctx, appshared.OrderFilter{})
 	if err != nil {
 		return nil, 0, err
 	}
-	out := make([]paymentSlice, 0, len(payments))
+	out := make([]paymentSlice, 0, len(orders))
 	var total int64
-	for _, pay := range payments {
-		order, err := s.orders.GetOrder(ctx, pay.OrderID)
+	for _, order := range orders {
+		if !shouldIncludeRevenueOrder(order.Status) {
+			continue
+		}
+		if q.UserID > 0 && order.UserID != q.UserID {
+			continue
+		}
+
+		pays, err := s.payments.ListPaymentsByOrder(ctx, order.ID)
 		if err != nil {
 			continue
 		}
-		items, err := s.orderItems.ListOrderItems(ctx, pay.OrderID)
+		recognizedAmount := order.TotalAmount
+		effectiveAt := order.CreatedAt
+		var paymentID int64 = -order.ID
+		for _, p := range pays {
+			if p.Status != domain.PaymentStatusApproved {
+				continue
+			}
+			if p.CreatedAt.After(effectiveAt) {
+				effectiveAt = p.CreatedAt
+			}
+			if paymentID < 0 {
+				paymentID = p.ID
+			}
+		}
+		if order.ApprovedAt != nil && !order.ApprovedAt.IsZero() {
+			effectiveAt = *order.ApprovedAt
+		}
+		if !effectiveAt.After(q.FromAt) && !effectiveAt.Equal(q.FromAt) {
+			continue
+		}
+		if !effectiveAt.Before(q.ToAt) && !effectiveAt.Equal(q.ToAt) {
+			continue
+		}
+
+		items, err := s.orderItems.ListOrderItems(ctx, order.ID)
 		if err != nil || len(items) == 0 {
 			continue
 		}
@@ -469,32 +518,45 @@ func (s *Service) collectRevenueData(ctx context.Context, q RevenueAnalyticsQuer
 			}
 		}
 		for idx, it := range items {
-			amount := pay.Amount / int64(len(items))
+			amount := recognizedAmount / int64(len(items))
 			if weights > 0 {
-				amount = pay.Amount * it.Amount / weights
+				amount = recognizedAmount * it.Amount / weights
 				if idx == len(items)-1 {
 					assigned := int64(0)
 					for i := 0; i < len(items)-1; i++ {
 						if weights > 0 {
-							assigned += pay.Amount * items[i].Amount / weights
+							assigned += recognizedAmount * items[i].Amount / weights
 						}
 					}
-					amount = pay.Amount - assigned
+					amount = recognizedAmount - assigned
 				}
 			}
-			dimID, dimName, matched := s.resolveDimension(ctx, q.Level, it)
-			if !matched || !s.matchHierarchy(ctx, q, it) {
+			scope := s.resolveRevenueScope(ctx, it)
+			if !s.matchHierarchy(q, scope) {
 				continue
 			}
-			regionID, lineID := s.resolveRegionLine(ctx, it)
+			dimID, dimName, matched := s.resolveDimension(ctx, dimLevel, scope)
+			if !matched {
+				dimID = 0
+				dimName = ""
+			}
 			total += amount
 			out = append(out, paymentSlice{
-				payment: pay,
+				payment: domain.OrderPayment{
+					ID:        paymentID,
+					OrderID:   order.ID,
+					UserID:    order.UserID,
+					Amount:    recognizedAmount,
+					Status:    domain.PaymentStatusApproved,
+					CreatedAt: effectiveAt,
+				},
 				amount:  amount,
 				dimID:   dimID,
 				dimName: dimName,
-				region:  regionID,
-				line:    lineID,
+				goods:   scope.goodsTypeID,
+				region:  scope.regionID,
+				line:    scope.lineID,
+				pkg:     scope.packageID,
 				item:    it,
 				order:   order,
 			})
@@ -503,36 +565,66 @@ func (s *Service) collectRevenueData(ctx context.Context, q RevenueAnalyticsQuer
 	return out, total, nil
 }
 
-func (s *Service) resolveDimension(ctx context.Context, level RevenueAnalyticsLevel, item domain.OrderItem) (int64, string, bool) {
+func shouldIncludeRevenueOrder(status domain.OrderStatus) bool {
+	switch status {
+	case domain.OrderStatusCanceled, domain.OrderStatusFailed, domain.OrderStatusPendingPayment:
+		return false
+	default:
+		return true
+	}
+}
+
+func nextRevenueDimensionLevel(level RevenueAnalyticsLevel) RevenueAnalyticsLevel {
+	switch level {
+	case RevenueLevelOverall:
+		return RevenueLevelGoodsType
+	case RevenueLevelGoodsType:
+		return RevenueLevelRegion
+	case RevenueLevelRegion:
+		return RevenueLevelLine
+	case RevenueLevelLine:
+		return RevenueLevelPackage
+	default:
+		return RevenueLevelPackage
+	}
+}
+
+func (s *Service) resolveDimension(ctx context.Context, level RevenueAnalyticsLevel, scope revenueScope) (int64, string, bool) {
 	switch level {
 	case RevenueLevelOverall, RevenueLevelGoodsType:
-		gt, err := s.goodsTypes.GetGoodsType(ctx, item.GoodsTypeID)
-		if err != nil {
+		if scope.goodsTypeID <= 0 {
 			return 0, "", false
+		}
+		gt, err := s.goodsTypes.GetGoodsType(ctx, scope.goodsTypeID)
+		if err != nil {
+			return scope.goodsTypeID, fmt.Sprintf("类型-%d", scope.goodsTypeID), true
 		}
 		return gt.ID, gt.Name, true
-	case RevenueLevelRegion, RevenueLevelLine, RevenueLevelPackage:
-		pkg, err := s.catalog.GetPackage(ctx, item.PackageID)
-		if err != nil {
+	case RevenueLevelRegion:
+		if scope.regionID <= 0 {
 			return 0, "", false
 		}
-		plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
+		region, err := s.catalog.GetRegion(ctx, scope.regionID)
 		if err != nil {
+			return scope.regionID, fmt.Sprintf("地区-%d", scope.regionID), true
+		}
+		return region.ID, region.Name, true
+	case RevenueLevelLine:
+		if scope.lineID <= 0 {
 			return 0, "", false
 		}
-		region, err := s.catalog.GetRegion(ctx, plan.RegionID)
-		if err != nil {
+		name := scope.lineName
+		if name == "" {
+			name = fmt.Sprintf("line-%d", scope.lineID)
+		}
+		return scope.lineID, name, true
+	case RevenueLevelPackage:
+		if scope.packageID <= 0 {
 			return 0, "", false
 		}
-		if level == RevenueLevelRegion {
-			return region.ID, region.Name, true
-		}
-		if level == RevenueLevelLine {
-			name := plan.Name
-			if name == "" {
-				name = fmt.Sprintf("line-%d", plan.LineID)
-			}
-			return plan.LineID, name, true
+		pkg, err := s.catalog.GetPackage(ctx, scope.packageID)
+		if err != nil {
+			return scope.packageID, fmt.Sprintf("套餐-%d", scope.packageID), true
 		}
 		return pkg.ID, pkg.Name, true
 	default:
@@ -540,43 +632,102 @@ func (s *Service) resolveDimension(ctx context.Context, level RevenueAnalyticsLe
 	}
 }
 
-func (s *Service) matchHierarchy(ctx context.Context, q RevenueAnalyticsQuery, item domain.OrderItem) bool {
-	if q.GoodsTypeID > 0 && item.GoodsTypeID != q.GoodsTypeID {
+func (s *Service) matchHierarchy(q RevenueAnalyticsQuery, scope revenueScope) bool {
+	if q.GoodsTypeID > 0 && scope.goodsTypeID != q.GoodsTypeID {
 		return false
 	}
-	if q.RegionID <= 0 && q.LineID <= 0 && q.PackageID <= 0 {
-		return true
-	}
-	pkg, err := s.catalog.GetPackage(ctx, item.PackageID)
-	if err != nil {
+	if q.RegionID > 0 && scope.regionID != q.RegionID {
 		return false
 	}
-	plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
-	if err != nil {
+	if q.LineID > 0 && scope.lineID != q.LineID {
 		return false
 	}
-	if q.RegionID > 0 && plan.RegionID != q.RegionID {
-		return false
-	}
-	if q.LineID > 0 && plan.LineID != q.LineID {
-		return false
-	}
-	if q.PackageID > 0 && pkg.ID != q.PackageID {
+	if q.PackageID > 0 && scope.packageID != q.PackageID {
 		return false
 	}
 	return true
 }
 
+func (s *Service) resolveRevenueScope(ctx context.Context, item domain.OrderItem) revenueScope {
+	scope := revenueScope{
+		goodsTypeID: item.GoodsTypeID,
+		packageID:   item.PackageID,
+	}
+	targetPackageID, vpsID := parseOrderItemSpecHints(item.SpecJSON)
+	if scope.packageID <= 0 && targetPackageID > 0 {
+		scope.packageID = targetPackageID
+	}
+	if scope.packageID > 0 && s.catalog != nil {
+		if pkg, err := s.catalog.GetPackage(ctx, scope.packageID); err == nil {
+			scope.packageID = pkg.ID
+			if scope.goodsTypeID <= 0 {
+				scope.goodsTypeID = pkg.GoodsTypeID
+			}
+			if plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID); err == nil {
+				scope.regionID = plan.RegionID
+				scope.lineID = plan.LineID
+				scope.lineName = plan.Name
+			}
+		}
+	}
+	if vpsID > 0 && s.vps != nil {
+		if inst, err := s.vps.GetInstance(ctx, vpsID); err == nil {
+			if scope.goodsTypeID <= 0 {
+				scope.goodsTypeID = inst.GoodsTypeID
+			}
+			if scope.regionID <= 0 {
+				scope.regionID = inst.RegionID
+			}
+			if scope.lineID <= 0 {
+				scope.lineID = inst.LineID
+			}
+			if scope.packageID <= 0 {
+				scope.packageID = inst.PackageID
+			}
+		}
+	}
+	return scope
+}
+
+func parseOrderItemSpecHints(specJSON string) (targetPackageID int64, vpsID int64) {
+	if specJSON == "" {
+		return 0, 0
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(specJSON), &m); err != nil {
+		return 0, 0
+	}
+	targetPackageID = readInt64Any(m["target_package_id"])
+	if targetPackageID <= 0 {
+		targetPackageID = readInt64Any(m["package_id"])
+	}
+	vpsID = readInt64Any(m["vps_id"])
+	return targetPackageID, vpsID
+}
+
+func readInt64Any(v any) int64 {
+	switch t := v.(type) {
+	case float64:
+		return int64(t)
+	case float32:
+		return int64(t)
+	case int64:
+		return t
+	case int:
+		return int64(t)
+	case int32:
+		return int64(t)
+	case json.Number:
+		n, _ := t.Int64()
+		return n
+	default:
+		return 0
+	}
+}
+
 func (s *Service) resolveRegionLine(ctx context.Context, item domain.OrderItem) (int64, int64) {
-	pkg, err := s.catalog.GetPackage(ctx, item.PackageID)
-	if err != nil {
-		return 0, 0
-	}
-	plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
-	if err != nil {
-		return 0, 0
-	}
-	return plan.RegionID, plan.LineID
+	scope := s.resolveRevenueScope(ctx, item)
+	return scope.regionID, scope.lineID
 }
 
 func uniqueOrderCount(rows []paymentSlice) int {
@@ -590,6 +741,9 @@ func uniqueOrderCount(rows []paymentSlice) int {
 func buildShareItems(rows []paymentSlice, total int64) []RevenueShareItem {
 	agg := map[int64]*RevenueShareItem{}
 	for _, row := range rows {
+		if row.dimID <= 0 || row.dimName == "" {
+			continue
+		}
 		item := agg[row.dimID]
 		if item == nil {
 			item = &RevenueShareItem{DimensionID: row.dimID, DimensionName: row.dimName}
@@ -634,6 +788,7 @@ func (s *Service) calcYoY(ctx context.Context, q RevenueAnalyticsQuery, current 
 		FromAt:      prevFrom,
 		ToAt:        prevTo,
 		Level:       q.Level,
+		UserID:      q.UserID,
 		GoodsTypeID: q.GoodsTypeID,
 		RegionID:    q.RegionID,
 		LineID:      q.LineID,
@@ -654,6 +809,7 @@ func (s *Service) calcMoM(ctx context.Context, q RevenueAnalyticsQuery, current 
 		FromAt:      prevFrom,
 		ToAt:        prevTo,
 		Level:       q.Level,
+		UserID:      q.UserID,
 		GoodsTypeID: q.GoodsTypeID,
 		RegionID:    q.RegionID,
 		LineID:      q.LineID,
