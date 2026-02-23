@@ -671,6 +671,7 @@ export interface RevenueAnalyticsQuery {
   from_at: string;
   to_at: string;
   level: RevenueAnalyticsLevel;
+  user_id?: number;
   goods_type_id?: number;
   region_id?: number;
   line_id?: number;

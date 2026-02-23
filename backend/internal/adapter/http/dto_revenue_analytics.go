@@ -12,6 +12,7 @@ type revenueAnalyticsQueryDTO struct {
 	FromAt      string `json:"from_at" binding:"required"`
 	ToAt        string `json:"to_at" binding:"required"`
 	Level       string `json:"level" binding:"required,oneof=overall goods_type region line package"`
+	UserID      int64  `json:"user_id"`
 	GoodsTypeID int64  `json:"goods_type_id"`
 	RegionID    int64  `json:"region_id"`
 	LineID      int64  `json:"line_id"`
@@ -47,6 +48,7 @@ func (q revenueAnalyticsQueryDTO) toReportQuery() (appreport.RevenueAnalyticsQue
 		FromAt:      fromAt,
 		ToAt:        toAt,
 		Level:       level,
+		UserID:      q.UserID,
 		GoodsTypeID: q.GoodsTypeID,
 		RegionID:    q.RegionID,
 		LineID:      q.LineID,

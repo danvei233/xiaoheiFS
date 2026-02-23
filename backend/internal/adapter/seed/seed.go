@@ -303,7 +303,7 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"automation_timeout_sec":                   "12",
 		"automation_retry":                         "0",
 		"automation_dry_run":                       "false",
-		"automation_log_retention_days":            "0",
+		"automation_log_retention_days":            "30",
 		"task.vps_refresh":                         `{"enabled":true,"strategy":"interval","interval_sec":300}`,
 		"task.order_provision_watchdog":            `{"enabled":true,"strategy":"interval","interval_sec":5}`,
 		"provision_watchdog_max_jobs":              "8",
