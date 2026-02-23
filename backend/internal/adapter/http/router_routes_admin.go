@@ -222,6 +222,7 @@ func (adminRoutesRegistrar) Register(r *gin.Engine, handler *Handler, middleware
 		admin.POST("/dashboard/revenue-analytics/trend", handler.AdminRevenueAnalyticsTrend)
 		admin.POST("/dashboard/revenue-analytics/top", handler.AdminRevenueAnalyticsTop)
 		admin.POST("/dashboard/revenue-analytics/details", handler.AdminRevenueAnalyticsDetails)
+		admin.POST("/dashboard/revenue-analytics/export", handler.AdminRevenueAnalyticsExport)
 		admin.GET("/probes", handler.AdminProbes)
 		admin.POST("/probes", handler.AdminProbeCreate)
 		admin.GET("/probes/:id", handler.AdminProbeDetail)

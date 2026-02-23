@@ -3,8 +3,13 @@
     <div class="page-header">
       <div>
         <div class="page-title">收入统计</div>
-        <div class="subtle">下拉联动筛选（类型 -> 地区 -> 线路 -> 套餐）</div>
+        <div class="subtle">企业经营视角：分层下钻、趋势洞察、用户贡献与明细复盘</div>
       </div>
+      <a-space>
+        <a-tag color="processing">口径：订单确认收入</a-tag>
+        <a-button :loading="exporting" @click="onExportAudit">导出审计CSV</a-button>
+        <a-button :loading="store.loading || userRankLoading" @click="reloadAll">刷新数据</a-button>
+      </a-space>
     </div>
 
     <a-alert
@@ -110,29 +115,66 @@
       </a-card>
 
       <a-row :gutter="16" class="analytics-row analytics-row-kpi">
-        <a-col :xs="24" :md="8">
-          <a-card :bordered="false" title="总收入" :loading="store.loading" class="kpi-card">
-            <div class="kpi">¥{{ centsToYuan(overview.summary?.total_revenue_cents) }}</div>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-card :bordered="false" :loading="store.loading" class="kpi-card kpi-card-revenue">
+            <a-statistic title="总收入" :value="Number(centsToYuan(overview.summary?.total_revenue_cents))" prefix="¥" :precision="2" />
             <div class="kpi-sub-row">
               <span class="subtle">订单数：{{ overview.summary?.order_count || 0 }}</span>
               <a-tag :color="periodCompare.color">{{ periodCompare.tag }}</a-tag>
             </div>
+          </a-card>
+        </a-col>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-card :bordered="false" :loading="store.loading" class="kpi-card kpi-card-mom">
+            <a-statistic title="环比变化" :value="periodCompare.percentText || '0.00%'" />
+            <div class="kpi-trend-row" :class="periodCompare.className">
+              <ArrowUpOutlined v-if="periodCompare.className === 'compare-up'" />
+              <ArrowDownOutlined v-else-if="periodCompare.className === 'compare-down'" />
+              <MinusOutlined v-else />
+              <span>{{ periodCompare.tag }}</span>
+            </div>
             <div class="compare-line" :class="periodCompare.className">
-              相比上个周期：{{ periodCompare.text }}
-              <template v-if="periodCompare.percentText">
-                （{{ periodCompare.percentText }}）
-              </template>
+              {{ periodCompare.text }}
             </div>
           </a-card>
         </a-col>
-        <a-col :xs="24" :md="8">
-          <a-card :bordered="false" title="同比" :loading="store.loading" class="kpi-card">
-            <div class="kpi">{{ formatRatio(overview.summary?.yoy_ratio, overview.summary?.yoy_comparable) }}</div>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-card :bordered="false" :loading="store.loading" class="kpi-card kpi-card-yoy">
+            <a-statistic title="同比" :value="formatRatio(overview.summary?.yoy_ratio, overview.summary?.yoy_comparable)" />
+            <div class="kpi-dual-row">
+              <span :class="ratioClass(overview.summary?.yoy_ratio, overview.summary?.yoy_comparable)">
+                <ArrowUpOutlined v-if="ratioArrow(overview.summary?.yoy_ratio, overview.summary?.yoy_comparable) === 'up'" />
+                <ArrowDownOutlined v-else-if="ratioArrow(overview.summary?.yoy_ratio, overview.summary?.yoy_comparable) === 'down'" />
+                <MinusOutlined v-else />
+                同比
+              </span>
+              <span :class="ratioClass(overview.summary?.mom_ratio, overview.summary?.mom_comparable)">
+                <ArrowUpOutlined v-if="ratioArrow(overview.summary?.mom_ratio, overview.summary?.mom_comparable) === 'up'" />
+                <ArrowDownOutlined v-else-if="ratioArrow(overview.summary?.mom_ratio, overview.summary?.mom_comparable) === 'down'" />
+                <MinusOutlined v-else />
+                环比
+              </span>
+            </div>
           </a-card>
         </a-col>
-        <a-col :xs="24" :md="8">
-          <a-card :bordered="false" title="环比" :loading="store.loading" class="kpi-card">
-            <div class="kpi">{{ formatRatio(overview.summary?.mom_ratio, overview.summary?.mom_comparable) }}</div>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-card :bordered="false" :loading="store.loading" class="kpi-card kpi-card-net">
+            <template #title>
+              <a-space :size="6">
+                <span>当前页明细净额</span>
+                <a-tooltip title="仅统计当前明细表这一页（非全量筛选结果）">
+                  <InfoCircleOutlined class="kpi-help-icon" />
+                </a-tooltip>
+              </a-space>
+            </template>
+            <a-statistic :value="Number(centsToYuan(detailInsight.net_cents))" prefix="¥" :precision="2" />
+            <div class="kpi-trend-row" :class="netTrend.className">
+              <ArrowUpOutlined v-if="netTrend.arrow === 'up'" />
+              <ArrowDownOutlined v-else-if="netTrend.arrow === 'down'" />
+              <MinusOutlined v-else />
+              <span>{{ netTrend.text }}</span>
+            </div>
+            <div class="subtle">退款订单：{{ detailInsight.refund_count }}，活跃用户：{{ detailInsight.user_count }}</div>
           </a-card>
         </a-col>
       </a-row>
@@ -141,6 +183,17 @@
         <a-col :xs="24" :lg="12">
           <a-card :bordered="false" title="收入占比（可点下钻）" class="chart-card">
             <PieChart :data="shareChartData" @slice-click="onShareSliceClick" />
+            <div class="share-leader-board">
+              <div class="leader-title">结构贡献 Top3</div>
+              <div v-for="it in shareLeaders" :key="it.dimension_id" class="leader-item">
+                <div class="leader-name">{{ it.dimension_name }}</div>
+                <div class="leader-values">
+                  <span>¥{{ centsToYuan(it.revenue_cents) }}</span>
+                  <span>{{ (Number(it.ratio || 0) * 100).toFixed(2) }}%</span>
+                </div>
+                <a-progress :percent="Number((Number(it.ratio || 0) * 100).toFixed(2))" size="small" :show-info="false" />
+              </div>
+            </div>
           </a-card>
         </a-col>
         <a-col :xs="24" :lg="12">
@@ -150,6 +203,20 @@
               :y-axis-value-formatter="formatTrendYValue"
               :tooltip-value-formatter="formatTrendTooltipValue"
             />
+            <a-row :gutter="12" class="trend-insight-row">
+              <a-col :span="8">
+                <a-statistic title="峰值日" :value="trendInsight.peakLabel" />
+                <div class="subtle">¥{{ trendInsight.peakAmount }}</div>
+              </a-col>
+              <a-col :span="8">
+                <a-statistic title="低谷日" :value="trendInsight.lowLabel" />
+                <div class="subtle">¥{{ trendInsight.lowAmount }}</div>
+              </a-col>
+              <a-col :span="8">
+                <a-statistic title="最新日" :value="trendInsight.latestLabel" />
+                <div class="subtle">¥{{ trendInsight.latestAmount }}</div>
+              </a-col>
+            </a-row>
           </a-card>
         </a-col>
       </a-row>
@@ -302,11 +369,20 @@
 import { computed, onMounted, ref, watch } from "vue";
 import dayjs, { Dayjs } from "dayjs";
 import { message, type TablePaginationConfig } from "ant-design-vue";
+import { ArrowDownOutlined, ArrowUpOutlined, InfoCircleOutlined, MinusOutlined } from "@ant-design/icons-vue";
 import PieChart from "@/components/Charts/PieChart.vue";
 import LineChart from "@/components/Charts/LineChart.vue";
 import { useRevenueAnalyticsStore } from "@/stores/revenueAnalytics";
 import { useAdminAuthStore } from "@/stores/adminAuth";
-import { getAdminUserDetail, getRevenueAnalyticsDetails, listGoodsTypes, listPackages, listPlanGroups, listRegions } from "@/services/admin";
+import {
+  exportRevenueAnalyticsAudit,
+  getAdminUserDetail,
+  getRevenueAnalyticsDetails,
+  listGoodsTypes,
+  listPackages,
+  listPlanGroups,
+  listRegions
+} from "@/services/admin";
 import type { Line, Package, RevenueAnalyticsDetailRecord, RevenueAnalyticsLevel, RevenueAnalyticsQuery } from "@/services/types";
 
 const store = useRevenueAnalyticsStore();
@@ -329,6 +405,7 @@ const userRankLoading = ref(false);
 const userRankList = ref<Array<{ rank: number; user_id: number; revenue_cents: number; order_count: number }>>([]);
 const userFinanceOpen = ref(false);
 const userFinanceLoading = ref(false);
+const exporting = ref(false);
 const selectedUserId = ref<number>();
 const userFinanceProfile = ref<any>(null);
 const userFinanceRows = ref<RevenueAnalyticsDetailRecord[]>([]);
@@ -404,6 +481,52 @@ const overview = computed(() => store.overview || {});
 const details = computed(() => store.details || []);
 const topList = computed(() => store.top || []);
 const hasActiveFilters = computed(() => !!(query.value.goods_type_id || query.value.region_id || query.value.line_id || query.value.package_id || query.value.user_id));
+const detailInsight = computed(() => {
+  const rows = details.value || [];
+  let net = 0;
+  let refund = 0;
+  const users = new Set<number>();
+  for (const row of rows) {
+    const amount = Number(row.amount_cents || 0);
+    net += amount;
+    if (amount < 0) refund += 1;
+    const uid = Number(row.user_id || 0);
+    if (uid > 0) users.add(uid);
+  }
+  return {
+    net_cents: net,
+    refund_count: refund,
+    user_count: users.size
+  };
+});
+const shareLeaders = computed(() => {
+  const items = overview.value.share_items || [];
+  return items.slice(0, 3);
+});
+const trendInsight = computed(() => {
+  const items = (store.trend || []).map((it: any) => ({
+    label: String(it.bucket || "-"),
+    value: Number(it.revenue_cents || 0) / 100
+  }));
+  if (!items.length) {
+    return { peakLabel: "-", peakAmount: "0.00", lowLabel: "-", lowAmount: "0.00", latestLabel: "-", latestAmount: "0.00" };
+  }
+  let peak = items[0];
+  let low = items[0];
+  for (const it of items) {
+    if (it.value > peak.value) peak = it;
+    if (it.value < low.value) low = it;
+  }
+  const latest = items[items.length - 1];
+  return {
+    peakLabel: peak.label,
+    peakAmount: peak.value.toFixed(2),
+    lowLabel: low.label,
+    lowAmount: low.value.toFixed(2),
+    latestLabel: latest.label,
+    latestAmount: latest.value.toFixed(2)
+  };
+});
 const periodCompare = computed(() => {
   const current = Number(overview.value.summary?.total_revenue_cents || 0);
   const ratio = overview.value.summary?.mom_ratio;
@@ -421,6 +544,12 @@ const periodCompare = computed(() => {
     text: `${up ? "增长" : "下降"} ¥${(Math.abs(delta) / 100).toFixed(2)}`,
     percentText: `${up ? "+" : "-"}${Math.abs(ratio * 100).toFixed(2)}%`
   };
+});
+const netTrend = computed(() => {
+  const net = Number(detailInsight.value.net_cents || 0);
+  if (net > 0) return { arrow: "up", className: "compare-up", text: "净流入" as const };
+  if (net < 0) return { arrow: "down", className: "compare-down", text: "净流出" as const };
+  return { arrow: "flat", className: "compare-neutral", text: "收支持平" as const };
 });
 
 const shareChartData = computed(() => {
@@ -535,6 +664,18 @@ const detectQuickRangeKey = (from: Dayjs, to: Dayjs) => {
 const formatRatio = (ratio?: number | null, comparable?: boolean) => {
   if (!comparable || ratio == null) return "不可比";
   return `${(ratio * 100).toFixed(2)}%`;
+};
+const ratioArrow = (ratio?: number | null, comparable?: boolean) => {
+  if (!comparable || ratio == null) return "flat";
+  if (ratio > 0) return "up";
+  if (ratio < 0) return "down";
+  return "flat";
+};
+const ratioClass = (ratio?: number | null, comparable?: boolean) => {
+  const flag = ratioArrow(ratio, comparable);
+  if (flag === "up") return "compare-up";
+  if (flag === "down") return "compare-down";
+  return "compare-neutral";
 };
 
 const ensureQueryValid = (silent = false) => {
@@ -724,6 +865,46 @@ const onTableChange = (pager: TablePaginationConfig) => {
   void store.fetchDetails();
 };
 
+const resolveExportFilename = (headers: Record<string, any>) => {
+  const fallback = `revenue_analytics_audit_${dayjs().format("YYYYMMDD_HHmmss")}.csv`;
+  const cd = String(headers?.["content-disposition"] || headers?.["Content-Disposition"] || "");
+  if (!cd) return fallback;
+  const utf8Match = cd.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]).replace(/^["']|["']$/g, "");
+  }
+  const simpleMatch = cd.match(/filename="?([^"]+)"?/i);
+  if (!simpleMatch?.[1]) return fallback;
+  return simpleMatch[1].trim();
+};
+
+const onExportAudit = async () => {
+  if (!ensureQueryValid(false)) return;
+  syncInferredLevel();
+  exporting.value = true;
+  try {
+    const res = await exportRevenueAnalyticsAudit({
+      ...store.query,
+      level: inferLevelFromSelection()
+    });
+    const blob = res.data instanceof Blob ? res.data : new Blob([res.data], { type: "text/csv;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = resolveExportFilename(res.headers || {});
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+    message.success("审计导出已开始");
+  } catch (err: any) {
+    const text = err?.response?.data?.error || err?.message || "导出失败";
+    message.error(String(text));
+  } finally {
+    exporting.value = false;
+  }
+};
+
 const reloadAll = async () => {
   if (!ensureQueryValid(false)) return;
   syncInferredLevel();
@@ -901,6 +1082,26 @@ watch(
   margin-top: 8px;
   font-size: 13px;
 }
+.kpi-trend-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.kpi-dual-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.kpi-help-icon {
+  color: #94a3b8;
+  font-size: 14px;
+}
 
 .compare-up {
   color: #389e0d;
@@ -968,15 +1169,33 @@ watch(
 
 .kpi-card {
   min-height: 192px;
+  border: 1px solid #f0f3f8;
+  border-radius: 12px;
+}
+.kpi-card-revenue {
+  background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 58%);
+}
+.kpi-card-mom {
+  background: linear-gradient(135deg, #f4fbf5 0%, #ffffff 58%);
+}
+.kpi-card-yoy {
+  background: linear-gradient(135deg, #fff6ee 0%, #ffffff 58%);
+}
+.kpi-card-net {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 58%);
 }
 
 .chart-card {
   min-height: 388px;
+  border: 1px solid #f0f3f8;
+  border-radius: 12px;
 }
 
 .top-card,
 .detail-card {
   min-height: 420px;
+  border: 1px solid #f0f3f8;
+  border-radius: 12px;
 }
 
 .kpi-card :deep(.ant-card-body) {
@@ -998,6 +1217,44 @@ watch(
 
 .order-no-text {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.share-leader-board {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: #fafcff;
+  border: 1px solid #eef3fb;
+  border-radius: 10px;
+}
+
+.leader-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.leader-item + .leader-item {
+  margin-top: 8px;
+}
+
+.leader-name {
+  font-size: 13px;
+  color: #334155;
+}
+
+.leader-values {
+  margin: 2px 0 4px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.trend-insight-row {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
 }
 
 @media (max-width: 768px) {

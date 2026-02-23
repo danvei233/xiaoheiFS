@@ -302,6 +302,8 @@ export const getRevenueAnalyticsTop = (payload: RevenueAnalyticsQuery) =>
   http.post<{ items?: RevenueAnalyticsTopItem[] }>("/admin/api/v1/dashboard/revenue-analytics/top", payload);
 export const getRevenueAnalyticsDetails = (payload: RevenueAnalyticsQuery) =>
   http.post<RevenueAnalyticsDetailsResponse>("/admin/api/v1/dashboard/revenue-analytics/details", payload);
+export const exportRevenueAnalyticsAudit = (payload: RevenueAnalyticsQuery) =>
+  http.post("/admin/api/v1/dashboard/revenue-analytics/export", payload, { responseType: "blob" });
 
 // Probes
 export const listAdminProbes = (params?: Record<string, unknown>) =>
