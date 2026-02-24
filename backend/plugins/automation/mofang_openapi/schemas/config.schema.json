@@ -1,0 +1,60 @@
+{
+  "title": "Mofang OpenAPI Automation",
+  "type": "object",
+  "properties": {
+    "base_url": {
+      "type": "string",
+      "title": "Base URL",
+      "description": "e.g. https://mofang.example.com"
+    },
+    "account": { "type": "string", "title": "OpenAPI Account" },
+    "api_password": {
+      "type": "string",
+      "title": "OpenAPI Password",
+      "format": "password",
+      "description": "used for /v1/login_api"
+    },
+    "product_id": {
+      "type": "integer",
+      "title": "Default Product ID",
+      "default": 0,
+      "minimum": 0
+    },
+    "billing_cycle": { "type": "string", "title": "Default Billing Cycle", "default": "monthly" },
+    "cancel_type": { "type": "string", "title": "Cancel Type", "default": "Immediate", "enum": ["Immediate", "Endofbilling"] },
+    "cancel_reason": { "type": "string", "title": "Cancel Reason", "default": "automation cancel request" },
+    "configoption_template": {
+      "type": "object",
+      "title": "ConfigOption Template",
+      "description": "cart/products 的 configoption 模板，支持 {{cpu}}/{{memory_gb}}/{{disk_gb}}/{{bandwidth}}/{{host_name}}/{{sys_pwd}}"
+    },
+    "customfield_template": {
+      "type": "object",
+      "title": "CustomField Template",
+      "description": "cart/products 的 customfield 模板，支持同上占位符"
+    },
+    "os_template": {
+      "type": "object",
+      "title": "OS Template",
+      "description": "cart/products 的 os 模板，支持 {{os}}"
+    },
+    "enable_catalog_sync": { "type": "boolean", "title": "Enable Catalog Sync", "default": true },
+    "enable_create_host": { "type": "boolean", "title": "Enable Create Host", "default": true },
+    "timeout_sec": {
+      "type": "integer",
+      "title": "Timeout (sec)",
+      "default": 12,
+      "minimum": 1,
+      "maximum": 60
+    },
+    "retry": {
+      "type": "integer",
+      "title": "Retry",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 5
+    },
+    "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
+  },
+  "required": ["base_url", "account", "api_password"]
+}

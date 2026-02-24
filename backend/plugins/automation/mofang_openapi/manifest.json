@@ -1,0 +1,26 @@
+{
+  "plugin_id": "mofang_openapi",
+  "name": "Mofang OpenAPI Automation",
+  "version": "0.1.0",
+  "description": "Built-in automation plugin for Mofang (ZJMF) OpenAPI with JWT auth.",
+  "binaries": {
+    "windows_amd64": "bin/windows_amd64/plugin.exe",
+    "linux_amd64": "bin/linux_amd64/plugin",
+    "darwin_amd64": "bin/darwin_amd64/plugin",
+    "darwin_arm64": "bin/darwin_arm64/plugin"
+  },
+  "capabilities": {
+    "automation": {
+      "features": [
+        "catalog_sync",
+        "lifecycle"
+      ],
+      "not_supported_reasons": {
+        "port_mapping": "mofang openapi has no unified NAT mapping interface",
+        "backup": "mofang openapi has no unified backup interface",
+        "snapshot": "mofang openapi has no unified snapshot interface",
+        "firewall": "mofang openapi has no unified firewall interface"
+      }
+    }
+  }
+}
