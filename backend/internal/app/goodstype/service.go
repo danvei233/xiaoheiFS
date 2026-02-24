@@ -25,6 +25,13 @@ func (s *Service) List(ctx context.Context) ([]domain.GoodsType, error) {
 	return s.repo.ListGoodsTypes(ctx)
 }
 
+func (s *Service) Get(ctx context.Context, id int64) (domain.GoodsType, error) {
+	if s.repo == nil || id <= 0 {
+		return domain.GoodsType{}, appshared.ErrInvalidInput
+	}
+	return s.repo.GetGoodsType(ctx, id)
+}
+
 func (s *Service) Create(ctx context.Context, gt *domain.GoodsType) error {
 	if s.repo == nil || gt == nil {
 		return appshared.ErrInvalidInput

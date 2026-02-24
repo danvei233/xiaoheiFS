@@ -47,6 +47,12 @@ func (r *GormRepo) ListAuditLogs(ctx context.Context, limit, offset int) ([]doma
 
 }
 
+func (r *GormRepo) PurgeAuditLogs(ctx context.Context, before time.Time) error {
+	return r.gdb.WithContext(ctx).
+		Where("created_at < ?", before).
+		Delete(&adminAuditLogRow{}).Error
+}
+
 func (r *GormRepo) ListPermissionGroups(ctx context.Context) ([]domain.PermissionGroup, error) {
 
 	var rows []permissionGroupRow

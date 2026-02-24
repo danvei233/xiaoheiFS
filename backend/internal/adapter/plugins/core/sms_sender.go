@@ -44,12 +44,19 @@ func (s *SMSSender) Send(ctx context.Context, pluginID, instanceID string, msg a
 	}
 	resp, err := client.Send(ctx, req)
 	if err != nil {
-		return appshared.SMSDelivery{}, err
+		return appshared.SMSDelivery{}, MapRPCError(err, "sms plugin")
 	}
 	if resp == nil || !resp.Ok {
 		errMsg := "sms send failed"
+		errCode := ""
 		if resp != nil && strings.TrimSpace(resp.Error) != "" {
 			errMsg = strings.TrimSpace(resp.Error)
+		}
+		if resp != nil {
+			errCode = strings.TrimSpace(resp.ErrorCode)
+		}
+		if errCode != "" {
+			return appshared.SMSDelivery{}, fmt.Errorf("%s (%s)", errMsg, errCode)
 		}
 		return appshared.SMSDelivery{}, fmt.Errorf("%s", errMsg)
 	}

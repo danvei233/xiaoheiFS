@@ -296,3 +296,9 @@ func (r *GormRepo) ListSyncLogs(ctx context.Context, target string, limit, offse
 	return out, int(total), nil
 
 }
+
+func (r *GormRepo) PurgeSyncLogs(ctx context.Context, before time.Time) error {
+	return r.gdb.WithContext(ctx).
+		Where("created_at < ?", before).
+		Delete(&integrationSyncLogRow{}).Error
+}

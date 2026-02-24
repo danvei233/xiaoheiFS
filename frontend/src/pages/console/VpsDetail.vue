@@ -62,6 +62,18 @@
     </div>
 
     <!-- Main Tabs -->
+    <div v-if="unsupportedFeatureHints.length" class="capability-notice">
+      <a-alert type="info" show-icon>
+        <template #message>部分功能按实例能力已自动隐藏</template>
+        <template #description>
+          <div class="capability-tags">
+            <a-tag v-for="item in unsupportedFeatureHints" :key="item.key" color="default">
+              {{ item.label }}：{{ item.reason }}
+            </a-tag>
+          </div>
+        </template>
+      </a-alert>
+    </div>
     <a-tabs v-model:activeKey="activeTab" class="ecs-tabs">
       <a-tab-pane key="overview">
         <template #tab>
@@ -274,7 +286,7 @@
                 <VerticalAlignTopOutlined />
                 升降配
               </a-button>
-              <a-button size="large" danger @click="openRefund">
+              <a-button v-if="refundEnabled" size="large" danger @click="openRefund">
                 <DeleteOutlined />
                 退款
               </a-button>
@@ -427,7 +439,7 @@
             <LineChart :data="monitor.memory" :color="'#722ed1'" height="160" />
           </a-card>
         </div>
-      </a-tab-pane><a-tab-pane key="firewall">
+      </a-tab-pane><a-tab-pane v-if="showFirewallTab" key="firewall">
         <template #tab>
           <span>防火墙</span>
         </template>
@@ -462,7 +474,7 @@
         </a-card>
       </a-tab-pane>
 
-      <a-tab-pane key="port">
+      <a-tab-pane v-if="showPortTab" key="port">
         <template #tab>
           <span>端口映射</span>
         </template>
@@ -510,7 +522,7 @@
         </a-card>
       </a-tab-pane>
 
-      <a-tab-pane key="snapshot">
+      <a-tab-pane v-if="showSnapshotTab" key="snapshot">
         <template #tab>
           <span>快照</span>
         </template>
@@ -549,7 +561,7 @@
         </a-card>
       </a-tab-pane>
 
-      <a-tab-pane key="backup">
+      <a-tab-pane v-if="showBackupTab" key="backup">
         <template #tab>
           <span>备份</span>
         </template>
@@ -1098,11 +1110,74 @@ const detail = computed(() => {
     spec: store.current.spec ?? store.current.Spec ?? store.current.spec_json ?? store.current.SpecJSON,
       access_info: store.current.access_info ?? store.current.AccessInfo ?? store.current.access_info_json ?? store.current.AccessInfoJSON,
       monthly_price: store.current.monthly_price ?? store.current.MonthlyPrice ?? 0,
+      capabilities: store.current.capabilities ?? store.current.Capabilities ?? null,
       last_emergency_renew_at: store.current.last_emergency_renew_at ?? store.current.LastEmergencyRenewAt ?? null,
       system_id: store.current.system_id ?? store.current.SystemID ?? 0,
       package_id: store.current.package_id ?? store.current.PackageID ?? 0
     };
   });
+
+const normalizeAutomationFeature = (value) => {
+  const v = String(value || "").trim().toLowerCase();
+  switch (v) {
+    case "upgrade":
+    case "downgrade":
+      return "resize";
+    case "refund_request":
+      return "refund";
+    default:
+      return v;
+  }
+};
+
+const automationFeatureSet = computed(() => {
+  const raw = detail.value?.capabilities?.automation?.features;
+  if (!Array.isArray(raw)) return null;
+  return new Set(
+    raw
+      .map((item) => normalizeAutomationFeature(item))
+      .filter(Boolean)
+  );
+});
+
+const supportsAutomationFeature = (...features) => {
+  if (!automationFeatureSet.value) return true;
+  return features.some((feature) => automationFeatureSet.value.has(normalizeAutomationFeature(feature)));
+};
+
+const showFirewallTab = computed(() => supportsAutomationFeature("firewall"));
+const showPortTab = computed(() => supportsAutomationFeature("port_mapping"));
+const showSnapshotTab = computed(() => supportsAutomationFeature("snapshot"));
+const showBackupTab = computed(() => supportsAutomationFeature("backup"));
+const unsupportedFeatureHints = computed(() => {
+  const rawFeatures = detail.value?.capabilities?.automation?.features;
+  if (!Array.isArray(rawFeatures)) return [];
+  const reasons = detail.value?.capabilities?.automation?.not_supported_reasons || {};
+  const defs = [
+    { key: "firewall", label: "防火墙", visible: showFirewallTab.value },
+    { key: "port_mapping", label: "端口映射", visible: showPortTab.value },
+    { key: "snapshot", label: "快照", visible: showSnapshotTab.value },
+    { key: "backup", label: "备份", visible: showBackupTab.value },
+    { key: "resize", label: "升降配", visible: supportsAutomationFeature("resize") },
+    { key: "refund", label: "退款", visible: supportsAutomationFeature("refund") }
+  ];
+  return defs
+    .filter((item) => !item.visible)
+    .map((item) => ({
+      key: item.key,
+      label: item.label,
+      reason: String(reasons[item.key] || "当前实例不支持该能力")
+    }));
+});
+
+const availableTabs = computed(() => {
+  const tabs = ["overview", "monitor"];
+  if (showFirewallTab.value) tabs.push("firewall");
+  if (showPortTab.value) tabs.push("port");
+  if (showSnapshotTab.value) tabs.push("snapshot");
+  if (showBackupTab.value) tabs.push("backup");
+  return tabs;
+});
 
 const parseJson = (input) => {
   if (!input) return {};
@@ -1190,7 +1265,11 @@ const packageOptions = computed(() => {
     .sort((a, b) => Number(a.monthly_price || 0) - Number(b.monthly_price || 0));
 });
 
-const resizeEnabled = computed(() => site.settings?.resize_enabled !== false);
+const resizeEnabled = computed(() => {
+  if (site.settings?.resize_enabled === false) return false;
+  return supportsAutomationFeature("resize", "upgrade", "downgrade");
+});
+const refundEnabled = computed(() => supportsAutomationFeature("refund", "refund_request"));
 const currentDiskGB = computed(() => Number(specObj.value.disk_gb || 0));
 
 const getResizeTargetPackage = () => {
@@ -1850,6 +1929,16 @@ const fetchBackups = async () => {
 const loadSecurityData = async () => {
   await Promise.all([fetchFirewallRules(), fetchPortMappings(), fetchSnapshots(), fetchBackups()]);
 };
+
+watch(
+  availableTabs,
+  (tabs) => {
+    if (!tabs.includes(activeTab.value)) {
+      activeTab.value = tabs[0] || "overview";
+    }
+  },
+  { immediate: true }
+);
 
 watch(activeTab, (val) => {
   if (["firewall", "port", "snapshot", "backup"].includes(val)) {
@@ -2597,6 +2686,10 @@ const shutdown = async () => {
 };
 
 const openRefund = () => {
+  if (!refundEnabled.value) {
+    message.error("当前实例不支持退款");
+    return;
+  }
   refundReason.value = "";
   refundOpen.value = true;
 };
@@ -3400,6 +3493,16 @@ onBeforeUnmount(() => {
 }
 
 /* ========== Security Cards ========== */
+.capability-notice {
+  margin-bottom: 12px;
+}
+
+.capability-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .tab-actions {
   margin-bottom: 16px;
 }

@@ -64,6 +64,10 @@ type integrationInventorySyncService interface {
 	SyncAutomationInventoryForGoodsType(ctx context.Context, goodsTypeID int64) (int, error)
 }
 
+type logRetentionCleaner interface {
+	Cleanup(ctx context.Context) (string, error)
+}
+
 type taskRuntime struct {
 	lastRun     time.Time
 	running     bool
@@ -80,6 +84,7 @@ type Service struct {
 	realname    realnameTaskService
 	userTier    userTierTaskService
 	integration integrationInventorySyncService
+	logCleaner  logRetentionCleaner
 	runs        appports.ScheduledTaskRunRepository
 	mu          sync.Mutex
 	runtime     map[string]*taskRuntime
@@ -107,6 +112,10 @@ func (s *Service) SetUserTierService(svc userTierTaskService) {
 
 func (s *Service) SetIntegrationService(svc integrationInventorySyncService) {
 	s.integration = svc
+}
+
+func (s *Service) SetLogRetentionCleaner(svc logRetentionCleaner) {
+	s.logCleaner = svc
 }
 
 func (s *Service) Start(ctx context.Context) {
@@ -301,6 +310,10 @@ func (s *Service) executeTask(ctx context.Context, cfg ScheduledTaskConfig) {
 		case "integration_inventory_sync":
 			if s.integration != nil {
 				_, runErr = s.integration.SyncAutomationInventoryForGoodsType(ctx, 0)
+			}
+		case "log_retention_cleanup":
+			if s.logCleaner != nil {
+				_, runErr = s.logCleaner.Cleanup(ctx)
 			}
 		}
 	}()
@@ -519,6 +532,14 @@ func defaultTaskDefinitions() map[string]ScheduledTaskConfig {
 			Enabled:     false,
 			Strategy:    TaskStrategyInterval,
 			IntervalSec: 300,
+		},
+		"log_retention_cleanup": {
+			Key:         "log_retention_cleanup",
+			Name:        "Log Retention Cleanup",
+			Description: "Purge expired logs by retention settings.",
+			Enabled:     true,
+			Strategy:    TaskStrategyDaily,
+			DailyAt:     "03:30",
 		},
 	}
 }

@@ -36,8 +36,9 @@ export const useAdminStore = defineStore("admin", {
 
     async fetchRevenue(params?: any) {
       try {
-        const res = await getAdminDashboardRevenue(params);
-        this.revenue = res.data?.points || [];
+        const period = params?.period || params?.granularity || "day";
+        const res = await getAdminDashboardRevenue({ period });
+        this.revenue = res.data?.items || res.data?.points || [];
       } catch (error) {
         console.error("Failed to fetch revenue data:", error);
       }
@@ -46,7 +47,7 @@ export const useAdminStore = defineStore("admin", {
     async fetchVpsStatus() {
       try {
         const res = await getAdminDashboardVpsStatus();
-        this.vpsStatus = res.data?.points || [];
+        this.vpsStatus = res.data?.items || res.data?.points || [];
       } catch (error) {
         console.error("Failed to fetch VPS status:", error);
       }

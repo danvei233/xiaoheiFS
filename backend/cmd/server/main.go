@@ -32,6 +32,7 @@ import (
 	appcoupon "xiaoheiplay/internal/app/coupon"
 	appgoodstype "xiaoheiplay/internal/app/goodstype"
 	appintegration "xiaoheiplay/internal/app/integration"
+	applogcleanup "xiaoheiplay/internal/app/logcleanup"
 	appmessage "xiaoheiplay/internal/app/message"
 	appnotification "xiaoheiplay/internal/app/notification"
 	appopenapi "xiaoheiplay/internal/app/openapi"
@@ -194,8 +195,10 @@ func main() {
 	openAPISvc := appopenapi.NewService(orderSvc, paymentSvc, repoSQLite)
 	statusSvc := appsystemstatus.NewService(system.NewProvider())
 	taskSvc := appscheduledtask.NewService(repoSQLite, vpsSvc, orderSvc, notifySvc, repoSQLite, realnameSvc)
+	logCleanupSvc := applogcleanup.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	taskSvc.SetUserTierService(userTierSvc)
 	taskSvc.SetIntegrationService(integrationSvc)
+	taskSvc.SetLogRetentionCleaner(logCleanupSvc)
 	probeHub := appprobe.NewHub()
 	probeSvc := appprobe.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	go taskSvc.Start(context.Background())

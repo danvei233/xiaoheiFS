@@ -56,10 +56,13 @@ func (p *grpcPaymentProvider) CreatePayment(ctx context.Context, req appshared.P
 		},
 	})
 	if err != nil {
-		return appshared.PaymentCreateResult{}, err
+		return appshared.PaymentCreateResult{}, plugins.MapRPCError(err, "payment plugin")
 	}
 	if resp != nil && !resp.Ok {
 		if resp.Error != "" {
+			if strings.TrimSpace(resp.ErrorCode) != "" {
+				return appshared.PaymentCreateResult{}, fmt.Errorf("%s (%s)", resp.Error, strings.TrimSpace(resp.ErrorCode))
+			}
 			return appshared.PaymentCreateResult{}, fmt.Errorf("%s", resp.Error)
 		}
 		return appshared.PaymentCreateResult{}, fmt.Errorf("create payment failed")
@@ -98,10 +101,13 @@ func (p *grpcPaymentProvider) VerifyNotify(ctx context.Context, req appshared.Ra
 		},
 	})
 	if err != nil {
-		return appshared.PaymentNotifyResult{}, err
+		return appshared.PaymentNotifyResult{}, plugins.MapRPCError(err, "payment plugin")
 	}
 	if resp != nil && !resp.Ok {
 		if resp.Error != "" {
+			if strings.TrimSpace(resp.ErrorCode) != "" {
+				return appshared.PaymentNotifyResult{}, fmt.Errorf("%s (%s)", resp.Error, strings.TrimSpace(resp.ErrorCode))
+			}
 			return appshared.PaymentNotifyResult{}, fmt.Errorf("%s", resp.Error)
 		}
 		return appshared.PaymentNotifyResult{}, fmt.Errorf("verify notify failed")

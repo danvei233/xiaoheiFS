@@ -85,6 +85,9 @@ func (PaymentStatus) EnumDescriptor() ([]byte, []int) {
 type ListMethodsResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Methods       []string               `protobuf:"bytes,1,rep,name=methods,proto3" json:"methods,omitempty"`
+	Ok            bool                   `protobuf:"varint,2,opt,name=ok,proto3" json:"ok,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -124,6 +127,27 @@ func (x *ListMethodsResponse) GetMethods() []string {
 		return x.Methods
 	}
 	return nil
+}
+
+func (x *ListMethodsResponse) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *ListMethodsResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ListMethodsResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
 }
 
 type PaymentCreateRequest struct {
@@ -285,6 +309,7 @@ type PaymentCreateResponse struct {
 	PayUrl        string                 `protobuf:"bytes,3,opt,name=pay_url,json=payUrl,proto3" json:"pay_url,omitempty"`
 	Extra         map[string]string      `protobuf:"bytes,4,rep,name=extra,proto3" json:"extra,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	Error         string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,6,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -350,6 +375,13 @@ func (x *PaymentCreateResponse) GetExtra() map[string]string {
 func (x *PaymentCreateResponse) GetError() string {
 	if x != nil {
 		return x.Error
+	}
+	return ""
+}
+
+func (x *PaymentCreateResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
 	}
 	return ""
 }
@@ -422,6 +454,7 @@ type PaymentQueryResponse struct {
 	Amount        int64                  `protobuf:"varint,4,opt,name=amount,proto3" json:"amount,omitempty"`
 	RawJson       string                 `protobuf:"bytes,10,opt,name=raw_json,json=rawJson,proto3" json:"raw_json,omitempty"`
 	Error         string                 `protobuf:"bytes,20,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,21,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -494,6 +527,13 @@ func (x *PaymentQueryResponse) GetRawJson() string {
 func (x *PaymentQueryResponse) GetError() string {
 	if x != nil {
 		return x.Error
+	}
+	return ""
+}
+
+func (x *PaymentQueryResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
 	}
 	return ""
 }
@@ -581,6 +621,7 @@ type RefundResponse struct {
 	Status        PaymentStatus          `protobuf:"varint,3,opt,name=status,proto3,enum=plugin.v1.PaymentStatus" json:"status,omitempty"`
 	RawJson       string                 `protobuf:"bytes,10,opt,name=raw_json,json=rawJson,proto3" json:"raw_json,omitempty"`
 	Error         string                 `protobuf:"bytes,20,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,21,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -650,6 +691,13 @@ func (x *RefundResponse) GetError() string {
 	return ""
 }
 
+func (x *RefundResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
 type VerifyNotifyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Method        string                 `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
@@ -714,6 +762,7 @@ type NotifyVerifyResult struct {
 	RawJson       string                 `protobuf:"bytes,20,opt,name=raw_json,json=rawJson,proto3" json:"raw_json,omitempty"`
 	AckBody       string                 `protobuf:"bytes,21,opt,name=ack_body,json=ackBody,proto3" json:"ack_body,omitempty"`
 	Error         string                 `protobuf:"bytes,30,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,31,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -818,13 +867,24 @@ func (x *NotifyVerifyResult) GetError() string {
 	return ""
 }
 
+func (x *NotifyVerifyResult) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
 var File_plugin_v1_payment_proto protoreflect.FileDescriptor
 
 const file_plugin_v1_payment_proto_rawDesc = "" +
 	"\n" +
-	"\x17plugin/v1/payment.proto\x12\tplugin.v1\x1a\x15plugin/v1/types.proto\"/\n" +
+	"\x17plugin/v1/payment.proto\x12\tplugin.v1\x1a\x15plugin/v1/types.proto\"t\n" +
 	"\x13ListMethodsResponse\x12\x18\n" +
-	"\amethods\x18\x01 \x03(\tR\amethods\"\xd2\x02\n" +
+	"\amethods\x18\x01 \x03(\tR\amethods\x12\x0e\n" +
+	"\x02ok\x18\x02 \x01(\bR\x02ok\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x04 \x01(\tR\terrorCode\"\xd2\x02\n" +
 	"\x14PaymentCreateRequest\x12\x19\n" +
 	"\border_no\x18\x01 \x01(\tR\aorderNo\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x16\n" +
@@ -842,13 +902,15 @@ const file_plugin_v1_payment_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"l\n" +
 	"\x17CreatePaymentRpcRequest\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x129\n" +
-	"\arequest\x18\x02 \x01(\v2\x1f.plugin.v1.PaymentCreateRequestR\arequest\"\xee\x01\n" +
+	"\arequest\x18\x02 \x01(\v2\x1f.plugin.v1.PaymentCreateRequestR\arequest\"\x8d\x02\n" +
 	"\x15PaymentCreateResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x19\n" +
 	"\btrade_no\x18\x02 \x01(\tR\atradeNo\x12\x17\n" +
 	"\apay_url\x18\x03 \x01(\tR\x06payUrl\x12A\n" +
 	"\x05extra\x18\x04 \x03(\v2+.plugin.v1.PaymentCreateResponse.ExtraEntryR\x05extra\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error\x1a8\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x06 \x01(\tR\terrorCode\x1a8\n" +
 	"\n" +
 	"ExtraEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
@@ -856,7 +918,7 @@ const file_plugin_v1_payment_proto_rawDesc = "" +
 	"\x16QueryPaymentRpcRequest\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x19\n" +
 	"\btrade_no\x18\x02 \x01(\tR\atradeNo\x12\x19\n" +
-	"\border_no\x18\x03 \x01(\tR\aorderNo\"\xbc\x01\n" +
+	"\border_no\x18\x03 \x01(\tR\aorderNo\"\xdb\x01\n" +
 	"\x14PaymentQueryResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x120\n" +
 	"\x06status\x18\x02 \x01(\x0e2\x18.plugin.v1.PaymentStatusR\x06status\x12\x19\n" +
@@ -864,23 +926,27 @@ const file_plugin_v1_payment_proto_rawDesc = "" +
 	"\x06amount\x18\x04 \x01(\x03R\x06amount\x12\x19\n" +
 	"\braw_json\x18\n" +
 	" \x01(\tR\arawJson\x12\x14\n" +
-	"\x05error\x18\x14 \x01(\tR\x05error\"\x92\x01\n" +
+	"\x05error\x18\x14 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x15 \x01(\tR\terrorCode\"\x92\x01\n" +
 	"\x10RefundRpcRequest\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12\x19\n" +
 	"\btrade_no\x18\x02 \x01(\tR\atradeNo\x12\x1b\n" +
 	"\trefund_no\x18\x03 \x01(\tR\brefundNo\x12\x16\n" +
 	"\x06amount\x18\x04 \x01(\x03R\x06amount\x12\x16\n" +
-	"\x06reason\x18\x05 \x01(\tR\x06reason\"\xa0\x01\n" +
+	"\x06reason\x18\x05 \x01(\tR\x06reason\"\xbf\x01\n" +
 	"\x0eRefundResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x1b\n" +
 	"\trefund_no\x18\x02 \x01(\tR\brefundNo\x120\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x18.plugin.v1.PaymentStatusR\x06status\x12\x19\n" +
 	"\braw_json\x18\n" +
 	" \x01(\tR\arawJson\x12\x14\n" +
-	"\x05error\x18\x14 \x01(\tR\x05error\"Z\n" +
+	"\x05error\x18\x14 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x15 \x01(\tR\terrorCode\"Z\n" +
 	"\x13VerifyNotifyRequest\x12\x16\n" +
 	"\x06method\x18\x01 \x01(\tR\x06method\x12+\n" +
-	"\x03raw\x18\x02 \x01(\v2\x19.plugin.v1.RawHttpRequestR\x03raw\"\xa8\x02\n" +
+	"\x03raw\x18\x02 \x01(\v2\x19.plugin.v1.RawHttpRequestR\x03raw\"\xc7\x02\n" +
 	"\x12NotifyVerifyResult\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x19\n" +
 	"\border_no\x18\x02 \x01(\tR\aorderNo\x12\x19\n" +
@@ -892,7 +958,9 @@ const file_plugin_v1_payment_proto_rawDesc = "" +
 	"\x05payer\x18\a \x01(\tR\x05payer\x12\x19\n" +
 	"\braw_json\x18\x14 \x01(\tR\arawJson\x12\x19\n" +
 	"\back_body\x18\x15 \x01(\tR\aackBody\x12\x14\n" +
-	"\x05error\x18\x1e \x01(\tR\x05error*\xd5\x01\n" +
+	"\x05error\x18\x1e \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x1f \x01(\tR\terrorCode*\xd5\x01\n" +
 	"\rPaymentStatus\x12\x1e\n" +
 	"\x1aPAYMENT_STATUS_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16PAYMENT_STATUS_PENDING\x10\x01\x12\x17\n" +

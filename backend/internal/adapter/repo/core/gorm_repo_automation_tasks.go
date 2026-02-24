@@ -193,6 +193,12 @@ func (r *GormRepo) ListTaskRuns(ctx context.Context, key string, limit int) ([]d
 
 }
 
+func (r *GormRepo) PurgeTaskRuns(ctx context.Context, before time.Time) error {
+	return r.gdb.WithContext(ctx).
+		Where("created_at < ?", before).
+		Delete(&scheduledTaskRunRow{}).Error
+}
+
 func (r *GormRepo) CreateResizeTask(ctx context.Context, task *domain.ResizeTask) error {
 
 	row := resizeTaskRow{

@@ -229,7 +229,15 @@ func parsePendingReason(reason string) (provider string, token string, ok bool) 
 		return "", "", false
 	}
 	p := strings.TrimSpace(parts[1])
-	t := strings.TrimSpace(parts[2])
+	third := strings.TrimSpace(parts[2])
+	if third == "" {
+		return "", "", false
+	}
+	t := third
+	// Support extended format: pending_face:<provider>:<token>:<extra>
+	if idx := strings.Index(third, ":"); idx > 0 {
+		t = strings.TrimSpace(third[:idx])
+	}
 	if t == "" {
 		return "", "", false
 	}

@@ -252,6 +252,12 @@ func (r *GormRepo) UpdateProbeLogSession(ctx context.Context, session domain.Pro
 	}).Error
 }
 
+func (r *GormRepo) PurgeProbeLogSessions(ctx context.Context, before time.Time) error {
+	return r.gdb.WithContext(ctx).
+		Where("created_at < ?", before).
+		Delete(&probeLogSessionRow{}).Error
+}
+
 func fromProbeNodeRow(row probeNodeRow) domain.ProbeNode {
 	return domain.ProbeNode{
 		ID:               row.ID,

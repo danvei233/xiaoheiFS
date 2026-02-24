@@ -94,6 +94,7 @@ type SendSmsResponse struct {
 	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
 	MessageId     string                 `protobuf:"bytes,2,opt,name=message_id,json=messageId,proto3" json:"message_id,omitempty"`
 	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,4,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -149,6 +150,13 @@ func (x *SendSmsResponse) GetError() string {
 	return ""
 }
 
+func (x *SendSmsResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
 var File_plugin_v1_sms_proto protoreflect.FileDescriptor
 
 const file_plugin_v1_sms_proto_rawDesc = "" +
@@ -162,12 +170,14 @@ const file_plugin_v1_sms_proto_rawDesc = "" +
 	"\acontent\x18\x04 \x01(\tR\acontent\x1a7\n" +
 	"\tVarsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"V\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"u\n" +
 	"\x0fSendSmsResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x1d\n" +
 	"\n" +
 	"message_id\x18\x02 \x01(\tR\tmessageId\x12\x14\n" +
-	"\x05error\x18\x03 \x01(\tR\x05error2K\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x04 \x01(\tR\terrorCode2K\n" +
 	"\n" +
 	"SmsService\x12=\n" +
 	"\x04Send\x12\x19.plugin.v1.SendSmsRequest\x1a\x1a.plugin.v1.SendSmsResponseB Z\x1exiaoheiplay/plugin/v1;pluginv1b\x06proto3"

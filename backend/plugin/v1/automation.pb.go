@@ -21,6 +21,66 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type OperationResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ok            bool                   `protobuf:"varint,1,opt,name=ok,proto3" json:"ok,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,2,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
+	ErrorMessage  string                 `protobuf:"bytes,3,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OperationResult) Reset() {
+	*x = OperationResult{}
+	mi := &file_plugin_v1_automation_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OperationResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OperationResult) ProtoMessage() {}
+
+func (x *OperationResult) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_automation_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OperationResult.ProtoReflect.Descriptor instead.
+func (*OperationResult) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *OperationResult) GetOk() bool {
+	if x != nil {
+		return x.Ok
+	}
+	return false
+}
+
+func (x *OperationResult) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
+func (x *OperationResult) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
+}
+
 type AutomationArea struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -32,7 +92,7 @@ type AutomationArea struct {
 
 func (x *AutomationArea) Reset() {
 	*x = AutomationArea{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[0]
+	mi := &file_plugin_v1_automation_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -44,7 +104,7 @@ func (x *AutomationArea) String() string {
 func (*AutomationArea) ProtoMessage() {}
 
 func (x *AutomationArea) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[0]
+	mi := &file_plugin_v1_automation_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -57,7 +117,7 @@ func (x *AutomationArea) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationArea.ProtoReflect.Descriptor instead.
 func (*AutomationArea) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{0}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *AutomationArea) GetId() int64 {
@@ -93,7 +153,7 @@ type AutomationLine struct {
 
 func (x *AutomationLine) Reset() {
 	*x = AutomationLine{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[1]
+	mi := &file_plugin_v1_automation_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -105,7 +165,7 @@ func (x *AutomationLine) String() string {
 func (*AutomationLine) ProtoMessage() {}
 
 func (x *AutomationLine) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[1]
+	mi := &file_plugin_v1_automation_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -118,7 +178,7 @@ func (x *AutomationLine) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationLine.ProtoReflect.Descriptor instead.
 func (*AutomationLine) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{1}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *AutomationLine) GetId() int64 {
@@ -166,7 +226,7 @@ type AutomationPackage struct {
 
 func (x *AutomationPackage) Reset() {
 	*x = AutomationPackage{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[2]
+	mi := &file_plugin_v1_automation_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -178,7 +238,7 @@ func (x *AutomationPackage) String() string {
 func (*AutomationPackage) ProtoMessage() {}
 
 func (x *AutomationPackage) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[2]
+	mi := &file_plugin_v1_automation_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -191,7 +251,7 @@ func (x *AutomationPackage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationPackage.ProtoReflect.Descriptor instead.
 func (*AutomationPackage) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{2}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *AutomationPackage) GetId() int64 {
@@ -268,7 +328,7 @@ type AutomationImage struct {
 
 func (x *AutomationImage) Reset() {
 	*x = AutomationImage{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[3]
+	mi := &file_plugin_v1_automation_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -280,7 +340,7 @@ func (x *AutomationImage) String() string {
 func (*AutomationImage) ProtoMessage() {}
 
 func (x *AutomationImage) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[3]
+	mi := &file_plugin_v1_automation_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -293,7 +353,7 @@ func (x *AutomationImage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationImage.ProtoReflect.Descriptor instead.
 func (*AutomationImage) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{3}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *AutomationImage) GetId() int64 {
@@ -337,7 +397,7 @@ type AutomationInstance struct {
 
 func (x *AutomationInstance) Reset() {
 	*x = AutomationInstance{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[4]
+	mi := &file_plugin_v1_automation_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -349,7 +409,7 @@ func (x *AutomationInstance) String() string {
 func (*AutomationInstance) ProtoMessage() {}
 
 func (x *AutomationInstance) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[4]
+	mi := &file_plugin_v1_automation_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -362,7 +422,7 @@ func (x *AutomationInstance) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationInstance.ProtoReflect.Descriptor instead.
 func (*AutomationInstance) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{4}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AutomationInstance) GetId() int64 {
@@ -458,7 +518,7 @@ type ListAreasResponse struct {
 
 func (x *ListAreasResponse) Reset() {
 	*x = ListAreasResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[5]
+	mi := &file_plugin_v1_automation_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -470,7 +530,7 @@ func (x *ListAreasResponse) String() string {
 func (*ListAreasResponse) ProtoMessage() {}
 
 func (x *ListAreasResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[5]
+	mi := &file_plugin_v1_automation_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -483,7 +543,7 @@ func (x *ListAreasResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAreasResponse.ProtoReflect.Descriptor instead.
 func (*ListAreasResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{5}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListAreasResponse) GetItems() []*AutomationArea {
@@ -502,7 +562,7 @@ type ListLinesResponse struct {
 
 func (x *ListLinesResponse) Reset() {
 	*x = ListLinesResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[6]
+	mi := &file_plugin_v1_automation_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -514,7 +574,7 @@ func (x *ListLinesResponse) String() string {
 func (*ListLinesResponse) ProtoMessage() {}
 
 func (x *ListLinesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[6]
+	mi := &file_plugin_v1_automation_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -527,7 +587,7 @@ func (x *ListLinesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLinesResponse.ProtoReflect.Descriptor instead.
 func (*ListLinesResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{6}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListLinesResponse) GetItems() []*AutomationLine {
@@ -546,7 +606,7 @@ type ListPackagesRequest struct {
 
 func (x *ListPackagesRequest) Reset() {
 	*x = ListPackagesRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[7]
+	mi := &file_plugin_v1_automation_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -558,7 +618,7 @@ func (x *ListPackagesRequest) String() string {
 func (*ListPackagesRequest) ProtoMessage() {}
 
 func (x *ListPackagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[7]
+	mi := &file_plugin_v1_automation_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -571,7 +631,7 @@ func (x *ListPackagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPackagesRequest.ProtoReflect.Descriptor instead.
 func (*ListPackagesRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{7}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListPackagesRequest) GetLineId() int64 {
@@ -590,7 +650,7 @@ type ListPackagesResponse struct {
 
 func (x *ListPackagesResponse) Reset() {
 	*x = ListPackagesResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[8]
+	mi := &file_plugin_v1_automation_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -602,7 +662,7 @@ func (x *ListPackagesResponse) String() string {
 func (*ListPackagesResponse) ProtoMessage() {}
 
 func (x *ListPackagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[8]
+	mi := &file_plugin_v1_automation_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -615,7 +675,7 @@ func (x *ListPackagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPackagesResponse.ProtoReflect.Descriptor instead.
 func (*ListPackagesResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{8}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListPackagesResponse) GetItems() []*AutomationPackage {
@@ -634,7 +694,7 @@ type ListImagesRequest struct {
 
 func (x *ListImagesRequest) Reset() {
 	*x = ListImagesRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[9]
+	mi := &file_plugin_v1_automation_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -646,7 +706,7 @@ func (x *ListImagesRequest) String() string {
 func (*ListImagesRequest) ProtoMessage() {}
 
 func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[9]
+	mi := &file_plugin_v1_automation_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -659,7 +719,7 @@ func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesRequest.ProtoReflect.Descriptor instead.
 func (*ListImagesRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{9}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ListImagesRequest) GetLineId() int64 {
@@ -678,7 +738,7 @@ type ListImagesResponse struct {
 
 func (x *ListImagesResponse) Reset() {
 	*x = ListImagesResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[10]
+	mi := &file_plugin_v1_automation_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -690,7 +750,7 @@ func (x *ListImagesResponse) String() string {
 func (*ListImagesResponse) ProtoMessage() {}
 
 func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[10]
+	mi := &file_plugin_v1_automation_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -703,7 +763,7 @@ func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesResponse.ProtoReflect.Descriptor instead.
 func (*ListImagesResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{10}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ListImagesResponse) GetItems() []*AutomationImage {
@@ -738,7 +798,7 @@ type CreateInstanceRequest struct {
 
 func (x *CreateInstanceRequest) Reset() {
 	*x = CreateInstanceRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[11]
+	mi := &file_plugin_v1_automation_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -750,7 +810,7 @@ func (x *CreateInstanceRequest) String() string {
 func (*CreateInstanceRequest) ProtoMessage() {}
 
 func (x *CreateInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[11]
+	mi := &file_plugin_v1_automation_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -763,7 +823,7 @@ func (x *CreateInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateInstanceRequest.ProtoReflect.Descriptor instead.
 func (*CreateInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{11}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CreateInstanceRequest) GetLineId() int64 {
@@ -866,7 +926,7 @@ type CreateInstanceResponse struct {
 
 func (x *CreateInstanceResponse) Reset() {
 	*x = CreateInstanceResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[12]
+	mi := &file_plugin_v1_automation_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -878,7 +938,7 @@ func (x *CreateInstanceResponse) String() string {
 func (*CreateInstanceResponse) ProtoMessage() {}
 
 func (x *CreateInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[12]
+	mi := &file_plugin_v1_automation_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -891,7 +951,7 @@ func (x *CreateInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateInstanceResponse.ProtoReflect.Descriptor instead.
 func (*CreateInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{12}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CreateInstanceResponse) GetInstanceId() int64 {
@@ -910,7 +970,7 @@ type GetInstanceRequest struct {
 
 func (x *GetInstanceRequest) Reset() {
 	*x = GetInstanceRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[13]
+	mi := &file_plugin_v1_automation_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -922,7 +982,7 @@ func (x *GetInstanceRequest) String() string {
 func (*GetInstanceRequest) ProtoMessage() {}
 
 func (x *GetInstanceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[13]
+	mi := &file_plugin_v1_automation_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -935,7 +995,7 @@ func (x *GetInstanceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInstanceRequest.ProtoReflect.Descriptor instead.
 func (*GetInstanceRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{13}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetInstanceRequest) GetInstanceId() int64 {
@@ -954,7 +1014,7 @@ type GetInstanceResponse struct {
 
 func (x *GetInstanceResponse) Reset() {
 	*x = GetInstanceResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[14]
+	mi := &file_plugin_v1_automation_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -966,7 +1026,7 @@ func (x *GetInstanceResponse) String() string {
 func (*GetInstanceResponse) ProtoMessage() {}
 
 func (x *GetInstanceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[14]
+	mi := &file_plugin_v1_automation_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -979,7 +1039,7 @@ func (x *GetInstanceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetInstanceResponse.ProtoReflect.Descriptor instead.
 func (*GetInstanceResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{14}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetInstanceResponse) GetInstance() *AutomationInstance {
@@ -1000,7 +1060,7 @@ type AutomationInstanceSimple struct {
 
 func (x *AutomationInstanceSimple) Reset() {
 	*x = AutomationInstanceSimple{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[15]
+	mi := &file_plugin_v1_automation_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1012,7 +1072,7 @@ func (x *AutomationInstanceSimple) String() string {
 func (*AutomationInstanceSimple) ProtoMessage() {}
 
 func (x *AutomationInstanceSimple) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[15]
+	mi := &file_plugin_v1_automation_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1025,7 +1085,7 @@ func (x *AutomationInstanceSimple) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationInstanceSimple.ProtoReflect.Descriptor instead.
 func (*AutomationInstanceSimple) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{15}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AutomationInstanceSimple) GetId() int64 {
@@ -1058,7 +1118,7 @@ type ListInstancesSimpleRequest struct {
 
 func (x *ListInstancesSimpleRequest) Reset() {
 	*x = ListInstancesSimpleRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[16]
+	mi := &file_plugin_v1_automation_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1070,7 +1130,7 @@ func (x *ListInstancesSimpleRequest) String() string {
 func (*ListInstancesSimpleRequest) ProtoMessage() {}
 
 func (x *ListInstancesSimpleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[16]
+	mi := &file_plugin_v1_automation_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1083,7 +1143,7 @@ func (x *ListInstancesSimpleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInstancesSimpleRequest.ProtoReflect.Descriptor instead.
 func (*ListInstancesSimpleRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{16}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ListInstancesSimpleRequest) GetSearchTag() string {
@@ -1102,7 +1162,7 @@ type ListInstancesSimpleResponse struct {
 
 func (x *ListInstancesSimpleResponse) Reset() {
 	*x = ListInstancesSimpleResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[17]
+	mi := &file_plugin_v1_automation_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1114,7 +1174,7 @@ func (x *ListInstancesSimpleResponse) String() string {
 func (*ListInstancesSimpleResponse) ProtoMessage() {}
 
 func (x *ListInstancesSimpleResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[17]
+	mi := &file_plugin_v1_automation_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1127,7 +1187,7 @@ func (x *ListInstancesSimpleResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListInstancesSimpleResponse.ProtoReflect.Descriptor instead.
 func (*ListInstancesSimpleResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{17}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListInstancesSimpleResponse) GetItems() []*AutomationInstanceSimple {
@@ -1146,7 +1206,7 @@ type StartRequest struct {
 
 func (x *StartRequest) Reset() {
 	*x = StartRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[18]
+	mi := &file_plugin_v1_automation_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1158,7 +1218,7 @@ func (x *StartRequest) String() string {
 func (*StartRequest) ProtoMessage() {}
 
 func (x *StartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[18]
+	mi := &file_plugin_v1_automation_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1171,7 +1231,7 @@ func (x *StartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartRequest.ProtoReflect.Descriptor instead.
 func (*StartRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{18}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *StartRequest) GetInstanceId() int64 {
@@ -1190,7 +1250,7 @@ type ShutdownRequest struct {
 
 func (x *ShutdownRequest) Reset() {
 	*x = ShutdownRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[19]
+	mi := &file_plugin_v1_automation_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1202,7 +1262,7 @@ func (x *ShutdownRequest) String() string {
 func (*ShutdownRequest) ProtoMessage() {}
 
 func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[19]
+	mi := &file_plugin_v1_automation_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1215,7 +1275,7 @@ func (x *ShutdownRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShutdownRequest.ProtoReflect.Descriptor instead.
 func (*ShutdownRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{19}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ShutdownRequest) GetInstanceId() int64 {
@@ -1234,7 +1294,7 @@ type RebootRequest struct {
 
 func (x *RebootRequest) Reset() {
 	*x = RebootRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[20]
+	mi := &file_plugin_v1_automation_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1246,7 +1306,7 @@ func (x *RebootRequest) String() string {
 func (*RebootRequest) ProtoMessage() {}
 
 func (x *RebootRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[20]
+	mi := &file_plugin_v1_automation_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1259,7 +1319,7 @@ func (x *RebootRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RebootRequest.ProtoReflect.Descriptor instead.
 func (*RebootRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{20}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *RebootRequest) GetInstanceId() int64 {
@@ -1280,7 +1340,7 @@ type RebuildRequest struct {
 
 func (x *RebuildRequest) Reset() {
 	*x = RebuildRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[21]
+	mi := &file_plugin_v1_automation_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1292,7 +1352,7 @@ func (x *RebuildRequest) String() string {
 func (*RebuildRequest) ProtoMessage() {}
 
 func (x *RebuildRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[21]
+	mi := &file_plugin_v1_automation_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1305,7 +1365,7 @@ func (x *RebuildRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RebuildRequest.ProtoReflect.Descriptor instead.
 func (*RebuildRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{21}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *RebuildRequest) GetInstanceId() int64 {
@@ -1339,7 +1399,7 @@ type ResetPasswordRequest struct {
 
 func (x *ResetPasswordRequest) Reset() {
 	*x = ResetPasswordRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[22]
+	mi := &file_plugin_v1_automation_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1351,7 +1411,7 @@ func (x *ResetPasswordRequest) String() string {
 func (*ResetPasswordRequest) ProtoMessage() {}
 
 func (x *ResetPasswordRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[22]
+	mi := &file_plugin_v1_automation_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1364,7 +1424,7 @@ func (x *ResetPasswordRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResetPasswordRequest.ProtoReflect.Descriptor instead.
 func (*ResetPasswordRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{22}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ResetPasswordRequest) GetInstanceId() int64 {
@@ -1395,7 +1455,7 @@ type ElasticUpdateRequest struct {
 
 func (x *ElasticUpdateRequest) Reset() {
 	*x = ElasticUpdateRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[23]
+	mi := &file_plugin_v1_automation_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1407,7 +1467,7 @@ func (x *ElasticUpdateRequest) String() string {
 func (*ElasticUpdateRequest) ProtoMessage() {}
 
 func (x *ElasticUpdateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[23]
+	mi := &file_plugin_v1_automation_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1420,7 +1480,7 @@ func (x *ElasticUpdateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ElasticUpdateRequest.ProtoReflect.Descriptor instead.
 func (*ElasticUpdateRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{23}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ElasticUpdateRequest) GetInstanceId() int64 {
@@ -1474,7 +1534,7 @@ type LockRequest struct {
 
 func (x *LockRequest) Reset() {
 	*x = LockRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[24]
+	mi := &file_plugin_v1_automation_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1486,7 +1546,7 @@ func (x *LockRequest) String() string {
 func (*LockRequest) ProtoMessage() {}
 
 func (x *LockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[24]
+	mi := &file_plugin_v1_automation_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1499,7 +1559,7 @@ func (x *LockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LockRequest.ProtoReflect.Descriptor instead.
 func (*LockRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{24}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *LockRequest) GetInstanceId() int64 {
@@ -1518,7 +1578,7 @@ type UnlockRequest struct {
 
 func (x *UnlockRequest) Reset() {
 	*x = UnlockRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[25]
+	mi := &file_plugin_v1_automation_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1530,7 +1590,7 @@ func (x *UnlockRequest) String() string {
 func (*UnlockRequest) ProtoMessage() {}
 
 func (x *UnlockRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[25]
+	mi := &file_plugin_v1_automation_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1543,7 +1603,7 @@ func (x *UnlockRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnlockRequest.ProtoReflect.Descriptor instead.
 func (*UnlockRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{25}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *UnlockRequest) GetInstanceId() int64 {
@@ -1563,7 +1623,7 @@ type RenewRequest struct {
 
 func (x *RenewRequest) Reset() {
 	*x = RenewRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[26]
+	mi := &file_plugin_v1_automation_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1575,7 +1635,7 @@ func (x *RenewRequest) String() string {
 func (*RenewRequest) ProtoMessage() {}
 
 func (x *RenewRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[26]
+	mi := &file_plugin_v1_automation_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1588,7 +1648,7 @@ func (x *RenewRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RenewRequest.ProtoReflect.Descriptor instead.
 func (*RenewRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{26}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *RenewRequest) GetInstanceId() int64 {
@@ -1614,7 +1674,7 @@ type DestroyRequest struct {
 
 func (x *DestroyRequest) Reset() {
 	*x = DestroyRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[27]
+	mi := &file_plugin_v1_automation_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1626,7 +1686,7 @@ func (x *DestroyRequest) String() string {
 func (*DestroyRequest) ProtoMessage() {}
 
 func (x *DestroyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[27]
+	mi := &file_plugin_v1_automation_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1639,7 +1699,7 @@ func (x *DestroyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroyRequest.ProtoReflect.Descriptor instead.
 func (*DestroyRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{27}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *DestroyRequest) GetInstanceId() int64 {
@@ -1659,7 +1719,7 @@ type GetPanelURLRequest struct {
 
 func (x *GetPanelURLRequest) Reset() {
 	*x = GetPanelURLRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[28]
+	mi := &file_plugin_v1_automation_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1671,7 +1731,7 @@ func (x *GetPanelURLRequest) String() string {
 func (*GetPanelURLRequest) ProtoMessage() {}
 
 func (x *GetPanelURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[28]
+	mi := &file_plugin_v1_automation_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1684,7 +1744,7 @@ func (x *GetPanelURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPanelURLRequest.ProtoReflect.Descriptor instead.
 func (*GetPanelURLRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{28}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *GetPanelURLRequest) GetInstanceName() string {
@@ -1710,7 +1770,7 @@ type GetPanelURLResponse struct {
 
 func (x *GetPanelURLResponse) Reset() {
 	*x = GetPanelURLResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[29]
+	mi := &file_plugin_v1_automation_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1722,7 +1782,7 @@ func (x *GetPanelURLResponse) String() string {
 func (*GetPanelURLResponse) ProtoMessage() {}
 
 func (x *GetPanelURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[29]
+	mi := &file_plugin_v1_automation_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1735,7 +1795,7 @@ func (x *GetPanelURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetPanelURLResponse.ProtoReflect.Descriptor instead.
 func (*GetPanelURLResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{29}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *GetPanelURLResponse) GetUrl() string {
@@ -1754,7 +1814,7 @@ type GetVNCURLRequest struct {
 
 func (x *GetVNCURLRequest) Reset() {
 	*x = GetVNCURLRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[30]
+	mi := &file_plugin_v1_automation_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1766,7 +1826,7 @@ func (x *GetVNCURLRequest) String() string {
 func (*GetVNCURLRequest) ProtoMessage() {}
 
 func (x *GetVNCURLRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[30]
+	mi := &file_plugin_v1_automation_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1779,7 +1839,7 @@ func (x *GetVNCURLRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetVNCURLRequest.ProtoReflect.Descriptor instead.
 func (*GetVNCURLRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{30}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *GetVNCURLRequest) GetInstanceId() int64 {
@@ -1798,7 +1858,7 @@ type GetVNCURLResponse struct {
 
 func (x *GetVNCURLResponse) Reset() {
 	*x = GetVNCURLResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[31]
+	mi := &file_plugin_v1_automation_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1810,7 +1870,7 @@ func (x *GetVNCURLResponse) String() string {
 func (*GetVNCURLResponse) ProtoMessage() {}
 
 func (x *GetVNCURLResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[31]
+	mi := &file_plugin_v1_automation_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1823,7 +1883,7 @@ func (x *GetVNCURLResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetVNCURLResponse.ProtoReflect.Descriptor instead.
 func (*GetVNCURLResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{31}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *GetVNCURLResponse) GetUrl() string {
@@ -1842,7 +1902,7 @@ type GetMonitorRequest struct {
 
 func (x *GetMonitorRequest) Reset() {
 	*x = GetMonitorRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[32]
+	mi := &file_plugin_v1_automation_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1854,7 +1914,7 @@ func (x *GetMonitorRequest) String() string {
 func (*GetMonitorRequest) ProtoMessage() {}
 
 func (x *GetMonitorRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[32]
+	mi := &file_plugin_v1_automation_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1867,7 +1927,7 @@ func (x *GetMonitorRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMonitorRequest.ProtoReflect.Descriptor instead.
 func (*GetMonitorRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{32}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetMonitorRequest) GetInstanceId() int64 {
@@ -1886,7 +1946,7 @@ type GetMonitorResponse struct {
 
 func (x *GetMonitorResponse) Reset() {
 	*x = GetMonitorResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[33]
+	mi := &file_plugin_v1_automation_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1898,7 +1958,7 @@ func (x *GetMonitorResponse) String() string {
 func (*GetMonitorResponse) ProtoMessage() {}
 
 func (x *GetMonitorResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[33]
+	mi := &file_plugin_v1_automation_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1911,7 +1971,7 @@ func (x *GetMonitorResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMonitorResponse.ProtoReflect.Descriptor instead.
 func (*GetMonitorResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{33}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *GetMonitorResponse) GetRawJson() string {
@@ -1934,7 +1994,7 @@ type AutomationPortMapping struct {
 
 func (x *AutomationPortMapping) Reset() {
 	*x = AutomationPortMapping{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[34]
+	mi := &file_plugin_v1_automation_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1946,7 +2006,7 @@ func (x *AutomationPortMapping) String() string {
 func (*AutomationPortMapping) ProtoMessage() {}
 
 func (x *AutomationPortMapping) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[34]
+	mi := &file_plugin_v1_automation_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1959,7 +2019,7 @@ func (x *AutomationPortMapping) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationPortMapping.ProtoReflect.Descriptor instead.
 func (*AutomationPortMapping) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{34}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *AutomationPortMapping) GetId() int64 {
@@ -1999,7 +2059,7 @@ type ListPortMappingsRequest struct {
 
 func (x *ListPortMappingsRequest) Reset() {
 	*x = ListPortMappingsRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[35]
+	mi := &file_plugin_v1_automation_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2011,7 +2071,7 @@ func (x *ListPortMappingsRequest) String() string {
 func (*ListPortMappingsRequest) ProtoMessage() {}
 
 func (x *ListPortMappingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[35]
+	mi := &file_plugin_v1_automation_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2024,7 +2084,7 @@ func (x *ListPortMappingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortMappingsRequest.ProtoReflect.Descriptor instead.
 func (*ListPortMappingsRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{35}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ListPortMappingsRequest) GetInstanceId() int64 {
@@ -2043,7 +2103,7 @@ type ListPortMappingsResponse struct {
 
 func (x *ListPortMappingsResponse) Reset() {
 	*x = ListPortMappingsResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[36]
+	mi := &file_plugin_v1_automation_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2055,7 +2115,7 @@ func (x *ListPortMappingsResponse) String() string {
 func (*ListPortMappingsResponse) ProtoMessage() {}
 
 func (x *ListPortMappingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[36]
+	mi := &file_plugin_v1_automation_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2068,7 +2128,7 @@ func (x *ListPortMappingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPortMappingsResponse.ProtoReflect.Descriptor instead.
 func (*ListPortMappingsResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{36}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ListPortMappingsResponse) GetItems() []*AutomationPortMapping {
@@ -2090,7 +2150,7 @@ type AddPortMappingRequest struct {
 
 func (x *AddPortMappingRequest) Reset() {
 	*x = AddPortMappingRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[37]
+	mi := &file_plugin_v1_automation_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2102,7 +2162,7 @@ func (x *AddPortMappingRequest) String() string {
 func (*AddPortMappingRequest) ProtoMessage() {}
 
 func (x *AddPortMappingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[37]
+	mi := &file_plugin_v1_automation_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2115,7 +2175,7 @@ func (x *AddPortMappingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddPortMappingRequest.ProtoReflect.Descriptor instead.
 func (*AddPortMappingRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{37}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *AddPortMappingRequest) GetInstanceId() int64 {
@@ -2156,7 +2216,7 @@ type DeletePortMappingRequest struct {
 
 func (x *DeletePortMappingRequest) Reset() {
 	*x = DeletePortMappingRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[38]
+	mi := &file_plugin_v1_automation_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2168,7 +2228,7 @@ func (x *DeletePortMappingRequest) String() string {
 func (*DeletePortMappingRequest) ProtoMessage() {}
 
 func (x *DeletePortMappingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[38]
+	mi := &file_plugin_v1_automation_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2181,7 +2241,7 @@ func (x *DeletePortMappingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeletePortMappingRequest.ProtoReflect.Descriptor instead.
 func (*DeletePortMappingRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{38}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *DeletePortMappingRequest) GetInstanceId() int64 {
@@ -2208,7 +2268,7 @@ type FindPortCandidatesRequest struct {
 
 func (x *FindPortCandidatesRequest) Reset() {
 	*x = FindPortCandidatesRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[39]
+	mi := &file_plugin_v1_automation_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2220,7 +2280,7 @@ func (x *FindPortCandidatesRequest) String() string {
 func (*FindPortCandidatesRequest) ProtoMessage() {}
 
 func (x *FindPortCandidatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[39]
+	mi := &file_plugin_v1_automation_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2233,7 +2293,7 @@ func (x *FindPortCandidatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindPortCandidatesRequest.ProtoReflect.Descriptor instead.
 func (*FindPortCandidatesRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{39}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *FindPortCandidatesRequest) GetInstanceId() int64 {
@@ -2259,7 +2319,7 @@ type FindPortCandidatesResponse struct {
 
 func (x *FindPortCandidatesResponse) Reset() {
 	*x = FindPortCandidatesResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[40]
+	mi := &file_plugin_v1_automation_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2271,7 +2331,7 @@ func (x *FindPortCandidatesResponse) String() string {
 func (*FindPortCandidatesResponse) ProtoMessage() {}
 
 func (x *FindPortCandidatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[40]
+	mi := &file_plugin_v1_automation_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2284,7 +2344,7 @@ func (x *FindPortCandidatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FindPortCandidatesResponse.ProtoReflect.Descriptor instead.
 func (*FindPortCandidatesResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{40}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *FindPortCandidatesResponse) GetPorts() []int64 {
@@ -2306,7 +2366,7 @@ type AutomationBackup struct {
 
 func (x *AutomationBackup) Reset() {
 	*x = AutomationBackup{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[41]
+	mi := &file_plugin_v1_automation_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2318,7 +2378,7 @@ func (x *AutomationBackup) String() string {
 func (*AutomationBackup) ProtoMessage() {}
 
 func (x *AutomationBackup) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[41]
+	mi := &file_plugin_v1_automation_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2331,7 +2391,7 @@ func (x *AutomationBackup) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationBackup.ProtoReflect.Descriptor instead.
 func (*AutomationBackup) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{41}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AutomationBackup) GetId() int64 {
@@ -2371,7 +2431,7 @@ type ListBackupsRequest struct {
 
 func (x *ListBackupsRequest) Reset() {
 	*x = ListBackupsRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[42]
+	mi := &file_plugin_v1_automation_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2383,7 +2443,7 @@ func (x *ListBackupsRequest) String() string {
 func (*ListBackupsRequest) ProtoMessage() {}
 
 func (x *ListBackupsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[42]
+	mi := &file_plugin_v1_automation_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2396,7 +2456,7 @@ func (x *ListBackupsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBackupsRequest.ProtoReflect.Descriptor instead.
 func (*ListBackupsRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{42}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *ListBackupsRequest) GetInstanceId() int64 {
@@ -2415,7 +2475,7 @@ type ListBackupsResponse struct {
 
 func (x *ListBackupsResponse) Reset() {
 	*x = ListBackupsResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[43]
+	mi := &file_plugin_v1_automation_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2427,7 +2487,7 @@ func (x *ListBackupsResponse) String() string {
 func (*ListBackupsResponse) ProtoMessage() {}
 
 func (x *ListBackupsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[43]
+	mi := &file_plugin_v1_automation_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2440,7 +2500,7 @@ func (x *ListBackupsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListBackupsResponse.ProtoReflect.Descriptor instead.
 func (*ListBackupsResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{43}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *ListBackupsResponse) GetItems() []*AutomationBackup {
@@ -2459,7 +2519,7 @@ type CreateBackupRequest struct {
 
 func (x *CreateBackupRequest) Reset() {
 	*x = CreateBackupRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[44]
+	mi := &file_plugin_v1_automation_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2471,7 +2531,7 @@ func (x *CreateBackupRequest) String() string {
 func (*CreateBackupRequest) ProtoMessage() {}
 
 func (x *CreateBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[44]
+	mi := &file_plugin_v1_automation_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2484,7 +2544,7 @@ func (x *CreateBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateBackupRequest.ProtoReflect.Descriptor instead.
 func (*CreateBackupRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{44}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CreateBackupRequest) GetInstanceId() int64 {
@@ -2504,7 +2564,7 @@ type DeleteBackupRequest struct {
 
 func (x *DeleteBackupRequest) Reset() {
 	*x = DeleteBackupRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[45]
+	mi := &file_plugin_v1_automation_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2516,7 +2576,7 @@ func (x *DeleteBackupRequest) String() string {
 func (*DeleteBackupRequest) ProtoMessage() {}
 
 func (x *DeleteBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[45]
+	mi := &file_plugin_v1_automation_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2529,7 +2589,7 @@ func (x *DeleteBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteBackupRequest.ProtoReflect.Descriptor instead.
 func (*DeleteBackupRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{45}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *DeleteBackupRequest) GetInstanceId() int64 {
@@ -2556,7 +2616,7 @@ type RestoreBackupRequest struct {
 
 func (x *RestoreBackupRequest) Reset() {
 	*x = RestoreBackupRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[46]
+	mi := &file_plugin_v1_automation_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2568,7 +2628,7 @@ func (x *RestoreBackupRequest) String() string {
 func (*RestoreBackupRequest) ProtoMessage() {}
 
 func (x *RestoreBackupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[46]
+	mi := &file_plugin_v1_automation_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2581,7 +2641,7 @@ func (x *RestoreBackupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreBackupRequest.ProtoReflect.Descriptor instead.
 func (*RestoreBackupRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{46}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *RestoreBackupRequest) GetInstanceId() int64 {
@@ -2610,7 +2670,7 @@ type AutomationSnapshot struct {
 
 func (x *AutomationSnapshot) Reset() {
 	*x = AutomationSnapshot{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[47]
+	mi := &file_plugin_v1_automation_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2622,7 +2682,7 @@ func (x *AutomationSnapshot) String() string {
 func (*AutomationSnapshot) ProtoMessage() {}
 
 func (x *AutomationSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[47]
+	mi := &file_plugin_v1_automation_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2635,7 +2695,7 @@ func (x *AutomationSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationSnapshot.ProtoReflect.Descriptor instead.
 func (*AutomationSnapshot) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{47}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *AutomationSnapshot) GetId() int64 {
@@ -2675,7 +2735,7 @@ type ListSnapshotsRequest struct {
 
 func (x *ListSnapshotsRequest) Reset() {
 	*x = ListSnapshotsRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[48]
+	mi := &file_plugin_v1_automation_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2687,7 +2747,7 @@ func (x *ListSnapshotsRequest) String() string {
 func (*ListSnapshotsRequest) ProtoMessage() {}
 
 func (x *ListSnapshotsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[48]
+	mi := &file_plugin_v1_automation_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2700,7 +2760,7 @@ func (x *ListSnapshotsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSnapshotsRequest.ProtoReflect.Descriptor instead.
 func (*ListSnapshotsRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{48}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ListSnapshotsRequest) GetInstanceId() int64 {
@@ -2719,7 +2779,7 @@ type ListSnapshotsResponse struct {
 
 func (x *ListSnapshotsResponse) Reset() {
 	*x = ListSnapshotsResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[49]
+	mi := &file_plugin_v1_automation_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2731,7 +2791,7 @@ func (x *ListSnapshotsResponse) String() string {
 func (*ListSnapshotsResponse) ProtoMessage() {}
 
 func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[49]
+	mi := &file_plugin_v1_automation_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2744,7 +2804,7 @@ func (x *ListSnapshotsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSnapshotsResponse.ProtoReflect.Descriptor instead.
 func (*ListSnapshotsResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{49}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ListSnapshotsResponse) GetItems() []*AutomationSnapshot {
@@ -2763,7 +2823,7 @@ type CreateSnapshotRequest struct {
 
 func (x *CreateSnapshotRequest) Reset() {
 	*x = CreateSnapshotRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[50]
+	mi := &file_plugin_v1_automation_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2775,7 +2835,7 @@ func (x *CreateSnapshotRequest) String() string {
 func (*CreateSnapshotRequest) ProtoMessage() {}
 
 func (x *CreateSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[50]
+	mi := &file_plugin_v1_automation_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2788,7 +2848,7 @@ func (x *CreateSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*CreateSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{50}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *CreateSnapshotRequest) GetInstanceId() int64 {
@@ -2808,7 +2868,7 @@ type DeleteSnapshotRequest struct {
 
 func (x *DeleteSnapshotRequest) Reset() {
 	*x = DeleteSnapshotRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[51]
+	mi := &file_plugin_v1_automation_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2820,7 +2880,7 @@ func (x *DeleteSnapshotRequest) String() string {
 func (*DeleteSnapshotRequest) ProtoMessage() {}
 
 func (x *DeleteSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[51]
+	mi := &file_plugin_v1_automation_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2833,7 +2893,7 @@ func (x *DeleteSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{51}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *DeleteSnapshotRequest) GetInstanceId() int64 {
@@ -2860,7 +2920,7 @@ type RestoreSnapshotRequest struct {
 
 func (x *RestoreSnapshotRequest) Reset() {
 	*x = RestoreSnapshotRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[52]
+	mi := &file_plugin_v1_automation_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2872,7 +2932,7 @@ func (x *RestoreSnapshotRequest) String() string {
 func (*RestoreSnapshotRequest) ProtoMessage() {}
 
 func (x *RestoreSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[52]
+	mi := &file_plugin_v1_automation_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2885,7 +2945,7 @@ func (x *RestoreSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*RestoreSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{52}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *RestoreSnapshotRequest) GetInstanceId() int64 {
@@ -2917,7 +2977,7 @@ type AutomationFirewallRule struct {
 
 func (x *AutomationFirewallRule) Reset() {
 	*x = AutomationFirewallRule{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[53]
+	mi := &file_plugin_v1_automation_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2929,7 +2989,7 @@ func (x *AutomationFirewallRule) String() string {
 func (*AutomationFirewallRule) ProtoMessage() {}
 
 func (x *AutomationFirewallRule) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[53]
+	mi := &file_plugin_v1_automation_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2942,7 +3002,7 @@ func (x *AutomationFirewallRule) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AutomationFirewallRule.ProtoReflect.Descriptor instead.
 func (*AutomationFirewallRule) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{53}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *AutomationFirewallRule) GetId() int64 {
@@ -3003,7 +3063,7 @@ type ListFirewallRulesRequest struct {
 
 func (x *ListFirewallRulesRequest) Reset() {
 	*x = ListFirewallRulesRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[54]
+	mi := &file_plugin_v1_automation_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3015,7 +3075,7 @@ func (x *ListFirewallRulesRequest) String() string {
 func (*ListFirewallRulesRequest) ProtoMessage() {}
 
 func (x *ListFirewallRulesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[54]
+	mi := &file_plugin_v1_automation_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3028,7 +3088,7 @@ func (x *ListFirewallRulesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFirewallRulesRequest.ProtoReflect.Descriptor instead.
 func (*ListFirewallRulesRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{54}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *ListFirewallRulesRequest) GetInstanceId() int64 {
@@ -3047,7 +3107,7 @@ type ListFirewallRulesResponse struct {
 
 func (x *ListFirewallRulesResponse) Reset() {
 	*x = ListFirewallRulesResponse{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[55]
+	mi := &file_plugin_v1_automation_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3059,7 +3119,7 @@ func (x *ListFirewallRulesResponse) String() string {
 func (*ListFirewallRulesResponse) ProtoMessage() {}
 
 func (x *ListFirewallRulesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[55]
+	mi := &file_plugin_v1_automation_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3072,7 +3132,7 @@ func (x *ListFirewallRulesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListFirewallRulesResponse.ProtoReflect.Descriptor instead.
 func (*ListFirewallRulesResponse) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{55}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *ListFirewallRulesResponse) GetItems() []*AutomationFirewallRule {
@@ -3097,7 +3157,7 @@ type AddFirewallRuleRequest struct {
 
 func (x *AddFirewallRuleRequest) Reset() {
 	*x = AddFirewallRuleRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[56]
+	mi := &file_plugin_v1_automation_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3109,7 +3169,7 @@ func (x *AddFirewallRuleRequest) String() string {
 func (*AddFirewallRuleRequest) ProtoMessage() {}
 
 func (x *AddFirewallRuleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[56]
+	mi := &file_plugin_v1_automation_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3122,7 +3182,7 @@ func (x *AddFirewallRuleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddFirewallRuleRequest.ProtoReflect.Descriptor instead.
 func (*AddFirewallRuleRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{56}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *AddFirewallRuleRequest) GetInstanceId() int64 {
@@ -3184,7 +3244,7 @@ type DeleteFirewallRuleRequest struct {
 
 func (x *DeleteFirewallRuleRequest) Reset() {
 	*x = DeleteFirewallRuleRequest{}
-	mi := &file_plugin_v1_automation_proto_msgTypes[57]
+	mi := &file_plugin_v1_automation_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3196,7 +3256,7 @@ func (x *DeleteFirewallRuleRequest) String() string {
 func (*DeleteFirewallRuleRequest) ProtoMessage() {}
 
 func (x *DeleteFirewallRuleRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_plugin_v1_automation_proto_msgTypes[57]
+	mi := &file_plugin_v1_automation_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3209,7 +3269,7 @@ func (x *DeleteFirewallRuleRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteFirewallRuleRequest.ProtoReflect.Descriptor instead.
 func (*DeleteFirewallRuleRequest) Descriptor() ([]byte, []int) {
-	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{57}
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *DeleteFirewallRuleRequest) GetInstanceId() int64 {
@@ -3230,7 +3290,12 @@ var File_plugin_v1_automation_proto protoreflect.FileDescriptor
 
 const file_plugin_v1_automation_proto_rawDesc = "" +
 	"\n" +
-	"\x1aplugin/v1/automation.proto\x12\tplugin.v1\x1a\x15plugin/v1/types.proto\"J\n" +
+	"\x1aplugin/v1/automation.proto\x12\tplugin.v1\x1a\x15plugin/v1/types.proto\"e\n" +
+	"\x0fOperationResult\x12\x0e\n" +
+	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x02 \x01(\tR\terrorCode\x12#\n" +
+	"\rerror_message\x18\x03 \x01(\tR\ferrorMessage\"J\n" +
 	"\x0eAutomationArea\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
@@ -3472,7 +3537,7 @@ const file_plugin_v1_automation_proto_rawDesc = "" +
 	"\x19DeleteFirewallRuleRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\x03R\n" +
 	"instanceId\x12\x17\n" +
-	"\arule_id\x18\x02 \x01(\x03R\x06ruleId2\xd3\x13\n" +
+	"\arule_id\x18\x02 \x01(\x03R\x06ruleId2\x9b\x15\n" +
 	"\x11AutomationService\x12;\n" +
 	"\tListAreas\x12\x10.plugin.v1.Empty\x1a\x1c.plugin.v1.ListAreasResponse\x12;\n" +
 	"\tListLines\x12\x10.plugin.v1.Empty\x1a\x1c.plugin.v1.ListLinesResponse\x12O\n" +
@@ -3481,36 +3546,36 @@ const file_plugin_v1_automation_proto_rawDesc = "" +
 	"ListImages\x12\x1c.plugin.v1.ListImagesRequest\x1a\x1d.plugin.v1.ListImagesResponse\x12U\n" +
 	"\x0eCreateInstance\x12 .plugin.v1.CreateInstanceRequest\x1a!.plugin.v1.CreateInstanceResponse\x12L\n" +
 	"\vGetInstance\x12\x1d.plugin.v1.GetInstanceRequest\x1a\x1e.plugin.v1.GetInstanceResponse\x12d\n" +
-	"\x13ListInstancesSimple\x12%.plugin.v1.ListInstancesSimpleRequest\x1a&.plugin.v1.ListInstancesSimpleResponse\x122\n" +
-	"\x05Start\x12\x17.plugin.v1.StartRequest\x1a\x10.plugin.v1.Empty\x128\n" +
-	"\bShutdown\x12\x1a.plugin.v1.ShutdownRequest\x1a\x10.plugin.v1.Empty\x124\n" +
-	"\x06Reboot\x12\x18.plugin.v1.RebootRequest\x1a\x10.plugin.v1.Empty\x126\n" +
-	"\aRebuild\x12\x19.plugin.v1.RebuildRequest\x1a\x10.plugin.v1.Empty\x12B\n" +
-	"\rResetPassword\x12\x1f.plugin.v1.ResetPasswordRequest\x1a\x10.plugin.v1.Empty\x12B\n" +
-	"\rElasticUpdate\x12\x1f.plugin.v1.ElasticUpdateRequest\x1a\x10.plugin.v1.Empty\x120\n" +
-	"\x04Lock\x12\x16.plugin.v1.LockRequest\x1a\x10.plugin.v1.Empty\x124\n" +
-	"\x06Unlock\x12\x18.plugin.v1.UnlockRequest\x1a\x10.plugin.v1.Empty\x122\n" +
-	"\x05Renew\x12\x17.plugin.v1.RenewRequest\x1a\x10.plugin.v1.Empty\x126\n" +
-	"\aDestroy\x12\x19.plugin.v1.DestroyRequest\x1a\x10.plugin.v1.Empty\x12L\n" +
+	"\x13ListInstancesSimple\x12%.plugin.v1.ListInstancesSimpleRequest\x1a&.plugin.v1.ListInstancesSimpleResponse\x12<\n" +
+	"\x05Start\x12\x17.plugin.v1.StartRequest\x1a\x1a.plugin.v1.OperationResult\x12B\n" +
+	"\bShutdown\x12\x1a.plugin.v1.ShutdownRequest\x1a\x1a.plugin.v1.OperationResult\x12>\n" +
+	"\x06Reboot\x12\x18.plugin.v1.RebootRequest\x1a\x1a.plugin.v1.OperationResult\x12@\n" +
+	"\aRebuild\x12\x19.plugin.v1.RebuildRequest\x1a\x1a.plugin.v1.OperationResult\x12L\n" +
+	"\rResetPassword\x12\x1f.plugin.v1.ResetPasswordRequest\x1a\x1a.plugin.v1.OperationResult\x12L\n" +
+	"\rElasticUpdate\x12\x1f.plugin.v1.ElasticUpdateRequest\x1a\x1a.plugin.v1.OperationResult\x12:\n" +
+	"\x04Lock\x12\x16.plugin.v1.LockRequest\x1a\x1a.plugin.v1.OperationResult\x12>\n" +
+	"\x06Unlock\x12\x18.plugin.v1.UnlockRequest\x1a\x1a.plugin.v1.OperationResult\x12<\n" +
+	"\x05Renew\x12\x17.plugin.v1.RenewRequest\x1a\x1a.plugin.v1.OperationResult\x12@\n" +
+	"\aDestroy\x12\x19.plugin.v1.DestroyRequest\x1a\x1a.plugin.v1.OperationResult\x12L\n" +
 	"\vGetPanelURL\x12\x1d.plugin.v1.GetPanelURLRequest\x1a\x1e.plugin.v1.GetPanelURLResponse\x12F\n" +
 	"\tGetVNCURL\x12\x1b.plugin.v1.GetVNCURLRequest\x1a\x1c.plugin.v1.GetVNCURLResponse\x12I\n" +
 	"\n" +
 	"GetMonitor\x12\x1c.plugin.v1.GetMonitorRequest\x1a\x1d.plugin.v1.GetMonitorResponse\x12[\n" +
-	"\x10ListPortMappings\x12\".plugin.v1.ListPortMappingsRequest\x1a#.plugin.v1.ListPortMappingsResponse\x12D\n" +
-	"\x0eAddPortMapping\x12 .plugin.v1.AddPortMappingRequest\x1a\x10.plugin.v1.Empty\x12J\n" +
-	"\x11DeletePortMapping\x12#.plugin.v1.DeletePortMappingRequest\x1a\x10.plugin.v1.Empty\x12a\n" +
+	"\x10ListPortMappings\x12\".plugin.v1.ListPortMappingsRequest\x1a#.plugin.v1.ListPortMappingsResponse\x12N\n" +
+	"\x0eAddPortMapping\x12 .plugin.v1.AddPortMappingRequest\x1a\x1a.plugin.v1.OperationResult\x12T\n" +
+	"\x11DeletePortMapping\x12#.plugin.v1.DeletePortMappingRequest\x1a\x1a.plugin.v1.OperationResult\x12a\n" +
 	"\x12FindPortCandidates\x12$.plugin.v1.FindPortCandidatesRequest\x1a%.plugin.v1.FindPortCandidatesResponse\x12L\n" +
-	"\vListBackups\x12\x1d.plugin.v1.ListBackupsRequest\x1a\x1e.plugin.v1.ListBackupsResponse\x12@\n" +
-	"\fCreateBackup\x12\x1e.plugin.v1.CreateBackupRequest\x1a\x10.plugin.v1.Empty\x12@\n" +
-	"\fDeleteBackup\x12\x1e.plugin.v1.DeleteBackupRequest\x1a\x10.plugin.v1.Empty\x12B\n" +
-	"\rRestoreBackup\x12\x1f.plugin.v1.RestoreBackupRequest\x1a\x10.plugin.v1.Empty\x12R\n" +
-	"\rListSnapshots\x12\x1f.plugin.v1.ListSnapshotsRequest\x1a .plugin.v1.ListSnapshotsResponse\x12D\n" +
-	"\x0eCreateSnapshot\x12 .plugin.v1.CreateSnapshotRequest\x1a\x10.plugin.v1.Empty\x12D\n" +
-	"\x0eDeleteSnapshot\x12 .plugin.v1.DeleteSnapshotRequest\x1a\x10.plugin.v1.Empty\x12F\n" +
-	"\x0fRestoreSnapshot\x12!.plugin.v1.RestoreSnapshotRequest\x1a\x10.plugin.v1.Empty\x12^\n" +
-	"\x11ListFirewallRules\x12#.plugin.v1.ListFirewallRulesRequest\x1a$.plugin.v1.ListFirewallRulesResponse\x12F\n" +
-	"\x0fAddFirewallRule\x12!.plugin.v1.AddFirewallRuleRequest\x1a\x10.plugin.v1.Empty\x12L\n" +
-	"\x12DeleteFirewallRule\x12$.plugin.v1.DeleteFirewallRuleRequest\x1a\x10.plugin.v1.EmptyB Z\x1exiaoheiplay/plugin/v1;pluginv1b\x06proto3"
+	"\vListBackups\x12\x1d.plugin.v1.ListBackupsRequest\x1a\x1e.plugin.v1.ListBackupsResponse\x12J\n" +
+	"\fCreateBackup\x12\x1e.plugin.v1.CreateBackupRequest\x1a\x1a.plugin.v1.OperationResult\x12J\n" +
+	"\fDeleteBackup\x12\x1e.plugin.v1.DeleteBackupRequest\x1a\x1a.plugin.v1.OperationResult\x12L\n" +
+	"\rRestoreBackup\x12\x1f.plugin.v1.RestoreBackupRequest\x1a\x1a.plugin.v1.OperationResult\x12R\n" +
+	"\rListSnapshots\x12\x1f.plugin.v1.ListSnapshotsRequest\x1a .plugin.v1.ListSnapshotsResponse\x12N\n" +
+	"\x0eCreateSnapshot\x12 .plugin.v1.CreateSnapshotRequest\x1a\x1a.plugin.v1.OperationResult\x12N\n" +
+	"\x0eDeleteSnapshot\x12 .plugin.v1.DeleteSnapshotRequest\x1a\x1a.plugin.v1.OperationResult\x12P\n" +
+	"\x0fRestoreSnapshot\x12!.plugin.v1.RestoreSnapshotRequest\x1a\x1a.plugin.v1.OperationResult\x12^\n" +
+	"\x11ListFirewallRules\x12#.plugin.v1.ListFirewallRulesRequest\x1a$.plugin.v1.ListFirewallRulesResponse\x12P\n" +
+	"\x0fAddFirewallRule\x12!.plugin.v1.AddFirewallRuleRequest\x1a\x1a.plugin.v1.OperationResult\x12V\n" +
+	"\x12DeleteFirewallRule\x12$.plugin.v1.DeleteFirewallRuleRequest\x1a\x1a.plugin.v1.OperationResultB Z\x1exiaoheiplay/plugin/v1;pluginv1b\x06proto3"
 
 var (
 	file_plugin_v1_automation_proto_rawDescOnce sync.Once
@@ -3524,149 +3589,150 @@ func file_plugin_v1_automation_proto_rawDescGZIP() []byte {
 	return file_plugin_v1_automation_proto_rawDescData
 }
 
-var file_plugin_v1_automation_proto_msgTypes = make([]protoimpl.MessageInfo, 58)
+var file_plugin_v1_automation_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
 var file_plugin_v1_automation_proto_goTypes = []any{
-	(*AutomationArea)(nil),              // 0: plugin.v1.AutomationArea
-	(*AutomationLine)(nil),              // 1: plugin.v1.AutomationLine
-	(*AutomationPackage)(nil),           // 2: plugin.v1.AutomationPackage
-	(*AutomationImage)(nil),             // 3: plugin.v1.AutomationImage
-	(*AutomationInstance)(nil),          // 4: plugin.v1.AutomationInstance
-	(*ListAreasResponse)(nil),           // 5: plugin.v1.ListAreasResponse
-	(*ListLinesResponse)(nil),           // 6: plugin.v1.ListLinesResponse
-	(*ListPackagesRequest)(nil),         // 7: plugin.v1.ListPackagesRequest
-	(*ListPackagesResponse)(nil),        // 8: plugin.v1.ListPackagesResponse
-	(*ListImagesRequest)(nil),           // 9: plugin.v1.ListImagesRequest
-	(*ListImagesResponse)(nil),          // 10: plugin.v1.ListImagesResponse
-	(*CreateInstanceRequest)(nil),       // 11: plugin.v1.CreateInstanceRequest
-	(*CreateInstanceResponse)(nil),      // 12: plugin.v1.CreateInstanceResponse
-	(*GetInstanceRequest)(nil),          // 13: plugin.v1.GetInstanceRequest
-	(*GetInstanceResponse)(nil),         // 14: plugin.v1.GetInstanceResponse
-	(*AutomationInstanceSimple)(nil),    // 15: plugin.v1.AutomationInstanceSimple
-	(*ListInstancesSimpleRequest)(nil),  // 16: plugin.v1.ListInstancesSimpleRequest
-	(*ListInstancesSimpleResponse)(nil), // 17: plugin.v1.ListInstancesSimpleResponse
-	(*StartRequest)(nil),                // 18: plugin.v1.StartRequest
-	(*ShutdownRequest)(nil),             // 19: plugin.v1.ShutdownRequest
-	(*RebootRequest)(nil),               // 20: plugin.v1.RebootRequest
-	(*RebuildRequest)(nil),              // 21: plugin.v1.RebuildRequest
-	(*ResetPasswordRequest)(nil),        // 22: plugin.v1.ResetPasswordRequest
-	(*ElasticUpdateRequest)(nil),        // 23: plugin.v1.ElasticUpdateRequest
-	(*LockRequest)(nil),                 // 24: plugin.v1.LockRequest
-	(*UnlockRequest)(nil),               // 25: plugin.v1.UnlockRequest
-	(*RenewRequest)(nil),                // 26: plugin.v1.RenewRequest
-	(*DestroyRequest)(nil),              // 27: plugin.v1.DestroyRequest
-	(*GetPanelURLRequest)(nil),          // 28: plugin.v1.GetPanelURLRequest
-	(*GetPanelURLResponse)(nil),         // 29: plugin.v1.GetPanelURLResponse
-	(*GetVNCURLRequest)(nil),            // 30: plugin.v1.GetVNCURLRequest
-	(*GetVNCURLResponse)(nil),           // 31: plugin.v1.GetVNCURLResponse
-	(*GetMonitorRequest)(nil),           // 32: plugin.v1.GetMonitorRequest
-	(*GetMonitorResponse)(nil),          // 33: plugin.v1.GetMonitorResponse
-	(*AutomationPortMapping)(nil),       // 34: plugin.v1.AutomationPortMapping
-	(*ListPortMappingsRequest)(nil),     // 35: plugin.v1.ListPortMappingsRequest
-	(*ListPortMappingsResponse)(nil),    // 36: plugin.v1.ListPortMappingsResponse
-	(*AddPortMappingRequest)(nil),       // 37: plugin.v1.AddPortMappingRequest
-	(*DeletePortMappingRequest)(nil),    // 38: plugin.v1.DeletePortMappingRequest
-	(*FindPortCandidatesRequest)(nil),   // 39: plugin.v1.FindPortCandidatesRequest
-	(*FindPortCandidatesResponse)(nil),  // 40: plugin.v1.FindPortCandidatesResponse
-	(*AutomationBackup)(nil),            // 41: plugin.v1.AutomationBackup
-	(*ListBackupsRequest)(nil),          // 42: plugin.v1.ListBackupsRequest
-	(*ListBackupsResponse)(nil),         // 43: plugin.v1.ListBackupsResponse
-	(*CreateBackupRequest)(nil),         // 44: plugin.v1.CreateBackupRequest
-	(*DeleteBackupRequest)(nil),         // 45: plugin.v1.DeleteBackupRequest
-	(*RestoreBackupRequest)(nil),        // 46: plugin.v1.RestoreBackupRequest
-	(*AutomationSnapshot)(nil),          // 47: plugin.v1.AutomationSnapshot
-	(*ListSnapshotsRequest)(nil),        // 48: plugin.v1.ListSnapshotsRequest
-	(*ListSnapshotsResponse)(nil),       // 49: plugin.v1.ListSnapshotsResponse
-	(*CreateSnapshotRequest)(nil),       // 50: plugin.v1.CreateSnapshotRequest
-	(*DeleteSnapshotRequest)(nil),       // 51: plugin.v1.DeleteSnapshotRequest
-	(*RestoreSnapshotRequest)(nil),      // 52: plugin.v1.RestoreSnapshotRequest
-	(*AutomationFirewallRule)(nil),      // 53: plugin.v1.AutomationFirewallRule
-	(*ListFirewallRulesRequest)(nil),    // 54: plugin.v1.ListFirewallRulesRequest
-	(*ListFirewallRulesResponse)(nil),   // 55: plugin.v1.ListFirewallRulesResponse
-	(*AddFirewallRuleRequest)(nil),      // 56: plugin.v1.AddFirewallRuleRequest
-	(*DeleteFirewallRuleRequest)(nil),   // 57: plugin.v1.DeleteFirewallRuleRequest
-	(*Empty)(nil),                       // 58: plugin.v1.Empty
+	(*OperationResult)(nil),             // 0: plugin.v1.OperationResult
+	(*AutomationArea)(nil),              // 1: plugin.v1.AutomationArea
+	(*AutomationLine)(nil),              // 2: plugin.v1.AutomationLine
+	(*AutomationPackage)(nil),           // 3: plugin.v1.AutomationPackage
+	(*AutomationImage)(nil),             // 4: plugin.v1.AutomationImage
+	(*AutomationInstance)(nil),          // 5: plugin.v1.AutomationInstance
+	(*ListAreasResponse)(nil),           // 6: plugin.v1.ListAreasResponse
+	(*ListLinesResponse)(nil),           // 7: plugin.v1.ListLinesResponse
+	(*ListPackagesRequest)(nil),         // 8: plugin.v1.ListPackagesRequest
+	(*ListPackagesResponse)(nil),        // 9: plugin.v1.ListPackagesResponse
+	(*ListImagesRequest)(nil),           // 10: plugin.v1.ListImagesRequest
+	(*ListImagesResponse)(nil),          // 11: plugin.v1.ListImagesResponse
+	(*CreateInstanceRequest)(nil),       // 12: plugin.v1.CreateInstanceRequest
+	(*CreateInstanceResponse)(nil),      // 13: plugin.v1.CreateInstanceResponse
+	(*GetInstanceRequest)(nil),          // 14: plugin.v1.GetInstanceRequest
+	(*GetInstanceResponse)(nil),         // 15: plugin.v1.GetInstanceResponse
+	(*AutomationInstanceSimple)(nil),    // 16: plugin.v1.AutomationInstanceSimple
+	(*ListInstancesSimpleRequest)(nil),  // 17: plugin.v1.ListInstancesSimpleRequest
+	(*ListInstancesSimpleResponse)(nil), // 18: plugin.v1.ListInstancesSimpleResponse
+	(*StartRequest)(nil),                // 19: plugin.v1.StartRequest
+	(*ShutdownRequest)(nil),             // 20: plugin.v1.ShutdownRequest
+	(*RebootRequest)(nil),               // 21: plugin.v1.RebootRequest
+	(*RebuildRequest)(nil),              // 22: plugin.v1.RebuildRequest
+	(*ResetPasswordRequest)(nil),        // 23: plugin.v1.ResetPasswordRequest
+	(*ElasticUpdateRequest)(nil),        // 24: plugin.v1.ElasticUpdateRequest
+	(*LockRequest)(nil),                 // 25: plugin.v1.LockRequest
+	(*UnlockRequest)(nil),               // 26: plugin.v1.UnlockRequest
+	(*RenewRequest)(nil),                // 27: plugin.v1.RenewRequest
+	(*DestroyRequest)(nil),              // 28: plugin.v1.DestroyRequest
+	(*GetPanelURLRequest)(nil),          // 29: plugin.v1.GetPanelURLRequest
+	(*GetPanelURLResponse)(nil),         // 30: plugin.v1.GetPanelURLResponse
+	(*GetVNCURLRequest)(nil),            // 31: plugin.v1.GetVNCURLRequest
+	(*GetVNCURLResponse)(nil),           // 32: plugin.v1.GetVNCURLResponse
+	(*GetMonitorRequest)(nil),           // 33: plugin.v1.GetMonitorRequest
+	(*GetMonitorResponse)(nil),          // 34: plugin.v1.GetMonitorResponse
+	(*AutomationPortMapping)(nil),       // 35: plugin.v1.AutomationPortMapping
+	(*ListPortMappingsRequest)(nil),     // 36: plugin.v1.ListPortMappingsRequest
+	(*ListPortMappingsResponse)(nil),    // 37: plugin.v1.ListPortMappingsResponse
+	(*AddPortMappingRequest)(nil),       // 38: plugin.v1.AddPortMappingRequest
+	(*DeletePortMappingRequest)(nil),    // 39: plugin.v1.DeletePortMappingRequest
+	(*FindPortCandidatesRequest)(nil),   // 40: plugin.v1.FindPortCandidatesRequest
+	(*FindPortCandidatesResponse)(nil),  // 41: plugin.v1.FindPortCandidatesResponse
+	(*AutomationBackup)(nil),            // 42: plugin.v1.AutomationBackup
+	(*ListBackupsRequest)(nil),          // 43: plugin.v1.ListBackupsRequest
+	(*ListBackupsResponse)(nil),         // 44: plugin.v1.ListBackupsResponse
+	(*CreateBackupRequest)(nil),         // 45: plugin.v1.CreateBackupRequest
+	(*DeleteBackupRequest)(nil),         // 46: plugin.v1.DeleteBackupRequest
+	(*RestoreBackupRequest)(nil),        // 47: plugin.v1.RestoreBackupRequest
+	(*AutomationSnapshot)(nil),          // 48: plugin.v1.AutomationSnapshot
+	(*ListSnapshotsRequest)(nil),        // 49: plugin.v1.ListSnapshotsRequest
+	(*ListSnapshotsResponse)(nil),       // 50: plugin.v1.ListSnapshotsResponse
+	(*CreateSnapshotRequest)(nil),       // 51: plugin.v1.CreateSnapshotRequest
+	(*DeleteSnapshotRequest)(nil),       // 52: plugin.v1.DeleteSnapshotRequest
+	(*RestoreSnapshotRequest)(nil),      // 53: plugin.v1.RestoreSnapshotRequest
+	(*AutomationFirewallRule)(nil),      // 54: plugin.v1.AutomationFirewallRule
+	(*ListFirewallRulesRequest)(nil),    // 55: plugin.v1.ListFirewallRulesRequest
+	(*ListFirewallRulesResponse)(nil),   // 56: plugin.v1.ListFirewallRulesResponse
+	(*AddFirewallRuleRequest)(nil),      // 57: plugin.v1.AddFirewallRuleRequest
+	(*DeleteFirewallRuleRequest)(nil),   // 58: plugin.v1.DeleteFirewallRuleRequest
+	(*Empty)(nil),                       // 59: plugin.v1.Empty
 }
 var file_plugin_v1_automation_proto_depIdxs = []int32{
-	0,  // 0: plugin.v1.ListAreasResponse.items:type_name -> plugin.v1.AutomationArea
-	1,  // 1: plugin.v1.ListLinesResponse.items:type_name -> plugin.v1.AutomationLine
-	2,  // 2: plugin.v1.ListPackagesResponse.items:type_name -> plugin.v1.AutomationPackage
-	3,  // 3: plugin.v1.ListImagesResponse.items:type_name -> plugin.v1.AutomationImage
-	4,  // 4: plugin.v1.GetInstanceResponse.instance:type_name -> plugin.v1.AutomationInstance
-	15, // 5: plugin.v1.ListInstancesSimpleResponse.items:type_name -> plugin.v1.AutomationInstanceSimple
-	34, // 6: plugin.v1.ListPortMappingsResponse.items:type_name -> plugin.v1.AutomationPortMapping
-	41, // 7: plugin.v1.ListBackupsResponse.items:type_name -> plugin.v1.AutomationBackup
-	47, // 8: plugin.v1.ListSnapshotsResponse.items:type_name -> plugin.v1.AutomationSnapshot
-	53, // 9: plugin.v1.ListFirewallRulesResponse.items:type_name -> plugin.v1.AutomationFirewallRule
-	58, // 10: plugin.v1.AutomationService.ListAreas:input_type -> plugin.v1.Empty
-	58, // 11: plugin.v1.AutomationService.ListLines:input_type -> plugin.v1.Empty
-	7,  // 12: plugin.v1.AutomationService.ListPackages:input_type -> plugin.v1.ListPackagesRequest
-	9,  // 13: plugin.v1.AutomationService.ListImages:input_type -> plugin.v1.ListImagesRequest
-	11, // 14: plugin.v1.AutomationService.CreateInstance:input_type -> plugin.v1.CreateInstanceRequest
-	13, // 15: plugin.v1.AutomationService.GetInstance:input_type -> plugin.v1.GetInstanceRequest
-	16, // 16: plugin.v1.AutomationService.ListInstancesSimple:input_type -> plugin.v1.ListInstancesSimpleRequest
-	18, // 17: plugin.v1.AutomationService.Start:input_type -> plugin.v1.StartRequest
-	19, // 18: plugin.v1.AutomationService.Shutdown:input_type -> plugin.v1.ShutdownRequest
-	20, // 19: plugin.v1.AutomationService.Reboot:input_type -> plugin.v1.RebootRequest
-	21, // 20: plugin.v1.AutomationService.Rebuild:input_type -> plugin.v1.RebuildRequest
-	22, // 21: plugin.v1.AutomationService.ResetPassword:input_type -> plugin.v1.ResetPasswordRequest
-	23, // 22: plugin.v1.AutomationService.ElasticUpdate:input_type -> plugin.v1.ElasticUpdateRequest
-	24, // 23: plugin.v1.AutomationService.Lock:input_type -> plugin.v1.LockRequest
-	25, // 24: plugin.v1.AutomationService.Unlock:input_type -> plugin.v1.UnlockRequest
-	26, // 25: plugin.v1.AutomationService.Renew:input_type -> plugin.v1.RenewRequest
-	27, // 26: plugin.v1.AutomationService.Destroy:input_type -> plugin.v1.DestroyRequest
-	28, // 27: plugin.v1.AutomationService.GetPanelURL:input_type -> plugin.v1.GetPanelURLRequest
-	30, // 28: plugin.v1.AutomationService.GetVNCURL:input_type -> plugin.v1.GetVNCURLRequest
-	32, // 29: plugin.v1.AutomationService.GetMonitor:input_type -> plugin.v1.GetMonitorRequest
-	35, // 30: plugin.v1.AutomationService.ListPortMappings:input_type -> plugin.v1.ListPortMappingsRequest
-	37, // 31: plugin.v1.AutomationService.AddPortMapping:input_type -> plugin.v1.AddPortMappingRequest
-	38, // 32: plugin.v1.AutomationService.DeletePortMapping:input_type -> plugin.v1.DeletePortMappingRequest
-	39, // 33: plugin.v1.AutomationService.FindPortCandidates:input_type -> plugin.v1.FindPortCandidatesRequest
-	42, // 34: plugin.v1.AutomationService.ListBackups:input_type -> plugin.v1.ListBackupsRequest
-	44, // 35: plugin.v1.AutomationService.CreateBackup:input_type -> plugin.v1.CreateBackupRequest
-	45, // 36: plugin.v1.AutomationService.DeleteBackup:input_type -> plugin.v1.DeleteBackupRequest
-	46, // 37: plugin.v1.AutomationService.RestoreBackup:input_type -> plugin.v1.RestoreBackupRequest
-	48, // 38: plugin.v1.AutomationService.ListSnapshots:input_type -> plugin.v1.ListSnapshotsRequest
-	50, // 39: plugin.v1.AutomationService.CreateSnapshot:input_type -> plugin.v1.CreateSnapshotRequest
-	51, // 40: plugin.v1.AutomationService.DeleteSnapshot:input_type -> plugin.v1.DeleteSnapshotRequest
-	52, // 41: plugin.v1.AutomationService.RestoreSnapshot:input_type -> plugin.v1.RestoreSnapshotRequest
-	54, // 42: plugin.v1.AutomationService.ListFirewallRules:input_type -> plugin.v1.ListFirewallRulesRequest
-	56, // 43: plugin.v1.AutomationService.AddFirewallRule:input_type -> plugin.v1.AddFirewallRuleRequest
-	57, // 44: plugin.v1.AutomationService.DeleteFirewallRule:input_type -> plugin.v1.DeleteFirewallRuleRequest
-	5,  // 45: plugin.v1.AutomationService.ListAreas:output_type -> plugin.v1.ListAreasResponse
-	6,  // 46: plugin.v1.AutomationService.ListLines:output_type -> plugin.v1.ListLinesResponse
-	8,  // 47: plugin.v1.AutomationService.ListPackages:output_type -> plugin.v1.ListPackagesResponse
-	10, // 48: plugin.v1.AutomationService.ListImages:output_type -> plugin.v1.ListImagesResponse
-	12, // 49: plugin.v1.AutomationService.CreateInstance:output_type -> plugin.v1.CreateInstanceResponse
-	14, // 50: plugin.v1.AutomationService.GetInstance:output_type -> plugin.v1.GetInstanceResponse
-	17, // 51: plugin.v1.AutomationService.ListInstancesSimple:output_type -> plugin.v1.ListInstancesSimpleResponse
-	58, // 52: plugin.v1.AutomationService.Start:output_type -> plugin.v1.Empty
-	58, // 53: plugin.v1.AutomationService.Shutdown:output_type -> plugin.v1.Empty
-	58, // 54: plugin.v1.AutomationService.Reboot:output_type -> plugin.v1.Empty
-	58, // 55: plugin.v1.AutomationService.Rebuild:output_type -> plugin.v1.Empty
-	58, // 56: plugin.v1.AutomationService.ResetPassword:output_type -> plugin.v1.Empty
-	58, // 57: plugin.v1.AutomationService.ElasticUpdate:output_type -> plugin.v1.Empty
-	58, // 58: plugin.v1.AutomationService.Lock:output_type -> plugin.v1.Empty
-	58, // 59: plugin.v1.AutomationService.Unlock:output_type -> plugin.v1.Empty
-	58, // 60: plugin.v1.AutomationService.Renew:output_type -> plugin.v1.Empty
-	58, // 61: plugin.v1.AutomationService.Destroy:output_type -> plugin.v1.Empty
-	29, // 62: plugin.v1.AutomationService.GetPanelURL:output_type -> plugin.v1.GetPanelURLResponse
-	31, // 63: plugin.v1.AutomationService.GetVNCURL:output_type -> plugin.v1.GetVNCURLResponse
-	33, // 64: plugin.v1.AutomationService.GetMonitor:output_type -> plugin.v1.GetMonitorResponse
-	36, // 65: plugin.v1.AutomationService.ListPortMappings:output_type -> plugin.v1.ListPortMappingsResponse
-	58, // 66: plugin.v1.AutomationService.AddPortMapping:output_type -> plugin.v1.Empty
-	58, // 67: plugin.v1.AutomationService.DeletePortMapping:output_type -> plugin.v1.Empty
-	40, // 68: plugin.v1.AutomationService.FindPortCandidates:output_type -> plugin.v1.FindPortCandidatesResponse
-	43, // 69: plugin.v1.AutomationService.ListBackups:output_type -> plugin.v1.ListBackupsResponse
-	58, // 70: plugin.v1.AutomationService.CreateBackup:output_type -> plugin.v1.Empty
-	58, // 71: plugin.v1.AutomationService.DeleteBackup:output_type -> plugin.v1.Empty
-	58, // 72: plugin.v1.AutomationService.RestoreBackup:output_type -> plugin.v1.Empty
-	49, // 73: plugin.v1.AutomationService.ListSnapshots:output_type -> plugin.v1.ListSnapshotsResponse
-	58, // 74: plugin.v1.AutomationService.CreateSnapshot:output_type -> plugin.v1.Empty
-	58, // 75: plugin.v1.AutomationService.DeleteSnapshot:output_type -> plugin.v1.Empty
-	58, // 76: plugin.v1.AutomationService.RestoreSnapshot:output_type -> plugin.v1.Empty
-	55, // 77: plugin.v1.AutomationService.ListFirewallRules:output_type -> plugin.v1.ListFirewallRulesResponse
-	58, // 78: plugin.v1.AutomationService.AddFirewallRule:output_type -> plugin.v1.Empty
-	58, // 79: plugin.v1.AutomationService.DeleteFirewallRule:output_type -> plugin.v1.Empty
+	1,  // 0: plugin.v1.ListAreasResponse.items:type_name -> plugin.v1.AutomationArea
+	2,  // 1: plugin.v1.ListLinesResponse.items:type_name -> plugin.v1.AutomationLine
+	3,  // 2: plugin.v1.ListPackagesResponse.items:type_name -> plugin.v1.AutomationPackage
+	4,  // 3: plugin.v1.ListImagesResponse.items:type_name -> plugin.v1.AutomationImage
+	5,  // 4: plugin.v1.GetInstanceResponse.instance:type_name -> plugin.v1.AutomationInstance
+	16, // 5: plugin.v1.ListInstancesSimpleResponse.items:type_name -> plugin.v1.AutomationInstanceSimple
+	35, // 6: plugin.v1.ListPortMappingsResponse.items:type_name -> plugin.v1.AutomationPortMapping
+	42, // 7: plugin.v1.ListBackupsResponse.items:type_name -> plugin.v1.AutomationBackup
+	48, // 8: plugin.v1.ListSnapshotsResponse.items:type_name -> plugin.v1.AutomationSnapshot
+	54, // 9: plugin.v1.ListFirewallRulesResponse.items:type_name -> plugin.v1.AutomationFirewallRule
+	59, // 10: plugin.v1.AutomationService.ListAreas:input_type -> plugin.v1.Empty
+	59, // 11: plugin.v1.AutomationService.ListLines:input_type -> plugin.v1.Empty
+	8,  // 12: plugin.v1.AutomationService.ListPackages:input_type -> plugin.v1.ListPackagesRequest
+	10, // 13: plugin.v1.AutomationService.ListImages:input_type -> plugin.v1.ListImagesRequest
+	12, // 14: plugin.v1.AutomationService.CreateInstance:input_type -> plugin.v1.CreateInstanceRequest
+	14, // 15: plugin.v1.AutomationService.GetInstance:input_type -> plugin.v1.GetInstanceRequest
+	17, // 16: plugin.v1.AutomationService.ListInstancesSimple:input_type -> plugin.v1.ListInstancesSimpleRequest
+	19, // 17: plugin.v1.AutomationService.Start:input_type -> plugin.v1.StartRequest
+	20, // 18: plugin.v1.AutomationService.Shutdown:input_type -> plugin.v1.ShutdownRequest
+	21, // 19: plugin.v1.AutomationService.Reboot:input_type -> plugin.v1.RebootRequest
+	22, // 20: plugin.v1.AutomationService.Rebuild:input_type -> plugin.v1.RebuildRequest
+	23, // 21: plugin.v1.AutomationService.ResetPassword:input_type -> plugin.v1.ResetPasswordRequest
+	24, // 22: plugin.v1.AutomationService.ElasticUpdate:input_type -> plugin.v1.ElasticUpdateRequest
+	25, // 23: plugin.v1.AutomationService.Lock:input_type -> plugin.v1.LockRequest
+	26, // 24: plugin.v1.AutomationService.Unlock:input_type -> plugin.v1.UnlockRequest
+	27, // 25: plugin.v1.AutomationService.Renew:input_type -> plugin.v1.RenewRequest
+	28, // 26: plugin.v1.AutomationService.Destroy:input_type -> plugin.v1.DestroyRequest
+	29, // 27: plugin.v1.AutomationService.GetPanelURL:input_type -> plugin.v1.GetPanelURLRequest
+	31, // 28: plugin.v1.AutomationService.GetVNCURL:input_type -> plugin.v1.GetVNCURLRequest
+	33, // 29: plugin.v1.AutomationService.GetMonitor:input_type -> plugin.v1.GetMonitorRequest
+	36, // 30: plugin.v1.AutomationService.ListPortMappings:input_type -> plugin.v1.ListPortMappingsRequest
+	38, // 31: plugin.v1.AutomationService.AddPortMapping:input_type -> plugin.v1.AddPortMappingRequest
+	39, // 32: plugin.v1.AutomationService.DeletePortMapping:input_type -> plugin.v1.DeletePortMappingRequest
+	40, // 33: plugin.v1.AutomationService.FindPortCandidates:input_type -> plugin.v1.FindPortCandidatesRequest
+	43, // 34: plugin.v1.AutomationService.ListBackups:input_type -> plugin.v1.ListBackupsRequest
+	45, // 35: plugin.v1.AutomationService.CreateBackup:input_type -> plugin.v1.CreateBackupRequest
+	46, // 36: plugin.v1.AutomationService.DeleteBackup:input_type -> plugin.v1.DeleteBackupRequest
+	47, // 37: plugin.v1.AutomationService.RestoreBackup:input_type -> plugin.v1.RestoreBackupRequest
+	49, // 38: plugin.v1.AutomationService.ListSnapshots:input_type -> plugin.v1.ListSnapshotsRequest
+	51, // 39: plugin.v1.AutomationService.CreateSnapshot:input_type -> plugin.v1.CreateSnapshotRequest
+	52, // 40: plugin.v1.AutomationService.DeleteSnapshot:input_type -> plugin.v1.DeleteSnapshotRequest
+	53, // 41: plugin.v1.AutomationService.RestoreSnapshot:input_type -> plugin.v1.RestoreSnapshotRequest
+	55, // 42: plugin.v1.AutomationService.ListFirewallRules:input_type -> plugin.v1.ListFirewallRulesRequest
+	57, // 43: plugin.v1.AutomationService.AddFirewallRule:input_type -> plugin.v1.AddFirewallRuleRequest
+	58, // 44: plugin.v1.AutomationService.DeleteFirewallRule:input_type -> plugin.v1.DeleteFirewallRuleRequest
+	6,  // 45: plugin.v1.AutomationService.ListAreas:output_type -> plugin.v1.ListAreasResponse
+	7,  // 46: plugin.v1.AutomationService.ListLines:output_type -> plugin.v1.ListLinesResponse
+	9,  // 47: plugin.v1.AutomationService.ListPackages:output_type -> plugin.v1.ListPackagesResponse
+	11, // 48: plugin.v1.AutomationService.ListImages:output_type -> plugin.v1.ListImagesResponse
+	13, // 49: plugin.v1.AutomationService.CreateInstance:output_type -> plugin.v1.CreateInstanceResponse
+	15, // 50: plugin.v1.AutomationService.GetInstance:output_type -> plugin.v1.GetInstanceResponse
+	18, // 51: plugin.v1.AutomationService.ListInstancesSimple:output_type -> plugin.v1.ListInstancesSimpleResponse
+	0,  // 52: plugin.v1.AutomationService.Start:output_type -> plugin.v1.OperationResult
+	0,  // 53: plugin.v1.AutomationService.Shutdown:output_type -> plugin.v1.OperationResult
+	0,  // 54: plugin.v1.AutomationService.Reboot:output_type -> plugin.v1.OperationResult
+	0,  // 55: plugin.v1.AutomationService.Rebuild:output_type -> plugin.v1.OperationResult
+	0,  // 56: plugin.v1.AutomationService.ResetPassword:output_type -> plugin.v1.OperationResult
+	0,  // 57: plugin.v1.AutomationService.ElasticUpdate:output_type -> plugin.v1.OperationResult
+	0,  // 58: plugin.v1.AutomationService.Lock:output_type -> plugin.v1.OperationResult
+	0,  // 59: plugin.v1.AutomationService.Unlock:output_type -> plugin.v1.OperationResult
+	0,  // 60: plugin.v1.AutomationService.Renew:output_type -> plugin.v1.OperationResult
+	0,  // 61: plugin.v1.AutomationService.Destroy:output_type -> plugin.v1.OperationResult
+	30, // 62: plugin.v1.AutomationService.GetPanelURL:output_type -> plugin.v1.GetPanelURLResponse
+	32, // 63: plugin.v1.AutomationService.GetVNCURL:output_type -> plugin.v1.GetVNCURLResponse
+	34, // 64: plugin.v1.AutomationService.GetMonitor:output_type -> plugin.v1.GetMonitorResponse
+	37, // 65: plugin.v1.AutomationService.ListPortMappings:output_type -> plugin.v1.ListPortMappingsResponse
+	0,  // 66: plugin.v1.AutomationService.AddPortMapping:output_type -> plugin.v1.OperationResult
+	0,  // 67: plugin.v1.AutomationService.DeletePortMapping:output_type -> plugin.v1.OperationResult
+	41, // 68: plugin.v1.AutomationService.FindPortCandidates:output_type -> plugin.v1.FindPortCandidatesResponse
+	44, // 69: plugin.v1.AutomationService.ListBackups:output_type -> plugin.v1.ListBackupsResponse
+	0,  // 70: plugin.v1.AutomationService.CreateBackup:output_type -> plugin.v1.OperationResult
+	0,  // 71: plugin.v1.AutomationService.DeleteBackup:output_type -> plugin.v1.OperationResult
+	0,  // 72: plugin.v1.AutomationService.RestoreBackup:output_type -> plugin.v1.OperationResult
+	50, // 73: plugin.v1.AutomationService.ListSnapshots:output_type -> plugin.v1.ListSnapshotsResponse
+	0,  // 74: plugin.v1.AutomationService.CreateSnapshot:output_type -> plugin.v1.OperationResult
+	0,  // 75: plugin.v1.AutomationService.DeleteSnapshot:output_type -> plugin.v1.OperationResult
+	0,  // 76: plugin.v1.AutomationService.RestoreSnapshot:output_type -> plugin.v1.OperationResult
+	56, // 77: plugin.v1.AutomationService.ListFirewallRules:output_type -> plugin.v1.ListFirewallRulesResponse
+	0,  // 78: plugin.v1.AutomationService.AddFirewallRule:output_type -> plugin.v1.OperationResult
+	0,  // 79: plugin.v1.AutomationService.DeleteFirewallRule:output_type -> plugin.v1.OperationResult
 	45, // [45:80] is the sub-list for method output_type
 	10, // [10:45] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
@@ -3680,15 +3746,15 @@ func file_plugin_v1_automation_proto_init() {
 		return
 	}
 	file_plugin_v1_types_proto_init()
-	file_plugin_v1_automation_proto_msgTypes[2].OneofWrappers = []any{}
-	file_plugin_v1_automation_proto_msgTypes[23].OneofWrappers = []any{}
+	file_plugin_v1_automation_proto_msgTypes[3].OneofWrappers = []any{}
+	file_plugin_v1_automation_proto_msgTypes[24].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_v1_automation_proto_rawDesc), len(file_plugin_v1_automation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   58,
+			NumMessages:   59,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

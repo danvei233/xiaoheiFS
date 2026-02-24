@@ -185,7 +185,7 @@ func TestHandlers_RealNameVerify_AutoInjectsCallbackURLFromSiteURL(t *testing.T)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("realname verify: %d", rec.Code)
 	}
-	if provider.lastInput.CallbackURL != "https://panel.example.com" {
+	if provider.lastInput.CallbackURL != "https://panel.example.com/console/realname" {
 		t.Fatalf("callback_url not injected, got=%q", provider.lastInput.CallbackURL)
 	}
 }
@@ -225,5 +225,31 @@ func TestHandlers_SystemImages_ByPlanGroupWithoutLineID_ReturnsEmpty(t *testing.
 	}
 	if len(resp.Items) != 0 {
 		t.Fatalf("expected empty items, got %d", len(resp.Items))
+	}
+}
+
+func TestHandlers_RealNameVerify_MangzhuProviderWithoutPhoneRejectedEarly(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	user := testutil.CreateUser(t, env.Repo, "realphone", "realphone@example.com", "pass")
+	token := testutil.IssueJWT(t, env.JWTSecret, user.ID, "user", time.Hour)
+
+	if err := env.Repo.UpsertSetting(context.Background(), domain.Setting{Key: "realname_enabled", ValueJSON: "true"}); err != nil {
+		t.Fatalf("enable realname: %v", err)
+	}
+	if err := env.Repo.UpsertSetting(context.Background(), domain.Setting{Key: "realname_provider", ValueJSON: "plugin/mangzhu_realname/default"}); err != nil {
+		t.Fatalf("set provider: %v", err)
+	}
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/realname/verify", map[string]any{
+		"real_name": "Test User",
+		"id_number": "11010519491231002X",
+	}, token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+	var body map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	if body["error"] != domain.ErrPhoneRequired.Error() {
+		t.Fatalf("expected phone required error, got=%v", body["error"])
 	}
 }

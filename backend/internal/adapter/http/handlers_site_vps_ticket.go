@@ -62,6 +62,9 @@ func (h *Handler) VPSPanel(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "panel_login", "面板登录") {
+		return
+	}
 	url, err := h.vpsSvc.GetPanelURL(c, inst)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -110,6 +113,9 @@ func (h *Handler) VPSVNC(c *gin.Context) {
 	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "vnc", "VNC") {
 		return
 	}
 	url, err := h.vpsSvc.VNCURL(c, inst)
@@ -167,6 +173,9 @@ func (h *Handler) VPSResetOS(c *gin.Context) {
 	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "reinstall", "重装系统") {
 		return
 	}
 	var payload map[string]any
@@ -254,6 +263,9 @@ func (h *Handler) VPSResetOSPassword(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "reset_password", "重置密码") {
+		return
+	}
 	var payload struct {
 		Password string `json:"password"`
 	}
@@ -277,6 +289,9 @@ func (h *Handler) VPSSnapshots(c *gin.Context) {
 	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "snapshot", "快照") {
 		return
 	}
 	switch c.Request.Method {
@@ -314,6 +329,9 @@ func (h *Handler) VPSSnapshotDelete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "snapshot", "快照") {
+		return
+	}
 	if err := h.vpsSvc.DeleteSnapshot(c, inst, snapshotID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
@@ -333,6 +351,9 @@ func (h *Handler) VPSSnapshotRestore(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "snapshot", "快照") {
+		return
+	}
 	if err := h.vpsSvc.RestoreSnapshot(c, inst, snapshotID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
@@ -349,6 +370,9 @@ func (h *Handler) VPSBackups(c *gin.Context) {
 	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "backup", "备份") {
 		return
 	}
 	switch c.Request.Method {
@@ -386,6 +410,9 @@ func (h *Handler) VPSBackupDelete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "backup", "备份") {
+		return
+	}
 	if err := h.vpsSvc.DeleteBackup(c, inst, backupID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
@@ -405,6 +432,9 @@ func (h *Handler) VPSBackupRestore(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "backup", "备份") {
+		return
+	}
 	if err := h.vpsSvc.RestoreBackup(c, inst, backupID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
@@ -421,6 +451,9 @@ func (h *Handler) VPSFirewallRules(c *gin.Context) {
 	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "firewall", "防火墙") {
 		return
 	}
 	switch c.Request.Method {
@@ -477,6 +510,9 @@ func (h *Handler) VPSFirewallDelete(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "firewall", "防火墙") {
+		return
+	}
 	if err := h.vpsSvc.DeleteFirewallRule(c, inst, ruleID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
@@ -493,6 +529,9 @@ func (h *Handler) VPSPortMappings(c *gin.Context) {
 	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "port_mapping", "端口映射") {
 		return
 	}
 	switch c.Request.Method {
@@ -571,6 +610,9 @@ func (h *Handler) VPSPortCandidates(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
+	if h.denyIfFeatureDisabled(c, inst, "port_mapping", "端口映射") {
+		return
+	}
 	keywords := strings.TrimSpace(c.Query("keywords"))
 	items, err := h.vpsSvc.FindPortCandidates(c, inst, keywords)
 	if err != nil {
@@ -590,6 +632,9 @@ func (h *Handler) VPSPortMappingDelete(c *gin.Context) {
 	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "port_mapping", "端口映射") {
 		return
 	}
 	if err := h.vpsSvc.DeletePortMapping(c, inst, mappingID); err != nil {
@@ -843,6 +888,14 @@ func (h *Handler) VPSRefund(c *gin.Context) {
 		return
 	}
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "refund", "退款") {
+		return
+	}
 	var payload struct {
 		Reason string `json:"reason"`
 	}
@@ -862,4 +915,12 @@ func (h *Handler) VPSRefund(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"order": toOrderDTO(order), "refund_amount": centsToFloat(amount)})
+}
+
+func (h *Handler) denyIfFeatureDisabled(c *gin.Context, inst domain.VPSInstance, feature, label string) bool {
+	if h.packageFeatureAllowed(c, inst, feature, true) {
+		return false
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": label + "功能未启用"})
+	return true
 }

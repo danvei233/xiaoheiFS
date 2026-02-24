@@ -66,6 +66,25 @@ func (c *PluginInstanceClient) call(ctx context.Context, action string, req prot
 }
 
 func ensureOpOK(resp proto.Message) error {
+	if op, ok := resp.(*pluginv1.OperationResult); ok && op != nil {
+		// Backward compatibility: old plugins may return legacy Empty payload and
+		// decode into zero-value OperationResult on the host side.
+		if !op.GetOk() && strings.TrimSpace(op.GetErrorCode()) == "" && strings.TrimSpace(op.GetErrorMessage()) == "" {
+			return nil
+		}
+		if op.GetOk() {
+			return nil
+		}
+		msg := strings.TrimSpace(op.GetErrorMessage())
+		if msg == "" {
+			msg = "operation failed"
+		}
+		code := strings.TrimSpace(op.GetErrorCode())
+		if code != "" {
+			return fmt.Errorf("%s (%s)", msg, code)
+		}
+		return fmt.Errorf("%s", msg)
+	}
 	empty, ok := resp.(*pluginv1.Empty)
 	if !ok || empty == nil {
 		return nil

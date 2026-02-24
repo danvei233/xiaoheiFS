@@ -234,6 +234,16 @@ export interface Product {
 
 export interface Package extends Product {}
 
+export interface PackageCapabilities {
+  package_id?: number;
+  resize_enabled?: boolean;
+  refund_enabled?: boolean;
+  resize_source?: string;
+  refund_source?: string;
+  package_resize_enabled?: boolean | null;
+  package_refund_enabled?: boolean | null;
+}
+
 export interface SystemImage {
   id?: number;
   line_id?: number;
@@ -536,6 +546,12 @@ export interface VPSInstance {
   destroy_in_days?: number;
   panel_url_cache?: string;
   access_info?: Record<string, unknown>;
+  capabilities?: {
+    automation?: {
+      features?: string[];
+      not_supported_reasons?: Record<string, string>;
+    };
+  };
   last_emergency_renew_at?: string;
   created_at?: string;
   updated_at?: string;
@@ -659,10 +675,12 @@ export interface DashboardOverview {
 export interface DashboardRevenue {
   granularity?: string;
   points?: RevenuePoint[];
+  items?: RevenuePoint[];
 }
 
 export interface DashboardStatus {
   points?: StatusPoint[];
+  items?: StatusPoint[];
 }
 
 export type RevenueAnalyticsLevel = "overall" | "goods_type" | "region" | "line" | "package";
@@ -1151,6 +1169,7 @@ export interface RealNameVerification {
   status?: string;
   provider?: string;
   reason?: string;
+  redirect_url?: string;
   created_at?: string;
   verified_at?: string;
 }

@@ -162,13 +162,40 @@
         </a-form-item>
       </a-form>
     </a-modal>
+
+    <a-modal
+      v-model:open="faceModalVisible"
+      title="手机扫码完成人脸认证"
+      :footer="null"
+      width="420px"
+      @cancel="closeFaceModal"
+    >
+      <div class="face-modal-body">
+        <a-alert
+          type="info"
+          show-icon
+          message="请使用手机扫码"
+          description="电脑端不直接拉起人脸认证，请使用手机浏览器/微信扫码后按页面提示完成认证。"
+        />
+        <div class="face-qr-wrap">
+          <img v-if="faceQRDataURL" :src="faceQRDataURL" alt="face-qrcode" />
+          <a-empty v-else description="二维码生成失败" />
+        </div>
+        <div class="face-actions">
+          <a-button @click="copyFaceURL" :disabled="!faceRedirectURL">复制链接</a-button>
+          <a-button @click="openFaceURL" :disabled="!faceRedirectURL">在当前设备打开</a-button>
+          <a-button type="primary" @click="refreshFaceStatus">我已完成，刷新状态</a-button>
+        </div>
+      </div>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onBeforeUnmount, onMounted } from "vue";
 import { message } from "ant-design-vue";
 import type { FormInstance } from "ant-design-vue";
+import QRCode from "qrcode";
 import {
   SafetyOutlined,
   ExclamationCircleOutlined,
@@ -194,6 +221,10 @@ const realname = ref<any>(null);
 const loading = ref(false);
 const submitting = ref(false);
 const verifyModalVisible = ref(false);
+const faceModalVisible = ref(false);
+const faceQRDataURL = ref("");
+const faceRedirectURL = ref("");
+let facePollingTimer: ReturnType<typeof setInterval> | null = null;
 const formRef = ref<FormInstance>();
 
 const form = ref({
@@ -276,10 +307,22 @@ const handleSubmit = async () => {
 
   submitting.value = true;
   try {
-    await submitRealNameVerification(form.value);
-    message.success("提交成功，请等待审核");
+    const res = await submitRealNameVerification(form.value);
+    const redirectURL = String(res?.data?.redirect_url || "").trim();
     verifyModalVisible.value = false;
     resetForm();
+    if (redirectURL) {
+      if (isMobileUA()) {
+        message.success("正在跳转到人脸认证页面");
+        window.location.href = redirectURL;
+        return;
+      }
+      await openFaceModal(redirectURL);
+      message.info("请使用手机扫码完成人脸认证");
+      await fetchData();
+      return;
+    }
+    message.success("提交成功，请等待审核");
     await fetchData();
   } catch (error: any) {
     message.error(error.response?.data?.error || "提交失败");
@@ -298,8 +341,83 @@ const fetchData = async () => {
   }
 };
 
+const isMobileUA = () => {
+  if (typeof navigator === "undefined") return false;
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Windows Phone|Mobile/i.test(navigator.userAgent || "");
+};
+
+const clearFacePolling = () => {
+  if (facePollingTimer) {
+    clearInterval(facePollingTimer);
+    facePollingTimer = null;
+  }
+};
+
+const startFacePolling = () => {
+  clearFacePolling();
+  facePollingTimer = setInterval(async () => {
+    await fetchData();
+    const st = String(realname.value?.verification?.status || "").toLowerCase();
+    if (st === "verified") {
+      clearFacePolling();
+      faceModalVisible.value = false;
+      message.success("实名认证已完成");
+    }
+  }, 3000);
+};
+
+const openFaceModal = async (url: string) => {
+  faceRedirectURL.value = url;
+  faceQRDataURL.value = await QRCode.toDataURL(url, {
+    width: 220,
+    margin: 1
+  });
+  faceModalVisible.value = true;
+  startFacePolling();
+};
+
+const closeFaceModal = () => {
+  faceModalVisible.value = false;
+  clearFacePolling();
+};
+
+const copyFaceURL = async () => {
+  if (!faceRedirectURL.value) return;
+  try {
+    await navigator.clipboard.writeText(faceRedirectURL.value);
+    message.success("链接已复制");
+  } catch {
+    message.error("复制失败");
+  }
+};
+
+const openFaceURL = () => {
+  if (!faceRedirectURL.value) return;
+  window.open(faceRedirectURL.value, "_blank");
+};
+
+const refreshFaceStatus = async () => {
+  await fetchData();
+  const st = String(realname.value?.verification?.status || "").toLowerCase();
+  if (st === "verified") {
+    closeFaceModal();
+    message.success("实名认证已完成");
+    return;
+  }
+  if (st === "failed") {
+    closeFaceModal();
+    message.error(realname.value?.verification?.reason || "实名认证失败");
+    return;
+  }
+  message.info("状态仍在审核中，请稍后再试");
+};
+
 onMounted(() => {
   fetchData();
+});
+
+onBeforeUnmount(() => {
+  clearFacePolling();
 });
 </script>
 
@@ -594,6 +712,33 @@ onMounted(() => {
 /* Modal */
 .modal-alert {
   margin-bottom: 20px;
+}
+
+.face-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.face-qr-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 240px;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  border-radius: 12px;
+}
+
+.face-qr-wrap img {
+  width: 220px;
+  height: 220px;
+}
+
+.face-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .verify-form {

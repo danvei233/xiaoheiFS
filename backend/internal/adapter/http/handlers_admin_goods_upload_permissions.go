@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"time"
 	appcatalog "xiaoheiplay/internal/app/catalog"
+	appintegration "xiaoheiplay/internal/app/integration"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/permissions"
 )
@@ -145,6 +147,31 @@ func (h *Handler) AdminGoodsTypeSyncAutomation(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) AdminGoodsTypeAutomationOptions(c *gin.Context) {
+	if h.integration == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
+		return
+	}
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	provider, ok := h.integration.(interface {
+		ListAutomationCatalogOptions(ctx context.Context, goodsTypeID int64) (appintegration.AutomationCatalogOptions, error)
+	})
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
+		return
+	}
+	options, err := provider.ListAutomationCatalogOptions(c, id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, options)
 }
 
 func (h *Handler) AdminUploadCreate(c *gin.Context) {

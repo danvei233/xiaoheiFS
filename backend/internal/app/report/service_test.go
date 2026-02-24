@@ -81,3 +81,37 @@ func TestRevenueAnalyticsOverviewAndDetails(t *testing.T) {
 		t.Fatalf("expected overall positive revenue")
 	}
 }
+
+func TestOverviewRevenueUsesOrderStatusScope(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+
+	user := testutil.CreateUser(t, repo, "overview_user", "overview_user@example.com", "pass")
+	orders := []domain.Order{
+		{UserID: user.ID, OrderNo: "ORD-OV-1", Status: domain.OrderStatusApproved, TotalAmount: 24000, Currency: "CNY"},
+		{UserID: user.ID, OrderNo: "ORD-OV-2", Status: domain.OrderStatusPendingReview, TotalAmount: 12000, Currency: "CNY"},
+		{UserID: user.ID, OrderNo: "ORD-OV-3", Status: domain.OrderStatusFailed, TotalAmount: 5000, Currency: "CNY"},
+		{UserID: user.ID, OrderNo: "ORD-OV-4", Status: domain.OrderStatusPendingPayment, TotalAmount: 8000, Currency: "CNY"},
+		{UserID: user.ID, OrderNo: "ORD-OV-5", Status: domain.OrderStatusApproved, TotalAmount: -3000, Currency: "CNY"},
+	}
+	for i := range orders {
+		if err := repo.CreateOrder(ctx, &orders[i]); err != nil {
+			t.Fatalf("create order %d: %v", i, err)
+		}
+	}
+
+	svc := appreport.NewService(repo, repo, repo, repo, repo, repo)
+	overview, err := svc.Overview(ctx)
+	if err != nil {
+		t.Fatalf("overview: %v", err)
+	}
+
+	// include approved/pending_review and keep refunds(negative); exclude failed/pending_payment
+	wantRevenue := int64(24000 + 12000 - 3000)
+	if overview.Revenue != wantRevenue {
+		t.Fatalf("unexpected revenue: got %d want %d", overview.Revenue, wantRevenue)
+	}
+	if overview.PendingReview != 1 {
+		t.Fatalf("unexpected pending review count: got %d", overview.PendingReview)
+	}
+}

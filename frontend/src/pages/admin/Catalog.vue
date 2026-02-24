@@ -373,6 +373,13 @@
           <a-input-number v-model:value="packageForm.capacity_remaining" :min="-1" style="width: 100%" />
           <div class="subtle" style="margin-top: 6px">负数表示不限，0 表示售罄</div>
         </a-form-item>
+        <a-divider style="margin: 12px 0" />
+        <div class="section-title">套餐能力开关</div>
+        <div class="subtle" style="margin-bottom: 8px">用于控制该套餐是否允许用户升降配和申请退款。</div>
+        <a-row :gutter="12">
+          <a-col :span="12"><a-form-item label="允许升降配"><a-switch v-model:checked="packageForm.resize_enabled" /></a-form-item></a-col>
+          <a-col :span="12"><a-form-item label="允许退款"><a-switch v-model:checked="packageForm.refund_enabled" /></a-form-item></a-col>
+        </a-row>
         <a-space>
           <a-button type="primary" @click="submitPackage">保存</a-button>
           <a-button @click="packageOpen = false">取消</a-button>
@@ -528,6 +535,8 @@ import {
   listPackages,
   createPackage,
   updatePackage,
+  getPackageCapabilities,
+  updatePackageCapabilities,
   deletePackage,
   bulkDeletePackages,
   listSystemImages,
@@ -544,6 +553,7 @@ import {
   bulkDeleteBillingCycles,
   listGoodsTypes,
   syncGoodsTypeAutomation,
+  getGoodsTypeAutomationOptions,
   createGoodsType,
   updateGoodsType,
   deleteGoodsType,
@@ -675,6 +685,25 @@ const safeJson = (s: string) => {
   }
 };
 
+const toOptionValue = (value: any) => {
+  const num = Number(value);
+  if (Number.isFinite(num) && Number.isInteger(num)) return num;
+  return String(value ?? "").trim();
+};
+
+const applyEnumOptions = (schemaObj: any, uiObj: any, field: string, options: Array<{ value: any; label: string }>) => {
+  if (!schemaObj || !schemaObj.properties || !schemaObj.properties[field] || !Array.isArray(options) || options.length === 0) {
+    return;
+  }
+  const prop = schemaObj.properties[field];
+  prop.enum = options.map((item) => item.value);
+  prop.enumNames = options.map((item) => item.label);
+  uiObj[field] = {
+    ...(uiObj[field] || {}),
+    "ui:widget": "select"
+  };
+};
+
 const regionForm = reactive({ id: null, goods_type_id: null, name: "", code: "", active: true });
 const lineForm = reactive({
   id: null,
@@ -715,7 +744,9 @@ const packageForm = reactive({
   monthly_price: 0,
   active: true,
   visible: true,
-  capacity_remaining: -1
+  capacity_remaining: -1,
+  resize_enabled: true,
+  refund_enabled: true
 });
 const imageForm = reactive({ id: null, image_id: null, name: "", type: "linux", enabled: true });
 const cycleForm = reactive({ id: null, name: "", months: 1, multiplier: 1, min_qty: 1, max_qty: 12, active: true });
@@ -1108,6 +1139,81 @@ const loadAutomationConfigTemplate = async () => {
         "ui:widget": "updown"
       };
     }
+    const currentGoodsTypeID = Number(goodsTypeForm.id || 0);
+    if (Number.isFinite(currentGoodsTypeID) && currentGoodsTypeID > 0) {
+      try {
+        const optionsRes = await getGoodsTypeAutomationOptions(currentGoodsTypeID);
+        const lineItems = optionsRes.data?.line_items || [];
+        const productTypeItems = optionsRes.data?.product_type_items || lineItems;
+        const packageItems = optionsRes.data?.package_items || [];
+        const productItems = optionsRes.data?.product_items || packageItems;
+        const billingCycleItems = optionsRes.data?.billing_cycle_items || [];
+        const cancelTypeItems = optionsRes.data?.cancel_type_items || [];
+
+        const lineOptions = lineItems
+          .map((it) => {
+            const id = toOptionValue(it?.id);
+            if (id === "" || id === null || id === undefined) return null;
+            return { value: id, label: `${id} - ${String(it?.name || "").trim() || "Line"}` };
+          })
+          .filter(Boolean) as Array<{ value: any; label: string }>;
+
+        const productTypeOptions = productTypeItems
+          .map((it) => {
+            const id = toOptionValue(it?.id);
+            if (id === "" || id === null || id === undefined) return null;
+            return { value: id, label: `${id} - ${String(it?.name || "").trim() || "ProductType"}` };
+          })
+          .filter(Boolean) as Array<{ value: any; label: string }>;
+
+        const packageOptions = packageItems
+          .map((it) => {
+            const id = toOptionValue(it?.id);
+            if (id === "" || id === null || id === undefined) return null;
+            const lineID = toOptionValue(it?.line_id);
+            const linePrefix = lineID !== "" && lineID !== null && lineID !== undefined ? `Line ${lineID} / ` : "";
+            return { value: id, label: `${linePrefix}${id} - ${String(it?.name || "").trim() || "Package"}` };
+          })
+          .filter(Boolean) as Array<{ value: any; label: string }>;
+
+        const productOptions = productItems
+          .map((it) => {
+            const id = toOptionValue(it?.id);
+            if (id === "" || id === null || id === undefined) return null;
+            const lineID = toOptionValue(it?.line_id);
+            const linePrefix = lineID !== "" && lineID !== null && lineID !== undefined ? `Line ${lineID} / ` : "";
+            return { value: id, label: `${linePrefix}${id} - ${String(it?.name || "").trim() || "Product"}` };
+          })
+          .filter(Boolean) as Array<{ value: any; label: string }>;
+
+        const billingCycleOptions = billingCycleItems
+          .map((it) => {
+            const value = String(it?.value || "").trim();
+            if (!value) return null;
+            return { value, label: String(it?.label || value) };
+          })
+          .filter(Boolean) as Array<{ value: any; label: string }>;
+
+        const cancelTypeOptions = cancelTypeItems
+          .map((it) => {
+            const value = String(it?.value || "").trim();
+            if (!value) return null;
+            return { value, label: String(it?.label || value) };
+          })
+          .filter(Boolean) as Array<{ value: any; label: string }>;
+
+        applyEnumOptions(schemaObj, uiObj, "line_id", lineOptions);
+        applyEnumOptions(schemaObj, uiObj, "product_type_id", productTypeOptions);
+        applyEnumOptions(schemaObj, uiObj, "goods_type_id", productTypeOptions);
+        applyEnumOptions(schemaObj, uiObj, "upstream_goods_type_id", productTypeOptions);
+        applyEnumOptions(schemaObj, uiObj, "package_id", packageOptions);
+        applyEnumOptions(schemaObj, uiObj, "product_id", productOptions);
+        applyEnumOptions(schemaObj, uiObj, "billing_cycle", billingCycleOptions);
+        applyEnumOptions(schemaObj, uiObj, "cancel_type", cancelTypeOptions);
+      } catch {
+        // Keep manual input available when dynamic options cannot be loaded.
+      }
+    }
     automationConfigSchema.value = schemaObj;
     automationConfigUI.value = uiObj;
     automationConfigModel.value = cfgObj;
@@ -1339,12 +1445,23 @@ const bulkRemoveLines = () => {
   });
 };
 
-const openPackage = (record) => {
+const openPackage = async (record) => {
   if (record) Object.assign(packageForm, record);
   else {
     resetPackage();
     if (packageLineId.value && packageLineId.value !== "all") {
       packageForm.plan_group_id = packageLineId.value;
+    }
+  }
+  if (record?.id) {
+    try {
+      const res = await getPackageCapabilities(record.id);
+      const caps = res.data || {};
+      packageForm.resize_enabled = !!caps.resize_enabled;
+      packageForm.refund_enabled = !!caps.refund_enabled;
+    } catch {
+      packageForm.resize_enabled = true;
+      packageForm.refund_enabled = true;
     }
   }
   packageOpen.value = true;
@@ -1364,14 +1481,24 @@ const resetPackage = () =>
     monthly_price: 0,
     active: true,
     visible: true,
-    capacity_remaining: -1
+    capacity_remaining: -1,
+    resize_enabled: true,
+    refund_enabled: true
   });
 
 const submitPackage = async () => {
+  let packageID = Number(packageForm.id || 0);
   if (packageForm.id) {
     await updatePackage(packageForm.id, packageForm);
   } else {
-    await createPackage(packageForm);
+    const res = await createPackage(packageForm);
+    packageID = Number(res.data?.id || 0);
+  }
+  if (packageID > 0) {
+    await updatePackageCapabilities(packageID, {
+      resize_enabled: !!packageForm.resize_enabled,
+      refund_enabled: !!packageForm.refund_enabled
+    });
   }
   message.success("已保存套餐");
   packageOpen.value = false;

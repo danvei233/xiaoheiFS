@@ -80,6 +80,7 @@ type KycStartResponse struct {
 	Url           string                 `protobuf:"bytes,3,opt,name=url,proto3" json:"url,omitempty"`
 	NextStep      string                 `protobuf:"bytes,4,opt,name=next_step,json=nextStep,proto3" json:"next_step,omitempty"`
 	Error         string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,6,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -149,6 +150,13 @@ func (x *KycStartResponse) GetError() string {
 	return ""
 }
 
+func (x *KycStartResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
 type KycQueryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
@@ -200,6 +208,7 @@ type KycQueryResponse struct {
 	Reason        string                 `protobuf:"bytes,3,opt,name=reason,proto3" json:"reason,omitempty"`
 	RawJson       string                 `protobuf:"bytes,4,opt,name=raw_json,json=rawJson,proto3" json:"raw_json,omitempty"`
 	Error         string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	ErrorCode     string                 `protobuf:"bytes,6,opt,name=error_code,json=errorCode,proto3" json:"error_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -269,6 +278,13 @@ func (x *KycQueryResponse) GetError() string {
 	return ""
 }
 
+func (x *KycQueryResponse) GetErrorCode() string {
+	if x != nil {
+		return x.ErrorCode
+	}
+	return ""
+}
+
 var File_plugin_v1_kyc_proto protoreflect.FileDescriptor
 
 const file_plugin_v1_kyc_proto_rawDesc = "" +
@@ -279,21 +295,25 @@ const file_plugin_v1_kyc_proto_rawDesc = "" +
 	"\x06params\x18\x02 \x03(\v2&.plugin.v1.KycStartRequest.ParamsEntryR\x06params\x1a9\n" +
 	"\vParamsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"}\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9c\x01\n" +
 	"\x10KycStartResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x14\n" +
 	"\x05token\x18\x02 \x01(\tR\x05token\x12\x10\n" +
 	"\x03url\x18\x03 \x01(\tR\x03url\x12\x1b\n" +
 	"\tnext_step\x18\x04 \x01(\tR\bnextStep\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error\"'\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x06 \x01(\tR\terrorCode\"'\n" +
 	"\x0fKycQueryRequest\x12\x14\n" +
-	"\x05token\x18\x01 \x01(\tR\x05token\"\x83\x01\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\"\xa2\x01\n" +
 	"\x10KycQueryResponse\x12\x0e\n" +
 	"\x02ok\x18\x01 \x01(\bR\x02ok\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x16\n" +
 	"\x06reason\x18\x03 \x01(\tR\x06reason\x12\x19\n" +
 	"\braw_json\x18\x04 \x01(\tR\arawJson\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error2\x96\x01\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\x12\x1d\n" +
+	"\n" +
+	"error_code\x18\x06 \x01(\tR\terrorCode2\x96\x01\n" +
 	"\n" +
 	"KycService\x12@\n" +
 	"\x05Start\x12\x1a.plugin.v1.KycStartRequest\x1a\x1b.plugin.v1.KycStartResponse\x12F\n" +

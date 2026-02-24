@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 	"time"
@@ -265,6 +266,23 @@ func TestDTO_Mappings(t *testing.T) {
 
 	if _, err := json.Marshal(autoDTO.RequestJSON); err != nil {
 		t.Fatalf("automation log raw json: %v", err)
+	}
+}
+
+func TestToRealNameVerificationDTO_ParsePendingFaceRedirectURL(t *testing.T) {
+	redirect := "https://e.mangzhuyun.cn/face?token=abc"
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(redirect))
+	dto := toRealNameVerificationDTO(domain.RealNameVerification{
+		ID:       1,
+		UserID:   2,
+		RealName: "Alice",
+		IDNumber: "11010519491231002X",
+		Status:   "pending",
+		Provider: "plugin/mangzhu_realname/default",
+		Reason:   "pending_face:baidu:token123:" + encoded,
+	})
+	if dto.RedirectURL != redirect {
+		t.Fatalf("redirect_url parse failed: got=%q", dto.RedirectURL)
 	}
 }
 

@@ -26,6 +26,9 @@ service PaymentService {
 
 message ListMethodsResponse {
   repeated string methods = 1;
+  bool ok = 2;
+  string error = 3;
+  string error_code = 4;
 }
 
 message PaymentCreateRequest {
@@ -50,6 +53,7 @@ message PaymentCreateResponse {
   string pay_url = 3;
   map<string, string> extra = 4;
   string error = 5;
+  string error_code = 6;
 }
 
 message QueryPaymentRpcRequest {
@@ -65,6 +69,7 @@ message PaymentQueryResponse {
   int64 amount = 4;
   string raw_json = 10;
   string error = 20;
+  string error_code = 21;
 }
 
 message RefundRpcRequest {
@@ -81,6 +86,7 @@ message RefundResponse {
   PaymentStatus status = 3;
   string raw_json = 10;
   string error = 20;
+  string error_code = 21;
 }
 
 message VerifyNotifyRequest {
@@ -101,4 +107,5 @@ message NotifyVerifyResult {
   string ack_body = 21;
 
   string error = 30;
+  string error_code = 31;
 }
