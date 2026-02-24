@@ -522,6 +522,58 @@ func (h *Handler) AdminPackageDelete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+func (h *Handler) AdminPackageCapabilitiesGet(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if _, err := h.catalogSvc.GetPackage(c, id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	resizeEnabled, resizeSource := h.packageCapabilityResolvedValue(c, id, "resize", "resize_enabled", true)
+	refundEnabled, refundSource := h.packageCapabilityResolvedValue(c, id, "refund", "refund_enabled", true)
+	raw := h.getPackageCapabilityPolicy(c, id)
+	c.JSON(http.StatusOK, gin.H{
+		"package_id":             id,
+		"resize_enabled":         resizeEnabled,
+		"refund_enabled":         refundEnabled,
+		"resize_source":          resizeSource,
+		"refund_source":          refundSource,
+		"package_resize_enabled": raw.ResizeEnabled,
+		"package_refund_enabled": raw.RefundEnabled,
+	})
+}
+
+func (h *Handler) AdminPackageCapabilitiesUpdate(c *gin.Context) {
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if _, err := h.catalogSvc.GetPackage(c, id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	var payload struct {
+		ResizeEnabled *bool `json:"resize_enabled"`
+		RefundEnabled *bool `json:"refund_enabled"`
+	}
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	if err := h.savePackageCapabilityPolicy(c, id, packageCapabilityPolicy{
+		ResizeEnabled: payload.ResizeEnabled,
+		RefundEnabled: payload.RefundEnabled,
+	}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 func (h *Handler) AdminPackageBulkDelete(c *gin.Context) {
 	var payload struct {
 		IDs []int64 `json:"ids"`

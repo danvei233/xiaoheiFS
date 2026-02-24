@@ -264,4 +264,42 @@ func TestIntegrationService_SyncAutomationImagesForLine_PlanGroupIDFallback(t *t
 	}
 }
 
+func TestIntegrationService_ListAutomationCatalogOptions(t *testing.T) {
+	ctx := context.Background()
+	_, repo := testutil.NewTestDB(t, false)
+	gt := domain.GoodsType{
+		Code:      "default",
+		Name:      "Default",
+		Active:    true,
+		SortOrder: 1,
+	}
+	if err := repo.CreateGoodsType(ctx, &gt); err != nil {
+		t.Fatalf("create goods type: %v", err)
+	}
+	auto := fakeAutomationSync{
+		lines: []appshared.AutomationLine{
+			{ID: 10, Name: "Line-10", AreaID: 1, State: 1},
+		},
+		products: map[int64][]appshared.AutomationProduct{
+			10: {
+				{ID: 101, Name: "P-101", CPU: 1, MemoryGB: 1, DiskGB: 20, Bandwidth: 10, Price: 1000, PortNum: 20, CapacityRemaining: 5},
+			},
+		},
+	}
+	svc := appintegration.NewService(repo, repo, repo, repo, &testutil.FakeAutomationResolver{Client: auto}, repo)
+	res, err := svc.ListAutomationCatalogOptions(ctx, gt.ID)
+	if err != nil {
+		t.Fatalf("list options: %v", err)
+	}
+	if len(res.LineItems) != 1 || len(res.ProductTypeItems) != 1 {
+		t.Fatalf("expected one line and product-type option, got lines=%d product_types=%d", len(res.LineItems), len(res.ProductTypeItems))
+	}
+	if len(res.PackageItems) != 1 {
+		t.Fatalf("expected one package option, got %d", len(res.PackageItems))
+	}
+	if res.PackageItems[0].LineID != 10 || res.PackageItems[0].ID != 101 {
+		t.Fatalf("unexpected package option: %+v", res.PackageItems[0])
+	}
+}
+
 var _ appshared.AutomationClient = (*fakeAutomationSync)(nil)

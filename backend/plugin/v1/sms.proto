@@ -19,4 +19,5 @@ message SendSmsResponse {
   bool ok = 1;
   string message_id = 2;
   string error = 3;
+  string error_code = 4;
 }

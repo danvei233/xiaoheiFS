@@ -2,12 +2,18 @@ package realnameplugin
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"strings"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	plugins "xiaoheiplay/internal/a
 	plugins "xiaoheiplay/internal/adapter/plugins/core"
 	appshared "xiaoheiplay/internal/app/shared"
-	pluginv1 "xiaoheiplay/plugin/v1"
+	"xiaoheiplay/internal/domain"
+	"google.golang.org/grpc/status"
 )
 
 type Provider struct {
@@ -59,10 +65,18 @@ func (p *Provider) VerifyWithInput(ctx context.Context, in appshared.RealNameVer
 	defer cancel()
 	start, err := client.Start(cctx, &pluginv1.KycStartRequest{UserId: "", Params: params})
 	if err != nil {
-		return false, "", err
+		return false, "", mapKycRPCError(err)
 	}
 	if start != nil && !start.Ok {
-		return false, strings.TrimSpace(start.Error), nil
+		reason := strings.TrimSpace(start.Error)
+		code := strings.TrimSpace(start.ErrorCode)
+		if code != "" {
+			if reason == "" {
+				reason = "kyc start failed"
+			}
+			reason = reason + " (" + code + ")"
+		}
+		return false, reason, nil
 	}
 	token := ""
 	if start != nil {
@@ -71,17 +85,36 @@ func (p *Provider) VerifyWithInput(ctx context.Context, in appshared.RealNameVer
 	if token == "" {
 		return true, "", nil
 	}
+	if start != nil {
+		nextStep := strings.ToLower(strings.TrimSpace(start.GetNextStep()))
+		redirectURL := strings.TrimSpace(start.GetUrl())
+		if nextStep == "redirect" || redirectURL != "" {
+			reason := "pending_face:baidu:" + token
+			if redirectURL != "" {
+				encoded := base64.RawURLEncoding.EncodeToString([]byte(redirectURL))
+				reason += ":" + encoded
+			}
+			return false, reason, nil
+		}
+	}
 	if !p.canQuery {
 		return false, "pending:" + token, nil
 	}
 	query, qerr := client.QueryResult(cctx, &pluginv1.KycQueryRequest{Token: token})
 	if qerr != nil {
-		return false, "", qerr
+		return false, "", mapKycRPCError(qerr)
 	}
 	if query != nil && !query.Ok {
 		reason := strings.TrimSpace(query.Error)
+		code := strings.TrimSpace(query.ErrorCode)
 		if reason == "" {
 			reason = strings.TrimSpace(query.Reason)
+		}
+		if code != "" {
+			if reason == "" {
+				reason = "kyc query failed"
+			}
+			reason = reason + " (" + code + ")"
 		}
 		return false, reason, nil
 	}
@@ -112,12 +145,19 @@ func (p *Provider) QueryPending(ctx context.Context, token string, provider stri
 	defer cancel()
 	query, err := client.QueryResult(cctx, &pluginv1.KycQueryRequest{Token: strings.TrimSpace(token)})
 	if err != nil {
-		return "", "", err
+		return "", "", mapKycRPCError(err)
 	}
 	if query != nil && !query.Ok {
 		reason := strings.TrimSpace(query.Error)
+		code := strings.TrimSpace(query.ErrorCode)
 		if reason == "" {
 			reason = strings.TrimSpace(query.Reason)
+		}
+		if code != "" {
+			if reason == "" {
+				reason = "kyc query failed"
+			}
+			reason = reason + " (" + code + ")"
 		}
 		return "failed", reason, nil
 	}
@@ -156,6 +196,33 @@ func ParseProviderKey(key string) (pluginID, instanceID string, ok bool) {
 		return "", "", false
 	}
 	return pluginID, instanceID, true
+}
+
+func mapKycRPCError(err error) error {
+	if err == nil {
+		return nil
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+	msg := strings.TrimSpace(st.Message())
+	lower := strings.ToLower(msg)
+	if st.Code() == codes.InvalidArgument {
+		if strings.Contains(lower, "params.mobile required") ||
+			strings.Contains(lower, "mobile required") ||
+			strings.Contains(lower, "phone required") {
+			return domain.ErrPhoneRequired
+		}
+		if msg == "" {
+			return domain.ErrInvalidInput
+		}
+		return fmt.Errorf("%w: %s", domain.ErrInvalidInput, msg)
+	}
+	if msg == "" {
+		msg = st.Code().String()
+	}
+	return fmt.Errorf("kyc plugin error: %s", msg)
 }
 
 var _ appshared.RealNameProvider = (*Provider)(nil)

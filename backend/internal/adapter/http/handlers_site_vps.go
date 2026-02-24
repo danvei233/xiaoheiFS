@@ -1,12 +1,15 @@
 package http
 
 import (
+	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
 
@@ -73,6 +76,7 @@ func (h *Handler) toVPSInstanceDTOWithLifecycle(c *gin.Context, inst domain.VPSI
 	destroyAt, destroyInDays := h.lifecycleDestroyInfo(c, inst.ExpireAt)
 	dto.DestroyAt = destroyAt
 	dto.DestroyInDays = destroyInDays
+	dto.Capabilities = h.resolveVPSCapabilities(c, inst)
 	return dto
 }
 
@@ -102,6 +106,289 @@ func (h *Handler) lifecycleDestroyInfo(c *gin.Context, expireAt *time.Time) (*ti
 	destroyAt := expireAt.Add(time.Duration(days) * 24 * time.Hour)
 	inDays := int(math.Ceil(destroyAt.Sub(time.Now()).Hours() / 24))
 	return &destroyAt, &inDays
+}
+
+func (h *Handler) resolveVPSCapabilities(c *gin.Context, inst domain.VPSInstance) *VPSCapabilitiesDTO {
+	auto := h.resolveVPSAutomationCapability(c, inst)
+	if auto == nil {
+		return nil
+	}
+	return &VPSCapabilitiesDTO{Automation: auto}
+}
+
+func (h *Handler) resolveVPSAutomationCapability(c *gin.Context, inst domain.VPSInstance) *VPSAutomationCapabilityDTO {
+	staticCap := h.resolveVPSAutomationCapabilityStatic(c, inst)
+	dynamicCap := parseDynamicAutomationCapability(inst.AccessInfoJSON)
+	merged := mergeAutomationCapabilities(staticCap, dynamicCap)
+	return h.applyPackageCapabilityPolicy(c, inst, merged)
+}
+
+func toVPSAutomationCapabilityDTO(cap *appshared.PluginAutomationCapability) *VPSAutomationCapabilityDTO {
+	if cap == nil {
+		return nil
+	}
+	features := make([]string, 0, len(cap.Features))
+	seen := make(map[string]struct{}, len(cap.Features))
+	for _, raw := range cap.Features {
+		v := strings.ToLower(strings.TrimSpace(raw))
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		features = append(features, v)
+	}
+	reasons := make(map[string]string, len(cap.NotSupportedReasons))
+	for k, v := range cap.NotSupportedReasons {
+		key := strings.TrimSpace(k)
+		if key == "" {
+			continue
+		}
+		reasons[key] = v
+	}
+	out := &VPSAutomationCapabilityDTO{Features: features}
+	if len(reasons) > 0 {
+		out.NotSupportedReasons = reasons
+	}
+	return out
+}
+
+type dynamicAutomationCapability struct {
+	HasFeatures         bool
+	Features            []string
+	AddFeatures         []string
+	RemoveFeatures      []string
+	DisabledFeatures    []string
+	DenyFeatures        []string
+	NotSupportedReasons map[string]string
+}
+
+func (h *Handler) resolveVPSAutomationCapabilityStatic(c *gin.Context, inst domain.VPSInstance) *VPSAutomationCapabilityDTO {
+	if h.goodsTypes == nil || h.pluginAdmin == nil || inst.GoodsTypeID <= 0 {
+		return nil
+	}
+	gt, err := h.goodsTypes.Get(c, inst.GoodsTypeID)
+	if err != nil {
+		return nil
+	}
+	category := strings.ToLower(strings.TrimSpace(gt.AutomationCategory))
+	pluginID := strings.TrimSpace(gt.AutomationPluginID)
+	instanceID := strings.TrimSpace(gt.AutomationInstanceID)
+	if category == "" {
+		category = "automation"
+	}
+	if category != "automation" || pluginID == "" || instanceID == "" {
+		return nil
+	}
+
+	items, err := h.pluginAdmin.List(c)
+	if err != nil {
+		return nil
+	}
+	for _, item := range items {
+		if strings.ToLower(strings.TrimSpace(item.Category)) != category {
+			continue
+		}
+		if strings.TrimSpace(item.PluginID) != pluginID || strings.TrimSpace(item.InstanceID) != instanceID {
+			continue
+		}
+		return toVPSAutomationCapabilityDTO(item.Capabilities.Capabilities.Automation)
+	}
+	return nil
+}
+
+func parseDynamicAutomationCapability(accessInfoJSON string) *dynamicAutomationCapability {
+	raw := strings.TrimSpace(accessInfoJSON)
+	if raw == "" || raw == "{}" {
+		return nil
+	}
+	var envelope struct {
+		Capabilities struct {
+			Automation json.RawMessage `json:"automation"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil || len(envelope.Capabilities.Automation) == 0 {
+		return nil
+	}
+
+	var payloadMap map[string]json.RawMessage
+	if err := json.Unmarshal(envelope.Capabilities.Automation, &payloadMap); err != nil {
+		return nil
+	}
+
+	var payload struct {
+		Features            []string          `json:"features"`
+		AddFeatures         []string          `json:"add_features"`
+		RemoveFeatures      []string          `json:"remove_features"`
+		DisabledFeatures    []string          `json:"disabled_features"`
+		DenyFeatures        []string          `json:"deny_features"`
+		NotSupportedReasons map[string]string `json:"not_supported_reasons"`
+	}
+	if err := json.Unmarshal(envelope.Capabilities.Automation, &payload); err != nil {
+		return nil
+	}
+
+	out := &dynamicAutomationCapability{
+		Features:            normalizeFeatureList(payload.Features),
+		AddFeatures:         normalizeFeatureList(payload.AddFeatures),
+		RemoveFeatures:      normalizeFeatureList(payload.RemoveFeatures),
+		DisabledFeatures:    normalizeFeatureList(payload.DisabledFeatures),
+		DenyFeatures:        normalizeFeatureList(payload.DenyFeatures),
+		NotSupportedReasons: normalizeReasons(payload.NotSupportedReasons),
+	}
+	_, out.HasFeatures = payloadMap["features"]
+	if !out.HasFeatures && len(out.AddFeatures) == 0 && len(out.RemoveFeatures) == 0 && len(out.DisabledFeatures) == 0 && len(out.DenyFeatures) == 0 && len(out.NotSupportedReasons) == 0 {
+		return nil
+	}
+	return out
+}
+
+func mergeAutomationCapabilities(staticCap *VPSAutomationCapabilityDTO, dynamicCap *dynamicAutomationCapability) *VPSAutomationCapabilityDTO {
+	if staticCap == nil && dynamicCap == nil {
+		return nil
+	}
+
+	features := make(map[string]struct{}, 8)
+	reasons := make(map[string]string, 8)
+
+	if staticCap != nil {
+		for _, f := range normalizeFeatureList(staticCap.Features) {
+			features[f] = struct{}{}
+		}
+		for k, v := range normalizeReasons(staticCap.NotSupportedReasons) {
+			reasons[k] = v
+		}
+	}
+
+	if dynamicCap != nil {
+		if dynamicCap.HasFeatures {
+			features = make(map[string]struct{}, len(dynamicCap.Features))
+			for _, f := range dynamicCap.Features {
+				features[f] = struct{}{}
+			}
+		}
+		for _, f := range dynamicCap.AddFeatures {
+			features[f] = struct{}{}
+		}
+		removeAll := append([]string{}, dynamicCap.RemoveFeatures...)
+		removeAll = append(removeAll, dynamicCap.DisabledFeatures...)
+		removeAll = append(removeAll, dynamicCap.DenyFeatures...)
+		for _, f := range removeAll {
+			delete(features, f)
+		}
+		for k, v := range dynamicCap.NotSupportedReasons {
+			reasons[k] = v
+		}
+	}
+
+	outFeatures := make([]string, 0, len(features))
+	for f := range features {
+		outFeatures = append(outFeatures, f)
+	}
+	sort.Strings(outFeatures)
+
+	out := &VPSAutomationCapabilityDTO{Features: outFeatures}
+	if len(reasons) > 0 {
+		out.NotSupportedReasons = reasons
+	}
+	return out
+}
+
+func normalizeFeatureList(items []string) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(items))
+	seen := make(map[string]struct{}, len(items))
+	for _, raw := range items {
+		v := strings.ToLower(strings.TrimSpace(raw))
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
+func normalizeReasons(items map[string]string) map[string]string {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(items))
+	for k, v := range items {
+		key := strings.TrimSpace(k)
+		if key == "" {
+			continue
+		}
+		out[key] = strings.TrimSpace(v)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSInstance, cap *VPSAutomationCapabilityDTO) *VPSAutomationCapabilityDTO {
+	if cap == nil {
+		cap = &VPSAutomationCapabilityDTO{Features: []string{}}
+	}
+	featureSet := map[string]struct{}{}
+	for _, f := range normalizeFeatureList(cap.Features) {
+		featureSet[normalizeFeatureKey(f)] = struct{}{}
+	}
+	reasons := normalizeReasons(cap.NotSupportedReasons)
+	if reasons == nil {
+		reasons = map[string]string{}
+	}
+	policy := h.getPackageCapabilityPolicy(c, inst.PackageID)
+	if policy.ResizeEnabled != nil {
+		if *policy.ResizeEnabled {
+			featureSet["resize"] = struct{}{}
+		} else {
+			delete(featureSet, "resize")
+			if strings.TrimSpace(reasons["resize"]) == "" {
+				reasons["resize"] = "套餐未开启升降配"
+			}
+		}
+	}
+	if policy.RefundEnabled != nil {
+		if *policy.RefundEnabled {
+			featureSet["refund"] = struct{}{}
+		} else {
+			delete(featureSet, "refund")
+			if strings.TrimSpace(reasons["refund"]) == "" {
+				reasons["refund"] = "套餐未开启退款"
+			}
+		}
+	}
+	outFeatures := make([]string, 0, len(featureSet))
+	for f := range featureSet {
+		outFeatures = append(outFeatures, f)
+	}
+	sort.Strings(outFeatures)
+	out := &VPSAutomationCapabilityDTO{Features: outFeatures}
+	if len(reasons) > 0 {
+		out.NotSupportedReasons = reasons
+	}
+	return out
+}
+
+func normalizeFeatureKey(value string) string {
+	v := strings.ToLower(strings.TrimSpace(value))
+	switch v {
+	case "upgrade", "downgrade":
+		return "resize"
+	case "refund_request":
+		return "refund"
+	default:
+		return v
+	}
 }
 
 func (h *Handler) getSettingInt(c *gin.Context, key string) (int, bool) {

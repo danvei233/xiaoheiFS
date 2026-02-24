@@ -30,6 +30,47 @@
       </a-form>
     </a-card>
 
+    <a-card :bordered="false" title="日志保留策略（天）" style="margin-top: 16px">
+      <a-form layout="vertical">
+        <a-row :gutter="12">
+          <a-col :xs="24" :md="8">
+            <a-form-item label="自动化日志">
+              <a-input-number v-model:value="retention.automation" :min="1" :max="3650" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :md="8">
+            <a-form-item label="审计日志">
+              <a-input-number v-model:value="retention.audit" :min="1" :max="3650" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :md="8">
+            <a-form-item label="同步日志">
+              <a-input-number v-model:value="retention.sync" :min="1" :max="3650" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :md="8">
+            <a-form-item label="计划任务运行日志">
+              <a-input-number v-model:value="retention.task_runs" :min="1" :max="3650" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :md="8">
+            <a-form-item label="探针状态事件">
+              <a-input-number v-model:value="retention.probe_events" :min="1" :max="3650" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+          <a-col :xs="24" :md="8">
+            <a-form-item label="探针日志会话">
+              <a-input-number v-model:value="retention.probe_sessions" :min="1" :max="3650" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </a-form>
+      <a-space>
+        <a-button type="primary" :loading="savingRetention" @click="saveRetentionSettings">保存保留策略</a-button>
+        <span class="hint">设置后由系统任务每天自动清理过期日志</span>
+      </a-space>
+    </a-card>
+
     <a-card :bordered="false" title="日志查询" style="margin-top: 16px">
       <a-tabs v-model:activeKey="activeLogTab">
         <a-tab-pane key="audit" tab="审计日志">
@@ -264,12 +305,13 @@
 import { ref, reactive, onMounted, computed, watch } from "vue";
 import { message } from "ant-design-vue";
 import { ReloadOutlined, CopyOutlined } from "@ant-design/icons-vue";
-import { getDebugStatus, updateDebugStatus, getDebugLogs } from "@/services/admin";
+import { getDebugStatus, getDebugLogs, listSettings, updateDebugStatus, updateSetting } from "@/services/admin";
 import HttpHeadersTable from "@/components/HttpHeadersTable.vue";
 import HttpRequestBar from "@/components/HttpRequestBar.vue";
 
 const loading = ref(false);
 const debugEnabled = ref(false);
+const savingRetention = ref(false);
 const activeLogTab = ref("audit");
 const auditLogs = ref<any[]>([]);
 const automationLogs = ref<any[]>([]);
@@ -287,6 +329,14 @@ const syncFilter = reactive({ keyword: "" });
 const auditPagination = reactive({ current: 1, pageSize: 20, total: 0, showSizeChanger: true });
 const automationPagination = reactive({ current: 1, pageSize: 20, total: 0, showSizeChanger: true });
 const syncPagination = reactive({ current: 1, pageSize: 20, total: 0, showSizeChanger: true });
+const retention = reactive({
+  automation: 30,
+  audit: 90,
+  sync: 30,
+  task_runs: 14,
+  probe_events: 30,
+  probe_sessions: 7
+});
 
 const logColumns = [
   { title: "ID", dataIndex: "id", key: "id", width: 80 },
@@ -507,6 +557,55 @@ const handleToggleDebug = async (checked: boolean) => {
   }
 };
 
+const parseDays = (value: any, fallback: number) => {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  if (n > 3650) return 3650;
+  return Math.trunc(n);
+};
+
+const fetchRetentionSettings = async () => {
+  try {
+    const res = await listSettings();
+    const items = (res.data?.items || []) as Array<{ key?: string; value?: string }>;
+    const map = new Map<string, string>();
+    for (const item of items) {
+      const key = String(item?.key || "");
+      if (!key) continue;
+      map.set(key, String(item?.value || ""));
+    }
+    retention.automation = parseDays(map.get("automation_log_retention_days"), 30);
+    retention.audit = parseDays(map.get("audit_log_retention_days"), 90);
+    retention.sync = parseDays(map.get("integration_sync_log_retention_days"), 30);
+    retention.task_runs = parseDays(map.get("scheduled_task_run_retention_days"), 14);
+    retention.probe_events = parseDays(map.get("probe_status_event_retention_days"), 30);
+    retention.probe_sessions = parseDays(map.get("probe_log_session_retention_days"), 7);
+  } catch (error) {
+    console.error("Failed to fetch retention settings:", error);
+  }
+};
+
+const saveRetentionSettings = async () => {
+  savingRetention.value = true;
+  try {
+    await updateSetting({
+      items: [
+        { key: "automation_log_retention_days", value: String(parseDays(retention.automation, 30)) },
+        { key: "audit_log_retention_days", value: String(parseDays(retention.audit, 90)) },
+        { key: "integration_sync_log_retention_days", value: String(parseDays(retention.sync, 30)) },
+        { key: "scheduled_task_run_retention_days", value: String(parseDays(retention.task_runs, 14)) },
+        { key: "probe_status_event_retention_days", value: String(parseDays(retention.probe_events, 30)) },
+        { key: "probe_log_session_retention_days", value: String(parseDays(retention.probe_sessions, 7)) }
+      ]
+    });
+    message.success("日志保留策略已保存");
+  } catch (error: any) {
+    message.error(error.response?.data?.error || "保存失败");
+  } finally {
+    savingRetention.value = false;
+  }
+};
+
 const fetchLogs = async (type = activeLogTab.value) => {
   loading.value = true;
   try {
@@ -559,6 +658,7 @@ watch(activeLogTab, (tab) => {
 
 onMounted(() => {
   fetchStatus();
+  fetchRetentionSettings();
   fetchLogs("audit");
 });
 </script>

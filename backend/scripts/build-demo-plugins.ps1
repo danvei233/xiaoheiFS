@@ -17,6 +17,7 @@ New-Item -ItemType Directory -Force "plugins/kyc/tencent_kyc" | Out-Null
 New-Item -ItemType Directory -Force "plugins/kyc/mangzhu_realname" | Out-Null
 New-Item -ItemType Directory -Force "plugins/automation/lightboat" | Out-Null
 New-Item -ItemType Directory -Force "plugins/automation/xiaohei_proxy" | Out-Null
+New-Item -ItemType Directory -Force "plugins/automation/mofang_openapi" | Out-Null
 
 $targets = @(
   @{ goos = "windows"; goarch = "amd64"; ext = ".exe" },
@@ -36,7 +37,8 @@ $plugins = @(
   @{ id = "kyc/tencent_kyc"; pkg = "./plugin-demo/pluginv1/kyc_tencent_mock" },
   @{ id = "kyc/mangzhu_realname"; pkg = "./plugin-demo/pluginv1/kyc_mangzhu_realname" },
   @{ id = "automation/lightboat"; pkg = "./plugin-demo/pluginv1/automation_lightboat" },
-  @{ id = "automation/xiaohei_proxy"; pkg = "./plugin-demo/pluginv1/automation_xiaohei_proxy" }
+  @{ id = "automation/xiaohei_proxy"; pkg = "./plugin-demo/pluginv1/automation_xiaohei_proxy" },
+  @{ id = "automation/mofang_openapi"; pkg = "./plugin-demo/pluginv1/automation_mofang_openapi" }
 )
 
 $origGOOS = $env:GOOS

@@ -70,10 +70,9 @@ func (s *Service) Overview(ctx context.Context) (OverviewReport, error) {
 		if o.Status == domain.OrderStatusPendingReview {
 			pending++
 		}
-	}
-	payments, _ := s.listAllPayments(ctx, appshared.PaymentFilter{Status: string(domain.PaymentStatusApproved)})
-	for _, pay := range payments {
-		revenue += pay.Amount
+		if shouldIncludeRevenueOrder(o.Status) {
+			revenue += o.TotalAmount
+		}
 	}
 	vpsCount := 0
 	if s.vps != nil {
@@ -102,14 +101,21 @@ func (s *Service) RevenueByDay(ctx context.Context, days int) ([]RevenuePoint, e
 	}
 	from := time.Now().AddDate(0, 0, -days)
 	to := time.Now()
-	payments, err := s.listAllPayments(ctx, appshared.PaymentFilter{Status: string(domain.PaymentStatusApproved), From: &from, To: &to})
+	orders, err := s.listAllOrders(ctx, appshared.OrderFilter{})
 	if err != nil {
 		return nil, err
 	}
 	points := map[string]int64{}
-	for _, pay := range payments {
-		key := pay.CreatedAt.Format("2006-01-02")
-		points[key] += pay.Amount
+	for _, order := range orders {
+		if !shouldIncludeRevenueOrder(order.Status) {
+			continue
+		}
+		effectiveAt := revenueOrderEffectiveAt(order)
+		if effectiveAt.Before(from) || effectiveAt.After(to) {
+			continue
+		}
+		key := effectiveAt.Format("2006-01-02")
+		points[key] += order.TotalAmount
 	}
 	var out []RevenuePoint
 	for i := days; i >= 0; i-- {
@@ -125,14 +131,21 @@ func (s *Service) RevenueByMonth(ctx context.Context, months int) ([]RevenuePoin
 	}
 	from := time.Now().AddDate(0, -months, 0)
 	to := time.Now()
-	payments, err := s.listAllPayments(ctx, appshared.PaymentFilter{Status: string(domain.PaymentStatusApproved), From: &from, To: &to})
+	orders, err := s.listAllOrders(ctx, appshared.OrderFilter{})
 	if err != nil {
 		return nil, err
 	}
 	points := map[string]int64{}
-	for _, pay := range payments {
-		key := pay.CreatedAt.Format("2006-01")
-		points[key] += pay.Amount
+	for _, order := range orders {
+		if !shouldIncludeRevenueOrder(order.Status) {
+			continue
+		}
+		effectiveAt := revenueOrderEffectiveAt(order)
+		if effectiveAt.Before(from) || effectiveAt.After(to) {
+			continue
+		}
+		key := effectiveAt.Format("2006-01")
+		points[key] += order.TotalAmount
 	}
 	var out []RevenuePoint
 	for i := months; i >= 0; i-- {
@@ -572,6 +585,13 @@ func shouldIncludeRevenueOrder(status domain.OrderStatus) bool {
 	default:
 		return true
 	}
+}
+
+func revenueOrderEffectiveAt(order domain.Order) time.Time {
+	if order.ApprovedAt != nil && !order.ApprovedAt.IsZero() {
+		return *order.ApprovedAt
+	}
+	return order.CreatedAt
 }
 
 func nextRevenueDimensionLevel(level RevenueAnalyticsLevel) RevenueAnalyticsLevel {

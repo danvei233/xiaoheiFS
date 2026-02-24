@@ -9,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"image/png"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -1090,6 +1091,13 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 			}
 		}
 	}
+	if h.realnameSvc != nil {
+		_, providerKey, _ := h.realnameSvc.GetConfig(c)
+		if realNameProviderNeedsMobile(providerKey) && phone == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPhoneRequired.Error()})
+			return
+		}
+	}
 	record, err := h.realnameSvc.VerifyWithInput(c, getUserID(c), appshared.RealNameVerifyInput{
 		RealName:    payload.RealName,
 		IDNumber:    payload.IDNumber,
@@ -1107,11 +1115,17 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 	c.JSON(http.StatusOK, toRealNameVerificationDTO(record))
 }
 
+func realNameProviderNeedsMobile(providerKey string) bool {
+	key := strings.ToLower(strings.TrimSpace(providerKey))
+	// mangzhu three-factor flow requires params.mobile.
+	return strings.Contains(key, "mangzhu_realname")
+}
+
 func (h *Handler) defaultRealNameCallbackURL(c *gin.Context) string {
 	siteURL := strings.TrimSpace(h.getSettingValueByKey(c, "site_url"))
 	if siteURL != "" {
-		if strings.HasPrefix(siteURL, "http://") || strings.HasPrefix(siteURL, "https://") {
-			return strings.TrimRight(siteURL, "/")
+		if callback := buildRealNameCallbackURL(siteURL); callback != "" {
+			return callback
 		}
 	}
 	if c == nil || c.Request == nil {
@@ -1131,5 +1145,26 @@ func (h *Handler) defaultRealNameCallbackURL(c *gin.Context) string {
 	if host == "" {
 		return ""
 	}
-	return strings.TrimRight(scheme+"://"+host, "/")
+	return buildRealNameCallbackURL(scheme + "://" + host)
+}
+
+func buildRealNameCallbackURL(base string) string {
+	u, err := url.Parse(strings.TrimSpace(base))
+	if err != nil {
+		return ""
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return ""
+	}
+	if strings.TrimSpace(u.Host) == "" {
+		return ""
+	}
+	path := strings.TrimRight(u.Path, "/")
+	if !strings.HasSuffix(path, "/console/realname") {
+		path += "/console/realname"
+	}
+	u.Path = path
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }

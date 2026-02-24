@@ -2456,8 +2456,9 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 			return domain.Order{}, ResizeQuote{}, err
 		}
 	}
-	if v, ok := getSettingBool(ctx, s.settings, "resize_enabled"); ok && !v {
-		return domain.Order{}, ResizeQuote{}, ErrResizeDisabled
+	resizeDefault := true
+	if v, ok := getSettingBool(ctx, s.settings, "resize_enabled"); ok {
+		resizeDefault = v
 	}
 	if scheduledAt != nil {
 		if v, ok := getSettingBool(ctx, s.settings, "resize_scheduled_enabled"); ok && !v {
@@ -2467,6 +2468,13 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	inst, err := s.vps.GetInstance(ctx, vpsID)
 	if err != nil {
 		return domain.Order{}, ResizeQuote{}, err
+	}
+	policy := loadPackageCapabilityPolicy(ctx, s.settings, inst.PackageID)
+	if policy.ResizeEnabled != nil {
+		resizeDefault = *policy.ResizeEnabled
+	}
+	if !isResizeAllowed(inst, resizeDefault) {
+		return domain.Order{}, ResizeQuote{}, ErrResizeDisabled
 	}
 	if inst.UserID != userID {
 		return domain.Order{}, ResizeQuote{}, ErrForbidden
@@ -2559,6 +2567,17 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	if err != nil {
 		return domain.Order{}, 0, err
 	}
+	refundDefault := true
+	if v, ok := getSettingBool(ctx, s.settings, "refund_enabled"); ok {
+		refundDefault = v
+	}
+	pkgPolicy := loadPackageCapabilityPolicy(ctx, s.settings, inst.PackageID)
+	if pkgPolicy.RefundEnabled != nil {
+		refundDefault = *pkgPolicy.RefundEnabled
+	}
+	if !isRefundAllowed(inst, refundDefault) {
+		return domain.Order{}, 0, ErrForbidden
+	}
 	if inst.UserID != userID {
 		return domain.Order{}, 0, ErrForbidden
 	}
@@ -2578,12 +2597,12 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	if err != nil {
 		return domain.Order{}, 0, err
 	}
-	policy := loadRefundPolicy(ctx, s.settings)
+	refundPolicy := loadRefundPolicy(ctx, s.settings)
 	baseAmount := inst.MonthlyPrice
 	if baseAmount <= 0 {
 		baseAmount = item.Amount
 	}
-	amount := calculateRefundAmountForAmount(inst, baseAmount, policy)
+	amount := calculateRefundAmountForAmount(inst, baseAmount, refundPolicy)
 	if amount <= 0 {
 		return domain.Order{}, 0, ErrForbidden
 	}
@@ -2624,7 +2643,7 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 		}
 		return domain.Order{}, 0, err
 	}
-	if !policy.RequireApproval || resolveOrderSource(ctx) == OrderSourceUserAPIKey {
+	if !refundPolicy.RequireApproval || resolveOrderSource(ctx) == OrderSourceUserAPIKey {
 		if err := s.ApproveOrder(ctx, 0, order.ID); err != nil {
 			return domain.Order{}, 0, err
 		}
@@ -2669,12 +2688,20 @@ func (s *OrderService) QuoteResizeOrder(ctx context.Context, userID int64, vpsID
 			return ResizeQuote{}, CartSpec{}, err
 		}
 	}
-	if v, ok := getSettingBool(ctx, s.settings, "resize_enabled"); ok && !v {
-		return ResizeQuote{}, CartSpec{}, ErrResizeDisabled
+	resizeDefault := true
+	if v, ok := getSettingBool(ctx, s.settings, "resize_enabled"); ok {
+		resizeDefault = v
 	}
 	inst, err := s.vps.GetInstance(ctx, vpsID)
 	if err != nil {
 		return ResizeQuote{}, CartSpec{}, err
+	}
+	policy := loadPackageCapabilityPolicy(ctx, s.settings, inst.PackageID)
+	if policy.ResizeEnabled != nil {
+		resizeDefault = *policy.ResizeEnabled
+	}
+	if !isResizeAllowed(inst, resizeDefault) {
+		return ResizeQuote{}, CartSpec{}, ErrResizeDisabled
 	}
 	if inst.UserID != userID {
 		return ResizeQuote{}, CartSpec{}, ErrForbidden

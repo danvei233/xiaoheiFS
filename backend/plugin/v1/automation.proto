@@ -17,42 +17,48 @@ service AutomationService {
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
   rpc ListInstancesSimple(ListInstancesSimpleRequest) returns (ListInstancesSimpleResponse);
-  rpc Start(StartRequest) returns (Empty);
-  rpc Shutdown(ShutdownRequest) returns (Empty);
-  rpc Reboot(RebootRequest) returns (Empty);
-  rpc Rebuild(RebuildRequest) returns (Empty);
-  rpc ResetPassword(ResetPasswordRequest) returns (Empty);
-  rpc ElasticUpdate(ElasticUpdateRequest) returns (Empty);
-  rpc Lock(LockRequest) returns (Empty);
-  rpc Unlock(UnlockRequest) returns (Empty);
-  rpc Renew(RenewRequest) returns (Empty);
-  rpc Destroy(DestroyRequest) returns (Empty);
+  rpc Start(StartRequest) returns (OperationResult);
+  rpc Shutdown(ShutdownRequest) returns (OperationResult);
+  rpc Reboot(RebootRequest) returns (OperationResult);
+  rpc Rebuild(RebuildRequest) returns (OperationResult);
+  rpc ResetPassword(ResetPasswordRequest) returns (OperationResult);
+  rpc ElasticUpdate(ElasticUpdateRequest) returns (OperationResult);
+  rpc Lock(LockRequest) returns (OperationResult);
+  rpc Unlock(UnlockRequest) returns (OperationResult);
+  rpc Renew(RenewRequest) returns (OperationResult);
+  rpc Destroy(DestroyRequest) returns (OperationResult);
   rpc GetPanelURL(GetPanelURLRequest) returns (GetPanelURLResponse);
   rpc GetVNCURL(GetVNCURLRequest) returns (GetVNCURLResponse);
   rpc GetMonitor(GetMonitorRequest) returns (GetMonitorResponse);
 
   // Port mapping (optional)
   rpc ListPortMappings(ListPortMappingsRequest) returns (ListPortMappingsResponse);
-  rpc AddPortMapping(AddPortMappingRequest) returns (Empty);
-  rpc DeletePortMapping(DeletePortMappingRequest) returns (Empty);
+  rpc AddPortMapping(AddPortMappingRequest) returns (OperationResult);
+  rpc DeletePortMapping(DeletePortMappingRequest) returns (OperationResult);
   rpc FindPortCandidates(FindPortCandidatesRequest) returns (FindPortCandidatesResponse);
 
   // Backup (optional)
   rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
-  rpc CreateBackup(CreateBackupRequest) returns (Empty);
-  rpc DeleteBackup(DeleteBackupRequest) returns (Empty);
-  rpc RestoreBackup(RestoreBackupRequest) returns (Empty);
+  rpc CreateBackup(CreateBackupRequest) returns (OperationResult);
+  rpc DeleteBackup(DeleteBackupRequest) returns (OperationResult);
+  rpc RestoreBackup(RestoreBackupRequest) returns (OperationResult);
 
   // Snapshot (optional)
   rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
-  rpc CreateSnapshot(CreateSnapshotRequest) returns (Empty);
-  rpc DeleteSnapshot(DeleteSnapshotRequest) returns (Empty);
-  rpc RestoreSnapshot(RestoreSnapshotRequest) returns (Empty);
+  rpc CreateSnapshot(CreateSnapshotRequest) returns (OperationResult);
+  rpc DeleteSnapshot(DeleteSnapshotRequest) returns (OperationResult);
+  rpc RestoreSnapshot(RestoreSnapshotRequest) returns (OperationResult);
 
   // Firewall (optional)
   rpc ListFirewallRules(ListFirewallRulesRequest) returns (ListFirewallRulesResponse);
-  rpc AddFirewallRule(AddFirewallRuleRequest) returns (Empty);
-  rpc DeleteFirewallRule(DeleteFirewallRuleRequest) returns (Empty);
+  rpc AddFirewallRule(AddFirewallRuleRequest) returns (OperationResult);
+  rpc DeleteFirewallRule(DeleteFirewallRuleRequest) returns (OperationResult);
+}
+
+message OperationResult {
+  bool ok = 1;
+  string error_code = 2;
+  string error_message = 3;
 }
 
 message AutomationArea {

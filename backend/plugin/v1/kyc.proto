@@ -20,6 +20,7 @@ message KycStartResponse {
   string url = 3;
   string next_step = 4;
   string error = 5;
+  string error_code = 6;
 }
 
 message KycQueryRequest {
@@ -32,4 +33,5 @@ message KycQueryResponse {
   string reason = 3;
   string raw_json = 4;
   string error = 5;
+  string error_code = 6;
 }

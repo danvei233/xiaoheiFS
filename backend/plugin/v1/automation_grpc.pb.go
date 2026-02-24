@@ -69,38 +69,38 @@ type AutomationServiceClient interface {
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
 	ListInstancesSimple(ctx context.Context, in *ListInstancesSimpleRequest, opts ...grpc.CallOption) (*ListInstancesSimpleResponse, error)
-	Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*Empty, error)
-	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*Empty, error)
-	Reboot(ctx context.Context, in *RebootRequest, opts ...grpc.CallOption) (*Empty, error)
-	Rebuild(ctx context.Context, in *RebuildRequest, opts ...grpc.CallOption) (*Empty, error)
-	ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*Empty, error)
-	ElasticUpdate(ctx context.Context, in *ElasticUpdateRequest, opts ...grpc.CallOption) (*Empty, error)
-	Lock(ctx context.Context, in *LockRequest, opts ...grpc.CallOption) (*Empty, error)
-	Unlock(ctx context.Context, in *UnlockRequest, opts ...grpc.CallOption) (*Empty, error)
-	Renew(ctx context.Context, in *RenewRequest, opts ...grpc.CallOption) (*Empty, error)
-	Destroy(ctx context.Context, in *DestroyRequest, opts ...grpc.CallOption) (*Empty, error)
+	Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	Reboot(ctx context.Context, in *RebootRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	Rebuild(ctx context.Context, in *RebuildRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	ElasticUpdate(ctx context.Context, in *ElasticUpdateRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	Lock(ctx context.Context, in *LockRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	Unlock(ctx context.Context, in *UnlockRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	Renew(ctx context.Context, in *RenewRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	Destroy(ctx context.Context, in *DestroyRequest, opts ...grpc.CallOption) (*OperationResult, error)
 	GetPanelURL(ctx context.Context, in *GetPanelURLRequest, opts ...grpc.CallOption) (*GetPanelURLResponse, error)
 	GetVNCURL(ctx context.Context, in *GetVNCURLRequest, opts ...grpc.CallOption) (*GetVNCURLResponse, error)
 	GetMonitor(ctx context.Context, in *GetMonitorRequest, opts ...grpc.CallOption) (*GetMonitorResponse, error)
 	// Port mapping (optional)
 	ListPortMappings(ctx context.Context, in *ListPortMappingsRequest, opts ...grpc.CallOption) (*ListPortMappingsResponse, error)
-	AddPortMapping(ctx context.Context, in *AddPortMappingRequest, opts ...grpc.CallOption) (*Empty, error)
-	DeletePortMapping(ctx context.Context, in *DeletePortMappingRequest, opts ...grpc.CallOption) (*Empty, error)
+	AddPortMapping(ctx context.Context, in *AddPortMappingRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeletePortMapping(ctx context.Context, in *DeletePortMappingRequest, opts ...grpc.CallOption) (*OperationResult, error)
 	FindPortCandidates(ctx context.Context, in *FindPortCandidatesRequest, opts ...grpc.CallOption) (*FindPortCandidatesResponse, error)
 	// Backup (optional)
 	ListBackups(ctx context.Context, in *ListBackupsRequest, opts ...grpc.CallOption) (*ListBackupsResponse, error)
-	CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*Empty, error)
-	DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*Empty, error)
-	RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*Empty, error)
+	CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*OperationResult, error)
 	// Snapshot (optional)
 	ListSnapshots(ctx context.Context, in *ListSnapshotsRequest, opts ...grpc.CallOption) (*ListSnapshotsResponse, error)
-	CreateSnapshot(ctx context.Context, in *CreateSnapshotRequest, opts ...grpc.CallOption) (*Empty, error)
-	DeleteSnapshot(ctx context.Context, in *DeleteSnapshotRequest, opts ...grpc.CallOption) (*Empty, error)
-	RestoreSnapshot(ctx context.Context, in *RestoreSnapshotRequest, opts ...grpc.CallOption) (*Empty, error)
+	CreateSnapshot(ctx context.Context, in *CreateSnapshotRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeleteSnapshot(ctx context.Context, in *DeleteSnapshotRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	RestoreSnapshot(ctx context.Context, in *RestoreSnapshotRequest, opts ...grpc.CallOption) (*OperationResult, error)
 	// Firewall (optional)
 	ListFirewallRules(ctx context.Context, in *ListFirewallRulesRequest, opts ...grpc.CallOption) (*ListFirewallRulesResponse, error)
-	AddFirewallRule(ctx context.Context, in *AddFirewallRuleRequest, opts ...grpc.CallOption) (*Empty, error)
-	DeleteFirewallRule(ctx context.Context, in *DeleteFirewallRuleRequest, opts ...grpc.CallOption) (*Empty, error)
+	AddFirewallRule(ctx context.Context, in *AddFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeleteFirewallRule(ctx context.Context, in *DeleteFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error)
 }
 
 type automationServiceClient struct {
@@ -181,9 +181,9 @@ func (c *automationServiceClient) ListInstancesSimple(ctx context.Context, in *L
 	return out, nil
 }
 
-func (c *automationServiceClient) Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Start(ctx context.Context, in *StartRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Start_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -191,9 +191,9 @@ func (c *automationServiceClient) Start(ctx context.Context, in *StartRequest, o
 	return out, nil
 }
 
-func (c *automationServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Shutdown(ctx context.Context, in *ShutdownRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Shutdown_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -201,9 +201,9 @@ func (c *automationServiceClient) Shutdown(ctx context.Context, in *ShutdownRequ
 	return out, nil
 }
 
-func (c *automationServiceClient) Reboot(ctx context.Context, in *RebootRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Reboot(ctx context.Context, in *RebootRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Reboot_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -211,9 +211,9 @@ func (c *automationServiceClient) Reboot(ctx context.Context, in *RebootRequest,
 	return out, nil
 }
 
-func (c *automationServiceClient) Rebuild(ctx context.Context, in *RebuildRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Rebuild(ctx context.Context, in *RebuildRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Rebuild_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -221,9 +221,9 @@ func (c *automationServiceClient) Rebuild(ctx context.Context, in *RebuildReques
 	return out, nil
 }
 
-func (c *automationServiceClient) ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_ResetPassword_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -231,9 +231,9 @@ func (c *automationServiceClient) ResetPassword(ctx context.Context, in *ResetPa
 	return out, nil
 }
 
-func (c *automationServiceClient) ElasticUpdate(ctx context.Context, in *ElasticUpdateRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) ElasticUpdate(ctx context.Context, in *ElasticUpdateRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_ElasticUpdate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -241,9 +241,9 @@ func (c *automationServiceClient) ElasticUpdate(ctx context.Context, in *Elastic
 	return out, nil
 }
 
-func (c *automationServiceClient) Lock(ctx context.Context, in *LockRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Lock(ctx context.Context, in *LockRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Lock_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -251,9 +251,9 @@ func (c *automationServiceClient) Lock(ctx context.Context, in *LockRequest, opt
 	return out, nil
 }
 
-func (c *automationServiceClient) Unlock(ctx context.Context, in *UnlockRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Unlock(ctx context.Context, in *UnlockRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Unlock_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -261,9 +261,9 @@ func (c *automationServiceClient) Unlock(ctx context.Context, in *UnlockRequest,
 	return out, nil
 }
 
-func (c *automationServiceClient) Renew(ctx context.Context, in *RenewRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Renew(ctx context.Context, in *RenewRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Renew_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -271,9 +271,9 @@ func (c *automationServiceClient) Renew(ctx context.Context, in *RenewRequest, o
 	return out, nil
 }
 
-func (c *automationServiceClient) Destroy(ctx context.Context, in *DestroyRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) Destroy(ctx context.Context, in *DestroyRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_Destroy_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -321,9 +321,9 @@ func (c *automationServiceClient) ListPortMappings(ctx context.Context, in *List
 	return out, nil
 }
 
-func (c *automationServiceClient) AddPortMapping(ctx context.Context, in *AddPortMappingRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) AddPortMapping(ctx context.Context, in *AddPortMappingRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_AddPortMapping_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -331,9 +331,9 @@ func (c *automationServiceClient) AddPortMapping(ctx context.Context, in *AddPor
 	return out, nil
 }
 
-func (c *automationServiceClient) DeletePortMapping(ctx context.Context, in *DeletePortMappingRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) DeletePortMapping(ctx context.Context, in *DeletePortMappingRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_DeletePortMapping_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -361,9 +361,9 @@ func (c *automationServiceClient) ListBackups(ctx context.Context, in *ListBacku
 	return out, nil
 }
 
-func (c *automationServiceClient) CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) CreateBackup(ctx context.Context, in *CreateBackupRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_CreateBackup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -371,9 +371,9 @@ func (c *automationServiceClient) CreateBackup(ctx context.Context, in *CreateBa
 	return out, nil
 }
 
-func (c *automationServiceClient) DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) DeleteBackup(ctx context.Context, in *DeleteBackupRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_DeleteBackup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -381,9 +381,9 @@ func (c *automationServiceClient) DeleteBackup(ctx context.Context, in *DeleteBa
 	return out, nil
 }
 
-func (c *automationServiceClient) RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) RestoreBackup(ctx context.Context, in *RestoreBackupRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_RestoreBackup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -401,9 +401,9 @@ func (c *automationServiceClient) ListSnapshots(ctx context.Context, in *ListSna
 	return out, nil
 }
 
-func (c *automationServiceClient) CreateSnapshot(ctx context.Context, in *CreateSnapshotRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) CreateSnapshot(ctx context.Context, in *CreateSnapshotRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_CreateSnapshot_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -411,9 +411,9 @@ func (c *automationServiceClient) CreateSnapshot(ctx context.Context, in *Create
 	return out, nil
 }
 
-func (c *automationServiceClient) DeleteSnapshot(ctx context.Context, in *DeleteSnapshotRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) DeleteSnapshot(ctx context.Context, in *DeleteSnapshotRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_DeleteSnapshot_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -421,9 +421,9 @@ func (c *automationServiceClient) DeleteSnapshot(ctx context.Context, in *Delete
 	return out, nil
 }
 
-func (c *automationServiceClient) RestoreSnapshot(ctx context.Context, in *RestoreSnapshotRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) RestoreSnapshot(ctx context.Context, in *RestoreSnapshotRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_RestoreSnapshot_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -441,9 +441,9 @@ func (c *automationServiceClient) ListFirewallRules(ctx context.Context, in *Lis
 	return out, nil
 }
 
-func (c *automationServiceClient) AddFirewallRule(ctx context.Context, in *AddFirewallRuleRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) AddFirewallRule(ctx context.Context, in *AddFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_AddFirewallRule_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -451,9 +451,9 @@ func (c *automationServiceClient) AddFirewallRule(ctx context.Context, in *AddFi
 	return out, nil
 }
 
-func (c *automationServiceClient) DeleteFirewallRule(ctx context.Context, in *DeleteFirewallRuleRequest, opts ...grpc.CallOption) (*Empty, error) {
+func (c *automationServiceClient) DeleteFirewallRule(ctx context.Context, in *DeleteFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Empty)
+	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_DeleteFirewallRule_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -474,38 +474,38 @@ type AutomationServiceServer interface {
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
 	ListInstancesSimple(context.Context, *ListInstancesSimpleRequest) (*ListInstancesSimpleResponse, error)
-	Start(context.Context, *StartRequest) (*Empty, error)
-	Shutdown(context.Context, *ShutdownRequest) (*Empty, error)
-	Reboot(context.Context, *RebootRequest) (*Empty, error)
-	Rebuild(context.Context, *RebuildRequest) (*Empty, error)
-	ResetPassword(context.Context, *ResetPasswordRequest) (*Empty, error)
-	ElasticUpdate(context.Context, *ElasticUpdateRequest) (*Empty, error)
-	Lock(context.Context, *LockRequest) (*Empty, error)
-	Unlock(context.Context, *UnlockRequest) (*Empty, error)
-	Renew(context.Context, *RenewRequest) (*Empty, error)
-	Destroy(context.Context, *DestroyRequest) (*Empty, error)
+	Start(context.Context, *StartRequest) (*OperationResult, error)
+	Shutdown(context.Context, *ShutdownRequest) (*OperationResult, error)
+	Reboot(context.Context, *RebootRequest) (*OperationResult, error)
+	Rebuild(context.Context, *RebuildRequest) (*OperationResult, error)
+	ResetPassword(context.Context, *ResetPasswordRequest) (*OperationResult, error)
+	ElasticUpdate(context.Context, *ElasticUpdateRequest) (*OperationResult, error)
+	Lock(context.Context, *LockRequest) (*OperationResult, error)
+	Unlock(context.Context, *UnlockRequest) (*OperationResult, error)
+	Renew(context.Context, *RenewRequest) (*OperationResult, error)
+	Destroy(context.Context, *DestroyRequest) (*OperationResult, error)
 	GetPanelURL(context.Context, *GetPanelURLRequest) (*GetPanelURLResponse, error)
 	GetVNCURL(context.Context, *GetVNCURLRequest) (*GetVNCURLResponse, error)
 	GetMonitor(context.Context, *GetMonitorRequest) (*GetMonitorResponse, error)
 	// Port mapping (optional)
 	ListPortMappings(context.Context, *ListPortMappingsRequest) (*ListPortMappingsResponse, error)
-	AddPortMapping(context.Context, *AddPortMappingRequest) (*Empty, error)
-	DeletePortMapping(context.Context, *DeletePortMappingRequest) (*Empty, error)
+	AddPortMapping(context.Context, *AddPortMappingRequest) (*OperationResult, error)
+	DeletePortMapping(context.Context, *DeletePortMappingRequest) (*OperationResult, error)
 	FindPortCandidates(context.Context, *FindPortCandidatesRequest) (*FindPortCandidatesResponse, error)
 	// Backup (optional)
 	ListBackups(context.Context, *ListBackupsRequest) (*ListBackupsResponse, error)
-	CreateBackup(context.Context, *CreateBackupRequest) (*Empty, error)
-	DeleteBackup(context.Context, *DeleteBackupRequest) (*Empty, error)
-	RestoreBackup(context.Context, *RestoreBackupRequest) (*Empty, error)
+	CreateBackup(context.Context, *CreateBackupRequest) (*OperationResult, error)
+	DeleteBackup(context.Context, *DeleteBackupRequest) (*OperationResult, error)
+	RestoreBackup(context.Context, *RestoreBackupRequest) (*OperationResult, error)
 	// Snapshot (optional)
 	ListSnapshots(context.Context, *ListSnapshotsRequest) (*ListSnapshotsResponse, error)
-	CreateSnapshot(context.Context, *CreateSnapshotRequest) (*Empty, error)
-	DeleteSnapshot(context.Context, *DeleteSnapshotRequest) (*Empty, error)
-	RestoreSnapshot(context.Context, *RestoreSnapshotRequest) (*Empty, error)
+	CreateSnapshot(context.Context, *CreateSnapshotRequest) (*OperationResult, error)
+	DeleteSnapshot(context.Context, *DeleteSnapshotRequest) (*OperationResult, error)
+	RestoreSnapshot(context.Context, *RestoreSnapshotRequest) (*OperationResult, error)
 	// Firewall (optional)
 	ListFirewallRules(context.Context, *ListFirewallRulesRequest) (*ListFirewallRulesResponse, error)
-	AddFirewallRule(context.Context, *AddFirewallRuleRequest) (*Empty, error)
-	DeleteFirewallRule(context.Context, *DeleteFirewallRuleRequest) (*Empty, error)
+	AddFirewallRule(context.Context, *AddFirewallRuleRequest) (*OperationResult, error)
+	DeleteFirewallRule(context.Context, *DeleteFirewallRuleRequest) (*OperationResult, error)
 	mustEmbedUnimplementedAutomationServiceServer()
 }
 
@@ -537,34 +537,34 @@ func (UnimplementedAutomationServiceServer) GetInstance(context.Context, *GetIns
 func (UnimplementedAutomationServiceServer) ListInstancesSimple(context.Context, *ListInstancesSimpleRequest) (*ListInstancesSimpleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListInstancesSimple not implemented")
 }
-func (UnimplementedAutomationServiceServer) Start(context.Context, *StartRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Start(context.Context, *StartRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Start not implemented")
 }
-func (UnimplementedAutomationServiceServer) Shutdown(context.Context, *ShutdownRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Shutdown(context.Context, *ShutdownRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Shutdown not implemented")
 }
-func (UnimplementedAutomationServiceServer) Reboot(context.Context, *RebootRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Reboot(context.Context, *RebootRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Reboot not implemented")
 }
-func (UnimplementedAutomationServiceServer) Rebuild(context.Context, *RebuildRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Rebuild(context.Context, *RebuildRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Rebuild not implemented")
 }
-func (UnimplementedAutomationServiceServer) ResetPassword(context.Context, *ResetPasswordRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) ResetPassword(context.Context, *ResetPasswordRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method ResetPassword not implemented")
 }
-func (UnimplementedAutomationServiceServer) ElasticUpdate(context.Context, *ElasticUpdateRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) ElasticUpdate(context.Context, *ElasticUpdateRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method ElasticUpdate not implemented")
 }
-func (UnimplementedAutomationServiceServer) Lock(context.Context, *LockRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Lock(context.Context, *LockRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Lock not implemented")
 }
-func (UnimplementedAutomationServiceServer) Unlock(context.Context, *UnlockRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Unlock(context.Context, *UnlockRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Unlock not implemented")
 }
-func (UnimplementedAutomationServiceServer) Renew(context.Context, *RenewRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Renew(context.Context, *RenewRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Renew not implemented")
 }
-func (UnimplementedAutomationServiceServer) Destroy(context.Context, *DestroyRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) Destroy(context.Context, *DestroyRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method Destroy not implemented")
 }
 func (UnimplementedAutomationServiceServer) GetPanelURL(context.Context, *GetPanelURLRequest) (*GetPanelURLResponse, error) {
@@ -579,10 +579,10 @@ func (UnimplementedAutomationServiceServer) GetMonitor(context.Context, *GetMoni
 func (UnimplementedAutomationServiceServer) ListPortMappings(context.Context, *ListPortMappingsRequest) (*ListPortMappingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListPortMappings not implemented")
 }
-func (UnimplementedAutomationServiceServer) AddPortMapping(context.Context, *AddPortMappingRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) AddPortMapping(context.Context, *AddPortMappingRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddPortMapping not implemented")
 }
-func (UnimplementedAutomationServiceServer) DeletePortMapping(context.Context, *DeletePortMappingRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) DeletePortMapping(context.Context, *DeletePortMappingRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeletePortMapping not implemented")
 }
 func (UnimplementedAutomationServiceServer) FindPortCandidates(context.Context, *FindPortCandidatesRequest) (*FindPortCandidatesResponse, error) {
@@ -591,34 +591,34 @@ func (UnimplementedAutomationServiceServer) FindPortCandidates(context.Context, 
 func (UnimplementedAutomationServiceServer) ListBackups(context.Context, *ListBackupsRequest) (*ListBackupsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListBackups not implemented")
 }
-func (UnimplementedAutomationServiceServer) CreateBackup(context.Context, *CreateBackupRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) CreateBackup(context.Context, *CreateBackupRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateBackup not implemented")
 }
-func (UnimplementedAutomationServiceServer) DeleteBackup(context.Context, *DeleteBackupRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) DeleteBackup(context.Context, *DeleteBackupRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteBackup not implemented")
 }
-func (UnimplementedAutomationServiceServer) RestoreBackup(context.Context, *RestoreBackupRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) RestoreBackup(context.Context, *RestoreBackupRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method RestoreBackup not implemented")
 }
 func (UnimplementedAutomationServiceServer) ListSnapshots(context.Context, *ListSnapshotsRequest) (*ListSnapshotsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListSnapshots not implemented")
 }
-func (UnimplementedAutomationServiceServer) CreateSnapshot(context.Context, *CreateSnapshotRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) CreateSnapshot(context.Context, *CreateSnapshotRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateSnapshot not implemented")
 }
-func (UnimplementedAutomationServiceServer) DeleteSnapshot(context.Context, *DeleteSnapshotRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) DeleteSnapshot(context.Context, *DeleteSnapshotRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteSnapshot not implemented")
 }
-func (UnimplementedAutomationServiceServer) RestoreSnapshot(context.Context, *RestoreSnapshotRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) RestoreSnapshot(context.Context, *RestoreSnapshotRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method RestoreSnapshot not implemented")
 }
 func (UnimplementedAutomationServiceServer) ListFirewallRules(context.Context, *ListFirewallRulesRequest) (*ListFirewallRulesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListFirewallRules not implemented")
 }
-func (UnimplementedAutomationServiceServer) AddFirewallRule(context.Context, *AddFirewallRuleRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) AddFirewallRule(context.Context, *AddFirewallRuleRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddFirewallRule not implemented")
 }
-func (UnimplementedAutomationServiceServer) DeleteFirewallRule(context.Context, *DeleteFirewallRuleRequest) (*Empty, error) {
+func (UnimplementedAutomationServiceServer) DeleteFirewallRule(context.Context, *DeleteFirewallRuleRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteFirewallRule not implemented")
 }
 func (UnimplementedAutomationServiceServer) mustEmbedUnimplementedAutomationServiceServer() {}

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -252,15 +253,16 @@ type NotificationDTO struct {
 }
 
 type RealNameVerificationDTO struct {
-	ID         int64      `json:"id"`
-	UserID     int64      `json:"user_id"`
-	RealName   string     `json:"real_name"`
-	IDNumber   string     `json:"id_number"`
-	Status     string     `json:"status"`
-	Provider   string     `json:"provider"`
-	Reason     string     `json:"reason"`
-	CreatedAt  time.Time  `json:"created_at"`
-	VerifiedAt *time.Time `json:"verified_at"`
+	ID          int64      `json:"id"`
+	UserID      int64      `json:"user_id"`
+	RealName    string     `json:"real_name"`
+	IDNumber    string     `json:"id_number"`
+	Status      string     `json:"status"`
+	Provider    string     `json:"provider"`
+	Reason      string     `json:"reason"`
+	RedirectURL string     `json:"redirect_url,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	VerifiedAt  *time.Time `json:"verified_at"`
 }
 
 type ServerStatusDTO struct {
@@ -285,36 +287,46 @@ type ServerStatusDTO struct {
 }
 
 type VPSInstanceDTO struct {
-	ID                   int64           `json:"id"`
-	UserID               int64           `json:"user_id"`
-	OrderItemID          int64           `json:"order_item_id"`
-	GoodsTypeID          int64           `json:"goods_type_id"`
-	AutomationInstanceID string          `json:"automation_instance_id"`
-	Name                 string          `json:"name"`
-	Region               string          `json:"region"`
-	RegionID             int64           `json:"region_id"`
-	LineID               int64           `json:"line_id"`
-	PackageID            int64           `json:"package_id"`
-	PackageName          string          `json:"package_name"`
-	CPU                  int             `json:"cpu"`
-	MemoryGB             int             `json:"memory_gb"`
-	DiskGB               int             `json:"disk_gb"`
-	BandwidthMB          int             `json:"bandwidth_mbps"`
-	PortNum              int             `json:"port_num"`
-	MonthlyPrice         float64         `json:"monthly_price"`
-	Spec                 json.RawMessage `json:"spec"`
-	SystemID             int64           `json:"system_id"`
-	Status               string          `json:"status"`
-	AutomationState      int             `json:"automation_state"`
-	AdminStatus          string          `json:"admin_status"`
-	ExpireAt             *time.Time      `json:"expire_at"`
-	DestroyAt            *time.Time      `json:"destroy_at,omitempty"`
-	DestroyInDays        *int            `json:"destroy_in_days,omitempty"`
-	PanelURLCache        string          `json:"panel_url_cache"`
-	AccessInfo           map[string]any  `json:"access_info"`
-	LastEmergencyRenewAt *time.Time      `json:"last_emergency_renew_at"`
-	CreatedAt            time.Time       `json:"created_at"`
-	UpdatedAt            time.Time       `json:"updated_at"`
+	ID                   int64               `json:"id"`
+	UserID               int64               `json:"user_id"`
+	OrderItemID          int64               `json:"order_item_id"`
+	GoodsTypeID          int64               `json:"goods_type_id"`
+	AutomationInstanceID string              `json:"automation_instance_id"`
+	Name                 string              `json:"name"`
+	Region               string              `json:"region"`
+	RegionID             int64               `json:"region_id"`
+	LineID               int64               `json:"line_id"`
+	PackageID            int64               `json:"package_id"`
+	PackageName          string              `json:"package_name"`
+	CPU                  int                 `json:"cpu"`
+	MemoryGB             int                 `json:"memory_gb"`
+	DiskGB               int                 `json:"disk_gb"`
+	BandwidthMB          int                 `json:"bandwidth_mbps"`
+	PortNum              int                 `json:"port_num"`
+	MonthlyPrice         float64             `json:"monthly_price"`
+	Spec                 json.RawMessage     `json:"spec"`
+	SystemID             int64               `json:"system_id"`
+	Status               string              `json:"status"`
+	AutomationState      int                 `json:"automation_state"`
+	AdminStatus          string              `json:"admin_status"`
+	ExpireAt             *time.Time          `json:"expire_at"`
+	DestroyAt            *time.Time          `json:"destroy_at,omitempty"`
+	DestroyInDays        *int                `json:"destroy_in_days,omitempty"`
+	PanelURLCache        string              `json:"panel_url_cache"`
+	AccessInfo           map[string]any      `json:"access_info"`
+	Capabilities         *VPSCapabilitiesDTO `json:"capabilities,omitempty"`
+	LastEmergencyRenewAt *time.Time          `json:"last_emergency_renew_at"`
+	CreatedAt            time.Time           `json:"created_at"`
+	UpdatedAt            time.Time           `json:"updated_at"`
+}
+
+type VPSCapabilitiesDTO struct {
+	Automation *VPSAutomationCapabilityDTO `json:"automation,omitempty"`
+}
+
+type VPSAutomationCapabilityDTO struct {
+	Features            []string          `json:"features"`
+	NotSupportedReasons map[string]string `json:"not_supported_reasons,omitempty"`
 }
 
 type OrderEventDTO struct {
@@ -924,16 +936,41 @@ func toNotificationDTO(item domain.Notification) NotificationDTO {
 
 func toRealNameVerificationDTO(item domain.RealNameVerification) RealNameVerificationDTO {
 	return RealNameVerificationDTO{
-		ID:         item.ID,
-		UserID:     item.UserID,
-		RealName:   item.RealName,
-		IDNumber:   maskIDNumber(item.IDNumber),
-		Status:     item.Status,
-		Provider:   item.Provider,
-		Reason:     item.Reason,
-		CreatedAt:  item.CreatedAt,
-		VerifiedAt: item.VerifiedAt,
+		ID:          item.ID,
+		UserID:      item.UserID,
+		RealName:    item.RealName,
+		IDNumber:    maskIDNumber(item.IDNumber),
+		Status:      item.Status,
+		Provider:    item.Provider,
+		Reason:      item.Reason,
+		RedirectURL: parsePendingRedirectURL(item.Reason),
+		CreatedAt:   item.CreatedAt,
+		VerifiedAt:  item.VerifiedAt,
 	}
+}
+
+func parsePendingRedirectURL(reason string) string {
+	reason = strings.TrimSpace(reason)
+	if !strings.HasPrefix(reason, "pending_face:") {
+		return ""
+	}
+	parts := strings.SplitN(reason, ":", 4)
+	if len(parts) < 4 {
+		return ""
+	}
+	encoded := strings.TrimSpace(parts[3])
+	if encoded == "" {
+		return ""
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return ""
+	}
+	u := strings.TrimSpace(string(raw))
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		return u
+	}
+	return ""
 }
 
 func toServerStatusDTO(status appshared.ServerStatus) ServerStatusDTO {

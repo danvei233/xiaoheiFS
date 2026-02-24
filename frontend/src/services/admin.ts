@@ -22,6 +22,7 @@ import type {
   Order,
   OrderDetailResponse,
   Package,
+  PackageCapabilities,
   PermissionItem,
   PermissionGroup,
   PaymentProvider,
@@ -189,6 +190,10 @@ export const updatePackage = (id: number | string, payload: Record<string, unkno
 export const deletePackage = (id: number | string) => http.delete(`/admin/api/v1/packages/${id}`);
 export const bulkDeletePackages = (ids: Array<number | string>) =>
   http.post("/admin/api/v1/packages/bulk-delete", { ids });
+export const getPackageCapabilities = (id: number | string) =>
+  http.get<PackageCapabilities>(`/admin/api/v1/packages/${id}/capabilities`);
+export const updatePackageCapabilities = (id: number | string, payload: { resize_enabled?: boolean | null; refund_enabled?: boolean | null }) =>
+  http.patch(`/admin/api/v1/packages/${id}/capabilities`, payload);
 
 export const listBillingCycles = () => http.get<ApiList<BillingCycle>>("/admin/api/v1/billing-cycles");
 export const createBillingCycle = (payload: Record<string, unknown>) => http.post("/admin/api/v1/billing-cycles", payload);
@@ -469,3 +474,12 @@ export const updateGoodsType = (id: number | string, payload: Record<string, unk
 export const deleteGoodsType = (id: number | string) => http.delete(`/admin/api/v1/goods-types/${id}`);
 export const syncGoodsTypeAutomation = (id: number | string, mode?: string) =>
   http.post(`/admin/api/v1/goods-types/${id}/sync-automation`, null, { params: { mode: mode || "merge" } });
+export const getGoodsTypeAutomationOptions = (id: number | string) =>
+  http.get<{
+    line_items?: Array<{ id?: number; name?: string; area_id?: number; state?: number }>;
+    product_type_items?: Array<{ id?: number; name?: string; area_id?: number; state?: number }>;
+    package_items?: Array<{ line_id?: number; id?: number; name?: string }>;
+    product_items?: Array<{ line_id?: number; id?: number; name?: string }>;
+    billing_cycle_items?: Array<{ value?: string; label?: string }>;
+    cancel_type_items?: Array<{ value?: string; label?: string }>;
+  }>(`/admin/api/v1/goods-types/${id}/automation-options`);
