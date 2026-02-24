@@ -495,6 +495,19 @@ func filterVisiblePlanGroups(items []domain.PlanGroup) []domain.PlanGroup {
 	return out
 }
 
+func filterVisibleRegions(items []domain.Region) []domain.Region {
+	if len(items) == 0 {
+		return items
+	}
+	out := make([]domain.Region, 0, len(items))
+	for _, item := range items {
+		if item.Active && item.Visible {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
 func filterVisiblePackages(items []domain.Package, plans []domain.PlanGroup) []domain.Package {
 	if len(items) == 0 {
 		return items
@@ -526,6 +539,57 @@ func filterEnabledSystemImages(items []domain.SystemImage, plans []domain.PlanGr
 			continue
 		}
 		out = append(out, item)
+	}
+	return out
+}
+
+// filterRegionsWithPackages 过滤掉没有商品的地区
+func filterRegionsWithPackages(regions []domain.Region, plans []domain.PlanGroup, packages []domain.Package) []domain.Region {
+	if len(regions) == 0 || len(packages) == 0 {
+		return []domain.Region{}
+	}
+	
+	// 构建套餐组到地区的映射
+	planToRegion := make(map[int64]int64)
+	for _, plan := range plans {
+		planToRegion[plan.ID] = plan.RegionID
+	}
+	
+	// 构建地区ID索引：记录哪些地区有商品
+	regionHasPackage := make(map[int64]bool)
+	
+	// 遍历所有商品，通过 PlanGroupID 找到对应的 RegionID
+	for _, pkg := range packages {
+		if regionID, ok := planToRegion[pkg.PlanGroupID]; ok {
+			regionHasPackage[regionID] = true
+		}
+	}
+	
+	out := make([]domain.Region, 0, len(regions))
+	for _, region := range regions {
+		if regionHasPackage[region.ID] {
+			out = append(out, region)
+		}
+	}
+	return out
+}
+
+// filterPlanGroupsWithPackages 过滤掉没有商品的套餐组
+func filterPlanGroupsWithPackages(plans []domain.PlanGroup, packages []domain.Package) []domain.PlanGroup {
+	if len(plans) == 0 || len(packages) == 0 {
+		return []domain.PlanGroup{}
+	}
+	// 构建套餐组ID索引
+	planHasPackage := make(map[int64]bool)
+	for _, pkg := range packages {
+		planHasPackage[pkg.PlanGroupID] = true
+	}
+	
+	out := make([]domain.PlanGroup, 0, len(plans))
+	for _, plan := range plans {
+		if planHasPackage[plan.ID] {
+			out = append(out, plan)
+		}
 	}
 	return out
 }

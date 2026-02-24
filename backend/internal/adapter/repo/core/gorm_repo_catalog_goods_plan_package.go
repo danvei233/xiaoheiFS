@@ -110,6 +110,7 @@ func (r *GormRepo) ListRegions(ctx context.Context) ([]domain.Region, error) {
 			Code:        row.Code,
 			Name:        row.Name,
 			Active:      row.Active == 1,
+			Visible:     row.Visible == 1,
 		})
 	}
 	return out, nil
@@ -123,6 +124,7 @@ func (r *GormRepo) CreateRegion(ctx context.Context, region *domain.Region) erro
 		Code:        region.Code,
 		Name:        region.Name,
 		Active:      boolToInt(region.Active),
+		Visible:     boolToInt(region.Visible),
 	}
 	if err := r.gdb.WithContext(ctx).Create(&row).Error; err != nil {
 		return err
@@ -139,6 +141,7 @@ func (r *GormRepo) UpdateRegion(ctx context.Context, region domain.Region) error
 		"code":          region.Code,
 		"name":          region.Name,
 		"active":        boolToInt(region.Active),
+		"visible":       boolToInt(region.Visible),
 		"updated_at":    time.Now(),
 	}).Error
 
@@ -430,6 +433,7 @@ func (r *GormRepo) GetRegion(ctx context.Context, id int64) (domain.Region, erro
 		Code:        row.Code,
 		Name:        row.Name,
 		Active:      row.Active == 1,
+		Visible:     row.Visible == 1,
 	}, nil
 
 }

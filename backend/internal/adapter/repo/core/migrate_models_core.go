@@ -75,6 +75,7 @@ type regionRow struct {
 	Code        string    `gorm:"size:191;column:code;not null;uniqueIndex:idx_regions_gt_code_unique"`
 	Name        string    `gorm:"column:name;not null"`
 	Active      int       `gorm:"column:active;not null;default:1"`
+	Visible     int       `gorm:"column:visible;not null;default:1"`
 	CreatedAt   time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt   time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
 }

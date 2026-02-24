@@ -34,6 +34,7 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
+                  <a-button size="small" @click="copyGoodsTypeLink(record)">复制链接</a-button>
                   <a-button size="small" @click="openGoodsType(record)">编辑</a-button>
                   <a-button size="small" @click="syncGoodsType(record)">同步</a-button>
                   <a-button size="small" danger @click="removeGoodsType(record)">删除</a-button>
@@ -1182,6 +1183,31 @@ const syncGoodsType = async (record: any) => {
   await syncGoodsTypeAutomation(record.id, "merge");
   message.success("OK");
   await load();
+};
+
+const copyGoodsTypeLink = (record: any) => {
+  const baseUrl = window.location.origin;
+  const goodsTypeId = record.id;
+  const link = `${baseUrl}/products?goods_type_id=${goodsTypeId}`;
+  
+  navigator.clipboard.writeText(link).then(() => {
+    message.success("链接已复制到剪贴板");
+  }).catch(() => {
+    // 降级方案：使用传统方法
+    const textarea = document.createElement("textarea");
+    textarea.value = link;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      message.success("链接已复制到剪贴板");
+    } catch (err) {
+      message.error("复制失败，请手动复制");
+    }
+    document.body.removeChild(textarea);
+  });
 };
 
 watch(goodsTypeId, async () => {

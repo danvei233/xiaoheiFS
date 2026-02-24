@@ -8,6 +8,7 @@ type Region struct {
 	Code        string
 	Name        string
 	Active      bool
+	Visible     bool
 }
 
 type GoodsType struct {

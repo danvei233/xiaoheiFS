@@ -183,6 +183,7 @@ export interface Region {
   code?: string;
   name?: string;
   active?: boolean;
+  visible?: boolean;
 }
 
 export interface Line {

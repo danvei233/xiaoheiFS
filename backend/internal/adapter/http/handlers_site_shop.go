@@ -17,6 +17,7 @@ import (
 func (h *Handler) Catalog(c *gin.Context) {
 	userID := getUserID(c)
 	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	
 	regions, plans, packages, images, cycles, err := h.catalogSvc.Catalog(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrCatalogError.Error()})
@@ -45,9 +46,17 @@ func (h *Handler) Catalog(c *gin.Context) {
 		}
 		packages = filteredPackages
 	}
+	
+	// 过滤可见的地区和线路
+	regions = filterVisibleRegions(regions)
 	plans = filterVisiblePlanGroups(plans)
 	packages = filterVisiblePackages(packages, plans)
 	packages = h.applyUserTierPackagePricing(c, userID, packages)
+	
+	// 过滤掉没有商品的地区和套餐组（在过滤 packages 之后）
+	regions = filterRegionsWithPackages(regions, plans, packages)
+	plans = filterPlanGroupsWithPackages(plans, packages)
+	
 	if len(plans) == 0 {
 		images = []domain.SystemImage{}
 	} else {
@@ -56,17 +65,28 @@ func (h *Handler) Catalog(c *gin.Context) {
 	var goodsTypes []domain.GoodsType
 	if h.goodsTypes != nil {
 		items, _ := h.goodsTypes.List(c)
-		for _, it := range items {
-			if it.Active {
-				goodsTypes = append(goodsTypes, it)
+		// 如果指定了 goods_type_id，只返回该商品类型
+		if goodsTypeID > 0 {
+			for _, it := range items {
+				if it.Active && it.ID == goodsTypeID {
+					goodsTypes = append(goodsTypes, it)
+					break
+				}
 			}
+		} else {
+			// 没有指定 goods_type_id，返回所有启用的商品类型
+			for _, it := range items {
+				if it.Active {
+					goodsTypes = append(goodsTypes, it)
+				}
+			}
+			sort.SliceStable(goodsTypes, func(i, j int) bool {
+				if goodsTypes[i].SortOrder != goodsTypes[j].SortOrder {
+					return goodsTypes[i].SortOrder < goodsTypes[j].SortOrder
+				}
+				return goodsTypes[i].ID < goodsTypes[j].ID
+			})
 		}
-		sort.SliceStable(goodsTypes, func(i, j int) bool {
-			if goodsTypes[i].SortOrder != goodsTypes[j].SortOrder {
-				return goodsTypes[i].SortOrder < goodsTypes[j].SortOrder
-			}
-			return goodsTypes[i].ID < goodsTypes[j].ID
-		})
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"goods_types":    goodsTypes,
