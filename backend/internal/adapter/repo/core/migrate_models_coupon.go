@@ -5,7 +5,7 @@ import "time"
 type couponProductGroupRow struct {
 	ID          int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	Name        string    `gorm:"size:191;column:name;not null"`
-	RulesJSON   string    `gorm:"type:text;column:rules_json;not null;default:[]"`
+	RulesJSON   string    `gorm:"type:text;column:rules_json;not null"`
 	Scope       string    `gorm:"size:64;column:scope;not null;index"`
 	GoodsTypeID int64     `gorm:"column:goods_type_id;not null;default:0;index"`
 	RegionID    int64     `gorm:"column:region_id;not null;default:0;index"`

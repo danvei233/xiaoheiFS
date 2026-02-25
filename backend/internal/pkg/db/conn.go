@@ -5,9 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/glebarez/sqlite"
-	"gorm.io/driver/mysql"
+	mysqlDriver "github.com/go-sql-d
+	gormmysql "gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -51,7 +53,8 @@ func Open(cfg config.Config) (*Conn, error) {
 		if dsn == "" {
 			return nil, fmt.Errorf("missing APP_DB_DSN for mysql")
 		}
-		gdb, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
+		dsn = normalizeMySQLDSN(dsn)
+		gdb, err = gorm.Open(gormmysql.Open(dsn), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   logger.Default.LogMode(logger.Silent),
 		})
@@ -85,4 +88,24 @@ func Open(cfg config.Config) (*Conn, error) {
 		SQL:     sqlDB,
 		Dialect: gdb.Dialector.Name(),
 	}, nil
+}
+
+func normalizeMySQLDSN(raw string) string {
+	raw = strings.TrimSpace(raw)
+	cfg, err := mysqlDriver.ParseDSN(raw)
+	if err != nil {
+		// Keep backward compatibility for unusual DSN formats ParseDSN may reject.
+		return raw
+	}
+	cfg.ParseTime = true
+	if !strings.Contains(strings.ToLower(raw), "loc=") {
+		cfg.Loc = time.Local
+	}
+	if cfg.Params == nil {
+		cfg.Params = map[string]string{}
+	}
+	if _, ok := cfg.Params["charset"]; !ok {
+		cfg.Params["charset"] = "utf8mb4"
+	}
+	return cfg.FormatDSN()
 }
