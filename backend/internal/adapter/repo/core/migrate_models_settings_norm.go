@@ -30,7 +30,7 @@ type robotWebhookRow struct {
 	URL        string    `gorm:"size:1024;column:url;not null;default:''"`
 	Secret     string    `gorm:"size:512;column:secret;not null;default:''"`
 	Enabled    int       `gorm:"column:enabled;not null;default:1"`
-	EventsJSON string    `gorm:"type:text;column:events_json;not null;default:'[]'"`
+	EventsJSON string    `gorm:"type:text;column:events_json;not null"`
 	SortOrder  int       `gorm:"column:sort_order;not null;default:0"`
 	CreatedAt  time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt  time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`

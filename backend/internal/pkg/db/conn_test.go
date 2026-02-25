@@ -33,3 +33,16 @@ func TestOpenSQLiteMissingDBPath(t *testing.T) {
 		t.Fatalf("expected missing APP_DB_PATH for sqlite, got %v", err)
 	}
 }
+
+func TestNormalizeMySQLDSN_AddsCompatibilityDefaults(t *testing.T) {
+	dsn := normalizeMySQLDSN("root:pass@tcp(127.0.0.1:3306)/xiaohei")
+	if !strings.Contains(dsn, "parseTime=true") {
+		t.Fatalf("expected parseTime=true, got %q", dsn)
+	}
+	if !strings.Contains(dsn, "loc=Local") {
+		t.Fatalf("expected loc=Local, got %q", dsn)
+	}
+	if !strings.Contains(dsn, "charset=utf8mb4") {
+		t.Fatalf("expected charset=utf8mb4, got %q", dsn)
+	}
+}
