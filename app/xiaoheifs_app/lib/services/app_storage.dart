@@ -114,7 +114,6 @@ class AppStorage {
   Future<void> clearSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_keyApiUrl);
       await prefs.remove(_keyApiKey);
       await prefs.remove(_keyUsername);
       await prefs.remove(_keyToken);
@@ -128,6 +127,26 @@ class AppStorage {
       if (await file.exists()) {
         await file.delete();
       }
+    } catch (_) {}
+  }
+
+  Future<String?> loadApiUrl() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final apiUrl = prefs.getString(_keyApiUrl);
+      if (apiUrl == null || apiUrl.trim().isEmpty) return null;
+      return apiUrl.trim();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> saveApiUrl(String apiUrl) async {
+    final value = apiUrl.trim();
+    if (value.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_keyApiUrl, value);
     } catch (_) {}
   }
 }

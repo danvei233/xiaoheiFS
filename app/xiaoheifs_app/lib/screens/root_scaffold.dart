@@ -10,6 +10,7 @@ import '../app_state.dart';
 import '../services/api_client.dart';
 import 'home_screen.dart';
 import 'orders_screen.dart';
+import 'root_tab_switch_notification.dart';
 import 'servers_screen.dart';
 import 'users_screen.dart';
 import 'tickets_screen.dart';
@@ -142,62 +143,71 @@ class _RootScaffoldState extends State<RootScaffold> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _index,
-        children: _tabs.map((tab) => tab.widget).toList(),
-      ),
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          height: 72,
-          backgroundColor: Colors.white,
-          indicatorColor: Theme.of(
-            context,
-          ).colorScheme.primaryContainer.withOpacity(0.7),
-          labelTextStyle: const WidgetStatePropertyAll(
-            TextStyle(fontSize: 12, height: 1.1, fontWeight: FontWeight.w600),
-          ),
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return IconThemeData(
-                size: 24,
-                color: Theme.of(context).colorScheme.primary,
-              );
-            }
-            return IconThemeData(
-              size: 22,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            );
-          }),
+    return NotificationListener<RootTabSwitchNotification>(
+      onNotification: (notification) {
+        final next = notification.tabIndex.clamp(0, _tabs.length - 1);
+        if (next != _index && mounted) {
+          setState(() => _index = next);
+        }
+        return true;
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _index,
+          children: _tabs.map((tab) => tab.widget).toList(),
         ),
-        child: SafeArea(
-          top: false,
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x220F172A),
-                  blurRadius: 18,
-                  offset: Offset(0, 6),
-                ),
-              ],
+        bottomNavigationBar: NavigationBarTheme(
+          data: NavigationBarThemeData(
+            height: 72,
+            backgroundColor: Colors.white,
+            indicatorColor: Theme.of(
+              context,
+            ).colorScheme.primaryContainer.withOpacity(0.7),
+            labelTextStyle: const WidgetStatePropertyAll(
+              TextStyle(fontSize: 12, height: 1.1, fontWeight: FontWeight.w600),
             ),
-            child: NavigationBar(
-              selectedIndex: _index,
-              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-              onDestinationSelected: (value) => setState(() => _index = value),
-              destinations: _tabs
-                  .map(
-                    (tab) => NavigationDestination(
-                      icon: Icon(tab.icon),
-                      label: tab.title,
-                    ),
-                  )
-                  .toList(),
+            iconTheme: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) {
+                return IconThemeData(
+                  size: 24,
+                  color: Theme.of(context).colorScheme.primary,
+                );
+              }
+              return IconThemeData(
+                size: 22,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              );
+            }),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x220F172A),
+                    blurRadius: 18,
+                    offset: Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: NavigationBar(
+                selectedIndex: _index,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+                onDestinationSelected: (value) => setState(() => _index = value),
+                destinations: _tabs
+                    .map(
+                      (tab) => NavigationDestination(
+                        icon: Icon(tab.icon),
+                        label: tab.title,
+                      ),
+                    )
+                    .toList(),
+              ),
             ),
           ),
         ),

@@ -255,10 +255,8 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"robot_webhook_url":                        "",
 		"robot_webhook_secret":                     "",
 		"robot_webhook_enabled":                    "false",
-		"robot_webhooks":                           "[]",
 		"realname_enabled":                         "false",
 		"realname_provider":                        "idcard_cn",
-		"realname_block_actions":                   `["purchase_vps"]`,
 		"smtp_host":                                "",
 		"smtp_port":                                "",
 		"smtp_user":                                "",
@@ -270,7 +268,6 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"sms_instance_id":                          "default",
 		"sms_default_template_id":                  "",
 		"sms_provider_template_id":                 "",
-		"sms_templates_json":                       `[{"id":1,"name":"register_verify_code","content":"【XXX】您正在注册XXX平台账号，验证码是：{{code}}，3分钟内有效，请及时输入。","enabled":true},{"id":2,"name":"login_ip_change_alert","content":"【XXX】登录提醒：您的账号于 {{time}} 在 {{city}} 发生登录（IP：{{ip}}）。如为本人操作，请忽略本消息；如非本人操作，请立即修改密码并开启二次验证，确保账号安全。","enabled":true},{"id":3,"name":"password_reset_verify_code","content":"【XXX】您好，您在XXX平台（APP）的账号正在进行找回密码操作，切勿将验证码泄露于他人，10分钟内有效。验证码：{{code}}。","enabled":true},{"id":4,"name":"phone_bind_verify_code","content":"【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。","enabled":true},{"id":5,"name":"phone_change_alert_old_contact","content":"【XXX】安全提醒：您的账号手机号已于 {{time}} 从 {{old_phone}} 修改为 {{new_phone}}。如非本人操作，请立即修改密码并联系管理员。","enabled":true}]`,
 		"email_enabled":                            "true",
 		"email_expire_enabled":                     "true",
 		"expire_reminder_days":                     "7",
@@ -309,13 +306,8 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"scheduled_task_run_retention_days":        "14",
 		"probe_status_event_retention_days":        "30",
 		"probe_log_session_retention_days":         "7",
-		"task.vps_refresh":                         `{"enabled":true,"strategy":"interval","interval_sec":300}`,
-		"task.order_provision_watchdog":            `{"enabled":true,"strategy":"interval","interval_sec":5}`,
-		"task.log_retention_cleanup":               `{"enabled":true,"strategy":"daily","daily_at":"03:30"}`,
 		"provision_watchdog_max_jobs":              "8",
 		"provision_watchdog_max_minutes":           "20",
-		"task.expire_reminder":                     `{"enabled":true,"strategy":"daily","daily_at":"09:00"}`,
-		"task.vps_expire_cleanup":                  `{"enabled":true,"strategy":"daily","daily_at":"03:00"}`,
 		"site_name":                                "Cloud Console",
 		"site_url":                                 "",
 		"logo_url":                                 "",
@@ -336,16 +328,13 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"site_icp":                                 "",
 		"site_maintenance_mode":                    "false",
 		"site_maintenance_message":                 "We are under maintenance, please check back later.",
-		"site_nav_items":                           `[]`,
 		"auth_register_enabled":                    "true",
-		"auth_register_required_fields":            `["username","email","password"]`,
 		"auth_password_min_len":                    "6",
 		"auth_password_require_upper":              "false",
 		"auth_password_require_lower":              "false",
 		"auth_password_require_number":             "false",
 		"auth_password_require_symbol":             "false",
 		"auth_register_verify_type":                "none",
-		"auth_register_verify_channels":            `["email","sms"]`,
 		"auth_register_email_required":             "true",
 		"auth_register_verify_ttl_sec":             "600",
 		"auth_register_captcha_enabled":            "true",
@@ -365,10 +354,8 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"auth_login_notify_enabled":                "true",
 		"auth_login_notify_on_first_login":         "true",
 		"auth_login_notify_on_ip_change":           "true",
-		"auth_login_notify_channels":               `["email"]`,
 		"auth_geoip_mmdb_path":                     "",
 		"auth_password_reset_enabled":              "true",
-		"auth_password_reset_channels":             `["email"]`,
 		"auth_password_reset_verify_ttl_sec":       "600",
 		"auth_sms_code_len":                        "6",
 		"auth_sms_code_complexity":                 "digits",
@@ -406,6 +393,15 @@ func EnsureSettings(gdb *gorm.DB) error {
 	}
 	// Backfill historical empty values to avoid frontend falling back to display defaults.
 	if err := ensureSettingNotBlank(gdb, "site_nav_items", `[]`); err != nil {
+		return err
+	}
+	if err := ensureDefaultListSettingValues(gdb); err != nil {
+		return err
+	}
+	if err := ensureDefaultScheduledTaskConfigs(gdb); err != nil {
+		return err
+	}
+	if err := ensureDefaultRobotWebhooks(gdb); err != nil {
 		return err
 	}
 	return EnsureMessageTemplateDefaults(gdb)
@@ -477,10 +473,12 @@ func ensureDefaultEmailTemplates(gdb *gorm.DB) error {
 
 func ensureDefaultSMSTemplates(gdb *gorm.DB) error {
 	type smsTemplateSeed struct {
-		ID      int64  `json:"id"`
-		Name    string `json:"name"`
-		Content string `json:"content"`
-		Enabled bool   `json:"enabled"`
+		ID        int64     `json:"id"`
+		Name      string    `json:"name"`
+		Content   string    `json:"content"`
+		Enabled   bool      `json:"enabled"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
 	}
 	defaultItems := []smsTemplateSeed{
 		{ID: 1, Name: "register_verify_code", Content: "【XXX】您正在注册XXX平台账号，验证码是：{{code}}，3分钟内有效，请及时输入。", Enabled: true},
@@ -489,75 +487,239 @@ func ensureDefaultSMSTemplates(gdb *gorm.DB) error {
 		{ID: 4, Name: "phone_bind_verify_code", Content: "【XXX】手机绑定验证码：{{code}}，感谢您的支持！如非本人操作，请忽略本短信。", Enabled: true},
 		{ID: 5, Name: "phone_change_alert_old_contact", Content: "【XXX】安全提醒：您的账号手机号已于 {{time}} 从 {{old_phone}} 修改为 {{new_phone}}。如非本人操作，请立即修改密码并联系管理员。", Enabled: true},
 	}
-	defaultRaw, _ := json.Marshal(defaultItems)
+	now := time.Now()
+	for i := range defaultItems {
+		defaultItems[i].CreatedAt = now
+		defaultItems[i].UpdatedAt = now
+	}
 
-	var row settingSeedRow
-	err := gdb.Where("`key` = ?", "sms_templates_json").Take(&row).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return gdb.Create(&settingSeedRow{
-				Key:       "sms_templates_json",
-				ValueJSON: string(defaultRaw),
-				UpdatedAt: time.Now(),
-			}).Error
-		}
+	var existing []smsTemplateStoreSeedRow
+	if err := gdb.Order("id ASC").Find(&existing).Error; err != nil {
 		return err
 	}
-
-	raw := strings.TrimSpace(row.ValueJSON)
-	if raw == "" || raw == "[]" {
-		row.ValueJSON = string(defaultRaw)
-		row.UpdatedAt = time.Now()
-		return gdb.Model(&settingSeedRow{}).Where("`key` = ?", "sms_templates_json").Updates(map[string]any{
-			"value_json": row.ValueJSON,
-			"updated_at": row.UpdatedAt,
-		}).Error
+	if len(existing) == 0 {
+		var legacy settingSeedRow
+		if err := gdb.Where("`key` = ?", "sms_templates_json").Take(&legacy).Error; err == nil {
+			var parsed []smsTemplateSeed
+			if json.Unmarshal([]byte(strings.TrimSpace(legacy.ValueJSON)), &parsed) == nil && len(parsed) > 0 {
+				defaultItems = parsed
+			}
+		}
+		rows := make([]smsTemplateStoreSeedRow, 0, len(defaultItems))
+		for _, item := range defaultItems {
+			name := strings.TrimSpace(item.Name)
+			content := strings.TrimSpace(item.Content)
+			if name == "" || content == "" {
+				continue
+			}
+			row := smsTemplateStoreSeedRow{
+				Name:      name,
+				Content:   content,
+				Enabled:   boolToInt(item.Enabled),
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			if item.ID > 0 {
+				row.ID = item.ID
+			}
+			if !item.CreatedAt.IsZero() {
+				row.CreatedAt = item.CreatedAt
+			}
+			if !item.UpdatedAt.IsZero() {
+				row.UpdatedAt = item.UpdatedAt
+			}
+			rows = append(rows, row)
+		}
+		if len(rows) > 0 {
+			if err := gdb.Create(&rows).Error; err != nil {
+				return err
+			}
+		}
+		return gdb.Where("`key` = ?", "sms_templates_json").Delete(&settingSeedRow{}).Error
 	}
 
-	var parsed []smsTemplateSeed
-	if err := json.Unmarshal([]byte(raw), &parsed); err != nil || len(parsed) == 0 {
-		row.ValueJSON = string(defaultRaw)
-		row.UpdatedAt = time.Now()
-		return gdb.Model(&settingSeedRow{}).Where("`key` = ?", "sms_templates_json").Updates(map[string]any{
-			"value_json": row.ValueJSON,
-			"updated_at": row.UpdatedAt,
-		}).Error
-	}
 	byName := map[string]bool{}
 	maxID := int64(0)
-	for _, item := range parsed {
-		name := strings.TrimSpace(item.Name)
-		if name == "" {
-			continue
-		}
-		byName[name] = true
-		if item.ID > maxID {
-			maxID = item.ID
+	for _, row := range existing {
+		byName[strings.TrimSpace(row.Name)] = true
+		if row.ID > maxID {
+			maxID = row.ID
 		}
 	}
-	changed := false
 	for _, item := range defaultItems {
 		if byName[item.Name] {
 			continue
 		}
 		maxID++
-		item.ID = maxID
-		parsed = append(parsed, item)
-		changed = true
+		if err := gdb.Create(&smsTemplateStoreSeedRow{
+			ID:        maxID,
+			Name:      item.Name,
+			Content:   item.Content,
+			Enabled:   boolToInt(item.Enabled),
+			CreatedAt: now,
+			UpdatedAt: now,
+		}).Error; err != nil {
+			return err
+		}
 	}
-	if !changed {
-		return nil
+	return gdb.Where("`key` = ?", "sms_templates_json").Delete(&settingSeedRow{}).Error
+}
+
+func ensureDefaultListSettingValues(gdb *gorm.DB) error {
+	defaults := map[string][]string{
+		"auth_register_required_fields": {"username", "email", "password"},
+		"auth_register_verify_channels": {"email", "sms"},
+		"auth_login_notify_channels":    {"email"},
+		"auth_password_reset_channels":  {"email"},
+		"realname_block_actions":        {"purchase_vps"},
 	}
-	mergedRaw, err := json.Marshal(parsed)
-	if err != nil {
+	for key, fallback := range defaults {
+		var count int64
+		if err := gdb.Model(&settingListValueSeedRow{}).Where("setting_key = ?", key).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			_ = gdb.Where("`key` = ?", key).Delete(&settingSeedRow{}).Error
+			continue
+		}
+		values := append([]string{}, fallback...)
+		loadedFromLegacy := false
+		var legacy settingSeedRow
+		if err := gdb.Where("`key` = ?", key).Take(&legacy).Error; err == nil {
+			var parsed []string
+			if json.Unmarshal([]byte(strings.TrimSpace(legacy.ValueJSON)), &parsed) == nil {
+				values = parsed
+				loadedFromLegacy = true
+			}
+		}
+		if !loadedFromLegacy && len(values) == 0 {
+			values = append(values, fallback...)
+		}
+		rows := make([]settingListValueSeedRow, 0, len(values))
+		uniq := map[string]struct{}{}
+		for i, raw := range values {
+			v := strings.TrimSpace(raw)
+			if v == "" {
+				continue
+			}
+			if _, ok := uniq[v]; ok {
+				continue
+			}
+			uniq[v] = struct{}{}
+			rows = append(rows, settingListValueSeedRow{SettingKey: key, Value: v, SortOrder: i})
+		}
+		if len(rows) > 0 {
+			if err := gdb.Create(&rows).Error; err != nil {
+				return err
+			}
+			_ = gdb.Where("`key` = ?", key).Delete(&settingSeedRow{}).Error
+			continue
+		}
+		if loadedFromLegacy {
+			continue
+		}
+		_ = gdb.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "key"}},
+			DoUpdates: clause.AssignmentColumns([]string{"value_json", "updated_at"}),
+		}).Create(&settingSeedRow{Key: key, ValueJSON: "[]", UpdatedAt: time.Now()}).Error
+	}
+	return nil
+}
+
+func ensureDefaultScheduledTaskConfigs(gdb *gorm.DB) error {
+	defaults := map[string]scheduledTaskConfigSeedRow{
+		"vps_refresh":              {TaskKey: "vps_refresh", Enabled: 1, Strategy: "interval", IntervalSec: 300, DailyAt: ""},
+		"order_provision_watchdog": {TaskKey: "order_provision_watchdog", Enabled: 1, Strategy: "interval", IntervalSec: 5, DailyAt: ""},
+		"log_retention_cleanup":    {TaskKey: "log_retention_cleanup", Enabled: 1, Strategy: "daily", IntervalSec: 60, DailyAt: "03:30"},
+		"expire_reminder":          {TaskKey: "expire_reminder", Enabled: 1, Strategy: "daily", IntervalSec: 60, DailyAt: "09:00"},
+		"vps_expire_cleanup":       {TaskKey: "vps_expire_cleanup", Enabled: 1, Strategy: "daily", IntervalSec: 60, DailyAt: "03:00"},
+	}
+	for taskKey, def := range defaults {
+		var count int64
+		if err := gdb.Model(&scheduledTaskConfigSeedRow{}).Where("task_key = ?", taskKey).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			_ = gdb.Where("`key` = ?", "task."+taskKey).Delete(&settingSeedRow{}).Error
+			continue
+		}
+		row := def
+		var legacy settingSeedRow
+		if err := gdb.Where("`key` = ?", "task."+taskKey).Take(&legacy).Error; err == nil {
+			var payload struct {
+				Enabled     *bool   `json:"enabled"`
+				Strategy    *string `json:"strategy"`
+				IntervalSec *int    `json:"interval_sec"`
+				DailyAt     *string `json:"daily_at"`
+			}
+			if json.Unmarshal([]byte(strings.TrimSpace(legacy.ValueJSON)), &payload) == nil {
+				if payload.Enabled != nil {
+					row.Enabled = boolToInt(*payload.Enabled)
+				}
+				if payload.Strategy != nil && strings.TrimSpace(*payload.Strategy) != "" {
+					row.Strategy = strings.TrimSpace(*payload.Strategy)
+				}
+				if payload.IntervalSec != nil && *payload.IntervalSec > 0 {
+					row.IntervalSec = *payload.IntervalSec
+				}
+				if payload.DailyAt != nil {
+					row.DailyAt = strings.TrimSpace(*payload.DailyAt)
+				}
+			}
+		}
+		if err := gdb.Create(&row).Error; err != nil {
+			return err
+		}
+		_ = gdb.Where("`key` = ?", "task."+taskKey).Delete(&settingSeedRow{}).Error
+	}
+	return nil
+}
+
+func ensureDefaultRobotWebhooks(gdb *gorm.DB) error {
+	var count int64
+	if err := gdb.Model(&robotWebhookSeedRow{}).Count(&count).Error; err != nil {
 		return err
 	}
-	row.ValueJSON = string(mergedRaw)
-	row.UpdatedAt = time.Now()
-	return gdb.Model(&settingSeedRow{}).Where("`key` = ?", "sms_templates_json").Updates(map[string]any{
-		"value_json": row.ValueJSON,
-		"updated_at": row.UpdatedAt,
-	}).Error
+	if count > 0 {
+		_ = gdb.Where("`key` = ?", "robot_webhooks").Delete(&settingSeedRow{}).Error
+		return nil
+	}
+	var legacy settingSeedRow
+	if err := gdb.Where("`key` = ?", "robot_webhooks").Take(&legacy).Error; err != nil {
+		return nil
+	}
+	type webhookItem struct {
+		Name    string   `json:"name"`
+		URL     string   `json:"url"`
+		Secret  string   `json:"secret"`
+		Enabled bool     `json:"enabled"`
+		Events  []string `json:"events"`
+	}
+	var items []webhookItem
+	if err := json.Unmarshal([]byte(strings.TrimSpace(legacy.ValueJSON)), &items); err != nil {
+		return nil
+	}
+	rows := make([]robotWebhookSeedRow, 0, len(items))
+	for i, item := range items {
+		if strings.TrimSpace(item.URL) == "" {
+			continue
+		}
+		eventsRaw, _ := json.Marshal(item.Events)
+		rows = append(rows, robotWebhookSeedRow{
+			Name:       strings.TrimSpace(item.Name),
+			URL:        strings.TrimSpace(item.URL),
+			Secret:     strings.TrimSpace(item.Secret),
+			Enabled:    boolToInt(item.Enabled),
+			EventsJSON: string(eventsRaw),
+			SortOrder:  i,
+		})
+	}
+	if len(rows) > 0 {
+		if err := gdb.Create(&rows).Error; err != nil {
+			return err
+		}
+	}
+	return gdb.Where("`key` = ?", "robot_webhooks").Delete(&settingSeedRow{}).Error
 }
 
 func EnsurePermissionDefaults(gdb *gorm.DB) error {
@@ -594,6 +756,9 @@ func EnsurePermissionGroups(gdb *gorm.DB) error {
 				"updated_at":       time.Now(),
 			}),
 		}).Create(&group).Error; err != nil {
+			return err
+		}
+		if err := syncPermissionGroupPermissionRows(gdb, group.ID, group.PermissionsJSON); err != nil {
 			return err
 		}
 	}
@@ -651,6 +816,38 @@ func EnsurePermissionGroups(gdb *gorm.DB) error {
 	return gdb.Model(&userSeedRow{}).
 		Where("id = ?", primaryAdmin.ID).
 		Update("permission_group_id", superAdminGroupID).Error
+}
+
+func syncPermissionGroupPermissionRows(gdb *gorm.DB, groupID int64, permissionsJSON string) error {
+	var perms []string
+	if err := json.Unmarshal([]byte(strings.TrimSpace(permissionsJSON)), &perms); err != nil {
+		return err
+	}
+	rows := make([]permissionGroupPermissionSeedRow, 0, len(perms))
+	uniq := map[string]struct{}{}
+	for _, raw := range perms {
+		v := strings.TrimSpace(raw)
+		if v == "" {
+			continue
+		}
+		if _, ok := uniq[v]; ok {
+			continue
+		}
+		uniq[v] = struct{}{}
+		rows = append(rows, permissionGroupPermissionSeedRow{
+			PermissionGroupID: groupID,
+			PermissionCode:    v,
+		})
+	}
+	return gdb.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("permission_group_id = ?", groupID).Delete(&permissionGroupPermissionSeedRow{}).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.Create(&rows).Error
+	})
 }
 
 func EnsureCMSDefaults(gdb *gorm.DB) error {
@@ -712,9 +909,12 @@ func ensurePermissionInGroup(gdb *gorm.DB, groupName string, permission string) 
 	if err != nil {
 		return err
 	}
-	return gdb.Model(&permissionGroupSeedRow{}).
+	if err := gdb.Model(&permissionGroupSeedRow{}).
 		Where("id = ?", group.ID).
-		Update("permissions_json", string(b)).Error
+		Update("permissions_json", string(b)).Error; err != nil {
+		return err
+	}
+	return syncPermissionGroupPermissionRows(gdb, group.ID, string(b))
 }
 
 func permissionCovers(entry string, permission string) bool {
@@ -731,6 +931,13 @@ func permissionCovers(entry string, permission string) bool {
 		return strings.HasPrefix(permission, prefix+".")
 	}
 	return false
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 func getSettingInt(gdb *gorm.DB, key string, fallback int) int {
@@ -864,6 +1071,16 @@ type permissionGroupSeedRow struct {
 
 func (permissionGroupSeedRow) TableName() string { return "permission_groups" }
 
+type permissionGroupPermissionSeedRow struct {
+	ID                int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	PermissionGroupID int64     `gorm:"column:permission_group_id"`
+	PermissionCode    string    `gorm:"column:permission_code"`
+	CreatedAt         time.Time `gorm:"column:created_at"`
+	UpdatedAt         time.Time `gorm:"column:updated_at"`
+}
+
+func (permissionGroupPermissionSeedRow) TableName() string { return "permission_group_permissions" }
+
 type billingCycleSeedRow struct {
 	ID         int64 `gorm:"column:id;primaryKey;autoIncrement"`
 	Name       string
@@ -886,6 +1103,53 @@ type settingSeedRow struct {
 }
 
 func (settingSeedRow) TableName() string { return "settings" }
+
+type smsTemplateStoreSeedRow struct {
+	ID        int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	Name      string    `gorm:"column:name"`
+	Content   string    `gorm:"column:content"`
+	Enabled   int       `gorm:"column:enabled"`
+	CreatedAt time.Time `gorm:"column:created_at"`
+	UpdatedAt time.Time `gorm:"column:updated_at"`
+}
+
+func (smsTemplateStoreSeedRow) TableName() string { return "sms_templates" }
+
+type settingListValueSeedRow struct {
+	ID         int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	SettingKey string    `gorm:"column:setting_key"`
+	Value      string    `gorm:"column:value"`
+	SortOrder  int       `gorm:"column:sort_order"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+	UpdatedAt  time.Time `gorm:"column:updated_at"`
+}
+
+func (settingListValueSeedRow) TableName() string { return "setting_list_values" }
+
+type scheduledTaskConfigSeedRow struct {
+	TaskKey     string    `gorm:"column:task_key;primaryKey"`
+	Enabled     int       `gorm:"column:enabled"`
+	Strategy    string    `gorm:"column:strategy"`
+	IntervalSec int       `gorm:"column:interval_sec"`
+	DailyAt     string    `gorm:"column:daily_at"`
+	UpdatedAt   time.Time `gorm:"column:updated_at"`
+}
+
+func (scheduledTaskConfigSeedRow) TableName() string { return "scheduled_task_configs" }
+
+type robotWebhookSeedRow struct {
+	ID         int64     `gorm:"column:id;primaryKey;autoIncrement"`
+	Name       string    `gorm:"column:name"`
+	URL        string    `gorm:"column:url"`
+	Secret     string    `gorm:"column:secret"`
+	Enabled    int       `gorm:"column:enabled"`
+	EventsJSON string    `gorm:"column:events_json"`
+	SortOrder  int       `gorm:"column:sort_order"`
+	CreatedAt  time.Time `gorm:"column:created_at"`
+	UpdatedAt  time.Time `gorm:"column:updated_at"`
+}
+
+func (robotWebhookSeedRow) TableName() string { return "robot_webhooks" }
 
 type permissionSeedRow struct {
 	ID           int64  `gorm:"column:id;primaryKey;autoIncrement"`

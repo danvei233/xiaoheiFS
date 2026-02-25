@@ -13,9 +13,15 @@ import 'screens/root_scaffold.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!kIsWeb) {
-    await SystemChrome.setEnabledSystemUIMode(
-      SystemUiMode.manual,
-      overlays: SystemUiOverlay.values,
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.white,
+        systemNavigationBarIconBrightness: Brightness.dark,
+      ),
     );
   }
   // Firebase disabled for open-source build.

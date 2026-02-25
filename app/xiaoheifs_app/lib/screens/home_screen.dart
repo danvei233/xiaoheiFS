@@ -10,9 +10,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../services/api_client.dart';
 import '../services/avatar.dart';
-import 'orders_screen.dart';
 import 'users_screen.dart';
-import 'servers_screen.dart';
 import 'wallet_orders_screen.dart';
 import 'tickets_screen.dart';
 import 'audit_logs_screen.dart';
@@ -21,9 +19,11 @@ import 'payment_providers_screen.dart';
 import 'settings_kv_screen.dart';
 import 'catalog/catalog_hub_screen.dart';
 import 'permissions_screen.dart';
+import 'root_tab_switch_notification.dart';
 import 'settings_screen.dart';
 import 'probes_screen.dart';
 import 'realname_records_screen.dart';
+import 'revenue_analytics_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -35,6 +35,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   Future<DashboardData>? _future;
   ApiClient? _client;
+  DateTime? _lastBackPressedAt;
 
   @override
   void didChangeDependencies() {
@@ -86,63 +87,79 @@ class _HomeScreenState extends State<HomeScreen> {
     return '¥${amount.toStringAsFixed(2)}';
   }
 
+  Future<bool> _onWillPop() async {
+    final now = DateTime.now();
+    if (_lastBackPressedAt == null ||
+        now.difference(_lastBackPressedAt!) > const Duration(seconds: 2)) {
+      _lastBackPressedAt = now;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请再次按返回退出')),
+      );
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    return WillPopScope(
+      onWillPop: _onWillPop,
+      child: Scaffold(
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SettingsScreen()),
+          ),
+          child: const Icon(Icons.settings),
         ),
-        child: const Icon(Icons.settings),
-      ),
-      body: FutureBuilder<DashboardData>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return _ErrorState(
-              message: '加载概览失败，请检查 API Key 权限或 API 地址。',
-              onRetry: () {
+        body: FutureBuilder<DashboardData>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return _ErrorState(
+                message: '加载概览失败，请检查 API Key 权限或 API 地址。',
+                onRetry: () {
+                  final client = context.read<AppState>().apiClient;
+                  if (client != null) {
+                    setState(() {
+                      _future = _load(client);
+                    });
+                  }
+                },
+              );
+            }
+            final data = snapshot.data;
+            if (data == null) {
+              return const _EmptyState();
+            }
+
+            return RefreshIndicator(
+              onRefresh: () async {
                 final client = context.read<AppState>().apiClient;
                 if (client != null) {
                   setState(() {
                     _future = _load(client);
                   });
                 }
+                await _future;
               },
+              child: CustomScrollView(
+                slivers: [
+                  _HeaderSliver(data: data),
+                  SliverToBoxAdapter(
+                    child: _StatsSection(data: data, formatAmount: _formatAmount),
+                  ),
+                  const SliverToBoxAdapter(child: _QuickEntrySection()),
+                  const SliverToBoxAdapter(child: _ManagementSection()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                ],
+              ),
             );
-          }
-          final data = snapshot.data;
-          if (data == null) {
-            return const _EmptyState();
-          }
-
-          return RefreshIndicator(
-            onRefresh: () async {
-              final client = context.read<AppState>().apiClient;
-              if (client != null) {
-                setState(() {
-                  _future = _load(client);
-                });
-              }
-              await _future;
-            },
-            child: CustomScrollView(
-              slivers: [
-                _HeaderSliver(data: data),
-                SliverToBoxAdapter(
-                  child: _StatsSection(data: data, formatAmount: _formatAmount),
-                ),
-                const SliverToBoxAdapter(child: _QuickEntrySection()),
-                const SliverToBoxAdapter(child: _ManagementSection()),
-                const SliverToBoxAdapter(child: SizedBox(height: 100)),
-              ],
-            ),
-          );
-        },
+          },
+        ),
       ),
     );
   }
@@ -241,11 +258,19 @@ class _HeaderSliverState extends State<_HeaderSliver> {
     if (_bingImages.length <= 1) return;
     _bannerTimer = Timer.periodic(const Duration(seconds: 9), (_) {
       if (!mounted) return;
-      setState(() {
-        _bannerIndex = (_bannerIndex + 1) % _bingImages.length;
-      });
-      _prefetchBannerImages();
+      _shiftBanner(1);
     });
+  }
+
+  void _shiftBanner(int delta) {
+    if (_bingImages.length <= 1) return;
+    setState(() {
+      _bannerIndex = (_bannerIndex + delta) % _bingImages.length;
+      if (_bannerIndex < 0) {
+        _bannerIndex += _bingImages.length;
+      }
+    });
+    _prefetchBannerImages();
   }
 
   _BingBanner _bannerAt(int index) {
@@ -453,196 +478,209 @@ class _HeaderSliverState extends State<_HeaderSliver> {
       elevation: 0,
       flexibleSpace: FlexibleSpaceBar(
         collapseMode: CollapseMode.parallax,
-        background: Stack(
-          fit: StackFit.expand,
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 700),
-              switchInCurve: Curves.easeOutCubic,
-              switchOutCurve: Curves.easeInCubic,
-              layoutBuilder: (currentChild, previousChildren) {
-                return Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    ...previousChildren,
-                    if (currentChild != null) currentChild,
-                  ],
-                );
-              },
-              child: ClipRect(
-                key: ValueKey(currentBanner.imageUrl),
-                child: Transform.scale(
-                  scale: 1.08,
-                  child: _buildBannerImage(currentBanner.imageUrl, cacheWidth),
+        background: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onHorizontalDragEnd: (details) {
+            final vx = details.primaryVelocity ?? 0;
+            if (vx < -120) {
+              _shiftBanner(1);
+              _startBannerAutoPlay();
+            } else if (vx > 120) {
+              _shiftBanner(-1);
+              _startBannerAutoPlay();
+            }
+          },
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 700),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (currentChild, previousChildren) {
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ...previousChildren,
+                      if (currentChild != null) currentChild,
+                    ],
+                  );
+                },
+                child: ClipRect(
+                  key: ValueKey(currentBanner.imageUrl),
+                  child: Transform.scale(
+                    scale: 1.08,
+                    child: _buildBannerImage(currentBanner.imageUrl, cacheWidth),
+                  ),
                 ),
               ),
-            ),
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Color(0xD9001B18),
-                    Color(0x9941342A),
-                    Color(0x33009E84),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+              Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Color(0xD9001B18),
+                      Color(0x9941342A),
+                      Color(0x33009E84),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
               ),
-            ),
-            SafeArea(
-              top: false,
-              bottom: false,
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Spacer(),
-                        FutureBuilder<Map<String, dynamic>>(
-                          future: _future,
-                          builder: (context, snapshot) {
-                            final profile = snapshot.data ?? {};
-                            final baseUrl = _client?.baseUrl ?? '';
-                            final avatarUrl = resolveAvatarUrl(
-                              baseUrl: baseUrl,
-                              qq: profile['qq']?.toString(),
-                              avatarUrl: profile['avatar_url']?.toString(),
-                            );
-                            final headers = avatarHeaders(
-                              token: session?.token,
-                              apiKey: session?.apiKey,
-                            );
-                            return CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Colors.white24,
-                              child: avatarUrl.isNotEmpty
-                                  ? ClipOval(
-                                      child: Image.network(
-                                        avatarUrl,
-                                        width: 36,
-                                        height: 36,
-                                        fit: BoxFit.cover,
-                                        headers: headers.isEmpty
-                                            ? null
-                                            : headers,
-                                        errorBuilder: (context, error, stack) {
-                                          return const Icon(
-                                            Icons.person,
-                                            color: Colors.white,
-                                          );
-                                        },
+              SafeArea(
+                top: false,
+                bottom: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, topPadding + 8, 16, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Spacer(),
+                          FutureBuilder<Map<String, dynamic>>(
+                            future: _future,
+                            builder: (context, snapshot) {
+                              final profile = snapshot.data ?? {};
+                              final baseUrl = _client?.baseUrl ?? '';
+                              final avatarUrl = resolveAvatarUrl(
+                                baseUrl: baseUrl,
+                                qq: profile['qq']?.toString(),
+                                avatarUrl: profile['avatar_url']?.toString(),
+                              );
+                              final headers = avatarHeaders(
+                                token: session?.token,
+                                apiKey: session?.apiKey,
+                              );
+                              return CircleAvatar(
+                                radius: 18,
+                                backgroundColor: Colors.white24,
+                                child: avatarUrl.isNotEmpty
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          avatarUrl,
+                                          width: 36,
+                                          height: 36,
+                                          fit: BoxFit.cover,
+                                          headers: headers.isEmpty
+                                              ? null
+                                              : headers,
+                                          errorBuilder: (context, error, stack) {
+                                            return const Icon(
+                                              Icons.person,
+                                              color: Colors.white,
+                                            );
+                                          },
+                                        ),
+                                      )
+                                    : Text(
+                                        username.isNotEmpty
+                                            ? username.characters.first
+                                            : '?',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
                                       ),
-                                    )
-                                  : Text(
-                                      username.isNotEmpty
-                                          ? username.characters.first
-                                          : '?',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    FutureBuilder<String>(
-                      future: _siteNameFuture,
-                      builder: (context, snapshot) {
-                        final name = snapshot.data;
-                        return Text(
-                          (name == null || name.isEmpty) ? '小黑云' : name,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '欢迎回来，$username~',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.16),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: Colors.white30),
-                          ),
-                          child: const Text(
-                            'Bing 每日图',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        if (_bingImages.length > 1)
-                          Builder(
-                            builder: (context) {
-                              final dotCount = _bingImages.length > 6
-                                  ? 6
-                                  : _bingImages.length;
-                              final selected = _bannerIndex % dotCount;
-                              return Row(
-                                children: List.generate(
-                                  dotCount,
-                                  (i) => AnimatedContainer(
-                                    duration: const Duration(milliseconds: 300),
-                                    width: i == selected ? 12 : 6,
-                                    height: 6,
-                                    margin: const EdgeInsets.only(right: 4),
-                                    decoration: BoxDecoration(
-                                      color: i == selected
-                                          ? Colors.white
-                                          : Colors.white54,
-                                      borderRadius: BorderRadius.circular(99),
-                                    ),
-                                  ),
-                                ),
                               );
                             },
                           ),
-                      ],
-                    ),
-                    if (currentBanner.title.isNotEmpty) ...[
+                        ],
+                      ),
+                      const Spacer(),
+                      FutureBuilder<String>(
+                        future: _siteNameFuture,
+                        builder: (context, snapshot) {
+                          final name = snapshot.data;
+                          return Text(
+                            (name == null || name.isEmpty) ? '小黑云' : name,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          );
+                        },
+                      ),
                       const SizedBox(height: 6),
                       Text(
-                        currentBanner.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        '欢迎回来，$username~',
                         style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
+                          fontSize: 16,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.16),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: Colors.white30),
+                            ),
+                            child: const Text(
+                              'Bing 每日图',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          if (_bingImages.length > 1)
+                            Builder(
+                              builder: (context) {
+                                final dotCount = _bingImages.length > 6
+                                    ? 6
+                                    : _bingImages.length;
+                                final selected = _bannerIndex % dotCount;
+                                return Row(
+                                  children: List.generate(
+                                    dotCount,
+                                    (i) => AnimatedContainer(
+                                      duration: const Duration(milliseconds: 300),
+                                      width: i == selected ? 12 : 6,
+                                      height: 6,
+                                      margin: const EdgeInsets.only(right: 4),
+                                      decoration: BoxDecoration(
+                                        color: i == selected
+                                            ? Colors.white
+                                            : Colors.white54,
+                                        borderRadius: BorderRadius.circular(99),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
+                      ),
+                      if (currentBanner.title.isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          currentBanner.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -663,25 +701,35 @@ class _StatsSection extends StatelessWidget {
         '${data.pendingReview}',
         Icons.pending,
         const Color(0xFFFF6B6B),
+        preferredTabIndex: 1,
       ),
       _StatItem(
         '用户数',
         '${data.usersTotal ?? '--'}',
         Icons.people,
         const Color(0xFF4ECDC4),
+        preferredTabIndex: 2,
       ),
-      _StatItem('服务器', '${data.vpsCount}', Icons.dns, const Color(0xFF45B7D1)),
+      _StatItem(
+        '服务器',
+        '${data.vpsCount}',
+        Icons.dns,
+        const Color(0xFF45B7D1),
+        preferredTabIndex: 3,
+      ),
       _StatItem(
         '钱包订单',
         '${data.walletOrdersTotal ?? '--'}',
         Icons.account_balance_wallet,
         const Color(0xFF96CEB4),
+        fallbackScreen: const WalletOrdersScreen(),
       ),
       _StatItem(
         '累计收入',
         formatAmount(data.revenueCents),
         Icons.trending_up,
         const Color(0xFFFFA94D),
+        fallbackScreen: const RevenueAnalyticsScreen(),
       ),
     ];
 
@@ -717,68 +765,111 @@ class _StatsSection extends StatelessWidget {
               separatorBuilder: (_, i) => const SizedBox(width: 10),
               itemBuilder: (context, index) {
                 final item = stats[index];
-                return Container(
-                  width: 126,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [item.color, item.color.withValues(alpha: 0.85)],
-                    ),
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.28),
-                      width: 0.8,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: item.color.withValues(alpha: 0.3),
-                        blurRadius: 14,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(10),
+                    onTap: () => _openStatTarget(context, item),
+                    child: Container(
+                      width: 126,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [item.color, item.color.withValues(alpha: 0.85)],
                         ),
-                        child: Icon(item.icon, color: Colors.white, size: 18),
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.value,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          Text(
-                            item.label,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.28),
+                          width: 0.8,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: item.color.withValues(alpha: 0.3),
+                            blurRadius: 14,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
-                    ],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(item.icon, color: Colors.white, size: 18),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.value,
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Text(
+                                item.label,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openStatTarget(BuildContext context, _StatItem item) {
+    if (item.preferredTabIndex != null) {
+      RootTabSwitchNotification(item.preferredTabIndex!).dispatch(context);
+      return;
+    }
+    if (item.fallbackScreen != null) {
+      _pushStatFallback(context, item.fallbackScreen!);
+    }
+  }
+
+  void _pushStatFallback(BuildContext context, Widget screen) {
+    Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 320),
+        reverseTransitionDuration: const Duration(milliseconds: 260),
+        pageBuilder: (context, animation, secondaryAnimation) => screen,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final fade = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+          );
+          final slide = Tween<Offset>(
+            begin: const Offset(0.08, 0),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          );
+          return FadeTransition(
+            opacity: fade,
+            child: SlideTransition(position: slide, child: child),
+          );
+        },
       ),
     );
   }
@@ -790,14 +881,13 @@ class _QuickEntrySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final entries = [
-      _EntryItem('订单管理', Icons.receipt_long, const OrdersScreen()),
       _EntryItem(
         '钱包订单',
         Icons.account_balance_wallet,
         const WalletOrdersScreen(),
       ),
+      _EntryItem('财务统计', Icons.analytics_outlined, const RevenueAnalyticsScreen()),
       _EntryItem('用户管理', Icons.people, const UsersScreen()),
-      _EntryItem('服务器', Icons.dns, const ServersScreen()),
       _EntryItem('工单管理', Icons.support_agent, const TicketsScreen()),
       _EntryItem('实名认证', Icons.verified_user, const RealnameRecordsScreen()),
       _EntryItem('操作日志', Icons.history, const AuditLogsScreen()),
@@ -1075,8 +1165,17 @@ class _StatItem {
   final String value;
   final IconData icon;
   final Color color;
+  final int? preferredTabIndex;
+  final Widget? fallbackScreen;
 
-  const _StatItem(this.label, this.value, this.icon, this.color);
+  const _StatItem(
+    this.label,
+    this.value,
+    this.icon,
+    this.color, {
+    this.preferredTabIndex,
+    this.fallbackScreen,
+  });
 }
 
 class _EntryItem {

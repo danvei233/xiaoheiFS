@@ -3,7 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../../app_state.dart';
 
-enum FieldType { text, number, boolValue }
+enum FieldType { text, number, boolValue, select, multiSelect }
+
+class SelectOption {
+  final String value;
+  final String label;
+  const SelectOption({required this.value, required this.label});
+}
 
 class FieldDef {
   final String keyName;
@@ -11,6 +17,10 @@ class FieldDef {
   final FieldType type;
   final bool numberIsInt;
   final String? hint;
+  final List<SelectOption> options;
+  final String? lookupKey;
+  final String optionValueKey;
+  final String optionLabelKey;
 
   const FieldDef({
     required this.keyName,
@@ -18,6 +28,10 @@ class FieldDef {
     required this.type,
     this.numberIsInt = false,
     this.hint,
+    this.options = const [],
+    this.lookupKey,
+    this.optionValueKey = 'id',
+    this.optionLabelKey = 'name',
   });
 }
 
@@ -232,10 +246,31 @@ class _SimpleCrudScreenState extends State<SimpleCrudScreen> {
   Future<void> _openEditor({Map<String, dynamic>? item}) async {
     final controllers = <String, TextEditingController>{};
     final boolValues = <String, bool>{};
+    final selectValues = <String, String>{};
+    final multiValues = <String, Set<String>>{};
     for (final field in widget.fields) {
       final value = item?[field.keyName];
       if (field.type == FieldType.boolValue) {
         boolValues[field.keyName] = value == true;
+      } else if (field.type == FieldType.select) {
+        selectValues[field.keyName] = value?.toString() ?? '';
+      } else if (field.type == FieldType.multiSelect) {
+        final set = <String>{};
+        if (value is List) {
+          set.addAll(value.map((e) => e.toString()));
+        } else {
+          final text = value?.toString().trim() ?? '';
+          if (text.startsWith('[') && text.endsWith(']')) {
+            final body = text.substring(1, text.length - 1);
+            set.addAll(
+              body
+                  .split(',')
+                  .map((e) => e.replaceAll('"', '').replaceAll("'", '').trim())
+                  .where((e) => e.isNotEmpty),
+            );
+          }
+        }
+        multiValues[field.keyName] = set;
       } else {
         controllers[field.keyName] = TextEditingController(
           text: value?.toString() ?? '',
@@ -259,6 +294,62 @@ class _SimpleCrudScreenState extends State<SimpleCrudScreen> {
                     onChanged: (v) =>
                         setModal(() => boolValues[field.keyName] = v),
                     title: Text(field.label),
+                  );
+                }
+                if (field.type == FieldType.select) {
+                  final options = _resolveOptions(field);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: DropdownButtonFormField<String>(
+                      value: (selectValues[field.keyName]?.isNotEmpty ?? false)
+                          ? selectValues[field.keyName]
+                          : null,
+                      decoration: InputDecoration(labelText: field.label),
+                      items: options
+                          .map(
+                            (o) => DropdownMenuItem<String>(
+                              value: o.value,
+                              child: Text(o.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) =>
+                          setModal(() => selectValues[field.keyName] = v ?? ''),
+                    ),
+                  );
+                }
+                if (field.type == FieldType.multiSelect) {
+                  final options = _resolveOptions(field);
+                  final selected = multiValues[field.keyName] ?? <String>{};
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(field.label),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: options
+                              .map(
+                                (o) => FilterChip(
+                                  label: Text(o.label),
+                                  selected: selected.contains(o.value),
+                                  onSelected: (v) => setModal(() {
+                                    if (v) {
+                                      selected.add(o.value);
+                                    } else {
+                                      selected.remove(o.value);
+                                    }
+                                    multiValues[field.keyName] = selected;
+                                  }),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ],
+                    ),
                   );
                 }
                 return Padding(
@@ -302,6 +393,17 @@ class _SimpleCrudScreenState extends State<SimpleCrudScreen> {
         payload[field.keyName] = boolValues[field.keyName] ?? false;
         continue;
       }
+      if (field.type == FieldType.select) {
+        final value = selectValues[field.keyName] ?? '';
+        payload[field.keyName] =
+            field.numberIsInt ? int.tryParse(value) ?? 0 : value;
+        continue;
+      }
+      if (field.type == FieldType.multiSelect) {
+        payload[field.keyName] = (multiValues[field.keyName] ?? <String>{})
+            .toList();
+        continue;
+      }
       final text = controllers[field.keyName]?.text.trim() ?? '';
       if (field.type == FieldType.number) {
         payload[field.keyName] = field.numberIsInt
@@ -335,5 +437,22 @@ class _SimpleCrudScreenState extends State<SimpleCrudScreen> {
     if (context.mounted) {
       Navigator.pop(context, false);
     }
+  }
+
+  List<SelectOption> _resolveOptions(FieldDef field) {
+    if (field.options.isNotEmpty) return field.options;
+    if (field.lookupKey == null || field.lookupKey!.isEmpty) return const [];
+    final raw = _lookups[field.lookupKey!];
+    if (raw is! List) return const [];
+    return raw
+        .map((e) {
+          if (e is! Map) return null;
+          final value = e[field.optionValueKey]?.toString() ?? '';
+          if (value.isEmpty) return null;
+          final label = e[field.optionLabelKey]?.toString() ?? value;
+          return SelectOption(value: value, label: label);
+        })
+        .whereType<SelectOption>()
+        .toList();
   }
 }

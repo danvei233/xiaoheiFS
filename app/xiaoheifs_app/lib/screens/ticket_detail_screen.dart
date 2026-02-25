@@ -55,11 +55,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(subject, style: const TextStyle(fontSize: 16)),
-        toolbarHeight: 44,
+        title: Text(subject, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        toolbarHeight: 52,
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, size: 20),
+            icon: const Icon(Icons.refresh, size: 22),
             onPressed: _busy ? null : () => _loadAll(showSpinner: false),
           ),
         ],
@@ -92,13 +92,13 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             createdAt: _ticket['created_at']?.toString() ?? '',
             updatedAt: _ticket['updated_at']?.toString() ?? '',
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _loadAll(showSpinner: false),
               child: ListView.builder(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                 itemCount: _messages.length,
                 itemBuilder: (context, index) {
                   final msg = _messages[index];
@@ -472,8 +472,8 @@ class _TicketHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     return Container(
-      margin: const EdgeInsets.fromLTRB(10, 4, 10, 0),
-      padding: const EdgeInsets.all(6),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(10),
@@ -489,8 +489,8 @@ class _TicketHeader extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Avatar(url: avatarUrl, radius: 14),
-          const SizedBox(width: 6),
+          _Avatar(url: avatarUrl, radius: 20),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -502,7 +502,7 @@ class _TicketHeader extends StatelessWidget {
                         '用户 $userName · ID $userId',
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w700,
-                          fontSize: 12,
+                          fontSize: 15,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -514,7 +514,7 @@ class _TicketHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 6),
                 Wrap(
                   spacing: 4,
                   runSpacing: 3,
@@ -529,12 +529,12 @@ class _TicketHeader extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 6),
                 Text(
                   '创建 ${_formatLocal(createdAt)} · 更新 ${_formatLocal(updatedAt)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
-                    fontSize: 10,
+                    fontSize: 12,
                   ),
                 ),
                 if (errorText != null)
@@ -544,7 +544,7 @@ class _TicketHeader extends StatelessWidget {
                       '用户信息加载失败：$errorText',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colorScheme.error,
-                        fontSize: 10,
+                        fontSize: 12,
                       ),
                     ),
                   ),
@@ -553,7 +553,7 @@ class _TicketHeader extends StatelessWidget {
           ),
           IconButton(
             onPressed: onMenuTap,
-            icon: const Icon(Icons.more_horiz, size: 20),
+            icon: const Icon(Icons.more_horiz, size: 24),
           ),
         ],
       ),
@@ -580,15 +580,15 @@ class _MessageBubble extends StatelessWidget {
     final bg = isMe ? const Color(0xFF00BFA6) : colorScheme.surface;
     final fg = isMe ? Colors.white : colorScheme.onSurface;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: isMe
             ? MainAxisAlignment.end
             : MainAxisAlignment.start,
         children: [
-          if (!isMe) _Avatar(url: avatar, radius: 14),
-          if (!isMe) const SizedBox(width: 6),
+          if (!isMe) _Avatar(url: avatar, radius: 16),
+          if (!isMe) const SizedBox(width: 8),
           Flexible(
             child: Column(
               crossAxisAlignment: isMe
@@ -596,11 +596,11 @@ class _MessageBubble extends StatelessWidget {
                   : CrossAxisAlignment.start,
               children: [
                 ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 300),
+                  constraints: const BoxConstraints(maxWidth: 340),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
+                      horizontal: 12,
+                      vertical: 10,
                     ),
                     decoration: BoxDecoration(
                       color: bg,
@@ -616,23 +616,23 @@ class _MessageBubble extends StatelessWidget {
                     ),
                     child: Text(
                       message['content']?.toString() ?? '',
-                      style: TextStyle(color: fg, height: 1.35, fontSize: 12),
+                      style: TextStyle(color: fg, height: 1.45, fontSize: 14),
                     ),
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   '${role.isEmpty ? '-' : role} · ${_formatLocal(message['created_at']?.toString() ?? '')}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
-                    fontSize: 10,
+                    fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
-          if (isMe) const SizedBox(width: 6),
-          if (isMe) _Avatar(url: avatar, radius: 14),
+          if (isMe) const SizedBox(width: 8),
+          if (isMe) _Avatar(url: avatar, radius: 16),
         ],
       ),
     );
@@ -677,47 +677,47 @@ class _ComposerBar extends StatelessWidget {
                   '\u56de\u590d\u540e\u72b6\u6001',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
-                    fontSize: 9,
+                    fontSize: 12,
                   ),
                 ),
-                const SizedBox(width: 3),
+                const SizedBox(width: 6),
                 SizedBox(
-                  width: 110,
+                  width: 156,
                   child: DropdownButtonFormField<String>(
                     value: replyStatus.isEmpty ? null : replyStatus,
                     menuMaxHeight: 240,
-                    style: const TextStyle(fontSize: 10),
-                    isDense: true,
+                    style: const TextStyle(fontSize: 13, color: Colors.black87, fontWeight: FontWeight.w600),
+                    isDense: false,
                     iconSize: 16,
                     dropdownColor: null,
                     items: const [
                       DropdownMenuItem(
                         value: '',
-                        child: Text('\u4e0d\u4fee\u6539'),
+                        child: Text('\u4e0d\u4fee\u6539', style: TextStyle(color: Colors.black87)),
                       ),
                       DropdownMenuItem(
                         value: 'open',
-                        child: Text('\u5f85\u5904\u7406'),
+                        child: Text('\u5f85\u5904\u7406', style: TextStyle(color: Colors.black87)),
                       ),
                       DropdownMenuItem(
                         value: 'waiting_user',
-                        child: Text('\u7b49\u5f85\u7528\u6237'),
+                        child: Text('\u7b49\u5f85\u7528\u6237', style: TextStyle(color: Colors.black87)),
                       ),
                       DropdownMenuItem(
                         value: 'waiting_admin',
-                        child: Text('\u5904\u7406\u4e2d'),
+                        child: Text('\u5904\u7406\u4e2d', style: TextStyle(color: Colors.black87)),
                       ),
                       DropdownMenuItem(
                         value: 'closed',
-                        child: Text('\u5df2\u5173\u95ed'),
+                        child: Text('\u5df2\u5173\u95ed', style: TextStyle(color: Colors.black87)),
                       ),
                     ],
                     onChanged: onStatusChanged,
                     decoration: const InputDecoration(
-                      isDense: true,
+                      isDense: false,
                       contentPadding: EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
+                        horizontal: 10,
+                        vertical: 10,
                       ),
                       border: OutlineInputBorder(),
                     ),
@@ -725,37 +725,36 @@ class _ComposerBar extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: controller,
-                    maxLines: 2,
+                    maxLines: 3,
                     decoration: const InputDecoration(
                       hintText: '\u8f93\u5165\u56de\u590d\u5185\u5bb9...',
-                      prefixIcon: Icon(Icons.edit_outlined, size: 14),
-                      isDense: true,
+                      prefixIcon: Icon(Icons.edit_outlined, size: 18),
+                      isDense: false,
                       contentPadding: EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 8,
+                        horizontal: 10,
+                        vertical: 12,
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 3),
+                const SizedBox(width: 8),
                 FilledButton.icon(
                   onPressed: busy ? null : onSend,
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
+                      horizontal: 14,
+                      vertical: 12,
                     ),
-                    minimumSize: const Size(0, 28),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    textStyle: const TextStyle(fontSize: 11),
+                    minimumSize: const Size(0, 44),
+                    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
                   ),
-                  icon: const Icon(Icons.send_rounded, size: 14),
+                  icon: const Icon(Icons.send_rounded, size: 18),
                   label: const Text('\u53d1\u9001'),
                 ),
               ],
