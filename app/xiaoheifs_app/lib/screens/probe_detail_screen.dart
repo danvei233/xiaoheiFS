@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -26,6 +27,7 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
   DateTime? _lastRefreshAt;
   Timer? _refreshTimer;
   bool _refreshInFlight = false;
+  bool _portsExpanded = false;
 
   final TextEditingController _keywordCtl = TextEditingController();
   final ScrollController _logScrollCtl = ScrollController();
@@ -82,6 +84,7 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
         _probe = (results[0] as ProbeDetailResult).probe;
         _sla = results[1] as ProbeSla?;
         _lastRefreshAt = DateTime.now();
+        _portsExpanded = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -247,7 +250,8 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
           : RefreshIndicator(
               onRefresh: () => _refreshAll(forceSnapshot: true),
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 20),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 14),
                 children: [
                   _buildHeader(probe),
                   if (_error.isNotEmpty)
@@ -260,16 +264,17 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
                         ),
                       ),
                     ),
+                  const SizedBox(height: 6),
                   _buildMetrics(probe, isNarrow),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   _buildResourceCards(probe, isNarrow),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   _buildSystemAndDisk(probe, isNarrow),
                   if (_ports(probe).isNotEmpty) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     _buildPorts(probe),
                   ],
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   _buildLogCard(),
                 ],
               ),
@@ -278,21 +283,39 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
   }
 
   Widget _buildHeader(ProbeNode? probe) {
+    final tags = probe?.tags ?? const <String>[];
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         gradient: const LinearGradient(
-          colors: [Color(0xFF1E88E5), Color(0xFF42A5F5)],
+          colors: [Color(0xFF0EA5E9), Color(0xFF2563EB)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x260F172A),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.sensors_rounded, color: Colors.white),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   probe?.name.isNotEmpty == true ? probe!.name : '-',
@@ -305,16 +328,42 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
               _StatusPill(status: probe?.status ?? ''),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            'ID: ${probe?.id ?? '-'} · Agent: ${probe?.agentId.isNotEmpty == true ? probe!.agentId : '-'}',
-            style: const TextStyle(color: Colors.white),
-          ),
           const SizedBox(height: 4),
           Text(
-            '上次刷新：${_formatDateTime(_lastRefreshAt?.toIso8601String() ?? '')}',
-            style: const TextStyle(color: Colors.white70),
+            'ID: ${probe?.id ?? '-'} · Agent: ${probe?.agentId.isNotEmpty == true ? probe!.agentId : '-'}',
+            style: const TextStyle(color: Colors.white, fontSize: 12),
           ),
+          const SizedBox(height: 2),
+          Text(
+            '上次刷新：${_formatDateTime(_lastRefreshAt?.toIso8601String() ?? '')}',
+            style: const TextStyle(color: Colors.white70, fontSize: 11),
+          ),
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: tags
+                  .take(6)
+                  .map(
+                    (t) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        t,
+                        style: const TextStyle(color: Colors.white, fontSize: 10.5),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
         ],
       ),
     );
@@ -328,48 +377,52 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
           _system(probe)['uptime'] ?? _system(probe)['uptime_seconds'],
         ),
         '持续运行中',
+        Icons.timer_outlined,
       ),
       _MetricItem(
         '7天 SLA',
         '${(_sla?.uptimePercent ?? 0).toStringAsFixed(2)}%',
         '在线 ${_sla?.onlineSeconds ?? 0} 秒',
+        Icons.shield_outlined,
       ),
       _MetricItem(
         '最后心跳',
         _formatDateShort(probe?.lastHeartbeatAt ?? ''),
         _fromNow(probe?.lastHeartbeatAt ?? ''),
+        Icons.favorite_border_rounded,
       ),
       _MetricItem(
         '最后快照',
         _formatDateShort(probe?.lastSnapshotAt ?? ''),
         _fromNow(probe?.lastSnapshotAt ?? ''),
+        Icons.image_search_rounded,
       ),
     ];
 
     if (isNarrow) {
-      return Column(
-        children: items
-            .map(
-              (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _MetricCard(item: e),
-              ),
-            )
-            .toList(),
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 6,
+          crossAxisSpacing: 6,
+          mainAxisExtent: 100,
+        ),
+        itemCount: items.length,
+        itemBuilder: (_, i) => _MetricCard(item: items[i]),
       );
     }
 
     return Row(
-      children: items
-          .map(
-            (e) => Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: _MetricCard(item: e),
-              ),
-            ),
-          )
-          .toList(),
+      children: List.generate(items.length, (i) {
+        return Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(right: i == items.length - 1 ? 0 : 8),
+            child: _MetricCard(item: items[i]),
+          ),
+        );
+      }),
     );
   }
 
@@ -491,30 +544,122 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
 
   Widget _buildPorts(ProbeNode? probe) {
     final ports = _ports(probe);
+    final isNarrow = MediaQuery.of(context).size.width < 760;
+    const int defaultVisible = 8;
+    final visible = _portsExpanded ? ports : ports.take(defaultVisible).toList();
+    final hasMore = ports.length > defaultVisible;
+
     return _Panel(
       title: '端口监听',
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: const [
-            DataColumn(label: Text('端口')),
-            DataColumn(label: Text('协议')),
-            DataColumn(label: Text('状态')),
-            DataColumn(label: Text('进程')),
-          ],
-          rows: ports
-              .map(
-                (p) => DataRow(
-                  cells: [
-                    DataCell(Text('${p['port'] ?? '-'}')),
-                    DataCell(Text(_str(p['proto']))),
-                    DataCell(Text((p['listen'] == true) ? '监听' : '未监听')),
-                    DataCell(Text(_str(p['process_name']))),
+      extra: Text('共 ${ports.length} 条'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isNarrow)
+            ...visible.map((p) {
+              final listening = p['listen'] == true;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  color: const Color(0xFFFAFCFF),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: listening
+                            ? const Color(0xFFDCFCE7)
+                            : const Color(0xFFFEE2E2),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${p['port'] ?? '-'}',
+                        style: TextStyle(
+                          color: listening
+                              ? const Color(0xFF166534)
+                              : const Color(0xFF991B1B),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${_str(p['proto'])} · ${listening ? '监听' : '未监听'}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                          Text(
+                            _str(p['process_name']),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              )
-              .toList(),
-        ),
+              );
+            })
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columns: const [
+                  DataColumn(label: Text('端口')),
+                  DataColumn(label: Text('协议')),
+                  DataColumn(label: Text('状态')),
+                  DataColumn(label: Text('进程')),
+                ],
+                rows: visible
+                    .map(
+                      (p) => DataRow(
+                        cells: [
+                          DataCell(Text('${p['port'] ?? '-'}')),
+                          DataCell(Text(_str(p['proto']))),
+                          DataCell(Text((p['listen'] == true) ? '监听' : '未监听')),
+                          DataCell(Text(_str(p['process_name']))),
+                        ],
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          if (hasMore)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () =>
+                    setState(() => _portsExpanded = !_portsExpanded),
+                icon: Icon(
+                  _portsExpanded
+                      ? Icons.expand_less_rounded
+                      : Icons.expand_more_rounded,
+                ),
+                label: Text(
+                  _portsExpanded
+                      ? '收起端口列表'
+                      : '展开更多端口（默认显示 $defaultVisible 条）',
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -537,127 +682,303 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              SizedBox(
-                width: 220,
-                child: DropdownButtonFormField<String>(
-                  value: _logSource,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: '日志源',
-                  ),
-                  items: sourceOptions
-                      .map(
-                        (e) => DropdownMenuItem(value: e.$2, child: Text(e.$1)),
-                      )
-                      .toList(),
-                  onChanged: (value) =>
-                      setState(() => _logSource = value ?? _logSource),
-                ),
-              ),
-              SizedBox(
-                width: 180,
-                child: TextField(
-                  controller: _keywordCtl,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: '关键字过滤',
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: 120,
-                child: DropdownButtonFormField<int>(
-                  value: _logLines,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    labelText: '行数',
-                  ),
-                  items: const [50, 100, 300, 500, 1000, 2000]
-                      .map((v) => DropdownMenuItem(value: v, child: Text('$v')))
-                      .toList(),
-                  onChanged: (value) =>
-                      setState(() => _logLines = value ?? _logLines),
-                ),
-              ),
-              SizedBox(
-                width: 120,
-                child: SwitchListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  value: _logFollow,
-                  title: const Text('跟随'),
-                  onChanged: (value) => setState(() => _logFollow = value),
-                ),
-              ),
-              SizedBox(
-                width: 140,
-                child: SwitchListTile(
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  value: _autoScroll,
-                  title: const Text('自动滚动'),
-                  onChanged: (value) => setState(() => _autoScroll = value),
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: _logLoading ? null : _startLog,
-                icon: Icon(
-                  _logRunning ? Icons.pause_circle : Icons.play_circle,
-                ),
-                label: Text(_logRunning ? '重新开始' : '开始'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _logRunning ? _stopLog : null,
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('停止'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => setState(_logRows.clear),
-                icon: const Icon(Icons.clear_all),
-                label: const Text('清空'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Container(
-            height: 320,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F172A),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: _logRows.isEmpty
-                ? const Center(
-                    child: Text(
-                      '暂无日志输出，点击“开始”获取日志',
-                      style: TextStyle(color: Color(0xFF94A3B8)),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _logScrollCtl,
-                    itemCount: _logRows.length,
-                    itemBuilder: (context, index) {
-                      final line = _logRows[index];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 2,
-                        ),
-                        child: Text(
-                          line,
-                          style: TextStyle(
-                            color: _logColor(line),
-                            fontFamily: 'monospace',
-                            fontSize: 12,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow = constraints.maxWidth < 760;
+              if (narrow) {
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _logSource,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: '日志源',
+                            ),
+                            items: sourceOptions
+                                .map(
+                                  (e) => DropdownMenuItem(
+                                    value: e.$2,
+                                    child: Text(e.$1, overflow: TextOverflow.ellipsis),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) =>
+                                setState(() => _logSource = value ?? _logSource),
                           ),
                         ),
-                      );
-                    },
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 120,
+                          child: DropdownButtonFormField<int>(
+                            value: _logLines,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: '行数',
+                            ),
+                            items: const [50, 100, 300, 500, 1000, 2000]
+                                .map((v) => DropdownMenuItem(value: v, child: Text('$v')))
+                                .toList(),
+                            onChanged: (value) =>
+                                setState(() => _logLines = value ?? _logLines),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _keywordCtl,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        labelText: '关键字过滤',
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SwitchListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            value: _logFollow,
+                            title: const Text('跟随'),
+                            onChanged: (value) =>
+                                setState(() => _logFollow = value),
+                          ),
+                        ),
+                        Expanded(
+                          child: SwitchListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            value: _autoScroll,
+                            title: const Text('自动滚动'),
+                            onChanged: (value) =>
+                                setState(() => _autoScroll = value),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: _logLoading ? null : _startLog,
+                          icon: Icon(
+                            _logRunning ? Icons.pause_circle : Icons.play_circle,
+                          ),
+                          label: Text(_logRunning ? '重新开始' : '开始'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _logRunning ? _stopLog : null,
+                          icon: const Icon(Icons.stop_circle_outlined),
+                          label: const Text('停止'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => setState(_logRows.clear),
+                          icon: const Icon(Icons.clear_all),
+                          label: const Text('清空'),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              }
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SizedBox(
+                    width: 260,
+                    child: DropdownButtonFormField<String>(
+                      value: _logSource,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        labelText: '日志源',
+                      ),
+                      items: sourceOptions
+                          .map(
+                            (e) => DropdownMenuItem(value: e.$2, child: Text(e.$1)),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _logSource = value ?? _logSource),
+                    ),
                   ),
+                  SizedBox(
+                    width: 180,
+                    child: TextField(
+                      controller: _keywordCtl,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        labelText: '关键字过滤',
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: DropdownButtonFormField<int>(
+                      value: _logLines,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        labelText: '行数',
+                      ),
+                      items: const [50, 100, 300, 500, 1000, 2000]
+                          .map((v) => DropdownMenuItem(value: v, child: Text('$v')))
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _logLines = value ?? _logLines),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 120,
+                    child: SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: _logFollow,
+                      title: const Text('跟随'),
+                      onChanged: (value) => setState(() => _logFollow = value),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 140,
+                    child: SwitchListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: _autoScroll,
+                      title: const Text('自动滚动'),
+                      onChanged: (value) => setState(() => _autoScroll = value),
+                    ),
+                  ),
+                  FilledButton.icon(
+                    onPressed: _logLoading ? null : _startLog,
+                    icon: Icon(
+                      _logRunning ? Icons.pause_circle : Icons.play_circle,
+                    ),
+                    label: Text(_logRunning ? '重新开始' : '开始'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _logRunning ? _stopLog : null,
+                    icon: const Icon(Icons.stop_circle_outlined),
+                    label: const Text('停止'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => setState(_logRows.clear),
+                    icon: const Icon(Icons.clear_all),
+                    label: const Text('清空'),
+                  ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0B1220), Color(0xFF111827)],
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF1E293B)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  height: 30,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFF1F2937)),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const _Dot(Color(0xFFF87171)),
+                      const SizedBox(width: 5),
+                      const _Dot(Color(0xFFFBBF24)),
+                      const SizedBox(width: 5),
+                      const _Dot(Color(0xFF34D399)),
+                      const SizedBox(width: 10),
+                      Text(
+                        _logSource,
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        'lines: ${_logRows.length}',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  height: 220,
+                  child: _logRows.isEmpty
+                      ? const Center(
+                          child: Text(
+                            '暂无日志输出，点击“开始”获取日志',
+                            style: TextStyle(color: Color(0xFF94A3B8)),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _logScrollCtl,
+                          itemCount: _logRows.length,
+                          itemBuilder: (context, index) {
+                            final line = _logRows[index];
+                            return Container(
+                              color: index.isEven
+                                  ? Colors.transparent
+                                  : const Color(0x220F172A),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 1.2,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: 34,
+                                    child: Text(
+                                      '${index + 1}'.padLeft(4, ' '),
+                                      style: const TextStyle(
+                                        color: Color(0xFF64748B),
+                                        fontFamily: 'monospace',
+                                        fontSize: 10.5,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      line,
+                                      style: TextStyle(
+                                        color: _logColor(line),
+                                        fontFamily: 'monospace',
+                                        fontSize: 11,
+                                        height: 1.25,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -681,7 +1002,7 @@ class _ProbeDetailScreenState extends State<ProbeDetailScreen> {
       child: Row(
         children: [
           SizedBox(
-            width: 100,
+            width: 84,
             child: Text(k, style: const TextStyle(color: Colors.black54)),
           ),
           Expanded(child: Text(v)),
@@ -788,8 +1109,9 @@ class _MetricItem {
   final String title;
   final String value;
   final String subtitle;
+  final IconData icon;
 
-  const _MetricItem(this.title, this.value, this.subtitle);
+  const _MetricItem(this.title, this.value, this.subtitle, this.icon);
 }
 
 class _MetricCard extends StatelessWidget {
@@ -801,7 +1123,7 @@ class _MetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 0),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         color: Colors.white,
@@ -817,19 +1139,29 @@ class _MetricCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            item.title,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF4FF),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(item.icon, size: 16, color: const Color(0xFF1E88E5)),
           ),
           const SizedBox(height: 6),
           Text(
-            item.value,
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            item.title,
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
           ),
           const SizedBox(height: 4),
           Text(
+            item.value,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
             item.subtitle,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
+            style: const TextStyle(fontSize: 11, color: Colors.black54),
           ),
         ],
       ),
@@ -852,7 +1184,7 @@ class _ResourceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final v = percent.clamp(0, 100);
+    final v = percent.clamp(0, 100).toDouble();
     final color = v < 60
         ? const Color(0xFF2E7D32)
         : v < 85
@@ -860,7 +1192,7 @@ class _ResourceCard extends StatelessWidget {
         : const Color(0xFFD32F2F);
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         color: Colors.white,
@@ -876,31 +1208,186 @@ class _ResourceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 10,
-              value: v / 100,
-              color: color,
-              backgroundColor: color.withOpacity(0.15),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text('${v.toStringAsFixed(1)}%'),
-          const SizedBox(height: 4),
-          Text(
-            detail1,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-          Text(
-            detail2,
-            style: const TextStyle(fontSize: 12, color: Colors.black54),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 98,
+                height: 64,
+                child: _UsageGauge(value: v, color: color),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        _DensePill(text: '${v.toStringAsFixed(1)}%', color: color),
+                        _DensePill(text: detail1, color: const Color(0xFF475569)),
+                        _DensePill(text: detail2, color: const Color(0xFF64748B)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+}
+
+class _DensePill extends StatelessWidget {
+  final String text;
+  final Color color;
+  const _DensePill({required this.text, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      constraints: const BoxConstraints(minHeight: 20),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class _UsageGauge extends StatelessWidget {
+  final double value;
+  final Color color;
+  const _UsageGauge({required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _UsageGaugePainter(value: value, color: color),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _UsageGaugePainter extends CustomPainter {
+  final double value;
+  final Color color;
+  const _UsageGaugePainter({required this.value, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final v = value.clamp(0, 100).toDouble();
+    final center = Offset(size.width / 2, size.height * 0.9);
+    final radius = math.min(size.width * 0.42, size.height * 0.9);
+    const start = math.pi;
+    const totalSweep = math.pi;
+    final sweep = totalSweep * (v / 100);
+
+    final base = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round
+      ..color = const Color(0xFFE2E8F0);
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      start,
+      totalSweep,
+      false,
+      base,
+    );
+
+    final active = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round
+      ..shader = LinearGradient(
+        colors: [color.withOpacity(0.7), color],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+      ).createShader(
+        Rect.fromCircle(center: center, radius: radius),
+      );
+    canvas.drawArc(
+      Rect.fromCircle(center: center, radius: radius),
+      start,
+      sweep,
+      false,
+      active,
+    );
+
+    final tickPaint = Paint()
+      ..color = const Color(0xFFCBD5E1)
+      ..strokeWidth = 1.3;
+    for (var i = 0; i <= 10; i++) {
+      final a = start + totalSweep * (i / 10);
+      final p1 = Offset(
+        center.dx + math.cos(a) * (radius - 2),
+        center.dy + math.sin(a) * (radius - 2),
+      );
+      final p2 = Offset(
+        center.dx + math.cos(a) * (radius - 8),
+        center.dy + math.sin(a) * (radius - 8),
+      );
+      canvas.drawLine(p1, p2, tickPaint);
+    }
+
+    final needleAngle = start + sweep;
+    final needleEnd = Offset(
+      center.dx + math.cos(needleAngle) * (radius - 14),
+      center.dy + math.sin(needleAngle) * (radius - 14),
+    );
+    final needle = Paint()
+      ..color = const Color(0xFF334155)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(center, needleEnd, needle);
+    canvas.drawCircle(center, 3.5, Paint()..color = const Color(0xFF334155));
+
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '${v.toStringAsFixed(1)}%',
+        style: TextStyle(
+          color: color,
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(minWidth: 0, maxWidth: size.width);
+    tp.paint(
+      canvas,
+      Offset((size.width - tp.width) / 2, size.height * 0.50),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _UsageGaugePainter oldDelegate) {
+    return oldDelegate.value != value || oldDelegate.color != color;
   }
 }
 
@@ -914,7 +1401,7 @@ class _Panel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         color: Colors.white,
@@ -944,7 +1431,7 @@ class _Panel extends StatelessWidget {
               if (extra != null) extra!,
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           child,
         ],
       ),
@@ -974,6 +1461,19 @@ class _StatusPill extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  final Color color;
+  const _Dot(this.color);
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 7,
+      height: 7,
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
     );
   }
 }

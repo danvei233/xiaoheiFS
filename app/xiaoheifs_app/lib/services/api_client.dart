@@ -65,6 +65,14 @@ class ApiClient {
     return _request('PATCH', path, body: body, query: query);
   }
 
+  Future<Map<String, dynamic>> putJson(
+    String path, {
+    Object? body,
+    Map<String, String>? query,
+  }) async {
+    return _request('PUT', path, body: body, query: query);
+  }
+
   Future<Map<String, dynamic>> deleteJson(
     String path, {
     Object? body,
@@ -104,6 +112,8 @@ class ApiClient {
         return http.post(uri, headers: headers, body: payload);
       case 'PATCH':
         return http.patch(uri, headers: headers, body: payload);
+      case 'PUT':
+        return http.put(uri, headers: headers, body: payload);
       case 'DELETE':
         return http.delete(uri, headers: headers, body: payload);
       default:

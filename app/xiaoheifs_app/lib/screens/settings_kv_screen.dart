@@ -4,7 +4,16 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 
 class SettingsKvScreen extends StatefulWidget {
-  const SettingsKvScreen({super.key});
+  final String title;
+  final List<String> keyPrefixes;
+  final List<String> exactKeys;
+
+  const SettingsKvScreen({
+    super.key,
+    this.title = '系统设置',
+    this.keyPrefixes = const [],
+    this.exactKeys = const [],
+  });
 
   @override
   State<SettingsKvScreen> createState() => _SettingsKvScreenState();
@@ -35,9 +44,27 @@ class _SettingsKvScreenState extends State<SettingsKvScreen> {
     final items = (resp['items'] as List<dynamic>? ?? [])
         .map((e) => SettingItem.fromJson(e as Map<String, dynamic>))
         .toList();
+    final prefixes = widget.keyPrefixes
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    final exactKeys = widget.exactKeys
+        .map((e) => e.trim().toLowerCase())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+    final scoped = (prefixes.isEmpty && exactKeys.isEmpty)
+        ? items
+        : items.where((item) {
+            final k = item.key.toLowerCase();
+            if (exactKeys.contains(k)) return true;
+            for (final p in prefixes) {
+              if (k.startsWith(p)) return true;
+            }
+            return false;
+          }).toList();
     final keyword = _keywordController.text.trim().toLowerCase();
-    if (keyword.isEmpty) return items;
-    return items
+    if (keyword.isEmpty) return scoped;
+    return scoped
         .where((item) => item.key.toLowerCase().contains(keyword))
         .toList();
   }
@@ -59,14 +86,14 @@ class _SettingsKvScreenState extends State<SettingsKvScreen> {
         }
         if (snapshot.hasError) {
           return Scaffold(
-            appBar: AppBar(title: const Text('系统设置')),
+            appBar: AppBar(title: Text(widget.title)),
             body: Center(child: Text('加载失败：$snapshot')),
           );
         }
         final items = snapshot.data ?? [];
         return Scaffold(
           appBar: AppBar(
-            title: const Text('系统设置'),
+            title: Text(widget.title),
             actions: [TextButton(onPressed: _refresh, child: const Text('刷新'))],
           ),
           body: Stack(

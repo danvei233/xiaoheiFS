@@ -16,4 +16,3 @@ func TestMapKycRPCError_MobileRequiredMappedToPhoneRequired(t *testing.T) {
 		t.Fatalf("expected ErrPhoneRequired, got %v", got)
 	}
 }
-
