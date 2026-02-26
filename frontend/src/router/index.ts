@@ -144,6 +144,11 @@ const router = createRouter({
         { path: "cms/nav-items", name: "admin-cms-nav-items", component: () => import("@/pages/admin/cms/NavItems.vue") },
         { path: "cms/uploads", name: "admin-cms-uploads", component: () => import("@/pages/admin/cms/Uploads.vue") }
       ]
+    },
+    {
+      path: "/:pathMatch(.*)*",
+      name: "not-found",
+      component: () => import("@/pages/public/NotFound.vue")
     }
   ]
 });
@@ -168,12 +173,15 @@ router.beforeEach(async (to) => {
     };
   }
 
-  const install = useInstallStore();
-  if (!install.loaded) {
-    await install.fetchStatus();
-  }
-  if (install.loaded && !install.installed && !to.path.startsWith("/install")) {
-    return { path: "/install/db", query: { redirect: to.fullPath } };
+  // Only check installation status on homepage
+  if (to.path === "/" || to.name === "public-home") {
+    const install = useInstallStore();
+    if (!install.loaded) {
+      await install.fetchStatus();
+    }
+    if (install.loaded && !install.installed && !to.path.startsWith("/install")) {
+      return { path: "/install/db", query: { redirect: to.fullPath } };
+    }
   }
 
   if (to.meta.requiresUser) {
