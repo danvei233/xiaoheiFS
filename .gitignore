@@ -50,6 +50,7 @@ config.local.yaml
 *.swp
 *.swo
 *~
+.trae/
 
 # OS
 .DS_Store
