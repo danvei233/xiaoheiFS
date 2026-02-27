@@ -1,7 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { Modal } from "ant-design-vue";
 import PublicLayout from "@/layouts/PublicLayout.vue";
-import InstallLayout from "@/layouts/InstallLayout.vue";
 import UserLayout from "@/layouts/UserLayout.vue";
 import AdminLayout from "@/layouts/AdminLayout.vue";
 import { useAuthStore } from "@/stores/auth";
@@ -51,14 +50,8 @@ const router = createRouter({
     },
     {
       path: "/install",
-      component: InstallLayout,
-      children: [
-        { path: "", redirect: { name: "install-db" } },
-        { path: "db", name: "install-db", component: () => import("@/pages/public/install/DbStep.vue") },
-        { path: "site", name: "install-site", component: () => import("@/pages/public/install/SiteStep.vue") },
-        { path: "admin", name: "install-admin", component: () => import("@/pages/public/install/AdminStep.vue") },
-        { path: "done", name: "install-done", component: () => import("@/pages/public/install/DoneStep.vue") }
-      ]
+      name: "install",
+      component: () => import("@/pages/public/install/InstallWizard.vue")
     },
     { path: "/login", name: "login", component: () => import("@/pages/auth/Login.vue") },
     { path: "/register", name: "register", component: () => import("@/pages/auth/Register.vue") },
@@ -84,71 +77,10 @@ const router = createRouter({
         { path: "tickets/:id", name: "console-ticket-detail", component: () => import("@/pages/console/TicketDetail.vue") }
       ]
     },
-    { path: "/admin/login", name: "admin-login", component: () => import("@/pages/admin/Login.vue") },
-{ path: "/admin/forgot-password", name: "admin-forgot-password", component: () => import("@/pages/admin/ForgotPassword.vue") },
-{ path: "/admin/reset-password", name: "admin-reset-password", component: () => import("@/pages/admin/ResetPassword.vue") },
-    {
-      path: "/admin",
-      component: AdminLayout,
-      meta: { requiresAdmin: true },
-      children: [
-        { path: "", redirect: "console" },
-        { path: "console", name: "admin-dashboard", component: () => import("@/pages/admin/Dashboard.vue") },
-        { path: "revenue-analytics", name: "admin-revenue-analytics", component: () => import("@/pages/admin/RevenueAnalytics.vue") },
-        { path: "orders", name: "admin-orders", component: () => import("@/pages/admin/Orders.vue") },
-        { path: "wallet/orders", name: "admin-wallet-orders", component: () => import("@/pages/admin/WalletOrders.vue") },
-        { path: "vps", name: "admin-vps", component: () => import("@/pages/admin/Vps.vue") },
-        { path: "probes", name: "admin-probes", component: () => import("@/pages/admin/Probes.vue") },
-        { path: "probes/:id", name: "admin-probe-detail", component: () => import("@/pages/admin/ProbeDetail.vue") },
-        { path: "users", name: "admin-users", component: () => import("@/pages/admin/Users.vue") },
-        { path: "user-tiers", name: "admin-user-tiers", component: () => import("@/pages/admin/UserTiers.vue") },
-        { path: "coupons", name: "admin-coupons", component: () => import("@/pages/admin/Coupons.vue") },
-        { path: "admins", name: "admin-admins", component: () => import("@/pages/admin/Admins.vue") },
-        { path: "permission-groups", name: "admin-permission-groups", component: () => import("@/pages/admin/PermissionGroups.vue") },
-        { path: "profile", name: "admin-profile", component: () => import("@/pages/admin/Profile.vue") },
-        { path: "catalog", name: "admin-catalog", component: () => import("@/pages/admin/Catalog.vue") },
-        { path: "systems", name: "admin-systems", component: () => import("@/pages/admin/Systems.vue") },
-        { path: "settings/site", name: "admin-settings-site", component: () => import("@/pages/admin/settings/Site.vue") },
-        { path: "settings/auth", name: "admin-settings-auth", component: () => import("@/pages/admin/settings/Auth.vue") },
-        { path: "settings/captcha", name: "admin-settings-captcha", component: () => import("@/pages/admin/settings/Captcha.vue") },
-        { path: "settings/email", name: "admin-settings-email", component: () => import("@/pages/admin/settings/Email.vue") },
-        { path: "settings/sms", name: "admin-settings-sms", component: () => import("@/pages/admin/settings/SMS.vue") },
-        { path: "settings/apikey", name: "admin-settings-apikey", component: () => import("@/pages/admin/settings/ApiKey.vue") },
-        { path: "settings/webhook", name: "admin-settings-webhook", component: () => import("@/pages/admin/settings/Webhook.vue") },
-        { path: "settings/payments", name: "admin-settings-payments", component: () => import("@/pages/admin/settings/Payments.vue") },
-        { path: "settings/fcm", name: "admin-settings-fcm", component: () => import("@/pages/admin/settings/Fcm.vue") },
-        { path: "settings/pricing", name: "admin-settings-pricing", component: () => import("@/pages/admin/settings/Pricing.vue") },
-        { path: "settings/lifecycle", name: "admin-settings-lifecycle", component: () => import("@/pages/admin/settings/Lifecycle.vue") },
-        {
-          path: "settings/plugins",
-          name: "admin-settings-plugins",
-          component: () => import("@/pages/admin/settings/Plugins.vue")
-        },
-        {
-          path: "settings/payment-plugins",
-          name: "admin-settings-payment-plugins",
-          redirect: { name: "admin-settings-plugins" }
-        },
-        { path: "realname/providers", name: "admin-realname-providers", component: () => import("@/pages/admin/realname/Providers.vue") },
-        { path: "realname/config", name: "admin-realname-config", component: () => import("@/pages/admin/realname/Config.vue") },
-        { path: "realname/records", name: "admin-realname-records", component: () => import("@/pages/admin/realname/Records.vue") },
-        { path: "automation", name: "admin-automation", component: () => import("@/pages/admin/Automation.vue") },
-        { path: "scheduled-tasks", name: "admin-scheduled-tasks", component: () => import("@/pages/admin/ScheduledTasks.vue") },
-        { path: "debug", name: "admin-debug", component: () => import("@/pages/admin/Debug.vue") },
-        { path: "audit", name: "admin-audit", component: () => import("@/pages/admin/Audit.vue") },
-        { path: "tickets", name: "admin-tickets", component: () => import("@/pages/admin/Tickets.vue") },
-        { path: "tickets/:id", name: "admin-ticket-detail", component: () => import("@/pages/admin/TicketDetail.vue") },
-        { path: "cms/categories", name: "admin-cms-categories", component: () => import("@/pages/admin/cms/Categories.vue") },
-        { path: "cms/posts", name: "admin-cms-posts", component: () => import("@/pages/admin/cms/Posts.vue") },
-        { path: "cms/blocks", name: "admin-cms-blocks", component: () => import("@/pages/admin/cms/Blocks.vue") },
-        { path: "cms/nav-items", name: "admin-cms-nav-items", component: () => import("@/pages/admin/cms/NavItems.vue") },
-        { path: "cms/uploads", name: "admin-cms-uploads", component: () => import("@/pages/admin/cms/Uploads.vue") }
-      ]
-    },
     {
       path: "/:pathMatch(.*)*",
-      name: "not-found",
-      component: () => import("@/pages/public/NotFound.vue")
+      name: "dynamic-route",
+      component: () => import("@/pages/public/DynamicRoute.vue")
     }
   ]
 });
@@ -173,15 +105,16 @@ router.beforeEach(async (to) => {
     };
   }
 
-  // Only check installation status on homepage
-  if (to.path === "/" || to.name === "public-home") {
-    const install = useInstallStore();
-    if (!install.loaded) {
-      await install.fetchStatus();
-    }
-    if (install.loaded && !install.installed && !to.path.startsWith("/install")) {
-      return { path: "/install/db", query: { redirect: to.fullPath } };
-    }
+  // Check installation status
+  const install = useInstallStore();
+  
+  if (!install.loaded) {
+    await install.fetchStatus();
+  }
+  
+  // If not installed and trying to access homepage, redirect to install
+  if ((to.path === "/" || to.name === "public-home") && !install.installed) {
+    return { path: "/install", replace: true };
   }
 
   if (to.meta.requiresUser) {

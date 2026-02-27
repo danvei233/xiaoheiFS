@@ -231,4 +231,7 @@ var (
 	ErrWalletDisabled                                     = errors.New("wallet disabled")
 	ErrWalletOrdersDisabled                               = errors.New("wallet orders disabled")
 	ErrWriteLockFailed                                    = errors.New("write lock failed")
+	ErrAdminPathInvalid                                   = errors.New("admin path invalid")
+	ErrAdminPathReserved                                  = errors.New("admin path reserved")
+	ErrAdminPathRequired                                  = errors.New("admin path required")
 )

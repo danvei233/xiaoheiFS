@@ -65,6 +65,44 @@
         </div>
       </div>
 
+      <div class="config-card">
+        <div class="card-header">
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div class="card-title">管理端路径</div>
+        </div>
+        <div class="card-body">
+          <a-form-item
+            label="自定义管理端访问路径"
+            name="adminPath"
+            :rules="[{ validator: validateAdminPath }]"
+          >
+            <a-input
+              v-model:value="form.adminPath"
+              size="large"
+              placeholder="留空使用默认路径 /admin"
+              class="styled-input"
+            >
+              <template #addonAfter>
+                <a-button type="link" size="small" @click="generateAdminPath" :loading="generating">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                    <polyline points="23 4 23 10 17 10"/>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                  </svg>
+                  随机生成
+                </a-button>
+              </template>
+            </a-input>
+            <div class="hint-text">
+              仅允许字母和数字，不可与 login/admin/api 等保留路径重复
+            </div>
+          </a-form-item>
+        </div>
+      </div>
+
       <!-- Warning for incomplete DB check -->
       <a-alert
         v-if="!wiz.dbChecked"
@@ -93,7 +131,7 @@
           </div>
           <div class="info-content">
             <div class="info-title">安全提示</div>
-            <div class="info-text">管理员账号拥有系统最高权限，请妥善保管密码</div>
+            <div class="info-text">管理员账号拥有系统最高权限，请妥善保管密码和管理端路径</div>
           </div>
         </div>
         <div class="button-group">
@@ -127,31 +165,44 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from "vue";
+import { reactive, ref, watch, onMounted } from "vue";
 import { message } from "ant-design-vue";
 import type { RuleObject } from "ant-design-vue/es/form";
 import type { StoreValue } from "ant-design-vue/es/form/interface";
-import { useRouter, useRoute } from "vue-router";
 import { runInstall } from "@/services/user";
 import { useInstallStore } from "@/stores/install";
 import { useInstallWizardStore } from "@/stores/installWizard";
+import { http } from "@/services/http";
 
-const router = useRouter();
-const route = useRoute();
+const emit = defineEmits<{
+  next: [adminPath: string, restart: boolean, configFile: string]
+  back: []
+}>();
+
 const install = useInstallStore();
 const wiz = useInstallWizardStore();
 
 const submitting = ref(false);
+const generating = ref(false);
 const form = reactive({
   adminUser: wiz.adminUser,
   adminPass: "",
-  adminPass2: ""
+  adminPass2: "",
+  adminPath: wiz.adminPath || ""
 });
 
 watch(
   () => form.adminUser,
   (v) => {
     wiz.adminUser = v;
+    wiz.persist();
+  }
+);
+
+watch(
+  () => form.adminPath,
+  (v) => {
+    wiz.adminPath = v;
     wiz.persist();
   }
 );
@@ -165,15 +216,48 @@ const validateConfirm = async (_rule: RuleObject, value: StoreValue) => {
   return Promise.resolve();
 };
 
-const back = async () => {
-  const q = route.query && typeof route.query.redirect === "string" ? { redirect: route.query.redirect } : {};
-  await router.push({ path: "/install/site", query: q });
+const validateAdminPath = async (_rule: RuleObject, value: StoreValue) => {
+  const v = String(value || "").trim();
+  if (!v) return Promise.resolve(); // 允许为空
+  
+  // 前端校验：只允许字母和数字
+  if (!/^[a-zA-Z0-9]+$/.test(v)) {
+    return Promise.reject(new Error("仅允许字母和数字"));
+  }
+  
+  // 黑名单检查
+  const reserved = ["login", "admin", "api", "install", "console", "register", "assets", "uploads"];
+  if (reserved.includes(v.toLowerCase())) {
+    return Promise.reject(new Error("该路径为保留路径，请更换"));
+  }
+  
+  return Promise.resolve();
+};
+
+const generateAdminPath = async () => {
+  generating.value = true;
+  try {
+    const res = await http.get<{ admin_path: string }>("/api/v1/install/generate-admin-path");
+    if (res.data?.admin_path) {
+      form.adminPath = res.data.admin_path;
+      message.success("已生成随机路径");
+    }
+  } catch (error: any) {
+    message.error(error.response?.data?.error || "生成失败");
+  } finally {
+    generating.value = false;
+  }
+};
+
+const back = () => {
+  emit('back');
 };
 
 const onSubmit = async () => {
   submitting.value = true;
   try {
     wiz.adminPass = form.adminPass;
+    wiz.adminPath = form.adminPath;
     wiz.persist();
     const payload =
       wiz.dbType === "sqlite"
@@ -182,22 +266,34 @@ const onSubmit = async () => {
 
     const res = await runInstall({
       ...payload,
-      site: { name: wiz.siteName, url: wiz.siteUrl },
+      site: { name: wiz.siteName, url: wiz.siteUrl, admin_path: form.adminPath },
       admin: { username: form.adminUser, password: form.adminPass }
     });
 
     await install.fetchStatus();
+    
+    // 缓存管理端路径到 localStorage
+    const finalAdminPath = form.adminPath || "admin";
+    localStorage.setItem("admin_path_cache", finalAdminPath);
+    
     message.success("安装完成");
 
-    const q = route.query && typeof route.query.redirect === "string" ? { redirect: route.query.redirect } : {};
-    await router.replace({
-      path: "/install/done",
-      query: { ...q, restart: res.data?.restart_required ? "1" : "0", config: res.data?.config_file || "" }
-    });
+    emit('next', 
+      finalAdminPath, 
+      res.data?.restart_required || false, 
+      res.data?.config_file || ""
+    );
+  } catch (error: any) {
+    message.error(error.response?.data?.error || "安装失败");
   } finally {
     submitting.value = false;
   }
 };
+
+onMounted(async () => {
+  // 每次都自动生成一个新的随机路径
+  await generateAdminPath();
+});
 </script>
 
 <style scoped>
@@ -320,11 +416,46 @@ const onSubmit = async () => {
   color: #22d3ee;
 }
 
+/* Input Group Addon (随机生成按钮) */
+:deep(.styled-input .ant-input-group-addon) {
+  background: rgba(15, 23, 42, 0.6);
+  border-color: rgba(71, 85, 105, 0.5);
+  padding: 0;
+}
+
+:deep(.styled-input .ant-input-group-addon .ant-btn-link) {
+  height: 38px;
+  padding: 0 12px;
+  color: #22d3ee;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+}
+
+:deep(.styled-input .ant-input-group-addon .ant-btn-link:hover) {
+  color: #06b6d4;
+  background: rgba(34, 211, 238, 0.1);
+}
+
+:deep(.styled-input .ant-input-group-addon .ant-btn-link svg) {
+  flex-shrink: 0;
+}
+
 /* Input Labels */
 :deep(.ant-form-item-label > label) {
   color: rgba(255, 255, 255, 0.7);
   font-size: 13px;
   font-weight: 500;
+}
+
+/* Hint Text */
+.hint-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.5;
 }
 
 /* Warning Alert */

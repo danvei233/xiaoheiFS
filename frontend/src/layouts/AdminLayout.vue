@@ -104,7 +104,7 @@
             <a-breadcrumb-item>管理端</a-breadcrumb-item>
             <a-breadcrumb-item>{{ breadcrumb }}</a-breadcrumb-item>
           </a-breadcrumb>
-          <router-view />
+          <slot />
         </a-layout-content>
       </a-layout>
     </a-layout>
@@ -234,6 +234,18 @@ const collapsed = ref(false);
 const drawerOpen = ref(false);
 const searchValue = ref('');
 
+// 获取当前管理端路径
+const getCurrentAdminPath = () => {
+  const pathSegments = route.path.split("/").filter(Boolean);
+  return pathSegments[0] || "admin";
+};
+
+// 构建管理端URL
+const buildAdminUrl = (subPath) => {
+  const adminPath = getCurrentAdminPath();
+  return `/${adminPath}${subPath}`;
+};
+
 const grantedPerms = computed(() => admin.profile?.permissions || []);
 const hasPermission = (required) => {
   const requiredPerm = String(required || "").trim();
@@ -257,93 +269,96 @@ const hasAnyPermission = (requirements) => {
   return requirements.some((r) => hasPermission(r));
 };
 
-const menuTree = [
-  { key: "/admin/console", label: "总览", icon: DashboardOutlined, requireAny: ["dashboard.overview"] },
-  { key: "/admin/revenue-analytics", label: "收入统计", icon: DollarOutlined, requireAny: ["dashboard.revenue_analytics_overview", "dashboard.revenue"] },
-  {
-    key: "group-trade",
-    label: "交易与资源",
-    icon: ShoppingCartOutlined,
-    children: [
-      { key: "/admin/orders", label: "订单审核", icon: ShoppingCartOutlined, requireAny: ["order.list"] },
-      { key: "/admin/wallet/orders", label: "钱包订单", icon: WalletOutlined, requireAny: ["wallet_order.list"] },
-      { key: "/admin/vps", label: "VPS 管理", icon: CloudServerOutlined, requireAny: ["vps.list"] },
-      { key: "/admin/probes", label: "探针监控", icon: ApiOutlined, requireAny: ["probe.list"] },
-      {
-        key: "/admin/catalog",
-        label: "售卖目录",
-        icon: AppstoreOutlined,
-        requireAny: ["regions.list", "plan_group.list", "line.list", "packages.list", "system_image.list", "billing_cycle.list"]
-      }
-    ]
-  },
-  {
-    key: "group-support",
-    label: "用户与客服",
-    icon: TeamOutlined,
-    children: [
-      { key: "/admin/users", label: "用户管理", icon: TeamOutlined, requireAny: ["user.list"] },
-      { key: "/admin/user-tiers", label: "用户等级", icon: SafetyCertificateOutlined, requireAny: ["user.list"] },
-      { key: "/admin/coupons", label: "优惠码", icon: DollarOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/tickets", label: "工单管理", icon: CustomerServiceOutlined, requireAny: ["tickets.list"] },
-      { key: "/admin/realname/providers", label: "实名供应商", icon: AppstoreOutlined, requireAny: ["realname.list"] },
-      { key: "/admin/realname/config", label: "实名认证配置", icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
-      { key: "/admin/realname/records", label: "实名认证记录", icon: FileSearchOutlined, requireAny: ["realname.list"] }
-    ]
-  },
-  {
-    key: "group-cms",
-    label: "内容运营",
-    icon: FileTextOutlined,
-    children: [
-      { key: "/admin/cms/categories", label: "文章分类", icon: AppstoreOutlined, requireAny: ["cms_category.list"] },
-      { key: "/admin/cms/posts", label: "文章内容", icon: FileTextOutlined, requireAny: ["cms_post.list"] },
-      { key: "/admin/cms/blocks", label: "页面模块", icon: LayoutOutlined, requireAny: ["cms_block.list"] },
-      { key: "/admin/cms/nav-items", label: "导航菜单", icon: MenuOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/cms/uploads", label: "媒体资源", icon: CloudUploadOutlined, requireAny: ["upload.list"] }
-    ]
-  },
-  {
-    key: "group-platform",
-    label: "平台配置",
-    icon: SettingOutlined,
-    children: [
-      { key: "/admin/settings/site", label: "站点设置", icon: SettingOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/settings/auth", label: "登录与注册", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/settings/pricing", label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/settings/payments", label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
-      { key: "/admin/settings/lifecycle", label: "生命周期", icon: ClockCircleOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/settings/plugins", label: "插件管理", icon: ToolOutlined, requireAny: ["plugin.list"] },
-      { key: "/admin/automation", label: "自动化对接", icon: ApiOutlined, requireAny: ["automation.view"] },
-      { key: "/admin/settings/webhook", label: "Webhook", icon: LinkOutlined, requireAny: ["robot.view"] },
-      { key: "/admin/scheduled-tasks", label: "计划任务", icon: ClockCircleOutlined, requireAny: ["scheduled_tasks.list"] }
-    ]
-  },
-  {
-    key: "group-notify",
-    label: "通知与集成",
-    icon: MessageOutlined,
-    children: [
-      { key: "/admin/settings/email", label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
-      { key: "/admin/settings/sms", label: "短信设置", icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
-      { key: "/admin/settings/fcm", label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] }
-    ]
-  },
-  {
-    key: "group-security",
-    label: "安全与审计",
-    icon: KeyOutlined,
-    children: [
-      { key: "/admin/admins", label: "管理员列表", icon: UserOutlined, requireAny: ["admin.list"] },
-      { key: "/admin/permission-groups", label: "权限组", icon: KeyOutlined, requireAny: ["permission_group.list"] },
-      { key: "/admin/settings/apikey", label: "API Keys", icon: KeyOutlined, requireAny: ["api_key.list"] },
-      { key: "/admin/settings/captcha", label: "验证码设置", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
-      { key: "/admin/audit", label: "审计日志", icon: SettingOutlined, requireAny: ["audit_log.view"] },
-      { key: "/admin/debug", label: "调试中心", icon: BugOutlined, requireAny: ["debug.view", "debug.list"] }
-    ]
-  },
-  { key: "/admin/profile", label: "个人资料", icon: UserOutlined }
-];
+const menuTree = computed(() => {
+  const adminPath = getCurrentAdminPath();
+  return [
+    { key: `/${adminPath}/console`, label: "总览", icon: DashboardOutlined, requireAny: ["dashboard.overview"] },
+    { key: `/${adminPath}/revenue-analytics`, label: "收入统计", icon: DollarOutlined, requireAny: ["dashboard.revenue_analytics_overview", "dashboard.revenue"] },
+    {
+      key: "group-trade",
+      label: "交易与资源",
+      icon: ShoppingCartOutlined,
+      children: [
+        { key: `/${adminPath}/orders`, label: "订单审核", icon: ShoppingCartOutlined, requireAny: ["order.list"] },
+        { key: `/${adminPath}/wallet/orders`, label: "钱包订单", icon: WalletOutlined, requireAny: ["wallet_order.list"] },
+        { key: `/${adminPath}/vps`, label: "VPS 管理", icon: CloudServerOutlined, requireAny: ["vps.list"] },
+        { key: `/${adminPath}/probes`, label: "探针监控", icon: ApiOutlined, requireAny: ["probe.list"] },
+        {
+          key: `/${adminPath}/catalog`,
+          label: "售卖目录",
+          icon: AppstoreOutlined,
+          requireAny: ["regions.list", "plan_group.list", "line.list", "packages.list", "system_image.list", "billing_cycle.list"]
+        }
+      ]
+    },
+    {
+      key: "group-support",
+      label: "用户与客服",
+      icon: TeamOutlined,
+      children: [
+        { key: `/${adminPath}/users`, label: "用户管理", icon: TeamOutlined, requireAny: ["user.list"] },
+        { key: `/${adminPath}/user-tiers`, label: "用户等级", icon: SafetyCertificateOutlined, requireAny: ["user.list"] },
+        { key: `/${adminPath}/coupons`, label: "优惠码", icon: DollarOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/tickets`, label: "工单管理", icon: CustomerServiceOutlined, requireAny: ["tickets.list"] },
+        { key: `/${adminPath}/realname/providers`, label: "实名供应商", icon: AppstoreOutlined, requireAny: ["realname.list"] },
+        { key: `/${adminPath}/realname/config`, label: "实名认证配置", icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
+        { key: `/${adminPath}/realname/records`, label: "实名认证记录", icon: FileSearchOutlined, requireAny: ["realname.list"] }
+      ]
+    },
+    {
+      key: "group-cms",
+      label: "内容运营",
+      icon: FileTextOutlined,
+      children: [
+        { key: `/${adminPath}/cms/categories`, label: "文章分类", icon: AppstoreOutlined, requireAny: ["cms_category.list"] },
+        { key: `/${adminPath}/cms/posts`, label: "文章内容", icon: FileTextOutlined, requireAny: ["cms_post.list"] },
+        { key: `/${adminPath}/cms/blocks`, label: "页面模块", icon: LayoutOutlined, requireAny: ["cms_block.list"] },
+        { key: `/${adminPath}/cms/nav-items`, label: "导航菜单", icon: MenuOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/cms/uploads`, label: "媒体资源", icon: CloudUploadOutlined, requireAny: ["upload.list"] }
+      ]
+    },
+    {
+      key: "group-platform",
+      label: "平台配置",
+      icon: SettingOutlined,
+      children: [
+        { key: `/${adminPath}/settings/site`, label: "站点设置", icon: SettingOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/auth`, label: "登录与注册", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/pricing`, label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/payments`, label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
+        { key: `/${adminPath}/settings/lifecycle`, label: "生命周期", icon: ClockCircleOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/plugins`, label: "插件管理", icon: ToolOutlined, requireAny: ["plugin.list"] },
+        { key: `/${adminPath}/automation`, label: "自动化对接", icon: ApiOutlined, requireAny: ["automation.view"] },
+        { key: `/${adminPath}/settings/webhook`, label: "Webhook", icon: LinkOutlined, requireAny: ["robot.view"] },
+        { key: `/${adminPath}/scheduled-tasks`, label: "计划任务", icon: ClockCircleOutlined, requireAny: ["scheduled_tasks.list"] }
+      ]
+    },
+    {
+      key: "group-notify",
+      label: "通知与集成",
+      icon: MessageOutlined,
+      children: [
+        { key: `/${adminPath}/settings/email`, label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
+        { key: `/${adminPath}/settings/sms`, label: "短信设置", icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
+        { key: `/${adminPath}/settings/fcm`, label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] }
+      ]
+    },
+    {
+      key: "group-security",
+      label: "安全与审计",
+      icon: KeyOutlined,
+      children: [
+        { key: `/${adminPath}/admins`, label: "管理员列表", icon: UserOutlined, requireAny: ["admin.list"] },
+        { key: `/${adminPath}/permission-groups`, label: "权限组", icon: KeyOutlined, requireAny: ["permission_group.list"] },
+        { key: `/${adminPath}/settings/apikey`, label: "API Keys", icon: KeyOutlined, requireAny: ["api_key.list"] },
+        { key: `/${adminPath}/settings/captcha`, label: "验证码设置", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/audit`, label: "审计日志", icon: SettingOutlined, requireAny: ["audit_log.view"] },
+        { key: `/${adminPath}/debug`, label: "调试中心", icon: BugOutlined, requireAny: ["debug.view", "debug.list"] }
+      ]
+    },
+    { key: `/${adminPath}/profile`, label: "个人资料", icon: UserOutlined }
+  ];
+});
 
 const filterMenuTree = (nodes) => {
   const out = [];
@@ -361,7 +376,7 @@ const filterMenuTree = (nodes) => {
   return out;
 };
 
-const visibleMenuTree = computed(() => filterMenuTree(menuTree));
+const visibleMenuTree = computed(() => filterMenuTree(menuTree.value));
 
 const flattenMenuLeaves = (nodes) => {
   const out = [];
@@ -389,21 +404,24 @@ const menuIcon = computed(() => {
 });
 
 const selectedKey = computed(() => {
-  if (route.path.startsWith("/admin/settings")) return route.path;
-  if (route.path.startsWith("/admin/cms")) return route.path;
-  if (route.path.startsWith("/admin/tickets")) return "/admin/tickets";
-  if (route.path.startsWith("/admin/probes")) return "/admin/probes";
-  if (route.path.startsWith("/admin/audit")) return "/admin/audit";
-  if (route.path.startsWith("/admin/debug")) return "/admin/debug";
-  if (route.path.startsWith("/admin/console")) return "/admin/console";
-  if (route.path.startsWith("/admin/revenue-analytics")) return "/admin/revenue-analytics";
-  if (route.path === "/admin") return "/admin/console";
-  return route.path;
+  const adminPath = getCurrentAdminPath();
+  const currentPath = route.path;
+  
+  if (currentPath.includes("/settings")) return currentPath;
+  if (currentPath.includes("/cms")) return currentPath;
+  if (currentPath.includes("/tickets")) return `/${adminPath}/tickets`;
+  if (currentPath.includes("/probes")) return `/${adminPath}/probes`;
+  if (currentPath.includes("/audit")) return `/${adminPath}/audit`;
+  if (currentPath.includes("/debug")) return `/${adminPath}/debug`;
+  if (currentPath.includes("/console")) return `/${adminPath}/console`;
+  if (currentPath.includes("/revenue-analytics")) return `/${adminPath}/revenue-analytics`;
+  if (currentPath === `/${adminPath}`) return `/${adminPath}/console`;
+  return currentPath;
 });
 
 const labelMap = computed(() => {
   const out = {};
-  for (const node of flattenMenuLeaves(menuTree)) {
+  for (const node of flattenMenuLeaves(menuTree.value)) {
     out[node.key] = node.label;
   }
   return out;
@@ -522,11 +540,13 @@ const toggleMenu = () => {
 
 const logout = () => {
   admin.logout();
-  router.replace("/admin/login");
+  const adminPath = getCurrentAdminPath();
+  router.replace(`/${adminPath}/login`);
 };
 
 const goToProfile = () => {
-  router.push("/admin/profile");
+  const adminPath = getCurrentAdminPath();
+  router.push(`/${adminPath}/profile`);
 };
 
 const handleSearch = () => {

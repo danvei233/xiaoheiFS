@@ -24,7 +24,7 @@
               <a-input-password v-model:value="form.password" />
             </a-form-item>
             <div style="text-align: right; margin-bottom: 16px;">
-              <router-link to="/admin/forgot-password">忘记密码？</router-link>
+              <a href="#" @click.prevent="goToForgotPassword">忘记密码？</a>
             </div>
             <a-button type="primary" html-type="submit" block :loading="admin.loading">登录</a-button>
           </a-form>
@@ -40,6 +40,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useAdminAuthStore } from "@/stores/adminAuth";
 import { message, theme } from "ant-design-vue";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
+import { buildAdminUrl } from "@/services/adminPath";
 
 const form = reactive({
   username: "",
@@ -50,6 +51,12 @@ const admin = useAdminAuthStore();
 const router = useRouter();
 const route = useRoute();
 
+// 获取当前管理端路径
+const getCurrentAdminPath = () => {
+  const pathSegments = route.path.split("/").filter(Boolean);
+  return pathSegments[0] || "admin";
+};
+
 const onSubmit = async () => {
   try {
     const token = await admin.login(form);
@@ -57,7 +64,11 @@ const onSubmit = async () => {
       message.error("登录失败");
       return;
     }
-    router.replace(String(route.query.redirect || "/admin/console"));
+    
+    // 使用当前的管理端路径构建跳转URL
+    const adminPath = getCurrentAdminPath();
+    const redirectPath = String(route.query.redirect || `/${adminPath}/console`);
+    router.replace(redirectPath);
   } catch (error) {
     const msg =
       error?.response?.data?.error ||
@@ -66,6 +77,11 @@ const onSubmit = async () => {
       "登录失败";
     message.error(msg);
   }
+};
+
+const goToForgotPassword = () => {
+  const adminPath = getCurrentAdminPath();
+  router.push(`/${adminPath}/forgot-password`);
 };
 </script>
 

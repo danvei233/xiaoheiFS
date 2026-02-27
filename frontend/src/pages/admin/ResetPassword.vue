@@ -28,7 +28,7 @@
       </a-form>
 
       <div class="auth-footer">
-        <router-link to="/admin/login">返回登录</router-link>
+        <a href="#" @click.prevent="goToLogin">返回登录</a>
       </div>
     </div>
   </div>
@@ -50,6 +50,12 @@ const form = reactive({
   confirm_password: ""
 });
 
+// 获取当前管理端路径
+const getCurrentAdminPath = () => {
+  const pathSegments = route.path.split("/").filter(Boolean);
+  return pathSegments[0] || "admin";
+};
+
 const validateConfirmPassword = async (_rule, value) => {
   if (value !== form.new_password) {
     return Promise.reject("两次输入的密码不一致");
@@ -67,12 +73,18 @@ const handleSubmit = async () => {
   try {
     await resetPassword(token.value, form.new_password);
     message.success("密码已重置，请使用新密码登录");
-    router.push("/admin/login");
+    const adminPath = getCurrentAdminPath();
+    router.push(`/${adminPath}/login`);
   } catch (e) {
     message.error(e.response?.data?.error || "重置失败，令牌可能已过期");
   } finally {
     loading.value = false;
   }
+};
+
+const goToLogin = () => {
+  const adminPath = getCurrentAdminPath();
+  router.push(`/${adminPath}/login`);
 };
 
 onMounted(() => {

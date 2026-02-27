@@ -46,7 +46,7 @@
             </div>
             <div class="info-card-content">
               <div class="info-card-title">管理后台</div>
-              <div class="info-card-text">访问 <code>/admin</code> 进入管理控制台</div>
+              <div class="info-card-text">访问 <code>/{{ adminPath }}</code> 进入管理控制台</div>
             </div>
           </div>
 
@@ -114,22 +114,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { useRouter, useRoute } from "vue-router";
+const props = defineProps<{
+  adminPath: string
+  restart: boolean
+  configFile: string
+}>();
 
-const router = useRouter();
-const route = useRoute();
+const restartRequired = props.restart;
+const configFile = props.configFile;
+const adminPath = props.adminPath;
 
-const restartRequired = computed(() => String(route.query.restart || "0") === "1");
-const configFile = computed(() => String(route.query.config || "app.config.json"));
-
-const goHome = async () => {
-  const redirect = typeof route.query.redirect === "string" ? route.query.redirect : "/";
-  await router.replace(redirect && redirect.startsWith("/") ? redirect : "/");
+const goHome = () => {
+  window.location.replace("/");
 };
 
-const goAdmin = async () => {
-  await router.replace("/admin");
+const goAdmin = () => {
+  // 从 localStorage 读取缓存的管理端路径
+  const cachedPath = localStorage.getItem("admin_path_cache") || adminPath || "admin";
+  window.location.replace(`/${cachedPath}/login`);
 };
 </script>
 

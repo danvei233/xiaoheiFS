@@ -87,11 +87,13 @@
 
 <script setup lang="ts">
 import { reactive, watch } from "vue";
-import { useRouter, useRoute } from "vue-router";
 import { useInstallWizardStore } from "@/stores/installWizard";
 
-const router = useRouter();
-const route = useRoute();
+const emit = defineEmits<{
+  next: []
+  back: []
+}>();
+
 const wiz = useInstallWizardStore();
 
 const form = reactive({
@@ -109,14 +111,12 @@ watch(
   { deep: true }
 );
 
-const back = async () => {
-  const q = route.query && typeof route.query.redirect === "string" ? { redirect: route.query.redirect } : {};
-  await router.push({ path: "/install/db", query: q });
+const back = () => {
+  emit('back');
 };
 
-const next = async () => {
-  const q = route.query && typeof route.query.redirect === "string" ? { redirect: route.query.redirect } : {};
-  await router.push({ path: "/install/admin", query: q });
+const next = () => {
+  emit('next');
 };
 </script>
 

@@ -49,6 +49,55 @@ func (h *Handler) InstallStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"installed": h.IsInstalled()})
 }
 
+func (h *Handler) InstallGenerateAdminPath(c *gin.Context) {
+	path := GenerateRandomAdminPath()
+	c.JSON(http.StatusOK, gin.H{"admin_path": path})
+}
+
+func (h *Handler) ValidateAdminPathHandler(c *gin.Context) {
+	var payload struct {
+		Path string `json:"path"`
+	}
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	
+	if err := ValidateAdminPath(payload.Path); err != nil {
+		c.JSON(http.StatusOK, gin.H{"valid": false, "error": err.Error()})
+		return
+	}
+	
+	c.JSON(http.StatusOK, gin.H{"valid": true})
+}
+
+func (h *Handler) CheckAdminPath(c *gin.Context) {
+	var payload struct {
+		Path string `json:"path"`
+	}
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	
+	path := strings.TrimSpace(payload.Path)
+	if path == "" {
+		c.JSON(http.StatusOK, gin.H{"is_admin": false})
+		return
+	}
+	
+	// 获取配置的管理端路径
+	configuredPath := GetAdminPathFromSettings(h.settingsSvc)
+	
+	// 如果没有配置，默认是 admin
+	if configuredPath == "" {
+		configuredPath = "admin"
+	}
+	
+	isAdmin := strings.EqualFold(path, configuredPath)
+	c.JSON(http.StatusOK, gin.H{"is_admin": isAdmin, "admin_path": configuredPath})
+}
+
 func (h *Handler) InstallDBCheck(c *gin.Context) {
 	var payload struct {
 		DB struct {
@@ -123,8 +172,9 @@ func (h *Handler) InstallRun(c *gin.Context) {
 			DSN  string `json:"dsn"`
 		} `json:"db"`
 		Site struct {
-			Name string `json:"name"`
-			URL  string `json:"url"`
+			Name      string `json:"name"`
+			URL       string `json:"url"`
+			AdminPath string `json:"admin_path"`
 		} `json:"site"`
 		Admin struct {
 			Username string `json:"username"`
@@ -155,6 +205,7 @@ func (h *Handler) InstallRun(c *gin.Context) {
 
 	siteName := strings.TrimSpace(payload.Site.Name)
 	siteURL := strings.TrimSpace(payload.Site.URL)
+	adminPath := strings.TrimSpace(payload.Site.AdminPath)
 	adminUser := strings.TrimSpace(payload.Admin.Username)
 	adminPass := strings.TrimSpace(payload.Admin.Password)
 	if siteName == "" || adminUser == "" || adminPass == "" {
@@ -163,6 +214,12 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	}
 	if len(adminPass) < 6 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAdminPasswordTooShort.Error()})
+		return
+	}
+	
+	// 校验管理端路径
+	if err := ValidateAdminPath(adminPath); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -219,6 +276,9 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	_ = repoAny.UpsertSetting(ctx, domain.Setting{Key: "site_name", ValueJSON: siteName})
 	if siteURL != "" {
 		_ = repoAny.UpsertSetting(ctx, domain.Setting{Key: "site_url", ValueJSON: siteURL})
+	}
+	if adminPath != "" {
+		_ = repoAny.UpsertSetting(ctx, domain.Setting{Key: "admin_path", ValueJSON: adminPath})
 	}
 
 	existingAdmin, adminLookupErr := repoAny.GetUserByUsernameOrEmail(ctx, adminUser)
