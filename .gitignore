@@ -108,3 +108,5 @@ app/xiaoheifs_userapp/assets/nul
 .env.*
 /.codex/
 /.specify/
+
+/specs/
