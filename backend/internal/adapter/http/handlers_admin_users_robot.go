@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"encoding/json"
-	"github.com/gin-gonic/gin"
 	"io"
 	"net/http"
 	"strconv"
@@ -11,6 +10,8 @@ import (
 	"time"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+
+	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) parseAdminFromAuthorization(c *gin.Context) (int64, string, bool) {
@@ -138,6 +139,10 @@ func (h *Handler) RobotWebhook(c *gin.Context) {
 }
 
 func (h *Handler) AdminLogin(c *gin.Context) {
+	if h.authSvc == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": domain.ErrNotInstalled.Error()})
+		return
+	}
 	var payload struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
