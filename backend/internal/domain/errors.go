@@ -235,4 +235,8 @@ var (
 	ErrAdminPathReserved                                  = errors.New("admin path reserved")
 	ErrAdminPathRequired                                  = errors.New("admin path required")
 	ErrAdminPathMismatch                                  = errors.New("admin path mismatch")
+	ErrTooManyLoginAttempts                               = errors.New("too many login attempts")
+	ErrTooMany2FAAttempts                                 = errors.New("too many 2fa attempts")
+	ErrServiceUnavailable                                 = errors.New("service unavailable")
+	ErrAccountDisabled                                    = errors.New("account disabled")
 )

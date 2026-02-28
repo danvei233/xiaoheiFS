@@ -154,14 +154,24 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 	}
 	
 	// 校验管理端路径
+	requestPath := strings.TrimSpace(payload.AdminPath)
+	if requestPath != "" {
+		// 验证路径格式
+		if err := ValidateAdminPath(requestPath); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		requestPath = "admin"
+	}
+	
+	// 获取配置的管理路径
 	configuredPath := GetAdminPathFromSettings(h.settingsSvc)
 	if configuredPath == "" {
 		configuredPath = "admin"
 	}
-	requestPath := strings.TrimSpace(payload.AdminPath)
-	if requestPath == "" {
-		requestPath = "admin"
-	}
+	
+	// 验证路径是否匹配
 	if requestPath != configuredPath {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminPathMismatch.Error()})
 		return
