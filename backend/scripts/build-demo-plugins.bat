@@ -25,6 +25,7 @@ call :build_one "plugins\\kyc\\mangzhu_realname\\bin\\windows_amd64" "./plugin-d
 call :build_one "plugins\\automation\\lightboat\\bin\\windows_amd64" "./plugin-demo/pluginv1/automation_lightboat"
 call :build_one "plugins\\automation\\xiaohei_proxy\\bin\\windows_amd64" "./plugin-demo/pluginv1/automation_xiaohei_proxy"
 call :build_one "plugins\\automation\\mofang_openapi\\bin\\windows_amd64" "./plugin-demo/pluginv1/automation_mofang_openapi"
+call :build_one "plugins\\automation\\openidc_default\\bin\\windows_amd64" "./plugin-demo/pluginv1/automation_openidc"
 
 set GOOS=%ORIG_GOOS%
 set GOARCH=%ORIG_GOARCH%

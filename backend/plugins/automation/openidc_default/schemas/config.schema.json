@@ -1,0 +1,43 @@
+{
+  "title": "OpenIDCS Automation",
+  "type": "object",
+  "properties": {
+    "base_url": {
+      "type": "string",
+      "title": "Base URL",
+      "description": "OpenIDCS-Client 服务地址，例如 http://192.168.1.100:1880"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "OpenIDCS-Client 的 Bearer Token"
+    },
+    "hs_name": {
+      "type": "string",
+      "title": "默认主机名（hs_name）",
+      "description": "指定该商品类型对应的 OpenIDCS 主机名，用于镜像同步。留空则使用所有主机。"
+    },
+    "timeout_sec": {
+      "type": "integer",
+      "title": "超时时间（秒）",
+      "default": 15,
+      "minimum": 1,
+      "maximum": 60
+    },
+    "retry": {
+      "type": "integer",
+      "title": "重试次数",
+      "default": 1,
+      "minimum": 0,
+      "maximum": 5
+    },
+    "dry_run": {
+      "type": "boolean",
+      "title": "Dry Run（演练模式）",
+      "default": false,
+      "description": "开启后所有写操作不会真正执行"
+    }
+  },
+  "required": ["base_url", "api_key"]
+}
