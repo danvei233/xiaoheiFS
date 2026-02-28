@@ -169,6 +169,7 @@
           maxlength="6"
           inputmode="numeric"
           class="mfa-code-input"
+          @input="handleTotpInput"
         />
       </a-form-item>
       <div class="mfa-helper">验证码每 30 秒更新，请使用最新口令。</div>
@@ -512,6 +513,13 @@ const handleConfirmOrUnlock = async () => {
     message.error(error?.response?.data?.error || "2FA 校验失败");
   } finally {
     mfaLoading.value.confirm = false;
+  }
+};
+
+const handleTotpInput = () => {
+  const code = String(mfaForm.value.totpCode || "").trim();
+  if (/^\d{6}$/.test(code)) {
+    handleConfirmOrUnlock();
   }
 };
 
