@@ -188,7 +188,11 @@ func (r *GormRepo) UpdateInstanceLocal(ctx context.Context, inst domain.VPSInsta
 
 	return r.gdb.WithContext(ctx).Model(&vpsInstanceRow{}).Where("id = ?", inst.ID).Updates(map[string]any{
 		"automation_instance_id": inst.AutomationInstanceID,
+		"goods_type_id":          inst.GoodsTypeID,
 		"name":                   inst.Name,
+		"region":                 inst.Region,
+		"region_id":              inst.RegionID,
+		"line_id":                inst.LineID,
 		"package_id":             inst.PackageID,
 		"package_name":           inst.PackageName,
 		"cpu":                    inst.CPU,

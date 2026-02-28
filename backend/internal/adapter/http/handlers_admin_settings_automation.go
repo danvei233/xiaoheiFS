@@ -85,12 +85,20 @@ func (h *Handler) AdminSettingsUpdate(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidKey.Error()})
 				return
 			}
+			if err := validateSettingJSONValue(item.Key, item.Value); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
 			if err := h.adminSvc.UpdateSetting(c, getUserID(c), item.Key, item.Value); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
 		}
 	} else {
+		if err := validateSettingJSONValue(payload.Key, payload.Value); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		if err := h.adminSvc.UpdateSetting(c, getUserID(c), payload.Key, payload.Value); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

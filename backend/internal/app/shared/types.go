@@ -123,11 +123,13 @@ type PaymentSelectInput struct {
 }
 
 type PaymentProviderInfo struct {
-	Key        string
-	Name       string
-	Enabled    bool
-	SchemaJSON string
-	ConfigJSON string
+	Key           string
+	Name          string
+	Enabled       bool
+	OrderEnabled  bool
+	WalletEnabled bool
+	SchemaJSON    string
+	ConfigJSON    string
 }
 
 type PaymentMethodInfo struct {

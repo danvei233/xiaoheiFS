@@ -346,24 +346,49 @@ func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSIn
 	if reasons == nil {
 		reasons = map[string]string{}
 	}
-	policy := h.getPackageCapabilityPolicy(c, inst.PackageID)
+
+	policy := h.getGoodsTypeCapabilityPolicy(c, h.capabilityPolicyGoodsTypeID(c, inst))
+
+	resizeAllowed := true
+	if v, ok := h.getSettingBool(c, "resize_enabled"); ok {
+		resizeAllowed = v
+	}
 	if policy.ResizeEnabled != nil {
-		if *policy.ResizeEnabled {
+		resizeAllowed = *policy.ResizeEnabled
+	}
+	if resizeAllowed {
+		if strings.TrimSpace(reasons["resize"]) == "" {
 			featureSet["resize"] = struct{}{}
-		} else {
-			delete(featureSet, "resize")
-			if strings.TrimSpace(reasons["resize"]) == "" {
-				reasons["resize"] = "套餐未开启升降配"
+		}
+	} else {
+		delete(featureSet, "resize")
+		if strings.TrimSpace(reasons["resize"]) == "" {
+			if policy.ResizeEnabled != nil {
+				reasons["resize"] = "商品类型未开启升降配"
+			} else {
+				reasons["resize"] = "站点未开启升降配"
 			}
 		}
 	}
+
+	refundAllowed := true
+	if v, ok := h.getSettingBool(c, "refund_enabled"); ok {
+		refundAllowed = v
+	}
 	if policy.RefundEnabled != nil {
-		if *policy.RefundEnabled {
+		refundAllowed = *policy.RefundEnabled
+	}
+	if refundAllowed {
+		if strings.TrimSpace(reasons["refund"]) == "" {
 			featureSet["refund"] = struct{}{}
-		} else {
-			delete(featureSet, "refund")
-			if strings.TrimSpace(reasons["refund"]) == "" {
-				reasons["refund"] = "套餐未开启退款"
+		}
+	} else {
+		delete(featureSet, "refund")
+		if strings.TrimSpace(reasons["refund"]) == "" {
+			if policy.RefundEnabled != nil {
+				reasons["refund"] = "商品类型未开启退款"
+			} else {
+				reasons["refund"] = "站点未开启退款"
 			}
 		}
 	}

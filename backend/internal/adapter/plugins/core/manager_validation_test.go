@@ -146,3 +146,64 @@ func TestAutomationUpdateConfigBypassesPluginValidation(t *testing.T) {
 		t.Fatalf("unexpected api_key: %v", cfg["api_key"])
 	}
 }
+
+func TestAutomationGetConfigFallsBackWhenCipherKeyChanged(t *testing.T) {
+	oldKey := base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	oldCipher, err := cryptox.NewAESGCM(oldKey)
+	if err != nil {
+		t.Fatalf("new old cipher: %v", err)
+	}
+	ct, err := oldCipher.EncryptToString([]byte(`{"base_url":"https://old.example.com","api_key":"old"}`))
+	if err != nil {
+		t.Fatalf("encrypt old config: %v", err)
+	}
+
+	newKey := base64.RawURLEncoding.EncodeToString([]byte("fedcba9876543210fedcba9876543210"))
+	newCipher, err := cryptox.NewAESGCM(newKey)
+	if err != nil {
+		t.Fatalf("new new cipher: %v", err)
+	}
+	repo := &fakePluginInstallationRepo{
+		inst: domain.PluginInstallation{
+			Category:     "automation",
+			PluginID:     "lightboat",
+			InstanceID:   "default",
+			Enabled:      false,
+			ConfigCipher: ct,
+		},
+	}
+	m := NewManager(t.TempDir(), repo, newCipher, nil)
+
+	// Old ciphertext cannot be decrypted with the new key. We should still
+	// return an editable empty config so admin can recover by saving new values.
+	got, err := m.GetConfigInstance(context.Background(), "automation", "lightboat", "default")
+	if err != nil {
+		t.Fatalf("get config with mismatched key: %v", err)
+	}
+	if got != "{}" {
+		t.Fatalf("expected empty config fallback, got: %s", got)
+	}
+}
+
+func TestValidatePluginConfigJSONStrict(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		wantErr bool
+	}{
+		{name: "object", raw: `{"a":1}`, wantErr: false},
+		{name: "array", raw: `[1,2,3]`, wantErr: true},
+		{name: "scalar string", raw: `"abc"`, wantErr: true},
+		{name: "double encoded object", raw: `"{\"a\":1}"`, wantErr: true},
+		{name: "invalid json", raw: `{`, wantErr: true},
+	}
+	for _, tc := range cases {
+		err := validatePluginConfigJSONStrict(tc.raw)
+		if tc.wantErr && err == nil {
+			t.Fatalf("%s: expected error", tc.name)
+		}
+		if !tc.wantErr && err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.name, err)
+		}
+	}
+}

@@ -22,6 +22,7 @@ func (publicRoutesRegistrar) Register(r *gin.Engine, handler *Handler, _ *Middle
 		public.POST("/auth/password-reset/confirm", handler.PasswordResetConfirm)
 		public.POST("/auth/refresh", handler.Refresh)
 		public.Any("/payments/notify/:provider", handler.PaymentNotify)
+		public.Any("/wallet/payments/notify/:provider", handler.WalletPaymentNotify)
 		public.GET("/site/settings", handler.SiteSettings)
 		public.GET("/cms/blocks", handler.CMSBlocksPublic)
 		public.GET("/cms/posts", handler.CMSPostsPublic)

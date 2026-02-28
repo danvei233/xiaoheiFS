@@ -2450,6 +2450,20 @@ func (s *OrderService) CreateEmergencyRenewOrder(ctx context.Context, userID int
 	return updated, nil
 }
 
+func (s *OrderService) capabilityPolicyGoodsTypeID(ctx context.Context, inst domain.VPSInstance) int64 {
+	if inst.GoodsTypeID > 0 {
+		return inst.GoodsTypeID
+	}
+	if s.catalog == nil || inst.PackageID <= 0 {
+		return 0
+	}
+	pkg, err := s.catalog.GetPackage(ctx, inst.PackageID)
+	if err != nil {
+		return 0
+	}
+	return pkg.GoodsTypeID
+}
+
 func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsID int64, spec *CartSpec, targetPackageID int64, resetAddons bool, scheduledAt *time.Time) (domain.Order, ResizeQuote, error) {
 	if s.realname != nil {
 		if err := s.realname.RequireAction(ctx, userID, "resize_vps"); err != nil {
@@ -2469,7 +2483,7 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	if err != nil {
 		return domain.Order{}, ResizeQuote{}, err
 	}
-	policy := loadPackageCapabilityPolicy(ctx, s.settings, inst.PackageID)
+	policy := loadCapabilityPolicy(ctx, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
 	if policy.ResizeEnabled != nil {
 		resizeDefault = *policy.ResizeEnabled
 	}
@@ -2571,7 +2585,7 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	if v, ok := getSettingBool(ctx, s.settings, "refund_enabled"); ok {
 		refundDefault = v
 	}
-	pkgPolicy := loadPackageCapabilityPolicy(ctx, s.settings, inst.PackageID)
+	pkgPolicy := loadCapabilityPolicy(ctx, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
 	if pkgPolicy.RefundEnabled != nil {
 		refundDefault = *pkgPolicy.RefundEnabled
 	}
@@ -2696,7 +2710,7 @@ func (s *OrderService) QuoteResizeOrder(ctx context.Context, userID int64, vpsID
 	if err != nil {
 		return ResizeQuote{}, CartSpec{}, err
 	}
-	policy := loadPackageCapabilityPolicy(ctx, s.settings, inst.PackageID)
+	policy := loadCapabilityPolicy(ctx, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
 	if policy.ResizeEnabled != nil {
 		resizeDefault = *policy.ResizeEnabled
 	}

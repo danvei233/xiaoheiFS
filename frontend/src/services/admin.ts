@@ -23,6 +23,7 @@ import type {
   OrderDetailResponse,
   Package,
   PackageCapabilities,
+  GoodsTypeCapabilities,
   PermissionItem,
   PermissionGroup,
   PaymentProvider,
@@ -224,7 +225,8 @@ export const updateApiKeyStatus = (id: number | string, payload: Record<string, 
 export const listSettings = () => http.get<ApiList<SettingItem>>("/admin/api/v1/settings");
 export const updateSetting = (payload: Record<string, unknown>) => http.patch("/admin/api/v1/settings", payload);
 
-export const listAdminPaymentProviders = () => http.get<ApiList<PaymentProvider>>("/admin/api/v1/payments/providers");
+export const listAdminPaymentProviders = (params?: { include_disabled?: boolean; include_legacy?: boolean; scene?: "order" | "wallet" }) =>
+  http.get<ApiList<PaymentProvider>>("/admin/api/v1/payments/providers", { params });
 export const updateAdminPaymentProvider = (key: string, payload: Record<string, unknown>) =>
   http.patch(`/admin/api/v1/payments/providers/${key}`, payload);
 
@@ -483,3 +485,7 @@ export const getGoodsTypeAutomationOptions = (id: number | string) =>
     billing_cycle_items?: Array<{ value?: string; label?: string }>;
     cancel_type_items?: Array<{ value?: string; label?: string }>;
   }>(`/admin/api/v1/goods-types/${id}/automation-options`);
+export const getGoodsTypeCapabilities = (id: number | string) =>
+  http.get<GoodsTypeCapabilities>(`/admin/api/v1/goods-types/${id}/capabilities`);
+export const updateGoodsTypeCapabilities = (id: number | string, payload: { resize_enabled?: boolean | null; refund_enabled?: boolean | null }) =>
+  http.patch(`/admin/api/v1/goods-types/${id}/capabilities`, payload);

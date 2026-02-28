@@ -2,7 +2,7 @@
   "plugin_id": "lightboat",
   "name": "Lightboat Automation (Built-in)",
   "version": "0.1.0",
-  "description": "Built-in Lightboat/Qingzhou automation plugin (catalog + lifecycle + port/backup/snapshot/firewall).",
+  "description": "Built-in Lightboat/Qingzhou automation plugin with full VPS operation capabilities.",
   "binaries": {
     "windows_amd64": "bin/windows_amd64/plugin.exe",
     "linux_amd64": "bin/linux_amd64/plugin",
@@ -11,8 +11,20 @@
   },
   "capabilities": {
     "automation": {
-      "features": ["catalog_sync", "lifecycle", "port_mapping", "backup", "snapshot", "firewall"]
+      "features": [
+        "catalog_sync",
+        "lifecycle",
+        "panel_login",
+        "vnc",
+        "reinstall",
+        "reset_password",
+        "resize",
+        "refund",
+        "port_mapping",
+        "backup",
+        "snapshot",
+        "firewall"
+      ]
     }
   }
 }
-

@@ -1,6 +1,8 @@
 package http
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"os"
@@ -22,7 +24,8 @@ func (h *Handler) AdminPaymentProviders(c *gin.Context) {
 	}
 	includeDisabled := strings.EqualFold(strings.TrimSpace(c.Query("include_disabled")), "true")
 	includeLegacy := strings.EqualFold(strings.TrimSpace(c.Query("include_legacy")), "true")
-	items, err := h.paymentSvc.ListProviders(c, includeDisabled)
+	scene := strings.TrimSpace(c.Query("scene"))
+	items, err := h.paymentSvc.ListProvidersByScene(c, includeDisabled, scene)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -50,6 +53,7 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 	var payload struct {
 		Enabled    *bool  `json:"enabled"`
 		ConfigJSON string `json:"config_json"`
+		Scene      string `json:"scene"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -60,6 +64,23 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 		enabled = *payload.Enabled
 	}
 	trimmedKey := strings.TrimSpace(key)
+	trimmedScene := strings.TrimSpace(payload.Scene)
+	if trimmedScene != "" {
+		if h.paymentSvc == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
+			return
+		}
+		if payload.Enabled == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+			return
+		}
+		if err := h.paymentSvc.UpdateProviderSceneEnabled(c, trimmedKey, trimmedScene, enabled); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	}
 	if strings.Contains(trimmedKey, ".") {
 		if h.pluginAdmin == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentMethodRepoMissing.Error()})
@@ -462,6 +483,10 @@ func (h *Handler) AdminPluginConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
+	if err := validatePluginConfigJSON(payload.ConfigJSON); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	if err := h.pluginAdmin.UpdateConfigInstance(c, category, pluginID, apppluginadmin.DefaultInstanceID, payload.ConfigJSON); err != nil {
 		writePluginHandlerError(c, err)
 		return
@@ -494,6 +519,10 @@ func (h *Handler) AdminPluginInstanceCreate(c *gin.Context) {
 		return
 	}
 	if strings.TrimSpace(payload.ConfigJSON) != "" {
+		if err := validatePluginConfigJSON(payload.ConfigJSON); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		if err := h.pluginAdmin.UpdateConfigInstance(c, category, pluginID, inst.InstanceID, payload.ConfigJSON); err != nil {
 			_ = h.pluginAdmin.DeleteInstance(c, category, pluginID, inst.InstanceID)
 			writePluginHandlerError(c, err)
@@ -607,6 +636,10 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
+	if err := validatePluginConfigJSON(payload.ConfigJSON); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
 	if err := h.pluginAdmin.UpdateConfigInstance(c, category, pluginID, instanceID, payload.ConfigJSON); err != nil {
 		writePluginHandlerError(c, err)
 		return
@@ -633,6 +666,20 @@ func writePluginHandlerError(c *gin.Context, err error) {
 		return
 	}
 	c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+}
+
+func validatePluginConfigJSON(raw string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	if isDoubleEncodedContainerJSON(trimmed) {
+		return fmt.Errorf("config_json contains double-encoded json")
+	}
+	if !json.Valid([]byte(trimmed)) {
+		return fmt.Errorf("config_json expects valid json")
+	}
+	return nil
 }
 
 func (h *Handler) AdminPluginDeleteFiles(c *gin.Context) {

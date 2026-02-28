@@ -32,6 +32,9 @@
         <template v-else-if="column.key === 'admin_status'">
           <StatusTag :status="record.admin_status" />
         </template>
+        <template v-else-if="column.key === 'expire_at'">
+          <span>{{ formatLocalDateTime(record.expire_at) }}</span>
+        </template>
         <template v-else-if="column.key === 'action'">
           <a-dropdown>
             <a class="subtle">操作</a>
@@ -518,6 +521,13 @@ const normalize = (row) => {
     name: row.name ?? row.Name ?? "",
     automation_instance_id: row.automation_instance_id ?? row.AutomationInstanceID ?? ""
   };
+};
+
+const formatLocalDateTime = (value) => {
+  if (!value) return "-";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleString("zh-CN", { hour12: false });
 };
 
 const loadCreateUsers = async () => {

@@ -75,3 +75,16 @@ func TestSQLiteRepo_APIKeysAndPasswordReset(t *testing.T) {
 		t.Fatalf("delete expired: %v", err)
 	}
 }
+
+func TestSQLiteRepo_RejectsInvalidNormalizedSettingJSON(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+
+	err := repo.UpsertSetting(ctx, domain.Setting{
+		Key:       "auth_register_required_fields",
+		ValueJSON: "not-json-array",
+	})
+	if err == nil {
+		t.Fatalf("expected error for invalid normalized setting json")
+	}
+}

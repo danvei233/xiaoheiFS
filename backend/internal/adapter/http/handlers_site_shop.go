@@ -478,7 +478,8 @@ func (h *Handler) PaymentMethods(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	methods, err := h.paymentSvc.ListUserMethods(c, getUserID(c))
+	scene := strings.TrimSpace(c.Query("scene"))
+	methods, err := h.paymentSvc.ListUserMethodsByScene(c, getUserID(c), scene)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -493,10 +494,8 @@ func (h *Handler) OrderPay(c *gin.Context) {
 	}
 	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
 	var payload struct {
-		Method    string            `json:"method"`
-		ReturnURL string            `json:"return_url"`
-		NotifyURL string            `json:"notify_url"`
-		Extra     map[string]string `json:"extra"`
+		Method string            `json:"method"`
+		Extra  map[string]string `json:"extra"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -514,10 +513,12 @@ func (h *Handler) OrderPay(c *gin.Context) {
 	if strings.TrimSpace(payload.Extra["device"]) == "" {
 		payload.Extra["device"] = detectEZPayDeviceFromUA(c.GetHeader("User-Agent"))
 	}
+	method := strings.TrimSpace(payload.Method)
+	returnURL, notifyURL := h.defaultOrderPaymentCallbackURLs(c, id, method)
 	result, err := h.paymentSvc.SelectPayment(c, getUserID(c), id, appshared.PaymentSelectInput{
-		Method:    payload.Method,
-		ReturnURL: payload.ReturnURL,
-		NotifyURL: payload.NotifyURL,
+		Method:    method,
+		ReturnURL: returnURL,
+		NotifyURL: notifyURL,
 		Extra:     payload.Extra,
 	})
 	if err != nil {

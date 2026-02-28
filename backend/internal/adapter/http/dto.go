@@ -184,11 +184,13 @@ type OrderPaymentDTO struct {
 }
 
 type PaymentProviderDTO struct {
-	Key        string `json:"key"`
-	Name       string `json:"name"`
-	Enabled    bool   `json:"enabled"`
-	SchemaJSON string `json:"schema_json"`
-	ConfigJSON string `json:"config_json"`
+	Key           string `json:"key"`
+	Name          string `json:"name"`
+	Enabled       bool   `json:"enabled"`
+	OrderEnabled  bool   `json:"order_enabled"`
+	WalletEnabled bool   `json:"wallet_enabled"`
+	SchemaJSON    string `json:"schema_json"`
+	ConfigJSON    string `json:"config_json"`
 }
 
 type PaymentMethodDTO struct {
@@ -821,11 +823,13 @@ func toOrderPaymentDTO(payment domain.OrderPayment) OrderPaymentDTO {
 
 func toPaymentProviderDTO(info appshared.PaymentProviderInfo) PaymentProviderDTO {
 	return PaymentProviderDTO{
-		Key:        info.Key,
-		Name:       info.Name,
-		Enabled:    info.Enabled,
-		SchemaJSON: info.SchemaJSON,
-		ConfigJSON: info.ConfigJSON,
+		Key:           info.Key,
+		Name:          info.Name,
+		Enabled:       info.Enabled,
+		OrderEnabled:  info.OrderEnabled,
+		WalletEnabled: info.WalletEnabled,
+		SchemaJSON:    info.SchemaJSON,
+		ConfigJSON:    info.ConfigJSON,
 	}
 }
 
@@ -1067,7 +1071,7 @@ func toAPIKeyDTO(key domain.APIKey) APIKeyDTO {
 func toSettingDTO(setting domain.Setting) SettingDTO {
 	return SettingDTO{
 		Key:       setting.Key,
-		Value:     setting.ValueJSON,
+		Value:     normalizeSettingValue(setting.Key, setting.ValueJSON),
 		UpdatedAt: setting.UpdatedAt,
 	}
 }
@@ -1267,11 +1271,12 @@ func parseCartSpec(specJSON string) appshared.CartSpec {
 }
 
 func parseRawJSON(payload string) json.RawMessage {
-	if payload == "" {
+	trimmed := strings.TrimSpace(payload)
+	if trimmed == "" {
 		return nil
 	}
 	var raw json.RawMessage
-	if err := json.Unmarshal([]byte(payload), &raw); err == nil {
+	if err := json.Unmarshal([]byte(trimmed), &raw); err == nil {
 		return raw
 	}
 	encoded, _ := json.Marshal(payload)
@@ -1354,6 +1359,32 @@ func parseStringArray(payload string) []string {
 		return nil
 	}
 	return out
+}
+
+func normalizeSettingValue(key, value string) string {
+	return value
+}
+
+func isLikelyJSONSettingKey(key string) bool {
+	k := strings.ToLower(strings.TrimSpace(key))
+	if k == "" {
+		return false
+	}
+	if strings.HasSuffix(k, "_json") || strings.HasPrefix(k, "task.") {
+		return true
+	}
+	switch k {
+	case "site_nav_items",
+		"auth_register_required_fields",
+		"auth_register_verify_channels",
+		"auth_login_notify_channels",
+		"auth_password_reset_channels",
+		"realname_block_actions",
+		"robot_webhooks":
+		return true
+	default:
+		return false
+	}
 }
 
 func parseCouponProductRules(payload string) []domain.CouponProductRule {
