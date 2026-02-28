@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -81,15 +82,17 @@ func (h *Handler) RobotWebhook(c *gin.Context) {
 			return
 		}
 		secret := h.getSettingValueByKey(c, "robot_webhook_secret")
-		if secret != "" {
-			signature := c.GetHeader("X-Signature")
-			if signature == "" {
-				signature = c.GetHeader("X-Robot-Signature")
-			}
-			if signature == "" || !verifyHMAC(body, secret, signature) {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
-				return
-			}
+		if secret == "" {
+			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrRobotWebhookSecretRequired.Error()})
+			return
+		}
+		signature := c.GetHeader("X-Signature")
+		if signature == "" {
+			signature = c.GetHeader("X-Robot-Signature")
+		}
+		if signature == "" || !verifyHMAC(body, secret, signature) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
 		}
 	}
 	text := strings.TrimSpace(payload.Text)
@@ -651,6 +654,8 @@ func (h *Handler) AdminUserImpersonate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrUserDisabled.Error()})
 		return
 	}
+	operatorID := getUserID(c)
+	log.Printf("[AUDIT] impersonate: admin_id=%d target_user_id=%d target_username=%s ip=%s", operatorID, user.ID, user.Username, c.ClientIP())
 	signed, err := h.signAuthToken(user.ID, string(user.Role), 24*time.Hour, "access")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
@@ -692,6 +697,8 @@ func (h *Handler) AdminQQAvatar(c *gin.Context) {
 	if contentType == "" {
 		contentType = "image/jpeg"
 	}
+	const maxAvatarSize = 10 << 20 // 10MB
+	body := &io.LimitedReader{R: resp.Body, N: maxAvatarSize}
 	c.Header("Cache-Control", "public, max-age=86400")
-	c.DataFromReader(http.StatusOK, resp.ContentLength, contentType, resp.Body, nil)
+	c.DataFromReader(http.StatusOK, -1, contentType, body, nil)
 }

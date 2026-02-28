@@ -192,6 +192,7 @@ var (
 	ErrReportError                                        = errors.New("report error")
 	ErrRequestFailed                                      = errors.New("request failed")
 	ErrRobotWebhookDisabled                               = errors.New("robot webhook disabled")
+	ErrRobotWebhookSecretRequired                         = errors.New("robot webhook secret not configured, please set it in admin settings")
 	ErrSaveFailed                                         = errors.New("save failed")
 	ErrScheduledTasksDisabled                             = errors.New("scheduled tasks disabled")
 	ErrSeed                                               = errors.New("seed: ")
