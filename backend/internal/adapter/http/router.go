@@ -13,8 +13,18 @@ type Server struct {
 	Engine *gin.Engine
 }
 
+func securityHeadersMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("Referrer-Policy", "strict-origin-when-cross-origin")
+		c.Next()
+	}
+}
+
 func NewServer(handler *Handler, middleware *Middleware) *Server {
 	r := gin.Default()
+	r.Use(securityHeadersMiddleware())
 	r.Use(corsMiddleware())
 	r.Static("/uploads", "./uploads")
 

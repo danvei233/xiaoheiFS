@@ -213,7 +213,7 @@ func (h *Handler) AdminUploadCreate(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrUploadDirError.Error()})
 		return
 	}
-	name := buildUploadName(file.Filename)
+	name := buildUploadName(detected)
 	localPath := filepath.Join("uploads", dateDir, name)
 	if err := c.SaveUploadedFile(file, localPath); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSaveFailed.Error()})
@@ -262,8 +262,18 @@ func validateCMSPageKey(page string) error {
 	}
 }
 
-func buildUploadName(original string) string {
-	ext := filepath.Ext(original)
+var mimeToExt = map[string]string{
+	"image/png":  ".png",
+	"image/jpeg": ".jpg",
+	"image/gif":  ".gif",
+	"image/webp": ".webp",
+}
+
+func buildUploadName(detectedMime string) string {
+	ext := mimeToExt[detectedMime]
+	if ext == "" {
+		ext = ".bin"
+	}
 	buf := make([]byte, 6)
 	_, _ = rand.Read(buf)
 	random := fmt.Sprintf("%x", buf)
@@ -466,6 +476,8 @@ func mustJSON(v any) string {
 	return string(b)
 }
 
+const maxPageLimit = 500
+
 func paging(c *gin.Context) (int, int) {
 	limit := 20
 	offset := 0
@@ -494,6 +506,15 @@ func paging(c *gin.Context) (int, int) {
 		if v, err := strconv.Atoi(p); err == nil {
 			limit = v
 		}
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > maxPageLimit {
+		limit = maxPageLimit
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	if page > 0 && limit > 0 {
 		offset = (page - 1) * limit
