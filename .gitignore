@@ -50,6 +50,7 @@ config.local.yaml
 *.swp
 *.swo
 *~
+.trae/
 
 # OS
 .DS_Store
@@ -108,3 +109,5 @@ app/xiaoheifs_userapp/assets/nul
 .env.*
 /.codex/
 /.specify/
+
+/specs/
