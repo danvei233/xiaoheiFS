@@ -119,7 +119,17 @@ func (h *Handler) packageFeatureAllowed(c *gin.Context, inst domain.VPSInstance,
 			allowed = *goodsTypePolicy.RefundEnabled
 		}
 	}
-	if auto := h.resolveVPSAutomationCapability(c, inst); auto != nil {
+	if !allowed {
+		return false
+	}
+	auto := h.resolveVPSAutomationCapability(c, inst)
+	if feature == "resize" || feature == "refund" {
+		// Strict AND semantics for resize/refund:
+		// 1) goods-type/global switch must allow (checked above)
+		// 2) plugin capability features must explicitly contain the feature
+		return featureAllowedByCapability(auto, feature, false)
+	}
+	if auto != nil {
 		allowed = featureAllowedByCapability(auto, feature, allowed)
 	}
 	return allowed

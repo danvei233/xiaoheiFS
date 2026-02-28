@@ -357,8 +357,8 @@ func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSIn
 		resizeAllowed = *policy.ResizeEnabled
 	}
 	if resizeAllowed {
-		if strings.TrimSpace(reasons["resize"]) == "" {
-			featureSet["resize"] = struct{}{}
+		if _, ok := featureSet["resize"]; !ok && strings.TrimSpace(reasons["resize"]) == "" {
+			reasons["resize"] = "插件未声明支持升降配"
 		}
 	} else {
 		delete(featureSet, "resize")
@@ -379,8 +379,8 @@ func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSIn
 		refundAllowed = *policy.RefundEnabled
 	}
 	if refundAllowed {
-		if strings.TrimSpace(reasons["refund"]) == "" {
-			featureSet["refund"] = struct{}{}
+		if _, ok := featureSet["refund"]; !ok && strings.TrimSpace(reasons["refund"]) == "" {
+			reasons["refund"] = "插件未声明支持退款"
 		}
 	} else {
 		delete(featureSet, "refund")
