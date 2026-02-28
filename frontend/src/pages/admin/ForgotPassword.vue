@@ -28,29 +28,22 @@
 import { reactive, ref } from "vue";
 import { forgotPassword } from "@/services/user";
 import { message } from "ant-design-vue";
-import { useRouter, useRoute } from "vue-router";
+import { useRouter } from "vue-router";
+import { buildAdminUrl } from "@/services/adminPath";
 
 const router = useRouter();
-const route = useRoute();
 const loading = ref(false);
 
 const form = reactive({
   email: ""
 });
 
-// 获取当前管理端路径
-const getCurrentAdminPath = () => {
-  const pathSegments = route.path.split("/").filter(Boolean);
-  return pathSegments[0] || "admin";
-};
-
 const handleSubmit = async () => {
   loading.value = true;
   try {
     await forgotPassword(form.email);
     message.success("重置邮件已发送，请查收邮箱");
-    const adminPath = getCurrentAdminPath();
-    router.push(`/${adminPath}/login`);
+    router.push(buildAdminUrl("login"));
   } catch (e) {
     message.error(e.response?.data?.error || "发送失败，请检查邮箱是否正确");
   } finally {
@@ -59,8 +52,7 @@ const handleSubmit = async () => {
 };
 
 const goToLogin = () => {
-  const adminPath = getCurrentAdminPath();
-  router.push(`/${adminPath}/login`);
+  router.push(buildAdminUrl("login"));
 };
 </script>
 

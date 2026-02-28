@@ -80,8 +80,7 @@ const onSubmit = async () => {
 };
 
 const goToForgotPassword = () => {
-  const adminPath = getCurrentAdminPath();
-  router.push(`/${adminPath}/forgot-password`);
+  router.push(buildAdminUrl("forgot-password"));
 };
 </script>
 

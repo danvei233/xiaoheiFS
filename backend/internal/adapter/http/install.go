@@ -59,12 +59,12 @@ func (h *Handler) ValidateAdminPathHandler(c *gin.Context) {
 		Path string `json:"path"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		respondError(c, domain.ErrInvalidBody)
 		return
 	}
 	
 	if err := ValidateAdminPath(payload.Path); err != nil {
-		c.JSON(http.StatusOK, gin.H{"valid": false, "error": err.Error()})
+		respondError(c, err)
 		return
 	}
 	

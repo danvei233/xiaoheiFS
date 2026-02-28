@@ -2,7 +2,6 @@ package http
 
 import (
 	"crypto/rand"
-	"encoding/base64"
 	"regexp"
 	"strings"
 	"xiaoheiplay/internal/domain"
@@ -113,21 +112,9 @@ func GenerateRandomAdminPath() string {
 	
 	b := make([]byte, length)
 	if _, err := rand.Read(b); err != nil {
-		// 降级方案：使用base64编码
-		fallback := make([]byte, 9)
-		rand.Read(fallback)
-		encoded := base64.RawURLEncoding.EncodeToString(fallback)
-		// 只保留字母和数字
-		result := ""
-		for _, c := range encoded {
-			if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
-				result += string(c)
-			}
-		}
-		if len(result) >= length {
-			return result[:length]
-		}
-		return result + "admin"
+		// crypto/rand 不可用时，返回固定的安全路径
+		// 这种情况极少发生，通常表示系统严重问题
+		return "admin" + "SecurePath"
 	}
 	
 	result := make([]byte, length)
@@ -144,21 +131,16 @@ func GetAdminPathFromSettings(settingsSvc SettingsService) string {
 		return ""
 	}
 	
-	settings, err := settingsSvc.List(nil)
+	setting, err := settingsSvc.Get(nil, "admin_path")
 	if err != nil {
 		return ""
 	}
 	
-	for _, s := range settings {
-		if s.Key == "admin_path" {
-			path := strings.TrimSpace(s.ValueJSON)
-			// 移除引号（如果是JSON字符串）
-			path = strings.Trim(path, `"`)
-			if ValidateAdminPath(path) == nil {
-				return path
-			}
-			return ""
-		}
+	path := strings.TrimSpace(setting.ValueJSON)
+	// 移除引号（如果是JSON字符串）
+	path = strings.Trim(path, `"`)
+	if ValidateAdminPath(path) == nil {
+		return path
 	}
 	
 	return ""
