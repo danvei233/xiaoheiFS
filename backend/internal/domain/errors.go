@@ -234,4 +234,5 @@ var (
 	ErrAdminPathInvalid                                   = errors.New("admin path invalid")
 	ErrAdminPathReserved                                  = errors.New("admin path reserved")
 	ErrAdminPathRequired                                  = errors.New("admin path required")
+	ErrAdminPathMismatch                                  = errors.New("admin path mismatch")
 )

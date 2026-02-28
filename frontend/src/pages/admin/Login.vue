@@ -59,14 +59,18 @@ const getCurrentAdminPath = () => {
 
 const onSubmit = async () => {
   try {
-    const token = await admin.login(form);
+    // 获取当前管理端路径并传递给登录接口
+    const adminPath = getCurrentAdminPath();
+    const token = await admin.login({
+      ...form,
+      admin_path: adminPath
+    });
     if (!token) {
       message.error("登录失败");
       return;
     }
     
     // 使用当前的管理端路径构建跳转URL
-    const adminPath = getCurrentAdminPath();
     const redirectPath = String(route.query.redirect || `/${adminPath}/console`);
     router.replace(redirectPath);
   } catch (error) {
