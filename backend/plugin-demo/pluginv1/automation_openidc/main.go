@@ -33,6 +33,7 @@ func initLogger() {
 type config struct {
 	BaseURL    string `json:"base_url"`
 	APIKey     string `json:"api_key"`
+	HsName     string `json:"hs_name"`
 	TimeoutSec int    `json:"timeout_sec"`
 	Retry      int    `json:"retry"`
 	DryRun     bool   `json:"dry_run"`
@@ -152,6 +153,7 @@ func (s *coreServer) GetConfigSchema(_ context.Context, _ *pluginv1.Empty) (*plu
   "properties": {
     "base_url": { "type": "string", "title": "Base URL", "description": "OpenIDCS-Client 服务地址，例如 http://192.168.1.100:1880" },
     "api_key": { "type": "string", "title": "API Key", "format": "password", "description": "OpenIDCS-Client 的 Bearer Token" },
+    "hs_name": { "type": "string", "title": "默认主机名（hs_name）", "description": "指定该商品类型对应的 OpenIDCS 主机名，用于镜像同步。留空则使用所有主机。" },
     "timeout_sec": { "type": "integer", "title": "超时时间（秒）", "default": 15, "minimum": 1, "maximum": 60 },
     "retry": { "type": "integer", "title": "重试次数", "default": 1, "minimum": 0, "maximum": 5 },
     "dry_run": { "type": "boolean", "title": "Dry Run（演练模式）", "default": false }
@@ -482,15 +484,20 @@ func (a *automationServer) ListPackages(ctx context.Context, req *pluginv1.ListP
 }
 
 // ListImages 镜像列表（映射 OpenIDCS OS 镜像接口）
-// line_id = fnv64(hs_name)，image_id = fnv64(hs_name + "/" + img.File)
+// 若 config.HsName 已配置则只查该主机，否则查 line_id 对应主机
+// line_id = fnv64(hs_name)，image_id = fnv64(hs_name + "/img/" + img.File)
 func (a *automationServer) ListImages(ctx context.Context, req *pluginv1.ListImagesRequest) (*pluginv1.ListImagesResponse, error) {
 	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	hsName, err := a.core.resolveLineWithFallback(ctx, req.GetLineId())
-	if err != nil {
-		return nil, err
+	// 优先使用 config 中配置的 hs_name，否则通过 line_id 反查
+	hsName := strings.TrimSpace(a.core.cfg.HsName)
+	if hsName == "" {
+		hsName, err = a.core.resolveLineWithFallback(ctx, req.GetLineId())
+		if err != nil {
+			return nil, err
+		}
 	}
 	var imageMap map[string][]OSImage
 	err = a.core.retry(func() error {
@@ -502,20 +509,26 @@ func (a *automationServer) ListImages(ctx context.Context, req *pluginv1.ListIma
 		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationImage, 0)
-	for category, images := range imageMap {
+	for _, images := range imageMap {
 		for _, img := range images {
 			name := img.Name
 			if name == "" {
 				name = img.File
 			}
-			// image_id = fnv64(hs_name + "/" + img.File)，缓存反查
+			// 根据名称判断镜像类型
+			imgType := "linux"
+			lowerName := strings.ToLower(name)
+			if strings.Contains(lowerName, "win") {
+				imgType = "windows"
+			}
+			// image_id = fnv64(hs_name + "/img/" + img.File)，缓存反查
 			imageKey := hsName + "/img/" + img.File
 			imageID := fnv64(imageKey)
 			a.core.ids.put(imageID, imageKey)
 			out = append(out, &pluginv1.AutomationImage{
 				Id:   imageID,
 				Name: name,
-				Type: category,
+				Type: imgType,
 			})
 		}
 	}

@@ -47,8 +47,9 @@
         <a-card class="card">
           <div class="page-header-actions" style="justify-content: flex-end; margin-bottom: 12px">
             <a-space>
+              <a-tag v-if="isOpenIDCPlugin" color="blue">OpenIDCS 插件：地区由同步生成，只读</a-tag>
               <a-button danger :disabled="!selectedRegionKeys.length" @click="bulkRemoveRegions">批量删除</a-button>
-              <a-button type="primary" @click="openRegion()">新增地区</a-button>
+              <a-button v-if="!isOpenIDCPlugin" type="primary" @click="openRegion()">新增地区</a-button>
             </a-space>
           </div>
           <a-table
@@ -64,7 +65,7 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
-                  <a-button size="small" @click="openRegion(record)">编辑</a-button>
+                  <a-button v-if="!isOpenIDCPlugin" size="small" @click="openRegion(record)">编辑</a-button>
                   <a-button size="small" danger @click="removeRegion(record)">删除</a-button>
                 </a-space>
               </template>
@@ -77,8 +78,9 @@
         <a-card class="card">
           <div class="page-header-actions" style="justify-content: flex-end; margin-bottom: 12px">
             <a-space>
-              <a-button danger :disabled="!selectedLineKeys.length" @click="bulkRemoveLines">批量删除</a-button>
-              <a-button type="primary" @click="openLine()">新增线路</a-button>
+              <a-tag v-if="isOpenIDCPlugin" color="blue">OpenIDCS 插件：线路由同步生成，只允许启用/禁用</a-tag>
+              <a-button v-if="!isOpenIDCPlugin" danger :disabled="!selectedLineKeys.length" @click="bulkRemoveLines">批量删除</a-button>
+              <a-button v-if="!isOpenIDCPlugin" type="primary" @click="openLine()">新增线路</a-button>
             </a-space>
           </div>
           <a-table
@@ -86,7 +88,7 @@
             :data-source="lines"
             row-key="id"
             :pagination="false"
-            :row-selection="lineSelection"
+            :row-selection="isOpenIDCPlugin ? undefined : lineSelection"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'region_id'">
@@ -103,8 +105,19 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
-                  <a-button size="small" @click="openLine(record)">编辑</a-button>
-                  <a-button size="small" danger @click="removeLine(record)">删除</a-button>
+                  <!-- openidc 插件：只允许启用/禁用 -->
+                  <template v-if="isOpenIDCPlugin">
+                    <a-button
+                      size="small"
+                      :type="record.active ? 'default' : 'primary'"
+                      @click="toggleLineActive(record)"
+                    >{{ record.active ? '禁用' : '启用' }}</a-button>
+                  </template>
+                  <!-- 普通插件：完整编辑 -->
+                  <template v-else>
+                    <a-button size="small" @click="openLine(record)">编辑</a-button>
+                    <a-button size="small" danger @click="removeLine(record)">删除</a-button>
+                  </template>
                 </a-space>
               </template>
             </template>
@@ -583,6 +596,15 @@ const goodsTypeOptions = computed(() =>
     })
     .map((gt) => ({ label: gt.name, value: gt.id }))
 );
+
+// 判断当前选中商品类型是否为 openidc 插件（地区/线路只读）
+const isOpenIDCPlugin = computed(() => {
+  if (!goodsTypeId.value) return false;
+  const gt = goodsTypes.value.find((item) => Number(item.id) === Number(goodsTypeId.value));
+  if (!gt) return false;
+  const pluginId = String(gt.automation_plugin_id || "").toLowerCase();
+  return pluginId === "openidc_default" || pluginId.includes("openidc");
+});
 
 const goodsTypeColumns = [
   { title: "ID", dataIndex: "id", key: "id" },
@@ -1419,6 +1441,14 @@ const submitLine = async () => {
   }
   message.success("已保存线路");
   lineOpen.value = false;
+  load();
+};
+
+// openidc 插件专用：切换线路启用/禁用状态
+const toggleLineActive = async (record) => {
+  const newActive = !record.active;
+  await updateLine(record.id, { active: newActive });
+  message.success(newActive ? "已启用" : "已禁用");
   load();
 };
 

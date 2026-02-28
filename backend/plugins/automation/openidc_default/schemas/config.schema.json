@@ -13,6 +13,11 @@
       "format": "password",
       "description": "OpenIDCS-Client 的 Bearer Token"
     },
+    "hs_name": {
+      "type": "string",
+      "title": "默认主机名（hs_name）",
+      "description": "指定该商品类型对应的 OpenIDCS 主机名，用于镜像同步。留空则使用所有主机。"
+    },
     "timeout_sec": {
       "type": "integer",
       "title": "超时时间（秒）",

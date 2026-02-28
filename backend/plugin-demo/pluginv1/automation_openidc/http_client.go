@@ -117,6 +117,17 @@ type OSImage struct {
 	Arch    string `json:"architecture"`
 }
 
+// HSConfig 主机配置（/api/client/os-images/{hsName} 返回的原始结构）
+type HSConfig struct {
+	HostName   string              `json:"host_name"`
+	ServerType string              `json:"server_type"`
+	FilterName string              `json:"filter_name"`
+	// images_maps: 显示名 → ISO 文件名（光驱镜像）
+	ImagesMaps map[string]string   `json:"images_maps"`
+	// system_maps: 系统名 → [vmdk文件, 版本号]（磁盘镜像）
+	SystemMaps map[string][]string `json:"system_maps"`
+}
+
 // NATRule NAT 端口转发规则
 type NATRule struct {
 	RuleIndex   int    `json:"rule_index"`
@@ -190,43 +201,38 @@ func (c *Client) ListServers(ctx context.Context) (map[string]ServerInfo, error)
 	return data, nil
 }
 
-// ListAreas 获取所有区域列表（来自 OpenIDCS server_area）
+// ListAreas 从主机列表中提取区域信息（去重）
+// OpenIDCS 没有独立的区域接口，区域信息来自主机的 server_area 字段
 func (c *Client) ListAreas(ctx context.Context) ([]AreaInfo, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/server/areas", nil)
+	servers, err := c.ListServers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var items []AreaInfo
-	if err := json.Unmarshal(resp.Data, &items); err != nil {
-		return nil, fmt.Errorf("decode areas: %w", err)
+	seen := map[string]bool{}
+	var areas []AreaInfo
+	for _, info := range servers {
+		area := strings.TrimSpace(info.ServerArea)
+		if area == "" || seen[area] {
+			continue
+		}
+		seen[area] = true
+		areas = append(areas, AreaInfo{
+			ID:    fnv64("area/" + area),
+			Name:  area,
+			State: 1,
+		})
 	}
-	return items, nil
+	return areas, nil
 }
 
-// ListPlans 获取指定主机的套餐列表（来自 OpenIDCS server_plan）
+// ListPlans OpenIDCS 不提供套餐接口，套餐由财务系统自行管理，返回空列表
 func (c *Client) ListPlans(ctx context.Context, hsName string) ([]PlanInfo, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/server/plans/"+hsName, nil)
-	if err != nil {
-		return nil, err
-	}
-	var items []PlanInfo
-	if err := json.Unmarshal(resp.Data, &items); err != nil {
-		return nil, fmt.Errorf("decode plans: %w", err)
-	}
-	return items, nil
+	return []PlanInfo{}, nil
 }
 
-// GetAvailablePorts 获取主机可分配端口列表
+// GetAvailablePorts OpenIDCS 不提供端口候选接口，返回空结构
 func (c *Client) GetAvailablePorts(ctx context.Context, hsName string) (AvailablePorts, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/server/ports/"+hsName, nil)
-	if err != nil {
-		return AvailablePorts{}, err
-	}
-	var data AvailablePorts
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return AvailablePorts{}, fmt.Errorf("decode available ports: %w", err)
-	}
-	return data, nil
+	return AvailablePorts{HostName: hsName}, nil
 }
 
 // ---- 虚拟机管理 ----
@@ -325,16 +331,36 @@ func (c *Client) GetRemoteAccess(ctx context.Context, hsName, vmUUID string) (Re
 
 // ListOSImages 获取主机 OS 镜像列表
 // 返回 map[os_category][]OSImage
+// API 实际返回 HSConfig 结构，其中 images_maps（ISO光驱镜像）和 system_maps（磁盘镜像）分别归入不同分类
 func (c *Client) ListOSImages(ctx context.Context, hsName string) (map[string][]OSImage, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, "/api/client/os-images/"+hsName, nil)
 	if err != nil {
 		return nil, err
 	}
-	var data map[string][]OSImage
-	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		return nil, fmt.Errorf("decode os images: %w", err)
+	var cfg HSConfig
+	if err := json.Unmarshal(resp.Data, &cfg); err != nil {
+		return nil, fmt.Errorf("decode os images config: %w", err)
 	}
-	return data, nil
+	result := make(map[string][]OSImage)
+	// images_maps: 显示名 → ISO 文件名（光驱/LiveCD 镜像）
+	for displayName, fileName := range cfg.ImagesMaps {
+		result["iso"] = append(result["iso"], OSImage{
+			Name: displayName,
+			File: fileName,
+		})
+	}
+	// system_maps: 系统名 → [vmdk文件, 版本号]（磁盘镜像）
+	for sysName, parts := range cfg.SystemMaps {
+		img := OSImage{Name: sysName}
+		if len(parts) > 0 {
+			img.File = parts[0]
+		}
+		if len(parts) > 1 {
+			img.Version = parts[1]
+		}
+		result["system"] = append(result["system"], img)
+	}
+	return result, nil
 }
 
 // ---- NAT 端口映射 ----
