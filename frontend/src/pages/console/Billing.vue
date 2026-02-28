@@ -71,9 +71,9 @@
       <div class="table-header">
         <h3 class="table-title">交易记录</h3>
         <a-space>
-          <a-select v-model:value="filterStatus" placeholder="状态" style="width: 100px" allow-clear @change="handleFilterChange">
+          <a-select v-model:value="filterStatus" placeholder="状态" style="width: 110px" allow-clear @change="handleFilterChange">
             <a-select-option value="">全部</a-select-option>
-            <a-select-option value="pending">待审核</a-select-option>
+            <a-select-option value="pending_review">待处理</a-select-option>
             <a-select-option value="approved">已通过</a-select-option>
             <a-select-option value="rejected">已拒绝</a-select-option>
           </a-select>
@@ -120,9 +120,9 @@
 
           <!-- Status -->
           <template v-else-if="column.key === 'status'">
-            <a-tag v-if="record.status === 'pending'" color="processing">
+            <a-tag v-if="record.status === 'pending' || record.status === 'pending_review'" color="processing">
               <ClockCircleOutlined />
-              待审核
+              {{ isPendingPayRecharge(record) ? "待支付" : "待审核" }}
             </a-tag>
             <a-tag v-else-if="record.status === 'approved'" color="success">
               <CheckCircleFilled />
@@ -150,6 +150,15 @@
               <span>{{ formatTime(record.created_at) }}</span>
             </div>
           </template>
+          <template v-else-if="column.key === 'actions'">
+            <a-space v-if="isCancelableWalletOrder(record)">
+              <a-button v-if="isPendingPayRecharge(record)" type="link" size="small" @click="continuePay(record)">继续支付</a-button>
+              <a-popconfirm :title="cancelConfirmText(record)" @confirm="cancelPendingOrder(record)">
+                <a-button type="link" size="small" danger>取消</a-button>
+              </a-popconfirm>
+            </a-space>
+            <span v-else>-</span>
+          </template>
         </template>
       </a-table>
     </div>
@@ -170,6 +179,15 @@
         class="modal-alert"
       />
       <a-form ref="rechargeFormRef" :model="recharge" layout="vertical" class="modal-form">
+        <a-form-item label="支付方式" name="method" :rules="[{ required: true, message: '请选择支付方式' }]">
+          <a-select
+            v-model:value="recharge.method"
+            placeholder="请选择支付方式"
+            size="large"
+            style="width: 100%"
+            :options="rechargeMethodOptions"
+          />
+        </a-form-item>
         <a-form-item label="充值金额" name="amount" :rules="[{ required: true, message: '请输入充值金额' }]">
           <a-input-number
             v-model:value="recharge.amount"
@@ -259,7 +277,7 @@ import {
   CalendarOutlined,
   SwapOutlined
 } from "@ant-design/icons-vue";
-import { createWalletRecharge, createWalletWithdraw, getWallet, listWalletOrders } from "@/services/user";
+import { cancelWalletOrder, createWalletRecharge, createWalletWithdraw, getWallet, listPaymentProviders, listWalletOrders, payWalletOrder } from "@/services/user";
 import { normalizeWallet } from "@/utils/wallet";
 
 const loading = ref(false);
@@ -272,6 +290,7 @@ const rechargeModalVisible = ref(false);
 const withdrawModalVisible = ref(false);
 const rechargeFormRef = ref();
 const withdrawFormRef = ref();
+const rechargeMethods = ref([]);
 
 const filterStatus = ref("");
 const filterType = ref("");
@@ -282,15 +301,23 @@ const pagination = reactive({
   total: 0
 });
 
-const recharge = reactive({ amount: null, note: "" });
+const recharge = reactive({ method: "approval", amount: null, note: "" });
 const withdraw = reactive({ amount: null, note: "" });
+
+const rechargeMethodOptions = computed(() =>
+  rechargeMethods.value.map((item) => ({
+    label: item.name || item.key,
+    value: item.key
+  }))
+);
 
 const columns = [
   { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
   { title: '金额', dataIndex: 'amount', key: 'amount', width: 140 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 120 },
   { title: '备注', dataIndex: 'note', key: 'note', width: 240, ellipsis: true },
-  { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 180 }
+  { title: '时间', dataIndex: 'created_at', key: 'created_at', width: 180 },
+  { title: '操作', dataIndex: 'actions', key: 'actions', width: 180 }
 ];
 
 const monthStats = computed(() => {
@@ -306,7 +333,7 @@ const monthStats = computed(() => {
   return {
     recharge: monthOrders.filter(o => o.type === 'recharge' && o.status === 'approved').reduce((sum, o) => sum + Number(o.amount || 0), 0),
     withdraw: monthOrders.filter(o => o.type === 'withdraw' && o.status === 'approved').reduce((sum, o) => sum + Number(o.amount || 0), 0),
-    pending: monthOrders.filter(o => o.status === 'pending').length,
+    pending: monthOrders.filter(o => o.status === 'pending' || o.status === 'pending_review').length,
     total: monthOrders.length
   };
 });
@@ -343,6 +370,80 @@ const formatTime = (value) => {
   return dt.toLocaleString("zh-CN", { hour12: false });
 };
 
+const isPendingPayRecharge = (record) => {
+  const type = String(record?.type || "").trim().toLowerCase();
+  const status = String(record?.status || "").trim().toLowerCase();
+  if (type !== "recharge" || status !== "pending_review") {
+    return false;
+  }
+  const method = String(record?.meta?.payment_method || "").trim();
+  return method !== "" && method !== "approval" && method !== "balance";
+};
+
+const isCancelableWalletOrder = (record) => {
+  const type = String(record?.type || "").trim().toLowerCase();
+  if (type !== "recharge" && type !== "refund") {
+    return false;
+  }
+  return String(record?.status || "").trim().toLowerCase() === "pending_review";
+};
+
+const cancelConfirmText = (record) =>
+  String(record?.type || "").trim().toLowerCase() === "refund"
+    ? "确认取消该退款订单？"
+    : "确认取消该充值订单？";
+
+const resolvePayMethod = (record) => {
+  const method = String(record?.meta?.payment_method || "").trim();
+  if (method !== "" && method !== "approval" && method !== "balance") {
+    return method;
+  }
+  return "";
+};
+
+const isPendingRecharge = (record) =>
+  String(record?.type || "").trim().toLowerCase() === "recharge"
+  && String(record?.status || "").trim().toLowerCase() === "pending_review";
+
+const continuePay = async (record) => {
+  try {
+    if (!isPendingRecharge(record)) {
+      message.warning("该订单状态不支持继续支付");
+      return;
+    }
+    if (rechargeMethods.value.length === 0) {
+      await fetchRechargeMethods();
+    }
+    const method = resolvePayMethod(record);
+    if (!method) {
+      message.warning("该订单未绑定可继续支付的支付方式");
+      return;
+    }
+    const res = await payWalletOrder(record.id, {
+      method,
+    });
+    const payURL = res.data?.payment?.pay_url || res.data?.payment?.payURL || "";
+    if (payURL) {
+      window.open(payURL, "_blank");
+      message.success("已拉起支付");
+    } else {
+      message.warning("未获取到支付链接");
+    }
+  } catch (error) {
+    message.error(error.response?.data?.error || "拉起支付失败");
+  }
+};
+
+const cancelPendingOrder = async (record) => {
+  try {
+    await cancelWalletOrder(record.id, { reason: "user_cancel" });
+    message.success("已取消");
+    fetchAll();
+  } catch (error) {
+    message.error(error.response?.data?.error || "取消失败");
+  }
+};
+
 const fetchAll = async () => {
   loading.value = true;
   try {
@@ -356,12 +457,14 @@ const fetchAll = async () => {
       type: String(item.type || '').trim().toLowerCase()
     }));
     pagination.total = orders.value.length;
+    await fetchRechargeMethods();
   } finally {
     loading.value = false;
   }
 };
 
 const openRechargeModal = () => {
+  void fetchRechargeMethods();
   rechargeModalVisible.value = true;
 };
 
@@ -370,9 +473,33 @@ const openWithdrawModal = () => {
 };
 
 const resetRechargeForm = () => {
+  recharge.method = "approval";
   recharge.amount = null;
   recharge.note = "";
   rechargeFormRef.value?.clearValidate();
+};
+
+const fetchRechargeMethods = async () => {
+  try {
+    const res = await listPaymentProviders({ scene: "wallet" });
+    const methods = (res.data?.items || [])
+      .filter((x) => {
+        const key = String(x?.key || "").trim();
+        if (!key) return false;
+        if (key === "balance") return false;
+        return x?.enabled !== false;
+      })
+      .map((x) => ({ key: x.key, name: x.name }));
+    if (!methods.find((m) => m.key === "approval")) {
+      methods.unshift({ key: "approval", name: "人工审核" });
+    }
+    rechargeMethods.value = methods;
+  } catch {
+    rechargeMethods.value = [{ key: "approval", name: "人工审核" }];
+  }
+  if (!rechargeMethods.value.find((m) => m.key === recharge.method)) {
+    recharge.method = rechargeMethods.value[0]?.key || "";
+  }
 };
 
 const resetWithdrawForm = () => {
@@ -390,11 +517,24 @@ const submitRecharge = async () => {
     message.warning("请填写有效的充值金额");
     return;
   }
+  if (!recharge.method) {
+    message.warning("请选择支付方式");
+    return;
+  }
 
   rechargeLoading.value = true;
   try {
-    await createWalletRecharge({ amount: recharge.amount, note: recharge.note });
+    const res = await createWalletRecharge({
+      amount: recharge.amount,
+      note: recharge.note,
+      meta: {},
+      method: recharge.method,
+    });
     message.success("充值订单已创建");
+    const payURL = res.data?.payment?.pay_url || res.data?.payment?.payURL || "";
+    if (payURL) {
+      window.open(payURL, "_blank");
+    }
     rechargeModalVisible.value = false;
     resetRechargeForm();
     fetchAll();

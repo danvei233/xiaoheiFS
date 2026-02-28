@@ -2,7 +2,7 @@
 
 ## 能力
 
-manifest 中 `capabilities.automation.features` 声明支持的模块（当前内置 lightboat 支持：catalog_sync / lifecycle / port_mapping / backup / snapshot / firewall）。
+manifest 中 `capabilities.automation.features` 声明支持的模块（当前内置 lightboat 默认支持完整实例能力：catalog_sync / lifecycle / panel_login / vnc / reinstall / reset_password / resize / refund / port_mapping / backup / snapshot / firewall）。
 
 ## 配置项（插件管理页 -> 配置）
 
@@ -17,4 +17,3 @@ manifest 中 `capabilities.automation.features` 声明支持的模块（当前�
 ## 多实例（多套轻舟）
 
 同一个 `plugin_id=lightboat` 可以创建多个 `instance_id`（例如 `qz_a`、`qz_b`），每个实例独立配置/启停。
-

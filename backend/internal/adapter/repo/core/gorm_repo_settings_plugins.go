@@ -292,7 +292,7 @@ func (r *GormRepo) upsertSMSTemplatesSetting(ctx context.Context, raw string) er
 	}
 	var items []smsTemplatePayload
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &items); err != nil {
-		return r.upsertLegacySettingOnly(ctx, settingKeySMSTemplates, raw)
+		return appshared.ErrInvalidInput
 	}
 	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("1 = 1").Delete(&smsTemplateRow{}).Error; err != nil {
@@ -340,7 +340,7 @@ func (r *GormRepo) upsertRobotWebhooksSetting(ctx context.Context, raw string) e
 	}
 	var items []webhookPayload
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &items); err != nil {
-		return r.upsertLegacySettingOnly(ctx, settingKeyRobotWebhooks, raw)
+		return appshared.ErrInvalidInput
 	}
 	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("1 = 1").Delete(&robotWebhookRow{}).Error; err != nil {
@@ -374,7 +374,7 @@ func (r *GormRepo) upsertPackageCapabilitiesSetting(ctx context.Context, raw str
 	}
 	var payload map[string]capabilityPolicy
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
-		return r.upsertLegacySettingOnly(ctx, settingKeyPackageCapabilities, raw)
+		return appshared.ErrInvalidInput
 	}
 	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("1 = 1").Delete(&packageCapabilityRow{}).Error; err != nil {
@@ -414,7 +414,7 @@ func (r *GormRepo) upsertPackageCapabilitiesSetting(ctx context.Context, raw str
 func (r *GormRepo) upsertListSetting(ctx context.Context, key string, raw string) error {
 	var values []string
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &values); err != nil {
-		return r.upsertLegacySettingOnly(ctx, key, raw)
+		return appshared.ErrInvalidInput
 	}
 	uniq := make(map[string]struct{}, len(values))
 	normalized := make([]string, 0, len(values))
@@ -462,7 +462,7 @@ func (r *GormRepo) upsertTaskSetting(ctx context.Context, taskKey string, raw st
 		DailyAt     *string `json:"daily_at"`
 	}
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
-		return r.upsertLegacySettingOnly(ctx, "task."+taskKey, raw)
+		return appshared.ErrInvalidInput
 	}
 	row := scheduledTaskConfigRow{TaskKey: taskKey}
 	if payload.Enabled != nil {

@@ -395,6 +395,7 @@ type WalletOrderRepository interface {
 	ListWalletOrders(ctx context.Context, userID int64, limit, offset int) ([]domain.WalletOrder, int, error)
 	ListAllWalletOrders(ctx context.Context, status string, limit, offset int) ([]domain.WalletOrder, int, error)
 	UpdateWalletOrderStatus(ctx context.Context, id int64, status domain.WalletOrderStatus, reviewedBy *int64, reason string) error
+	UpdateWalletOrderStatusIfCurrent(ctx context.Context, id int64, currentStatus, targetStatus domain.WalletOrderStatus, reviewedBy *int64, reason string) (bool, error)
 }
 
 type ProbeNodeRepository interface {

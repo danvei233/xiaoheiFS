@@ -40,7 +40,7 @@ func (p *grpcPaymentProvider) CreatePayment(ctx context.Context, req appshared.P
 	if !ok {
 		return appshared.PaymentCreateResult{}, appshared.ErrForbidden
 	}
-	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 	resp, err := client.CreatePayment(cctx, &pluginv1.CreatePaymentRpcRequest{
 		Method: p.method,

@@ -103,12 +103,17 @@ export const submitOrderPayment = (id: number | string, payload: PaymentRequest,
     headers: idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}
   });
 
-export const listPaymentProviders = () => http.get<ApiList<PaymentProvider>>("/api/v1/payments/providers");
+export const listPaymentProviders = (params?: { scene?: "order" | "wallet" }) =>
+  http.get<ApiList<PaymentProvider>>("/api/v1/payments/providers", { params });
 export const createOrderPayment = (id: number | string, payload: Record<string, unknown>) =>
   http.post<PaymentCreateResult>(`/api/v1/orders/${id}/pay`, payload);
 export const getWallet = () => http.get<WalletInfo>("/api/v1/wallet");
 export const createWalletRecharge = (payload: WalletOrderCreateRequest) =>
-  http.post<{ order?: Record<string, unknown> }>("/api/v1/wallet/recharge", payload);
+  http.post<{ order?: Record<string, unknown>; payment?: Record<string, unknown> }>("/api/v1/wallet/recharge", payload);
+export const payWalletOrder = (id: number | string, payload?: { method?: string; return_url?: string; notify_url?: string; extra?: Record<string, string> }) =>
+  http.post<{ payment?: Record<string, unknown> }>(`/api/v1/wallet/orders/${id}/pay`, payload || {});
+export const cancelWalletOrder = (id: number | string, payload?: { reason?: string }) =>
+  http.post<{ ok?: boolean; order?: Record<string, unknown> }>(`/api/v1/wallet/orders/${id}/cancel`, payload || {});
 export const createWalletWithdraw = (payload: WalletOrderCreateRequest) =>
   http.post<{ order?: Record<string, unknown> }>("/api/v1/wallet/withdraw", payload);
 export const listWalletOrders = (params?: Record<string, unknown>) =>

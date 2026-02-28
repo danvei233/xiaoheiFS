@@ -121,7 +121,7 @@
         </template>
         <template v-else-if="column.key === 'expire_at'">
           <div>
-            <span :class="{ expiring: isExpiring(record.expire_at) }">{{ record.expire_at }}</span>
+            <span :class="{ expiring: isExpiring(record.expire_at) }">{{ formatLocalDateTime(record.expire_at) }}</span>
             <div v-if="record.destroy_in_days !== undefined && record.destroy_in_days !== null" class="destroy-hint">
               Auto delete in {{ record.destroy_in_days }} days
             </div>
@@ -214,7 +214,7 @@
                   到期
                 </span>
                 <span class="vps-info-value" :class="{ expiring: isExpiring(item.expire_at) }">
-                  {{ item.expire_at }}
+                  {{ formatLocalDateTime(item.expire_at) }}
                 </span>
               </div>
               <div v-if="item.destroy_in_days !== undefined && item.destroy_in_days !== null" class="vps-info-row vps-destroy-row">
@@ -810,6 +810,13 @@ const isExpiring = (dateStr) => {
   if (Number.isNaN(expire)) return false;
   const diff = Math.ceil((expire - Date.now()) / (24 * 3600 * 1000));
   return diff <= 7 && diff > 0;
+};
+
+const formatLocalDateTime = (value) => {
+  if (!value) return "-";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return String(value);
+  return dt.toLocaleString("zh-CN", { hour12: false });
 };
 
 const emergencyRenewPolicy = computed(() => {

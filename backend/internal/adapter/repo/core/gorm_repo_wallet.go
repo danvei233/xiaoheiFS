@@ -277,3 +277,18 @@ func (r *GormRepo) UpdateWalletOrderStatus(ctx context.Context, id int64, status
 		"updated_at":    time.Now(),
 	}).Error
 }
+
+func (r *GormRepo) UpdateWalletOrderStatusIfCurrent(ctx context.Context, id int64, currentStatus, targetStatus domain.WalletOrderStatus, reviewedBy *int64, reason string) (bool, error) {
+	res := r.gdb.WithContext(ctx).Model(&walletOrderRow{}).
+		Where("id = ? AND status = ?", id, string(currentStatus)).
+		Updates(map[string]any{
+			"status":        string(targetStatus),
+			"reviewed_by":   reviewedBy,
+			"review_reason": reason,
+			"updated_at":    time.Now(),
+		})
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected > 0, nil
+}

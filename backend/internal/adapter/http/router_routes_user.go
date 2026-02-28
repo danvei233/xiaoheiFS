@@ -62,6 +62,8 @@ func (userRoutesRegistrar) Register(r *gin.Engine, handler *Handler, middleware 
 		user.POST("/wallet/recharge", handler.WalletRecharge)
 		user.POST("/wallet/withdraw", handler.WalletWithdraw)
 		user.GET("/wallet/orders", handler.WalletOrders)
+		user.POST("/wallet/orders/:id/pay", handler.WalletOrderPay)
+		user.POST("/wallet/orders/:id/cancel", handler.WalletOrderCancel)
 		user.GET("/vps", handler.VPSList)
 		user.GET("/vps/:id", handler.VPSDetail)
 		user.POST("/vps/:id/refresh", handler.VPSRefresh)

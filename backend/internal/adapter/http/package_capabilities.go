@@ -11,14 +11,15 @@ import (
 )
 
 const packageCapabilitiesSettingKey = "package_capabilities_json"
+const goodsTypeCapabilitiesSettingKey = "goods_type_capabilities_json"
 
 type packageCapabilityPolicy struct {
 	ResizeEnabled *bool `json:"resize_enabled,omitempty"`
 	RefundEnabled *bool `json:"refund_enabled,omitempty"`
 }
 
-func (h *Handler) loadAllPackageCapabilityPolicies(ctx context.Context) map[string]packageCapabilityPolicy {
-	setting, err := h.getSettingByContext(ctx, packageCapabilitiesSettingKey)
+func (h *Handler) loadAllCapabilityPolicies(ctx context.Context, key string) map[string]packageCapabilityPolicy {
+	setting, err := h.getSettingByContext(ctx, key)
 	if err != nil {
 		return map[string]packageCapabilityPolicy{}
 	}
@@ -33,6 +34,14 @@ func (h *Handler) loadAllPackageCapabilityPolicies(ctx context.Context) map[stri
 	return out
 }
 
+func (h *Handler) loadAllPackageCapabilityPolicies(ctx context.Context) map[string]packageCapabilityPolicy {
+	return h.loadAllCapabilityPolicies(ctx, packageCapabilitiesSettingKey)
+}
+
+func (h *Handler) loadAllGoodsTypeCapabilityPolicies(ctx context.Context) map[string]packageCapabilityPolicy {
+	return h.loadAllCapabilityPolicies(ctx, goodsTypeCapabilitiesSettingKey)
+}
+
 func (h *Handler) getPackageCapabilityPolicy(ctx context.Context, packageID int64) packageCapabilityPolicy {
 	if packageID <= 0 {
 		return packageCapabilityPolicy{}
@@ -45,12 +54,24 @@ func (h *Handler) getPackageCapabilityPolicy(ctx context.Context, packageID int6
 	return item
 }
 
-func (h *Handler) savePackageCapabilityPolicy(c *gin.Context, packageID int64, policy packageCapabilityPolicy) error {
-	if h.adminSvc == nil || packageID <= 0 {
+func (h *Handler) getGoodsTypeCapabilityPolicy(ctx context.Context, goodsTypeID int64) packageCapabilityPolicy {
+	if goodsTypeID <= 0 {
+		return packageCapabilityPolicy{}
+	}
+	all := h.loadAllGoodsTypeCapabilityPolicies(ctx)
+	item, ok := all[strconv.FormatInt(goodsTypeID, 10)]
+	if !ok {
+		return packageCapabilityPolicy{}
+	}
+	return item
+}
+
+func (h *Handler) saveCapabilityPolicy(c *gin.Context, settingKey string, itemID int64, policy packageCapabilityPolicy) error {
+	if h.adminSvc == nil || itemID <= 0 {
 		return domain.ErrNotSupported
 	}
-	all := h.loadAllPackageCapabilityPolicies(c)
-	key := strconv.FormatInt(packageID, 10)
+	all := h.loadAllCapabilityPolicies(c, settingKey)
+	key := strconv.FormatInt(itemID, 10)
 	if policy.ResizeEnabled == nil && policy.RefundEnabled == nil {
 		delete(all, key)
 	} else {
@@ -60,23 +81,55 @@ func (h *Handler) savePackageCapabilityPolicy(c *gin.Context, packageID int64, p
 	if err != nil {
 		return err
 	}
-	return h.adminSvc.UpdateSetting(c, getUserID(c), packageCapabilitiesSettingKey, string(raw))
+	return h.adminSvc.UpdateSetting(c, getUserID(c), settingKey, string(raw))
+}
+
+func (h *Handler) savePackageCapabilityPolicy(c *gin.Context, packageID int64, policy packageCapabilityPolicy) error {
+	return h.saveCapabilityPolicy(c, packageCapabilitiesSettingKey, packageID, policy)
+}
+
+func (h *Handler) saveGoodsTypeCapabilityPolicy(c *gin.Context, goodsTypeID int64, policy packageCapabilityPolicy) error {
+	return h.saveCapabilityPolicy(c, goodsTypeCapabilitiesSettingKey, goodsTypeID, policy)
+}
+
+func (h *Handler) capabilityPolicyGoodsTypeID(ctx context.Context, inst domain.VPSInstance) int64 {
+	if inst.GoodsTypeID > 0 {
+		return inst.GoodsTypeID
+	}
+	if h.catalogSvc == nil || inst.PackageID <= 0 {
+		return 0
+	}
+	pkg, err := h.catalogSvc.GetPackage(ctx, inst.PackageID)
+	if err != nil {
+		return 0
+	}
+	return pkg.GoodsTypeID
 }
 
 func (h *Handler) packageFeatureAllowed(c *gin.Context, inst domain.VPSInstance, feature string, fallback bool) bool {
 	allowed := fallback
-	policy := h.getPackageCapabilityPolicy(c, inst.PackageID)
+	goodsTypePolicy := h.getGoodsTypeCapabilityPolicy(c, h.capabilityPolicyGoodsTypeID(c, inst))
 	switch feature {
 	case "resize":
-		if policy.ResizeEnabled != nil {
-			allowed = *policy.ResizeEnabled
+		if goodsTypePolicy.ResizeEnabled != nil {
+			allowed = *goodsTypePolicy.ResizeEnabled
 		}
 	case "refund":
-		if policy.RefundEnabled != nil {
-			allowed = *policy.RefundEnabled
+		if goodsTypePolicy.RefundEnabled != nil {
+			allowed = *goodsTypePolicy.RefundEnabled
 		}
 	}
-	if auto := h.resolveVPSAutomationCapability(c, inst); auto != nil {
+	if !allowed {
+		return false
+	}
+	auto := h.resolveVPSAutomationCapability(c, inst)
+	if feature == "resize" || feature == "refund" {
+		// Strict AND semantics for resize/refund:
+		// 1) goods-type/global switch must allow (checked above)
+		// 2) plugin capability features must explicitly contain the feature
+		return featureAllowedByCapability(auto, feature, false)
+	}
+	if auto != nil {
 		allowed = featureAllowedByCapability(auto, feature, allowed)
 	}
 	return allowed
@@ -110,6 +163,24 @@ func (h *Handler) packageCapabilityResolvedValue(c *gin.Context, packageID int64
 	case "refund":
 		if policy.RefundEnabled != nil {
 			return *policy.RefundEnabled, "package"
+		}
+	}
+	if v, ok := h.getSettingBool(c, globalKey); ok {
+		return v, "global"
+	}
+	return defaultVal, "default"
+}
+
+func (h *Handler) goodsTypeCapabilityResolvedValue(c *gin.Context, goodsTypeID int64, key string, globalKey string, defaultVal bool) (bool, string) {
+	policy := h.getGoodsTypeCapabilityPolicy(c, goodsTypeID)
+	switch key {
+	case "resize":
+		if policy.ResizeEnabled != nil {
+			return *policy.ResizeEnabled, "goods_type"
+		}
+	case "refund":
+		if policy.RefundEnabled != nil {
+			return *policy.RefundEnabled, "goods_type"
 		}
 	}
 	if v, ok := h.getSettingBool(c, globalKey); ok {

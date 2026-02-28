@@ -129,6 +129,51 @@ func (s *Service) ListAllOrders(ctx context.Context, status string, limit, offse
 	return s.orders.ListAllWalletOrders(ctx, status, limit, offset)
 }
 
+func (s *Service) GetUserOrder(ctx context.Context, userID, orderID int64) (domain.WalletOrder, error) {
+	if userID == 0 || orderID == 0 {
+		return domain.WalletOrder{}, appshared.ErrInvalidInput
+	}
+	order, err := s.orders.GetWalletOrder(ctx, orderID)
+	if err != nil {
+		return domain.WalletOrder{}, err
+	}
+	if order.UserID != userID {
+		return domain.WalletOrder{}, appshared.ErrForbidden
+	}
+	return order, nil
+}
+
+func (s *Service) CancelByUser(ctx context.Context, userID, orderID int64, reason string) (domain.WalletOrder, error) {
+	reason, err := trimAndValidateOptional(reason, maxLenReviewReason)
+	if err != nil {
+		return domain.WalletOrder{}, appshared.ErrInvalidInput
+	}
+	order, err := s.GetUserOrder(ctx, userID, orderID)
+	if err != nil {
+		return domain.WalletOrder{}, err
+	}
+	if order.Type != domain.WalletOrderRecharge && order.Type != domain.WalletOrderRefund {
+		return domain.WalletOrder{}, appshared.ErrInvalidInput
+	}
+	if order.Status != domain.WalletOrderPendingReview {
+		return domain.WalletOrder{}, appshared.ErrConflict
+	}
+	if reason == "" {
+		reason = "user_cancel"
+	}
+	updated, err := s.orders.UpdateWalletOrderStatusIfCurrent(ctx, order.ID, domain.WalletOrderPendingReview, domain.WalletOrderRejected, nil, reason)
+	if err != nil {
+		return domain.WalletOrder{}, err
+	}
+	if !updated {
+		return domain.WalletOrder{}, appshared.ErrConflict
+	}
+	order.Status = domain.WalletOrderRejected
+	order.ReviewReason = reason
+	order.ReviewedBy = nil
+	return order, nil
+}
+
 func (s *Service) RequestRefund(ctx context.Context, userID int64, vpsID int64, reason string) (domain.WalletOrder, *domain.Wallet, error) {
 	if userID == 0 || vpsID == 0 {
 		return domain.WalletOrder{}, nil, appshared.ErrInvalidInput

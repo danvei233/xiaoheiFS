@@ -140,7 +140,20 @@ func TestSQLiteRepo_PaymentsTicketsAndInstances(t *testing.T) {
 		t.Fatalf("update instance expire: %v", err)
 	}
 	inst.PanelURLCache = "http://panel"
+	inst.GoodsTypeID = 11
+	inst.Region = "shanxi"
+	inst.RegionID = 21
+	inst.LineID = 31
+	inst.PackageID = 41
 	if err := r.UpdateInstanceLocal(ctx, *inst); err != nil {
 		t.Fatalf("update instance local: %v", err)
+	}
+	got, err := r.GetInstance(ctx, inst.ID)
+	if err != nil {
+		t.Fatalf("get instance after update local: %v", err)
+	}
+	if got.GoodsTypeID != inst.GoodsTypeID || got.RegionID != inst.RegionID || got.LineID != inst.LineID || got.PackageID != inst.PackageID {
+		t.Fatalf("instance ids not persisted, got=%+v want goods_type_id=%d region_id=%d line_id=%d package_id=%d",
+			got, inst.GoodsTypeID, inst.RegionID, inst.LineID, inst.PackageID)
 	}
 }

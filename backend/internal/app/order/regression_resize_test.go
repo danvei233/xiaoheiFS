@@ -345,6 +345,19 @@ func (f *fakeWalletOrderRepo) UpdateWalletOrderStatus(ctx context.Context, id in
 	return nil
 }
 
+func (f *fakeWalletOrderRepo) UpdateWalletOrderStatusIfCurrent(ctx context.Context, id int64, currentStatus, targetStatus domain.WalletOrderStatus, reviewedBy *int64, reason string) (bool, error) {
+	order, ok := f.orders[id]
+	if !ok {
+		return false, appshared.ErrNotFound
+	}
+	if order.Status != currentStatus {
+		return false, nil
+	}
+	order.Status = targetStatus
+	f.orders[id] = order
+	return true, nil
+}
+
 func (f *fakeResizeTaskRepo) ListDueResizeTasks(ctx context.Context, limit int) ([]domain.ResizeTask, error) {
 	return nil, nil
 }

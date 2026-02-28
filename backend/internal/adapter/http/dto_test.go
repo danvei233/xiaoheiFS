@@ -349,3 +349,54 @@ func TestOrderItemDTO_ResizeSpecAmountsConvertedToYuan(t *testing.T) {
 		t.Fatalf("expected charge_amount 5.0, got %v", spec["charge_amount"])
 	}
 }
+
+func TestParseRawJSON_DoubleEncodedObject(t *testing.T) {
+	raw := parseRawJSON("\"{\\\"cpu\\\":4,\\\"memory_gb\\\":8}\"")
+	var decoded string
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal decoded raw string: %v", err)
+	}
+	if decoded != "{\"cpu\":4,\"memory_gb\":8}" {
+		t.Fatalf("expected untouched nested json string, got %q", decoded)
+	}
+}
+
+func TestParseRawJSON_PlainObject(t *testing.T) {
+	raw := parseRawJSON("{\"cpu\":2}")
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal plain raw: %v", err)
+	}
+	if decoded["cpu"] != float64(2) {
+		t.Fatalf("expected cpu=2, got %v", decoded["cpu"])
+	}
+}
+
+func TestParseRawJSON_EscapedObjectWithoutOuterQuotes(t *testing.T) {
+	raw := parseRawJSON("{\\\"cpu\\\":6,\\\"memory_gb\\\":12}")
+	var decoded string
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal escaped raw string: %v", err)
+	}
+	if decoded != "{\\\"cpu\\\":6,\\\"memory_gb\\\":12}" {
+		t.Fatalf("expected raw escaped payload unchanged, got %q", decoded)
+	}
+}
+
+func TestToSettingDTO_LeavesDoubleEncodedJSONValueUntouched(t *testing.T) {
+	dto := toSettingDTO(domain.Setting{
+		Key:       "site_nav_items",
+		ValueJSON: "\"[{\\\"label\\\":\\\"产品\\\",\\\"url\\\":\\\"/products\\\"}]\"",
+	})
+	if dto.Value != "\"[{\\\"label\\\":\\\"产品\\\",\\\"url\\\":\\\"/products\\\"}]\"" {
+		t.Fatalf("expected untouched double-encoded value, got=%q", dto.Value)
+	}
+}
+
+func TestToSettingDTO_LeavesPlainTextUntouched(t *testing.T) {
+	input := "hello-world"
+	dto := toSettingDTO(domain.Setting{Key: "site_name", ValueJSON: input})
+	if dto.Value != input {
+		t.Fatalf("plain text should remain unchanged: got=%q want=%q", dto.Value, input)
+	}
+}

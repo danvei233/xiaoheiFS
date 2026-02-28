@@ -852,7 +852,6 @@ const submitPayment = async () => {
       await store.fetchOrderDetail(id);
       return;
     }
-    const base = import.meta.env.VITE_API_BASE || window.location.origin;
     // Extract only schema fields for extra
     const schemaFieldKeys = schemaFields.value.map(f => f.key);
     /** @type {Object} */
@@ -864,8 +863,6 @@ const submitPayment = async () => {
     });
     const payload = {
       method: formModel.method,
-      return_url: `${window.location.origin}/console/orders/${id}`,
-      notify_url: `${base}/api/v1/payments/notify/${formModel.method}`,
       extra
     };
     const res = await createOrderPayment(id, payload);

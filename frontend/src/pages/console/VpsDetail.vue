@@ -383,7 +383,7 @@
                 <div class="summary-row">
                   <span>到期时间</span>
                   <span class="summary-value" :class="{ warning: isExpiringSoon }">
-                    {{ detail?.expire_at || '-' }}
+                    {{ formatLocalTime(detail?.expire_at) }}
                   </span>
                 </div>
               </div>
@@ -3732,5 +3732,86 @@ onBeforeUnmount(() => {
   .header-actions {
     flex-wrap: wrap;
   }
+}
+</style>
+
+<style>
+/* Ensure VPS detail follows console dark mode with global selectors */
+html.console-dark .vps-detail-page {
+  background: #0f1419 !important;
+  color: #f1f5f9 !important;
+}
+
+html.console-dark .vps-detail-page .detail-header,
+html.console-dark .vps-detail-page .ecs-tabs .ant-tabs-nav,
+html.console-dark .vps-detail-page .overview-card,
+html.console-dark .vps-detail-page .monitor-layout .monitor-panel {
+  background: #1e2433 !important;
+  border-color: #2d3748 !important;
+  box-shadow: none !important;
+}
+
+html.console-dark .vps-detail-page .header-breadcrumb,
+html.console-dark .vps-detail-page .meta-value,
+html.console-dark .vps-detail-page .info-list-item:hover,
+html.console-dark .vps-detail-page .info-list-icon,
+html.console-dark .vps-detail-page .monitor-bar,
+html.console-dark .vps-detail-page .gauge-mask {
+  background: #161b28 !important;
+}
+
+html.console-dark .vps-detail-page .header-breadcrumb,
+html.console-dark .vps-detail-page .ecs-tabs .ant-tabs-nav,
+html.console-dark .vps-detail-page .monitor-item,
+html.console-dark .vps-detail-page .account-row-item,
+html.console-dark .vps-detail-page .info-list-item,
+html.console-dark .vps-detail-page .overview-card .ant-card-head,
+html.console-dark .vps-detail-page .overview-card .ant-card-body {
+  border-color: #2d3748 !important;
+}
+
+html.console-dark .vps-detail-page .overview-card .ant-card-head,
+html.console-dark .vps-detail-page .monitor-layout .monitor-panel .ant-card-head,
+html.console-dark .vps-detail-page .security-card .ant-card-head {
+  background: linear-gradient(180deg, #1f2636 0%, #1b2232 100%) !important;
+}
+
+html.console-dark .vps-detail-page .title-text,
+html.console-dark .vps-detail-page .card-title,
+html.console-dark .vps-detail-page .info-value,
+html.console-dark .vps-detail-page .info-list-value,
+html.console-dark .vps-detail-page .monitor-value,
+html.console-dark .vps-detail-page .network-value-text,
+html.console-dark .vps-detail-page .summary-value,
+html.console-dark .vps-detail-page .account-row-value,
+html.console-dark .vps-detail-page .meta-value {
+  color: #f1f5f9 !important;
+}
+
+html.console-dark .vps-detail-page .meta-label,
+html.console-dark .vps-detail-page .meta-icon,
+html.console-dark .vps-detail-page .info-label,
+html.console-dark .vps-detail-page .info-list-label,
+html.console-dark .vps-detail-page .monitor-label,
+html.console-dark .vps-detail-page .monitor-icon,
+html.console-dark .vps-detail-page .monitor-spec,
+html.console-dark .vps-detail-page .network-label-text,
+html.console-dark .vps-detail-page .network-unit-text,
+html.console-dark .vps-detail-page .price-unit,
+html.console-dark .vps-detail-page .account-row-label,
+html.console-dark .vps-detail-page .summary-list,
+html.console-dark .vps-detail-page .gauge-sub,
+html.console-dark .vps-detail-page .port-candidates-label {
+  color: #94a3b8 !important;
+}
+
+html.console-dark .vps-detail-page .ecs-tabs .ant-tabs-tab {
+  color: #9fb0c7 !important;
+}
+
+html.console-dark .vps-detail-page .ecs-tabs .ant-tabs-tab:hover,
+html.console-dark .vps-detail-page .ecs-tabs .ant-tabs-tab-active,
+html.console-dark .vps-detail-page .ecs-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: #60a5fa !important;
 }
 </style>

@@ -174,6 +174,66 @@ func (h *Handler) AdminGoodsTypeAutomationOptions(c *gin.Context) {
 	c.JSON(http.StatusOK, options)
 }
 
+func (h *Handler) AdminGoodsTypeCapabilitiesGet(c *gin.Context) {
+	if h.goodsTypes == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
+		return
+	}
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if _, err := h.goodsTypes.Get(c, id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	resizeEnabled, resizeSource := h.goodsTypeCapabilityResolvedValue(c, id, "resize", "resize_enabled", true)
+	refundEnabled, refundSource := h.goodsTypeCapabilityResolvedValue(c, id, "refund", "refund_enabled", true)
+	raw := h.getGoodsTypeCapabilityPolicy(c, id)
+	c.JSON(http.StatusOK, gin.H{
+		"goods_type_id":             id,
+		"resize_enabled":            resizeEnabled,
+		"refund_enabled":            refundEnabled,
+		"resize_source":             resizeSource,
+		"refund_source":             refundSource,
+		"goods_type_resize_enabled": raw.ResizeEnabled,
+		"goods_type_refund_enabled": raw.RefundEnabled,
+	})
+}
+
+func (h *Handler) AdminGoodsTypeCapabilitiesUpdate(c *gin.Context) {
+	if h.goodsTypes == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
+		return
+	}
+	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	if id <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if _, err := h.goodsTypes.Get(c, id); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	var payload struct {
+		ResizeEnabled *bool `json:"resize_enabled"`
+		RefundEnabled *bool `json:"refund_enabled"`
+	}
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	if err := h.saveGoodsTypeCapabilityPolicy(c, id, packageCapabilityPolicy{
+		ResizeEnabled: payload.ResizeEnabled,
+		RefundEnabled: payload.RefundEnabled,
+	}); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 func (h *Handler) AdminUploadCreate(c *gin.Context) {
 	if h.uploadSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})

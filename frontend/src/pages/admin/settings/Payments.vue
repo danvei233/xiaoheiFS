@@ -16,11 +16,18 @@
           <template v-if="column.key === 'type'">
             <span>{{ record.type === "plugin" ? "插件" : "内置" }}</span>
           </template>
-          <template v-if="column.key === 'enabled'">
+          <template v-if="column.key === 'order_enabled'">
             <a-switch
-              :checked="record.enabled"
-              :loading="record.busy"
-              @change="(checked: boolean) => handleToggle(record, checked)"
+              :checked="record.order_enabled"
+              :loading="record.busy_order"
+              @change="(checked: boolean) => handleToggle(record, 'order', checked)"
+            />
+          </template>
+          <template v-if="column.key === 'wallet_enabled'">
+            <a-switch
+              :checked="record.wallet_enabled"
+              :loading="record.busy_wallet"
+              @change="(checked: boolean) => handleToggle(record, 'wallet', checked)"
             />
           </template>
         </template>
@@ -36,7 +43,7 @@ import {
   listAdminPaymentProviders,
   listAdminPlugins,
   listAdminPluginPaymentMethods,
-  updateAdminPaymentProvider, updateAdminPluginPaymentMethod
+  updateAdminPaymentProvider
 } from "@/services/admin";
 import type { PaymentProvider, PluginListItem, PluginPaymentMethodItem } from "@/services/types";
 
@@ -46,20 +53,28 @@ const rows = ref<RowItem[]>([]);
 type BuiltinRow = {
   type: "builtin";
   key: string;
+  provider_key: string;
   name: string;
   enabled: boolean;
-  busy?: boolean;
+  order_enabled: boolean;
+  wallet_enabled: boolean;
+  busy_order?: boolean;
+  busy_wallet?: boolean;
 };
 
 type PluginRow = {
   type: "plugin";
   key: string;
+  provider_key: string;
   name: string;
   plugin_id: string;
   instance_id: string;
   method: string;
   enabled: boolean;
-  busy?: boolean;
+  order_enabled: boolean;
+  wallet_enabled: boolean;
+  busy_order?: boolean;
+  busy_wallet?: boolean;
 };
 
 type RowItem = BuiltinRow | PluginRow;
@@ -68,7 +83,8 @@ const columns = [
   { title: "类型", key: "type", width: 90 },
   { title: "名称", dataIndex: "name", key: "name" },
   { title: "Key", dataIndex: "key", key: "key" },
-  { title: "状态", dataIndex: "enabled", key: "enabled", width: 100 }
+  { title: "订单支付", dataIndex: "order_enabled", key: "order_enabled", width: 110 },
+  { title: "钱包充值", dataIndex: "wallet_enabled", key: "wallet_enabled", width: 110 }
 ];
 
 const rowKey = (r: RowItem) => r.key;
@@ -106,11 +122,21 @@ const pluginMethodsFromManifest = (plugin: PluginListItem): string[] => {
 
 const buildRows = async () => {
   const [providersRes, pluginsRes] = await Promise.all([
-    listAdminPaymentProviders(),
+    listAdminPaymentProviders({ include_disabled: true, include_legacy: false }),
     listAdminPlugins()
   ]);
   const providers = (providersRes.data?.items || []) as PaymentProvider[];
   const plugins = (pluginsRes.data?.items || []) as PluginListItem[];
+  const providerStateMap = new Map<string, { enabled: boolean; order_enabled: boolean; wallet_enabled: boolean }>();
+  providers.forEach((p) => {
+    const key = String(p.key || "").trim();
+    if (!key) return;
+    providerStateMap.set(key, {
+      enabled: !!p.enabled,
+      order_enabled: p.order_enabled !== false,
+      wallet_enabled: p.wallet_enabled !== false
+    });
+  });
 
   const builtinRows: RowItem[] = providers
     .filter((p) => {
@@ -123,9 +149,13 @@ const buildRows = async () => {
     .map((p) => ({
       type: "builtin",
       key: String(p.key || ""),
+      provider_key: String(p.key || ""),
       name: String(p.name || p.key || ""),
       enabled: !!p.enabled,
-      busy: false
+      order_enabled: p.order_enabled !== false,
+      wallet_enabled: p.wallet_enabled !== false,
+      busy_order: false,
+      busy_wallet: false
     }));
 
   const enabledPaymentPlugins = plugins.filter((p) => {
@@ -152,12 +182,16 @@ const buildRows = async () => {
       pluginRows.push({
         type: "plugin",
         key: `${pluginID}.${instanceID}.${method}`,
+        provider_key: `${pluginID}.${method}`,
         name: `${String(plugin.name || pluginID)} / ${method}`,
         plugin_id: pluginID,
         instance_id: instanceID,
         method,
         enabled,
-        busy: false
+        order_enabled: providerStateMap.get(`${pluginID}.${method}`)?.order_enabled ?? true,
+        wallet_enabled: providerStateMap.get(`${pluginID}.${method}`)?.wallet_enabled ?? true,
+        busy_order: false,
+        busy_wallet: false
       });
     });
   });
@@ -174,26 +208,31 @@ const fetchData = async () => {
   }
 };
 
-const handleToggle = async (record: RowItem, checked: boolean) => {
-  record.busy = true;
+const handleToggle = async (record: RowItem, scene: "order" | "wallet", checked: boolean) => {
+  if (scene === "order") {
+    record.busy_order = true;
+  } else {
+    record.busy_wallet = true;
+  }
   try {
-    if (record.type === "plugin") {
-      await updateAdminPluginPaymentMethod({
-        category: "payment",
-        plugin_id: record.plugin_id,
-        instance_id: record.instance_id,
-        method: record.method,
-        enabled: checked
-      });
+    await updateAdminPaymentProvider(record.provider_key, {
+      scene,
+      enabled: checked
+    });
+    if (scene === "order") {
+      record.order_enabled = checked;
     } else {
-      await updateAdminPaymentProvider(record.key, { enabled: checked });
+      record.wallet_enabled = checked;
     }
-    record.enabled = checked;
     message.success("操作成功");
   } catch (error: any) {
     message.error(error.response?.data?.error || "操作失败");
   } finally {
-    record.busy = false;
+    if (scene === "order") {
+      record.busy_order = false;
+    } else {
+      record.busy_wallet = false;
+    }
   }
 };
 

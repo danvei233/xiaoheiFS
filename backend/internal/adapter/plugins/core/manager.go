@@ -340,7 +340,11 @@ func (m *Manager) EnableInstance(ctx context.Context, category, pluginID, instan
 	}
 	cfg, err := m.decryptConfig(inst.ConfigCipher)
 	if err != nil {
-		return err
+		if isPluginCipherAuthFailed(err) {
+			cfg = "{}"
+		} else {
+			return err
+		}
 	}
 	if strings.TrimSpace(cfg) == "" {
 		cfg = "{}"
@@ -382,7 +386,11 @@ func (m *Manager) GetConfigInstance(ctx context.Context, category, pluginID, ins
 	}
 	cfg, err := m.decryptConfig(inst.ConfigCipher)
 	if err != nil {
-		return "", err
+		if isPluginCipherAuthFailed(err) {
+			cfg = "{}"
+		} else {
+			return "", err
+		}
 	}
 	if strings.TrimSpace(cfg) == "" {
 		cfg = "{}"
@@ -405,12 +413,19 @@ func (m *Manager) UpdateConfigInstance(ctx context.Context, category, pluginID, 
 	if strings.TrimSpace(configJSON) == "" {
 		configJSON = "{}"
 	}
+	if err := validatePluginConfigJSONStrict(configJSON); err != nil {
+		return err
+	}
 
 	merged := configJSON
 	if !isAutomationCategory(category) {
 		oldCfg, err := m.decryptConfig(inst.ConfigCipher)
 		if err != nil {
-			return err
+			if isPluginCipherAuthFailed(err) {
+				oldCfg = "{}"
+			} else {
+				return err
+			}
 		}
 		if strings.TrimSpace(oldCfg) == "" {
 			oldCfg = "{}"
@@ -448,6 +463,37 @@ func (m *Manager) UpdateConfigInstance(ctx context.Context, category, pluginID, 
 				return fmt.Errorf("plugin reload failed")
 			}
 		}
+	}
+	return nil
+}
+
+func validatePluginConfigJSONStrict(raw string) error {
+	payload := strings.TrimSpace(raw)
+	if payload == "" {
+		return fmt.Errorf("invalid config json")
+	}
+	if !json.Valid([]byte(payload)) {
+		return fmt.Errorf("invalid config json")
+	}
+	var decoded any
+	if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+		return fmt.Errorf("invalid config json")
+	}
+	if nested, ok := decoded.(string); ok {
+		nested = strings.TrimSpace(nested)
+		if nested != "" && json.Valid([]byte(nested)) {
+			var nestedDecoded any
+			if err := json.Unmarshal([]byte(nested), &nestedDecoded); err == nil {
+				switch nestedDecoded.(type) {
+				case map[string]any, []any:
+					return fmt.Errorf("config json contains double-encoded json")
+				}
+			}
+		}
+		return fmt.Errorf("config json must be object")
+	}
+	if _, ok := decoded.(map[string]any); !ok {
+		return fmt.Errorf("config json must be object")
 	}
 	return nil
 }
@@ -1005,4 +1051,12 @@ func redirectPathForCategory(category string) string {
 		return "/admin/catalog"
 	}
 	return ""
+}
+
+func isPluginCipherAuthFailed(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "message authentication failed")
 }
