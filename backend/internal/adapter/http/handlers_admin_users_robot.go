@@ -147,11 +147,36 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 		return
 	}
 	var payload struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		AdminPath  string `json:"admin_path"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	
+	// 校验管理端路径
+	requestPath := strings.TrimSpace(payload.AdminPath)
+	if requestPath != "" {
+		// 验证路径格式
+		if err := ValidateAdminPath(requestPath); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	} else {
+		requestPath = "admin"
+	}
+	
+	// 获取配置的管理路径
+	configuredPath := GetAdminPathFromSettings(h.settingsSvc)
+	if configuredPath == "" {
+		configuredPath = "admin"
+	}
+	
+	// 验证路径是否匹配
+	if requestPath != configuredPath {
+		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminPathMismatch.Error()})
 		return
 	}
 	accountKey := normalizeAdminSecurityKey(payload.Username)

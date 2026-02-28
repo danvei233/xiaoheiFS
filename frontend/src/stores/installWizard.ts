@@ -21,6 +21,7 @@ interface InstallWizardState {
 
   adminUser: string;
   adminPass: string;
+  adminPath: string;
 }
 
 const STORAGE_KEY = "install_wizard_v1";
@@ -56,7 +57,8 @@ export const useInstallWizardStore = defineStore("installWizard", {
       siteUrl: saved.siteUrl || "",
 
       adminUser: saved.adminUser || "admin",
-      adminPass: ""
+      adminPass: "",
+      adminPath: saved.adminPath || ""
     };
   },
 
@@ -93,7 +95,8 @@ export const useInstallWizardStore = defineStore("installWizard", {
             mysql: this.mysql,
             siteName: this.siteName,
             siteUrl: this.siteUrl,
-            adminUser: this.adminUser
+            adminUser: this.adminUser,
+            adminPath: this.adminPath
           })
         );
       } catch {

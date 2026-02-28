@@ -4,7 +4,7 @@
       <div class="auth-shell">
         <div class="auth-banner">
           <div class="auth-logo" aria-hidden="true">
-            <SiteLogoMedia :size="22" />
+            <SiteLogoMedia :size="32" />
           </div>
           <h1>运营管理后台</h1>
           <p>面向运营与审核的管理中心，实时掌控订单与资源。</p>
@@ -24,7 +24,7 @@
               <a-input-password v-model:value="form.password" />
             </a-form-item>
             <div style="text-align: right; margin-bottom: 16px;">
-              <router-link to="/admin/forgot-password">忘记密码？</router-link>
+              <a href="#" @click.prevent="goToForgotPassword">忘记密码？</a>
             </div>
             <a-button type="primary" html-type="submit" block :loading="admin.loading">登录</a-button>
           </a-form>
@@ -35,11 +35,12 @@
 </template>
 
 <script setup>
-import { reactive } from "vue";
+import { reactive, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAdminAuthStore } from "@/stores/adminAuth";
 import { message, theme } from "ant-design-vue";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
+import { buildAdminUrl, checkAdminPath, fetchAdminPath } from "@/services/adminPath";
 
 const form = reactive({
   username: "",
@@ -50,22 +51,62 @@ const admin = useAdminAuthStore();
 const router = useRouter();
 const route = useRoute();
 
+// 获取当前管理端路径
+const getCurrentAdminPath = () => {
+  const pathSegments = route.path.split("/").filter(Boolean);
+  return pathSegments[0] || "admin";
+};
+
+// 验证当前路径是否正确
+onMounted(async () => {
+  const currentPath = getCurrentAdminPath();
+  try {
+    const result = await checkAdminPath(currentPath);
+    if (!result.isAdmin) {
+      // 当前路径不是管理路径，跳转到正确的路径
+      message.warning("管理路径已更改，正在跳转...");
+      const correctPath = await fetchAdminPath();
+      router.replace(`/${correctPath}/login`);
+    }
+  } catch (error) {
+    console.error("Failed to validate admin path:", error);
+  }
+});
+
 const onSubmit = async () => {
   try {
-    const token = await admin.login(form);
+    // 获取当前管理端路径并传递给登录接口
+    const adminPath = getCurrentAdminPath();
+    const token = await admin.login({
+      ...form,
+      admin_path: adminPath
+    });
     if (!token) {
       message.error("登录失败");
       return;
     }
-    router.replace(String(route.query.redirect || "/admin/console"));
+    
+    // 使用当前的管理端路径构建跳转URL
+    const redirectPath = String(route.query.redirect || `/${adminPath}/console`);
+    
+    // 使用 window.location 强制刷新页面，确保新的管理端路径配置生效
+    window.location.href = redirectPath;
   } catch (error) {
-    const msg =
-      error?.response?.data?.error ||
-      error?.response?.data?.message ||
-      error?.message ||
-      "登录失败";
-    message.error(msg);
+    const errorMsg = error?.response?.data?.error || error?.response?.data?.message || error?.message;
+    
+    // 处理路径验证相关错误
+    if (errorMsg?.includes("admin path")) {
+      message.error("管理路径验证失败，请检查访问地址");
+    } else if (error?.response?.status === 403) {
+      message.error("访问被拒绝，请确认管理路径正确");
+    } else {
+      message.error(errorMsg || "登录失败");
+    }
   }
+};
+
+const goToForgotPassword = () => {
+  router.push(buildAdminUrl("forgot-password"));
 };
 </script>
 

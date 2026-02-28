@@ -106,6 +106,28 @@
           <a-textarea v-model:value="form.maintenance_message" :rows="2" placeholder="系统维护中，请稍后再试" />
         </a-form-item>
 
+        <a-divider>安全设置</a-divider>
+
+        <a-form-item label="管理端路径">
+          <a-input-group compact>
+            <a-input 
+              v-model:value="form.admin_path" 
+              placeholder="admin" 
+              style="width: calc(100% - 32px)"
+            />
+            <a-tooltip title="随机生成">
+              <a-button @click="handleRefreshAdminPath" :loading="refreshing">
+                <template #icon>
+                  <ReloadOutlined />
+                </template>
+              </a-button>
+            </a-tooltip>
+          </a-input-group>
+          <div style="margin-top: 8px; font-size: 12px; color: rgba(0, 0, 0, 0.45);">
+            自定义管理后台访问路径，修改后将自动跳转到新路径（仅支持字母和数字）
+          </div>
+        </a-form-item>
+
         <a-form-item label="统计代码">
           <a-textarea v-model:value="form.analytics_code" :rows="4" placeholder="&lt;script&gt;...&lt;/script&gt;" />
         </a-form-item>
@@ -117,12 +139,20 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from "vue";
 import { message } from "ant-design-vue";
+import { ReloadOutlined } from "@ant-design/icons-vue";
+import { useRouter } from "vue-router";
 import { listSettings, updateSetting } from "@/services/admin";
 import { useSiteStore } from "@/stores/site";
+import { clearAdminPathCache, getCachedAdminPath } from "@/services/adminPath";
 import DefaultLogoMark from "@/components/brand/DefaultLogoMark.vue";
 
 const saving = ref(false);
+const refreshing = ref(false);
 const site = useSiteStore();
+const router = useRouter();
+
+// 记录原始的 admin_path 值，用于检测变化
+const originalAdminPath = ref("");
 
 const form = reactive({
   site_name: "",
@@ -140,8 +170,37 @@ const form = reactive({
   psbe_number: "",
   maintenance_mode: false,
   maintenance_message: "",
-  analytics_code: ""
+  analytics_code: "",
+  admin_path: ""
 });
+
+// 生成随机管理路径（与后端逻辑一致）
+const generateRandomAdminPath = (): string => {
+  const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const length = 12;
+  let result = "";
+  
+  // 使用 crypto.getRandomValues 生成随机数
+  const randomValues = new Uint8Array(length);
+  crypto.getRandomValues(randomValues);
+  
+  for (let i = 0; i < length; i++) {
+    result += charset[randomValues[i] % charset.length];
+  }
+  
+  return result;
+};
+
+const handleRefreshAdminPath = () => {
+  refreshing.value = true;
+  try {
+    const newPath = generateRandomAdminPath();
+    form.admin_path = newPath;
+    message.success("已生成新的管理路径");
+  } finally {
+    refreshing.value = false;
+  }
+};
 
 const fetchData = async () => {
   try {
@@ -156,6 +215,9 @@ const fetchData = async () => {
         }
       }
     });
+    
+    // 记录原始的 admin_path 值
+    originalAdminPath.value = form.admin_path || "admin";
   } catch (error) {
     console.error("Failed to fetch settings:", error);
   }
@@ -170,7 +232,35 @@ const handleSave = async () => {
     }));
     await updateSetting({ items });
     await site.fetchSettings();
-    message.success("保存成功");
+    
+    // 检测 admin_path 是否发生变化
+    const newAdminPath = form.admin_path || "admin";
+    const oldAdminPath = originalAdminPath.value || "admin";
+    
+    if (newAdminPath !== oldAdminPath) {
+      // 管理端路径发生变化
+      message.success("保存成功，管理路径已更改，正在跳转到新路径...", 2);
+      
+      // 清除旧的缓存
+      clearAdminPathCache();
+      
+      // 缓存新路径
+      try {
+        localStorage.setItem("admin_path_cache", newAdminPath);
+        localStorage.setItem("admin_path_validated", "true");
+      } catch (e) {
+        console.error("Failed to cache new admin path:", e);
+      }
+      
+      // 延迟跳转，让用户看到成功提示
+      setTimeout(() => {
+        // 跳转到新的管理路径
+        router.replace(`/${newAdminPath}/settings/site`);
+      }, 2000);
+    } else {
+      // 路径没有变化，正常提示
+      message.success("保存成功");
+    }
   } catch (error: any) {
     message.error(error.response?.data?.error || "保存失败");
   } finally {
