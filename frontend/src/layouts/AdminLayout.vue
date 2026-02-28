@@ -804,8 +804,13 @@ onUnmounted(() => {
 
 .sider :deep(.ant-menu-item:hover),
 .sider :deep(.ant-menu-submenu-title:hover) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  color: #fff !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.sider :deep(.ant-menu-item:hover *),
+.sider :deep(.ant-menu-submenu-title:hover *) {
+  color: #fff !important;
 }
 
 .sider :deep(.ant-menu-item-selected) {
@@ -815,10 +820,6 @@ onUnmounted(() => {
 
 .sider :deep(.ant-menu-item-selected .anticon) {
   color: #4096ff;
-}
-
-.sider :deep(.ant-menu-submenu-arrow) {
-  color: rgba(255, 255, 255, 0.45);
 }
 
 /* ========== Sider 悬浮滚动条样式 ========== */
