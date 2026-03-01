@@ -28,6 +28,7 @@ type Manifest struct {
 		Automation *struct {
 			Features           []string          `json:"features"`
 			NotSupportedReason map[string]string `json:"not_supported_reasons,omitempty"`
+			CatalogReadonly    bool              `json:"catalog_readonly,omitempty"`
 		} `json:"automation,omitempty"`
 	} `json:"capabilities"`
 }

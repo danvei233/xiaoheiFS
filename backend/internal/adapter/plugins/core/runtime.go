@@ -184,6 +184,9 @@ func validateManifestConsistency(jsonM Manifest, grpcM *pluginv1.Manifest) error
 				return fmt.Errorf("manifest mismatch: automation.not_supported_reasons")
 			}
 		}
+		if grpcM.Automation.GetCatalogReadonly() != jsonM.Capabilities.Automation.CatalogReadonly {
+			return fmt.Errorf("manifest mismatch: automation.catalog_readonly")
+		}
 	}
 
 	return nil

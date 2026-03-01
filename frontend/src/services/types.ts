@@ -19,7 +19,11 @@ export interface PluginManifest {
     sms?: { send?: boolean } | null;
     payment?: { methods?: string[] } | null;
     kyc?: { start?: boolean; query_result?: boolean } | null;
-    automation?: { features?: string[]; not_supported_reasons?: Record<string, string> } | null;
+    automation?: {
+      features?: string[];
+      not_supported_reasons?: Record<string, string>;
+      catalog_readonly?: boolean;
+    } | null;
   };
 }
 

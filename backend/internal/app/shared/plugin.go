@@ -24,6 +24,7 @@ type PluginKYCCapability struct {
 type PluginAutomationCapability struct {
 	Features            []string          `json:"features"`
 	NotSupportedReasons map[string]string `json:"not_supported_reasons,omitempty"`
+	CatalogReadonly     bool              `json:"catalog_readonly,omitempty"`
 }
 
 type PluginCapabilities struct {

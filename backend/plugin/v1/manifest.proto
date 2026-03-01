@@ -34,6 +34,9 @@ message AutomationCapability {
   // Optional reasons for why a feature is not supported.
   // Key is the numeric value of AutomationFeature.
   map<int32, string> not_supported_reasons = 2;
+
+  // Catalog data is plugin-managed and should be treated as read-only in admin UI.
+  bool catalog_readonly = 3;
 }
 
 message Manifest {

@@ -229,8 +229,10 @@ type AutomationCapability struct {
 	// Optional reasons for why a feature is not supported.
 	// Key is the numeric value of AutomationFeature.
 	NotSupportedReasons map[int32]string `protobuf:"bytes,2,rep,name=not_supported_reasons,json=notSupportedReasons,proto3" json:"not_supported_reasons,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Catalog data is plugin-managed and should be treated as read-only in admin UI.
+	CatalogReadonly bool `protobuf:"varint,3,opt,name=catalog_readonly,json=catalogReadonly,proto3" json:"catalog_readonly,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *AutomationCapability) Reset() {
@@ -275,6 +277,13 @@ func (x *AutomationCapability) GetNotSupportedReasons() map[int32]string {
 		return x.NotSupportedReasons
 	}
 	return nil
+}
+
+func (x *AutomationCapability) GetCatalogReadonly() bool {
+	if x != nil {
+		return x.CatalogReadonly
+	}
+	return false
 }
 
 type Manifest struct {
@@ -388,10 +397,11 @@ const file_plugin_v1_manifest_proto_rawDesc = "" +
 	"\amethods\x18\x01 \x03(\tR\amethods\"H\n" +
 	"\rKycCapability\x12\x14\n" +
 	"\x05start\x18\x01 \x01(\bR\x05start\x12!\n" +
-	"\fquery_result\x18\x02 \x01(\bR\vqueryResult\"\x86\x02\n" +
+	"\fquery_result\x18\x02 \x01(\bR\vqueryResult\"\xb1\x02\n" +
 	"\x14AutomationCapability\x128\n" +
 	"\bfeatures\x18\x01 \x03(\x0e2\x1c.plugin.v1.AutomationFeatureR\bfeatures\x12l\n" +
-	"\x15not_supported_reasons\x18\x02 \x03(\v28.plugin.v1.AutomationCapability.NotSupportedReasonsEntryR\x13notSupportedReasons\x1aF\n" +
+	"\x15not_supported_reasons\x18\x02 \x03(\v28.plugin.v1.AutomationCapability.NotSupportedReasonsEntryR\x13notSupportedReasons\x12)\n" +
+	"\x10catalog_readonly\x18\x03 \x01(\bR\x0fcatalogReadonly\x1aF\n" +
 	"\x18NotSupportedReasonsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\x05R\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x87\x03\n" +

@@ -47,9 +47,9 @@
         <a-card class="card">
           <div class="page-header-actions" style="justify-content: flex-end; margin-bottom: 12px">
             <a-space>
-              <a-tag v-if="isOpenIDCPlugin" color="blue">OpenIDCS 插件：地区由同步生成，只读</a-tag>
-              <a-button danger :disabled="!selectedRegionKeys.length" @click="bulkRemoveRegions">批量删除</a-button>
-              <a-button v-if="!isOpenIDCPlugin" type="primary" @click="openRegion()">新增地区</a-button>
+              <a-tag v-if="isCatalogReadonly" color="blue">当前插件声明目录只读：地区由插件同步，不允许手动增删改</a-tag>
+              <a-button v-if="!isCatalogReadonly" danger :disabled="!selectedRegionKeys.length" @click="bulkRemoveRegions">批量删除</a-button>
+              <a-button v-if="!isCatalogReadonly" type="primary" @click="openRegion()">新增地区</a-button>
             </a-space>
           </div>
           <a-table
@@ -57,7 +57,7 @@
             :data-source="regions"
             row-key="id"
             :pagination="false"
-            :row-selection="regionSelection"
+            :row-selection="isCatalogReadonly ? undefined : regionSelection"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'active'">
@@ -65,8 +65,8 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
-                  <a-button v-if="!isOpenIDCPlugin" size="small" @click="openRegion(record)">编辑</a-button>
-                  <a-button size="small" danger @click="removeRegion(record)">删除</a-button>
+                  <a-button v-if="!isCatalogReadonly" size="small" @click="openRegion(record)">编辑</a-button>
+                  <a-button v-if="!isCatalogReadonly" size="small" danger @click="removeRegion(record)">删除</a-button>
                 </a-space>
               </template>
             </template>
@@ -78,9 +78,9 @@
         <a-card class="card">
           <div class="page-header-actions" style="justify-content: flex-end; margin-bottom: 12px">
             <a-space>
-              <a-tag v-if="isOpenIDCPlugin" color="blue">OpenIDCS 插件：线路由同步生成，只允许启用/禁用</a-tag>
-              <a-button v-if="!isOpenIDCPlugin" danger :disabled="!selectedLineKeys.length" @click="bulkRemoveLines">批量删除</a-button>
-              <a-button v-if="!isOpenIDCPlugin" type="primary" @click="openLine()">新增线路</a-button>
+              <a-tag v-if="isCatalogReadonly" color="blue">当前插件声明目录只读：线路由插件同步，仅允许启用/禁用</a-tag>
+              <a-button v-if="!isCatalogReadonly" danger :disabled="!selectedLineKeys.length" @click="bulkRemoveLines">批量删除</a-button>
+              <a-button v-if="!isCatalogReadonly" type="primary" @click="openLine()">新增线路</a-button>
             </a-space>
           </div>
           <a-table
@@ -88,7 +88,7 @@
             :data-source="lines"
             row-key="id"
             :pagination="false"
-            :row-selection="isOpenIDCPlugin ? undefined : lineSelection"
+            :row-selection="isCatalogReadonly ? undefined : lineSelection"
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'region_id'">
@@ -105,15 +105,13 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
-                  <!-- openidc 插件：只允许启用/禁用 -->
-                  <template v-if="isOpenIDCPlugin">
+                  <template v-if="isCatalogReadonly">
                     <a-button
                       size="small"
                       :type="record.active ? 'default' : 'primary'"
                       @click="toggleLineActive(record)"
                     >{{ record.active ? '禁用' : '启用' }}</a-button>
                   </template>
-                  <!-- 普通插件：完整编辑 -->
                   <template v-else>
                     <a-button size="small" @click="openLine(record)">编辑</a-button>
                     <a-button size="small" danger @click="removeLine(record)">删除</a-button>
@@ -584,6 +582,7 @@ const systemImages = ref([]);
 const billingCycles = ref([]);
 
 const goodsTypes = ref<any[]>([]);
+const automationPlugins = ref<any[]>([]);
 const goodsTypeId = ref<any>(null);
 const goodsTypeOptions = computed(() =>
   (goodsTypes.value || [])
@@ -597,13 +596,27 @@ const goodsTypeOptions = computed(() =>
     .map((gt) => ({ label: gt.name, value: gt.id }))
 );
 
-// 判断当前选中商品类型是否为 openidc 插件（地区/线路只读）
-const isOpenIDCPlugin = computed(() => {
-  if (!goodsTypeId.value) return false;
-  const gt = goodsTypes.value.find((item) => Number(item.id) === Number(goodsTypeId.value));
-  if (!gt) return false;
-  const pluginId = String(gt.automation_plugin_id || "").toLowerCase();
-  return pluginId === "openidc_default" || pluginId.includes("openidc");
+const toAutomationRef = (pluginID: any, instanceID: any) => {
+  const plugin = String(pluginID || "").trim();
+  const instance = String(instanceID || "default").trim() || "default";
+  if (!plugin) return "";
+  return `${plugin}:${instance}`;
+};
+
+const selectedGoodsType = computed(() => {
+  if (!goodsTypeId.value) return null;
+  return goodsTypes.value.find((item) => Number(item.id) === Number(goodsTypeId.value)) || null;
+});
+
+const isCatalogReadonly = computed(() => {
+  const current = selectedGoodsType.value;
+  if (!current) return false;
+  const targetRef = toAutomationRef(current.automation_plugin_id, current.automation_instance_id);
+  if (!targetRef) return false;
+  const plugin = automationPlugins.value.find(
+    (item) => toAutomationRef(item?.plugin_id, item?.instance_id) === targetRef
+  );
+  return !!plugin?.manifest?.capabilities?.automation?.catalog_readonly;
 });
 
 const goodsTypeColumns = [
@@ -1096,19 +1109,22 @@ const loadAutomationInstances = async () => {
   automationLoading.value = true;
   try {
     const res = await listAdminPlugins();
-    const items = (res.data?.items || []).filter((item: any) => String(item.category || "") === "automation");
+    const items = (res.data?.items || []).filter((item: any) => String(item.category || "") === "automation")
+      .map((item: any) => ({
+        ...item,
+        plugin_id: String(item.plugin_id || "").trim(),
+        instance_id: String(item.instance_id || "default").trim() || "default"
+      }));
+    automationPlugins.value = items;
     automationOptions.value = items.map((item: any) => {
-      const pluginID = String(item.plugin_id || "");
-      const instanceID = String(item.instance_id || "default");
+      const pluginID = String(item.plugin_id || "").trim();
+      const instanceID = String(item.instance_id || "default").trim() || "default";
       const enabled = !!(item.enabled ?? item.Enabled);
       return {
-        value: `${pluginID}:${instanceID}`,
+        value: toAutomationRef(pluginID, instanceID),
         label: `${pluginID}/${instanceID}${enabled ? "（启用）" : "（未启用）"}`
       };
     });
-    if (!selectedAutomationRef.value && automationOptions.value.length > 0) {
-      selectedAutomationRef.value = automationOptions.value[0].value;
-    }
   } finally {
     automationLoading.value = false;
   }
@@ -1262,9 +1278,7 @@ const syncCurrentGoodsType = async () => {
 const openGoodsType = (record?: any) => {
   if (record) Object.assign(goodsTypeForm, record);
   else Object.assign(goodsTypeForm, { id: null, code: "", name: "", active: true, sort_order: 0, automation_plugin_id: "lightboat", automation_instance_id: "default" });
-  selectedAutomationRef.value = goodsTypeForm.automation_plugin_id && goodsTypeForm.automation_instance_id
-    ? `${goodsTypeForm.automation_plugin_id}:${goodsTypeForm.automation_instance_id}`
-    : "";
+  selectedAutomationRef.value = toAutomationRef(goodsTypeForm.automation_plugin_id, goodsTypeForm.automation_instance_id);
   loadAutomationInstances();
   loadAutomationConfigTemplate();
   goodsTypeOpen.value = true;
@@ -1444,7 +1458,7 @@ const submitLine = async () => {
   load();
 };
 
-// openidc 插件专用：切换线路启用/禁用状态
+// 目录只读插件：仅允许切换线路启用/禁用状态
 const toggleLineActive = async (record) => {
   const newActive = !record.active;
   await updateLine(record.id, { active: newActive });
@@ -1865,6 +1879,7 @@ const bulkRemoveCycles = () => {
 };
 
 onMounted(async () => {
+  await loadAutomationInstances();
   await loadGoodsTypeList();
   await load();
 });

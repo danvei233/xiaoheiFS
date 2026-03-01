@@ -141,6 +141,7 @@ func (s *coreServer) GetManifest(_ context.Context, _ *pluginv1.Empty) (*pluginv
 				pluginv1.AutomationFeature_AUTOMATION_FEATURE_BACKUP,
 			},
 			NotSupportedReasons: map[int32]string{},
+			CatalogReadonly:     true,
 		},
 	}, nil
 }
@@ -966,8 +967,8 @@ func (a *automationServer) GetMonitor(ctx context.Context, req *pluginv1.GetMoni
 		memPercent = float64(status.MemoryUsage) / float64(status.MemoryTotal) * 100
 	}
 	raw := map[string]any{
-		"CpuStats":    status.CPUUsage,
-		"MemoryStats": memPercent,
+		"CpuStats":     status.CPUUsage,
+		"MemoryStats":  memPercent,
 		"StorageStats": 0,
 		"NetworkStats": map[string]any{
 			"BytesSentPersec":     int64(status.NetworkTxRate * 1024 * 1024 / 8),

@@ -224,6 +224,7 @@ func mapKYCCapability(in *struct {
 func mapAutomationCapability(in *struct {
 	Features           []string          "json:\"features\""
 	NotSupportedReason map[string]string "json:\"not_supported_reasons,omitempty\""
+	CatalogReadonly    bool              "json:\"catalog_readonly,omitempty\""
 }) *appshared.PluginAutomationCapability {
 	if in == nil {
 		return nil
@@ -231,5 +232,6 @@ func mapAutomationCapability(in *struct {
 	return &appshared.PluginAutomationCapability{
 		Features:            in.Features,
 		NotSupportedReasons: in.NotSupportedReason,
+		CatalogReadonly:     in.CatalogReadonly,
 	}
 }
