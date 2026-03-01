@@ -1125,6 +1125,11 @@ const loadAutomationInstances = async () => {
         label: `${pluginID}/${instanceID}${enabled ? "（启用）" : "（未启用）"}`
       };
     });
+  } catch {
+    // best-effort: plugin list may fail due to permission or disabled plugins;
+    // catalog page should still load without it (catalog_readonly will default to false).
+    automationPlugins.value = [];
+    automationOptions.value = [];
   } finally {
     automationLoading.value = false;
   }
@@ -1879,7 +1884,8 @@ const bulkRemoveCycles = () => {
 };
 
 onMounted(async () => {
-  await loadAutomationInstances();
+  // loadAutomationInstances is best-effort: don't block catalog if plugin API fails
+  loadAutomationInstances();
   await loadGoodsTypeList();
   await load();
 });
