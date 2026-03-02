@@ -6,7 +6,7 @@ Thank you for contributing to xiaoheiFS! This document outlines the conventions 
 
 Before writing any code, you **MUST** read and understand the project constitution:
 
-- **Location**: `.specify/memory/constitution.md`
+- **Location**: `constitution.md`
 - **Why**: The constitution defines non-negotiable principles that govern all code in this project
 
 ## Quick Reference
@@ -242,10 +242,12 @@ backend/
 
 ## Getting Help
 
-- Review the constitution: `.specify/memory/constitution.md`
+- Review the constitution: `constitution.md`
 - Check existing code patterns in the codebase
 - Open an issue for questions
 
 ---
 
 By contributing to this project, you agree to follow the principles defined in the constitution.
+
+**Author**: 星云猫 nebulamao

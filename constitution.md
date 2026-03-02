@@ -202,4 +202,4 @@ Code MUST be as simple as the requirements allow. Avoid speculative generalizati
 
 For development-time guidance and workflow instructions, refer to `AGENTS.md` in the repository root.
 
-**Version**: 1.0.0 | **Ratified**: 2026-03-02 | **Last Amended**: 2026-03-02
+**Version**: 1.0.0 | **Ratified**: 2026-03-02 | **Last Amended**: 2026-03-02 | **Author**: 星云猫 nebulamao

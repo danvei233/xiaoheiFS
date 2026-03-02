@@ -55,3 +55,5 @@ Go 1.25.0 (backend), TypeScript + Vue 3 (frontend): Follow standard conventions
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
+
+**Author**: 星云猫 nebulamao
