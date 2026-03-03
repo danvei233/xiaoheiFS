@@ -79,8 +79,8 @@ func (h *Handler) AdminGoodsTypeUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
@@ -97,7 +97,7 @@ func (h *Handler) AdminGoodsTypeUpdate(c *gin.Context) {
 		return
 	}
 	gt := domain.GoodsType{
-		ID:                   id,
+		ID:                   uri.ID,
 		Code:                 strings.TrimSpace(payload.Code),
 		Name:                 strings.TrimSpace(payload.Name),
 		Active:               payload.Active,
@@ -118,12 +118,12 @@ func (h *Handler) AdminGoodsTypeDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.goodsTypes.Delete(c, id); err != nil {
+	if err := h.goodsTypes.Delete(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -135,13 +135,19 @@ func (h *Handler) AdminGoodsTypeSyncAutomation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	mode := c.Query("mode")
-	result, err := h.integration.SyncAutomationForGoodsType(c, id, mode)
+	var query struct {
+		Mode string `form:"mode" binding:"omitempty,oneof=merge replace"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	result, err := h.integration.SyncAutomationForGoodsType(c, uri.ID, query.Mode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -154,8 +160,8 @@ func (h *Handler) AdminGoodsTypeAutomationOptions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
@@ -166,7 +172,7 @@ func (h *Handler) AdminGoodsTypeAutomationOptions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	options, err := provider.ListAutomationCatalogOptions(c, id)
+	options, err := provider.ListAutomationCatalogOptions(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -179,20 +185,20 @@ func (h *Handler) AdminGoodsTypeCapabilitiesGet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if _, err := h.goodsTypes.Get(c, id); err != nil {
+	if _, err := h.goodsTypes.Get(c, uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
-	resizeEnabled, resizeSource := h.goodsTypeCapabilityResolvedValue(c, id, "resize", "resize_enabled", true)
-	refundEnabled, refundSource := h.goodsTypeCapabilityResolvedValue(c, id, "refund", "refund_enabled", true)
-	raw := h.getGoodsTypeCapabilityPolicy(c, id)
+	resizeEnabled, resizeSource := h.goodsTypeCapabilityResolvedValue(c, uri.ID, "resize", "resize_enabled", true)
+	refundEnabled, refundSource := h.goodsTypeCapabilityResolvedValue(c, uri.ID, "refund", "refund_enabled", true)
+	raw := h.getGoodsTypeCapabilityPolicy(c, uri.ID)
 	c.JSON(http.StatusOK, gin.H{
-		"goods_type_id":             id,
+		"goods_type_id":             uri.ID,
 		"resize_enabled":            resizeEnabled,
 		"refund_enabled":            refundEnabled,
 		"resize_source":             resizeSource,
@@ -207,12 +213,12 @@ func (h *Handler) AdminGoodsTypeCapabilitiesUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if _, err := h.goodsTypes.Get(c, id); err != nil {
+	if _, err := h.goodsTypes.Get(c, uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
@@ -224,7 +230,7 @@ func (h *Handler) AdminGoodsTypeCapabilitiesUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if err := h.saveGoodsTypeCapabilityPolicy(c, id, packageCapabilityPolicy{
+	if err := h.saveGoodsTypeCapabilityPolicy(c, uri.ID, packageCapabilityPolicy{
 		ResizeEnabled: payload.ResizeEnabled,
 		RefundEnabled: payload.RefundEnabled,
 	}); err != nil {
@@ -377,8 +383,14 @@ func (h *Handler) AdminPermissionDetail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	code := c.Param("code")
-	perm, err := h.permissionSvc.GetPermissionByCode(c, code)
+	var uri struct {
+		Code string `uri:"code" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	perm, err := h.permissionSvc.GetPermissionByCode(c, uri.Code)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPermissionNotFound.Error()})
 		return
@@ -391,7 +403,13 @@ func (h *Handler) AdminPermissionsUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	code := c.Param("code")
+	var uri struct {
+		Code string `uri:"code" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		Name         *string `json:"name"`
 		FriendlyName *string `json:"friendly_name"`
@@ -403,7 +421,7 @@ func (h *Handler) AdminPermissionsUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	perm, err := h.permissionSvc.GetPermissionByCode(c, code)
+	perm, err := h.permissionSvc.GetPermissionByCode(c, uri.Code)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPermissionNotFound.Error()})
 		return
@@ -541,31 +559,34 @@ const maxPageLimit = 500
 func paging(c *gin.Context) (int, int) {
 	limit := 20
 	offset := 0
-	if l := c.Query("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil {
-			limit = v
-		}
-	}
-	if o := c.Query("offset"); o != "" {
-		if v, err := strconv.Atoi(o); err == nil {
-			offset = v
-		}
-	}
 	page := 0
-	if p := c.Query("page"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil {
-			page = v
+
+	parseInt := func(key string) (int, bool) {
+		raw, ok := c.GetQuery(key)
+		if !ok {
+			return 0, false
 		}
+		n, err := strconv.Atoi(strings.TrimSpace(raw))
+		if err != nil {
+			return 0, false
+		}
+		return n, true
 	}
-	if p := c.Query("pages"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil {
-			limit = v
-		}
+
+	if v, ok := parseInt("limit"); ok {
+		limit = v
 	}
-	if p := c.Query("page_size"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil {
-			limit = v
-		}
+	if v, ok := parseInt("offset"); ok {
+		offset = v
+	}
+	if v, ok := parseInt("page"); ok {
+		page = v
+	}
+	if v, ok := parseInt("pages"); ok {
+		limit = v
+	}
+	if v, ok := parseInt("page_size"); ok {
+		limit = v
 	}
 	if limit <= 0 {
 		limit = 20

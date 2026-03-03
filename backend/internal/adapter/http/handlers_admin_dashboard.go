@@ -29,7 +29,14 @@ func (h *Handler) AdminDashboardRevenue(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	period := c.Query("period")
+	var query struct {
+		Period string `form:"period" binding:"omitempty,oneof=month day"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	period := query.Period
 	if period == "month" {
 		points, err := h.reportSvc.RevenueByMonth(c, 6)
 		if err != nil {

@@ -37,8 +37,12 @@ func (h *Handler) parseAdminFromAuthorization(c *gin.Context) (int64, string, bo
 }
 
 func (h *Handler) RobotApprove(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.orderSvc.ApproveOrder(c, 0, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.orderSvc.ApproveOrder(c, 0, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -46,7 +50,11 @@ func (h *Handler) RobotApprove(c *gin.Context) {
 }
 
 func (h *Handler) RobotReject(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Reason string `json:"reason"`
 	}
@@ -54,7 +62,7 @@ func (h *Handler) RobotReject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if err := h.orderSvc.RejectOrder(c, 0, id, payload.Reason); err != nil {
+	if err := h.orderSvc.RejectOrder(c, 0, uri.ID, payload.Reason); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -415,8 +423,12 @@ func (h *Handler) AdminUsers(c *gin.Context) {
 }
 
 func (h *Handler) AdminUserDetail(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	user, err := h.adminSvc.GetUser(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	user, err := h.adminSvc.GetUser(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -464,7 +476,11 @@ func (h *Handler) AdminUserCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminUserUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Username          *string `json:"username"`
 		Email             *string `json:"email"`
@@ -483,7 +499,7 @@ func (h *Handler) AdminUserUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	user, err := h.adminSvc.GetUser(c, id)
+	user, err := h.adminSvc.GetUser(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -545,7 +561,11 @@ func (h *Handler) AdminUserUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminUserResetPassword(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Password string `json:"password"`
 	}
@@ -553,7 +573,7 @@ func (h *Handler) AdminUserResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	user, err := h.adminSvc.GetUser(c, id)
+	user, err := h.adminSvc.GetUser(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -562,7 +582,7 @@ func (h *Handler) AdminUserResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAdminUserNotEditable.Error()})
 		return
 	}
-	if err := h.adminSvc.ResetUserPassword(c, getUserID(c), id, payload.Password); err != nil {
+	if err := h.adminSvc.ResetUserPassword(c, getUserID(c), uri.ID, payload.Password); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -570,7 +590,11 @@ func (h *Handler) AdminUserResetPassword(c *gin.Context) {
 }
 
 func (h *Handler) AdminUserStatus(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Status string `json:"status"`
 	}
@@ -578,7 +602,7 @@ func (h *Handler) AdminUserStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	user, err := h.adminSvc.GetUser(c, id)
+	user, err := h.adminSvc.GetUser(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -588,7 +612,7 @@ func (h *Handler) AdminUserStatus(c *gin.Context) {
 		return
 	}
 	status := domain.UserStatus(payload.Status)
-	if err := h.adminSvc.UpdateUserStatus(c, getUserID(c), id, status); err != nil {
+	if err := h.adminSvc.UpdateUserStatus(c, getUserID(c), uri.ID, status); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -600,7 +624,11 @@ func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrRealnameDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Status string `json:"status"`
 		Reason string `json:"reason"`
@@ -609,7 +637,7 @@ func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	user, err := h.adminSvc.GetUser(c, id)
+	user, err := h.adminSvc.GetUser(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -618,7 +646,7 @@ func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAdminUserNotEditable.Error()})
 		return
 	}
-	record, err := h.realnameSvc.Latest(c, id)
+	record, err := h.realnameSvc.Latest(c, uri.ID)
 	if err != nil {
 		if err == appshared.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrRealnameRecordNotFound.Error()})
@@ -631,7 +659,7 @@ func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	updated, err := h.realnameSvc.Latest(c, id)
+	updated, err := h.realnameSvc.Latest(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -640,8 +668,12 @@ func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
 }
 
 func (h *Handler) AdminUserImpersonate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	user, err := h.adminSvc.GetUser(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	user, err := h.adminSvc.GetUser(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -665,17 +697,14 @@ func (h *Handler) AdminUserImpersonate(c *gin.Context) {
 }
 
 func (h *Handler) AdminQQAvatar(c *gin.Context) {
-	qq := strings.TrimSpace(c.Param("qq"))
-	if qq == "" {
+	var uri struct {
+		QQ string `uri:"qq" binding:"required,numeric"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidQq.Error()})
 		return
 	}
-	for _, r := range qq {
-		if r < '0' || r > '9' {
-			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidQq.Error()})
-			return
-		}
-	}
+	qq := strings.TrimSpace(uri.QQ)
 	url := "https://q1.qlogo.cn/g?b=qq&nk=" + qq + "&s=100"
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {

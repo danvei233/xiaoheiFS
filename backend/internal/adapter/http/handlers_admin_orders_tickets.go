@@ -3,7 +3,6 @@ package http
 import (
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"strconv"
 	"strings"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
@@ -11,14 +10,20 @@ import (
 
 func (h *Handler) AdminOrders(c *gin.Context) {
 	limit, offset := paging(c)
-	filter := appshared.OrderFilter{}
-	if v := c.Query("status"); v != "" {
-		filter.Status = v
+	var query struct {
+		Status string `form:"status"`
+		UserID *int64 `form:"user_id" binding:"omitempty,gt=0"`
 	}
-	if v := c.Query("user_id"); v != "" {
-		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
-			filter.UserID = id
-		}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	filter := appshared.OrderFilter{}
+	if query.Status != "" {
+		filter.Status = strings.TrimSpace(query.Status)
+	}
+	if query.UserID != nil {
+		filter.UserID = *query.UserID
 	}
 	orders, total, err := h.adminSvc.ListOrders(c, filter, limit, offset)
 	if err != nil {
@@ -42,19 +47,23 @@ func (h *Handler) AdminServerStatus(c *gin.Context) {
 }
 
 func (h *Handler) AdminOrderDetail(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	order, items, err := h.orderSvc.GetOrderForAdmin(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	order, items, err := h.orderSvc.GetOrderForAdmin(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrOrderNotFound.Error()})
 		return
 	}
 	var payments []domain.OrderPayment
 	if h.orderSvc != nil {
-		payments, _ = h.orderSvc.ListPaymentsForOrderAdmin(c, id)
+		payments, _ = h.orderSvc.ListPaymentsForOrderAdmin(c, uri.ID)
 	}
 	var events []domain.OrderEvent
 	if h.orderEventSvc != nil {
-		events, _ = h.orderEventSvc.ListAfter(c, id, 0, 200)
+		events, _ = h.orderEventSvc.ListAfter(c, uri.ID, 0, 200)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"order":    toOrderDTO(order),
@@ -65,8 +74,12 @@ func (h *Handler) AdminOrderDetail(c *gin.Context) {
 }
 
 func (h *Handler) AdminOrderApprove(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.orderSvc.ApproveOrder(c, getUserID(c), id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.orderSvc.ApproveOrder(c, getUserID(c), uri.ID); err != nil {
 		status := http.StatusBadRequest
 		msg := err.Error()
 		if err == appshared.ErrConflict || err == appshared.ErrResizeInProgress {
@@ -82,7 +95,11 @@ func (h *Handler) AdminOrderApprove(c *gin.Context) {
 }
 
 func (h *Handler) AdminOrderReject(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Reason string `json:"reason"`
 	}
@@ -90,7 +107,7 @@ func (h *Handler) AdminOrderReject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if err := h.orderSvc.RejectOrder(c, getUserID(c), id, payload.Reason); err != nil {
+	if err := h.orderSvc.RejectOrder(c, getUserID(c), uri.ID, payload.Reason); err != nil {
 		status := http.StatusBadRequest
 		msg := err.Error()
 		if err == appshared.ErrConflict {
@@ -115,8 +132,12 @@ func (h *Handler) AdminOrderDelete(c *gin.Context) {
 			return
 		}
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.adminSvc.DeleteOrder(c, getUserID(c), id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.adminSvc.DeleteOrder(c, getUserID(c), uri.ID); err != nil {
 		status := http.StatusBadRequest
 		msg := err.Error()
 		if err == appshared.ErrNotFound {
@@ -133,13 +154,17 @@ func (h *Handler) AdminOrderDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminOrderMarkPaid(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload appshared.PaymentInput
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	payment, err := h.orderSvc.MarkPaid(c, getUserID(c), id, payload)
+	payment, err := h.orderSvc.MarkPaid(c, getUserID(c), uri.ID, payload)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -148,8 +173,12 @@ func (h *Handler) AdminOrderMarkPaid(c *gin.Context) {
 }
 
 func (h *Handler) AdminOrderRetry(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.orderSvc.RetryProvision(id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.orderSvc.RetryProvision(uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -157,17 +186,23 @@ func (h *Handler) AdminOrderRetry(c *gin.Context) {
 }
 
 func (h *Handler) AdminTickets(c *gin.Context) {
-	status := strings.TrimSpace(c.Query("status"))
-	keyword := strings.TrimSpace(c.Query("q"))
-	userIDRaw := strings.TrimSpace(c.Query("user_id"))
-	limit, offset := paging(c)
-	var userID *int64
-	if userIDRaw != "" {
-		if v, err := strconv.ParseInt(userIDRaw, 10, 64); err == nil {
-			userID = &v
-		}
+	var query struct {
+		Status  string `form:"status"`
+		Keyword string `form:"q"`
+		UserID  *int64 `form:"user_id" binding:"omitempty,gt=0"`
 	}
-	items, total, err := h.ticketSvc.List(c, appshared.TicketFilter{UserID: userID, Status: status, Keyword: keyword, Limit: limit, Offset: offset})
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	limit, offset := paging(c)
+	items, total, err := h.ticketSvc.List(c, appshared.TicketFilter{
+		UserID:  query.UserID,
+		Status:  strings.TrimSpace(query.Status),
+		Keyword: strings.TrimSpace(query.Keyword),
+		Limit:   limit,
+		Offset:  offset,
+	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -180,8 +215,12 @@ func (h *Handler) AdminTickets(c *gin.Context) {
 }
 
 func (h *Handler) AdminTicketDetail(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ticket, messages, resources, err := h.ticketSvc.GetDetail(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	ticket, messages, resources, err := h.ticketSvc.GetDetail(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -198,8 +237,12 @@ func (h *Handler) AdminTicketDetail(c *gin.Context) {
 }
 
 func (h *Handler) AdminTicketUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ticket, err := h.ticketSvc.Get(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	ticket, err := h.ticketSvc.Get(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -230,14 +273,18 @@ func (h *Handler) AdminTicketUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminTicketMessageCreate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ticket, err := h.ticketSvc.Get(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	ticket, err := h.ticketSvc.Get(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
 	var payload struct {
-		Content string `json:"content"`
+		Content string `json:"content" binding:"required"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -256,8 +303,12 @@ func (h *Handler) AdminTicketMessageCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminTicketDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.ticketSvc.Delete(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.ticketSvc.Delete(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

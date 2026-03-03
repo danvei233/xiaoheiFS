@@ -41,7 +41,11 @@ func (h *Handler) AdminAPIKeyCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminAPIKeyUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Status string `json:"status"`
 	}
@@ -50,7 +54,7 @@ func (h *Handler) AdminAPIKeyUpdate(c *gin.Context) {
 		return
 	}
 	status := domain.APIKeyStatus(payload.Status)
-	if err := h.adminSvc.UpdateAPIKeyStatus(c, getUserID(c), id, status); err != nil {
+	if err := h.adminSvc.UpdateAPIKeyStatus(c, getUserID(c), uri.ID, status); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -185,7 +189,16 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	types := strings.ToLower(strings.TrimSpace(c.Query("types")))
+	var query struct {
+		Types   string `form:"types"`
+		OrderID *int64 `form:"order_id" binding:"omitempty,gt=0"`
+		Target  string `form:"target"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	types := strings.ToLower(strings.TrimSpace(query.Types))
 	includeAll := types == ""
 	includeType := func(name string) bool {
 		if includeAll {
@@ -209,7 +222,10 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		resp["audit_logs"] = gin.H{"items": toAdminAuditLogDTOs(items), "total": total}
 	}
 	if includeType("automation") && h.autoLogSvc != nil {
-		orderID, _ := strconv.ParseInt(c.Query("order_id"), 10, 64)
+		orderID := int64(0)
+		if query.OrderID != nil {
+			orderID = *query.OrderID
+		}
 		items, total, err := h.autoLogSvc.List(c, orderID, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListAutomationLogsError.Error()})
@@ -218,8 +234,7 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		resp["automation_logs"] = gin.H{"items": toAutomationLogDTOs(items), "total": total}
 	}
 	if includeType("sync") && h.integration != nil {
-		target := c.Query("target")
-		items, total, err := h.integration.ListSyncLogs(c, target, limit, offset)
+		items, total, err := h.integration.ListSyncLogs(c, query.Target, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListSyncLogsError.Error()})
 			return
@@ -578,8 +593,14 @@ func (h *Handler) AdminAutomationSync(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	mode := c.Query("mode")
-	result, err := h.integration.SyncAutomation(c, mode)
+	var query struct {
+		Mode string `form:"mode" binding:"omitempty,oneof=merge replace"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	result, err := h.integration.SyncAutomation(c, query.Mode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -593,8 +614,14 @@ func (h *Handler) AdminAutomationSyncLogs(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	target := c.Query("target")
-	items, total, err := h.integration.ListSyncLogs(c, target, limit, offset)
+	var query struct {
+		Target string `form:"target"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	items, total, err := h.integration.ListSyncLogs(c, query.Target, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

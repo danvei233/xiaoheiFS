@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 	appshared "xiaoheiplay/internal/app/shared"
@@ -12,8 +11,16 @@ import (
 )
 
 func (h *Handler) CMSBlocksPublic(c *gin.Context) {
-	page := strings.TrimSpace(c.Query("page"))
-	lang := strings.TrimSpace(c.Query("lang"))
+	var query struct {
+		Page string `form:"page"`
+		Lang string `form:"lang"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	page := strings.TrimSpace(query.Page)
+	lang := strings.TrimSpace(query.Lang)
 	if lang == "" {
 		lang = "zh-CN"
 	}
@@ -30,11 +37,19 @@ func (h *Handler) CMSBlocksPublic(c *gin.Context) {
 }
 
 func (h *Handler) CMSPostsPublic(c *gin.Context) {
-	lang := strings.TrimSpace(c.Query("lang"))
+	var query struct {
+		Lang        string `form:"lang"`
+		CategoryKey string `form:"category_key"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	lang := strings.TrimSpace(query.Lang)
 	if lang == "" {
 		lang = "zh-CN"
 	}
-	categoryKey := strings.TrimSpace(c.Query("category_key"))
+	categoryKey := strings.TrimSpace(query.CategoryKey)
 	limit, offset := paging(c)
 	items, total, err := h.cmsSvc.ListPosts(c, appshared.CMSPostFilter{CategoryKey: categoryKey, Lang: lang, PublishedOnly: true, Limit: limit, Offset: offset})
 	if err != nil {
@@ -49,7 +64,14 @@ func (h *Handler) CMSPostsPublic(c *gin.Context) {
 }
 
 func (h *Handler) CMSPostDetailPublic(c *gin.Context) {
-	slug := strings.TrimSpace(c.Param("slug"))
+	var uri struct {
+		Slug string `uri:"slug" binding:"required"`
+	}
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	slug := strings.TrimSpace(uri.Slug)
 	post, err := h.cmsSvc.GetPostBySlug(c, slug)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
@@ -63,7 +85,14 @@ func (h *Handler) CMSPostDetailPublic(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSCategories(c *gin.Context) {
-	lang := strings.TrimSpace(c.Query("lang"))
+	var query struct {
+		Lang string `form:"lang"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	lang := strings.TrimSpace(query.Lang)
 	items, err := h.cmsSvc.ListCategories(c, lang, true)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -111,8 +140,12 @@ func (h *Handler) AdminCMSCategoryCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSCategoryUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	item, err := h.cmsSvc.GetCategory(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	item, err := h.cmsSvc.GetCategory(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -155,8 +188,12 @@ func (h *Handler) AdminCMSCategoryUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSCategoryDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.cmsSvc.DeleteCategory(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.cmsSvc.DeleteCategory(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -164,17 +201,19 @@ func (h *Handler) AdminCMSCategoryDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSPosts(c *gin.Context) {
-	lang := strings.TrimSpace(c.Query("lang"))
-	status := strings.TrimSpace(c.Query("status"))
-	categoryIDRaw := strings.TrimSpace(c.Query("category_id"))
-	limit, offset := paging(c)
-	var categoryID *int64
-	if categoryIDRaw != "" {
-		if v, err := strconv.ParseInt(categoryIDRaw, 10, 64); err == nil {
-			categoryID = &v
-		}
+	var query struct {
+		Lang       string `form:"lang"`
+		Status     string `form:"status"`
+		CategoryID *int64 `form:"category_id" binding:"omitempty,gt=0"`
 	}
-	items, total, err := h.cmsSvc.ListPosts(c, appshared.CMSPostFilter{CategoryID: categoryID, Status: status, Lang: lang, Limit: limit, Offset: offset})
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	lang := strings.TrimSpace(query.Lang)
+	status := strings.TrimSpace(query.Status)
+	limit, offset := paging(c)
+	items, total, err := h.cmsSvc.ListPosts(c, appshared.CMSPostFilter{CategoryID: query.CategoryID, Status: status, Lang: lang, Limit: limit, Offset: offset})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -236,8 +275,12 @@ func (h *Handler) AdminCMSPostCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSPostUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	post, err := h.cmsSvc.GetPost(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	post, err := h.cmsSvc.GetPost(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -312,8 +355,12 @@ func (h *Handler) AdminCMSPostUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSPostDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.cmsSvc.DeletePost(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.cmsSvc.DeletePost(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -321,8 +368,16 @@ func (h *Handler) AdminCMSPostDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSBlocks(c *gin.Context) {
-	page := strings.TrimSpace(c.Query("page"))
-	lang := strings.TrimSpace(c.Query("lang"))
+	var query struct {
+		Page string `form:"page"`
+		Lang string `form:"lang"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	page := strings.TrimSpace(query.Page)
+	lang := strings.TrimSpace(query.Lang)
 	items, err := h.cmsSvc.ListBlocks(c, page, lang, true)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -385,8 +440,12 @@ func (h *Handler) AdminCMSBlockCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSBlockUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	block, err := h.cmsSvc.GetBlock(c, id)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	block, err := h.cmsSvc.GetBlock(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -457,8 +516,12 @@ func (h *Handler) AdminCMSBlockUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminCMSBlockDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.cmsSvc.DeleteBlock(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.cmsSvc.DeleteBlock(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

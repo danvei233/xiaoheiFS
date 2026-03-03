@@ -24,16 +24,38 @@ type probeWSEnvelope struct {
 	Payload   json.RawMessage `json:"payload,omitempty"`
 }
 
+type probeIDURI struct {
+	ID int64 `uri:"id" binding:"required,gt=0"`
+}
+
+type probeLogSessionURI struct {
+	ID  int64 `uri:"id" binding:"required,gt=0"`
+	SID int64 `uri:"sid" binding:"required,gt=0"`
+}
+
+type adminProbesQuery struct {
+	Keyword string `form:"keyword" binding:"omitempty,max=128"`
+	Status  string `form:"status" binding:"omitempty,max=32"`
+}
+
+type probeRefreshQuery struct {
+	Refresh string `form:"refresh" binding:"omitempty,oneof=0 1"`
+}
+
+type probeSLAQuery struct {
+	Days *int `form:"days" binding:"omitempty,gte=1,lte=365"`
+}
+
 func (h *Handler) ProbeEnroll(c *gin.Context) {
 	if h.probeSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
 	var payload struct {
-		EnrollToken string `json:"enroll_token"`
-		AgentID     string `json:"agent_id"`
-		Name        string `json:"name"`
-		OSType      string `json:"os_type"`
+		EnrollToken string `json:"enroll_token" binding:"required,max=128"`
+		AgentID     string `json:"agent_id" binding:"required,max=128"`
+		Name        string `json:"name" binding:"omitempty,max=128"`
+		OSType      string `json:"os_type" binding:"required,max=32"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -64,8 +86,8 @@ func (h *Handler) ProbeAuthToken(c *gin.Context) {
 		return
 	}
 	var payload struct {
-		ProbeID     int64  `json:"probe_id"`
-		ProbeSecret string `json:"probe_secret"`
+		ProbeID     int64  `json:"probe_id" binding:"required,gt=0"`
+		ProbeSecret string `json:"probe_secret" binding:"required,max=256"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -223,10 +245,15 @@ func (h *Handler) AdminProbes(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
+	var query adminProbesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	limit, offset := paging(c)
 	items, total, err := h.probeSvc.ListProbes(c, appshared.ProbeNodeFilter{
-		Keyword: c.Query("keyword"),
-		Status:  c.Query("status"),
+		Keyword: query.Keyword,
+		Status:  query.Status,
 	}, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListProbeError.Error()})
@@ -245,9 +272,9 @@ func (h *Handler) AdminProbeCreate(c *gin.Context) {
 		return
 	}
 	var payload struct {
-		Name    string   `json:"name"`
-		AgentID string   `json:"agent_id"`
-		OSType  string   `json:"os_type"`
+		Name    string   `json:"name" binding:"required,max=128"`
+		AgentID string   `json:"agent_id" binding:"required,max=128"`
+		OSType  string   `json:"os_type" binding:"required,max=32"`
 		Tags    []string `json:"tags"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
@@ -276,15 +303,24 @@ func (h *Handler) AdminProbeDetail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	node, err := h.probeSvc.GetProbe(c, id)
+	var uri probeIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	var query probeRefreshQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	node, err := h.probeSvc.GetProbe(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrProbeNotFound.Error()})
 		return
 	}
-	if c.Query("refresh") == "1" && h.probeHub != nil && h.probeHub.IsOnline(id) {
+	if query.Refresh == "1" && h.probeHub != nil && h.probeHub.IsOnline(uri.ID) {
 		reqID := "snap_" + probeRandomToken(10)
-		_ = h.probeHub.SendJSON(id, map[string]any{
+		_ = h.probeHub.SendJSON(uri.ID, map[string]any{
 			"type":       "request_snapshot",
 			"request_id": reqID,
 			"payload":    map[string]any{},
@@ -293,7 +329,7 @@ func (h *Handler) AdminProbeDetail(c *gin.Context) {
 		deadline := time.Now().Add(2 * time.Second)
 		for time.Now().Before(deadline) {
 			time.Sleep(200 * time.Millisecond)
-			latest, getErr := h.probeSvc.GetProbe(c, id)
+			latest, getErr := h.probeSvc.GetProbe(c, uri.ID)
 			if getErr != nil {
 				break
 			}
@@ -303,7 +339,7 @@ func (h *Handler) AdminProbeDetail(c *gin.Context) {
 			}
 		}
 	}
-	c.JSON(http.StatusOK, gin.H{"probe": toProbeNodeDTO(node), "online": h.probeHub != nil && h.probeHub.IsOnline(id)})
+	c.JSON(http.StatusOK, gin.H{"probe": toProbeNodeDTO(node), "online": h.probeHub != nil && h.probeHub.IsOnline(uri.ID)})
 }
 
 func (h *Handler) AdminProbeUpdate(c *gin.Context) {
@@ -311,8 +347,12 @@ func (h *Handler) AdminProbeUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	node, err := h.probeSvc.GetProbe(c, id)
+	var uri probeIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	node, err := h.probeSvc.GetProbe(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrProbeNotFound.Error()})
 		return
@@ -350,24 +390,24 @@ func (h *Handler) AdminProbeDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri probeIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if _, err := h.probeSvc.GetProbe(c, id); err != nil {
+	if _, err := h.probeSvc.GetProbe(c, uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrProbeNotFound.Error()})
 		return
 	}
-	if err := h.probeSvc.DeleteProbe(c, id); err != nil {
+	if err := h.probeSvc.DeleteProbe(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.probeHub != nil {
-		h.probeHub.UnregisterConn(id)
+		h.probeHub.UnregisterConn(uri.ID)
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "probe.delete", "probe", strconv.FormatInt(id, 10), map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "probe.delete", "probe", strconv.FormatInt(uri.ID, 10), map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -377,8 +417,12 @@ func (h *Handler) AdminProbeResetEnrollToken(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	token, err := h.probeSvc.ResetEnrollToken(c, id)
+	var uri probeIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	token, err := h.probeSvc.ResetEnrollToken(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -391,9 +435,21 @@ func (h *Handler) AdminProbeSLA(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	days, _ := strconv.Atoi(strings.TrimSpace(c.DefaultQuery("days", "7")))
-	sla, err := h.probeSvc.ComputeSLA(c, id, days)
+	var uri probeIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	var query probeSLAQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	days := 7
+	if query.Days != nil {
+		days = *query.Days
+	}
+	sla, err := h.probeSvc.ComputeSLA(c, uri.ID, days)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -419,8 +475,12 @@ func (h *Handler) AdminProbePortCheck(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if !h.probeHub.IsOnline(id) {
+	var uri probeIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if !h.probeHub.IsOnline(uri.ID) {
 		c.JSON(http.StatusConflict, gin.H{"error": domain.ErrProbeOffline.Error()})
 		return
 	}
@@ -435,7 +495,7 @@ func (h *Handler) AdminProbePortCheck(c *gin.Context) {
 		"request_id": reqID,
 		"payload":    payload,
 	}
-	if err := h.probeHub.SendJSON(id, cmd); err != nil {
+	if err := h.probeHub.SendJSON(uri.ID, cmd); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -447,8 +507,12 @@ func (h *Handler) AdminProbeLogSessionCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	probeID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if !h.probeHub.IsOnline(probeID) {
+	var uri probeIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if !h.probeHub.IsOnline(uri.ID) {
 		c.JSON(http.StatusConflict, gin.H{"error": domain.ErrProbeOffline.Error()})
 		return
 	}
@@ -463,14 +527,14 @@ func (h *Handler) AdminProbeLogSessionCreate(c *gin.Context) {
 		return
 	}
 	source := h.resolveProbeLogSource(c, payload.Source)
-	session, err := h.probeSvc.CreateLogSession(c, probeID, getUserID(c), source)
+	session, err := h.probeSvc.CreateLogSession(c, uri.ID, getUserID(c), source)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	sid := strconv.FormatInt(session.ID, 10)
 	ttl := time.Duration(h.probeIntSetting(c, "probe_log_session_ttl_sec", 600)) * time.Second
-	h.probeHub.OpenLogSession(sid, probeID, ttl)
+	h.probeHub.OpenLogSession(sid, uri.ID, ttl)
 	reqID := "log_" + probeRandomToken(12)
 	cmd := map[string]any{
 		"type":       "request_log",
@@ -483,7 +547,7 @@ func (h *Handler) AdminProbeLogSessionCreate(c *gin.Context) {
 			"lines":      payload.Lines,
 		},
 	}
-	if err := h.probeHub.SendJSON(probeID, cmd); err != nil {
+	if err := h.probeHub.SendJSON(uri.ID, cmd); err != nil {
 		h.probeHub.CloseLogSession(sid)
 		_ = h.probeSvc.FinishLogSession(c, session.ID, "failed")
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -491,7 +555,7 @@ func (h *Handler) AdminProbeLogSessionCreate(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"session_id":   sid,
-		"stream_path":  fmt.Sprintf("/admin/api/v1/probes/%d/log-sessions/%s/stream", probeID, sid),
+		"stream_path":  fmt.Sprintf("/admin/api/v1/probes/%d/log-sessions/%s/stream", uri.ID, sid),
 		"log_session":  session,
 		"request_id":   reqID,
 		"probe_online": true,
@@ -503,11 +567,14 @@ func (h *Handler) AdminProbeLogSessionStream(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrProbeDisabled.Error()})
 		return
 	}
-	probeID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	sid := strings.TrimSpace(c.Param("sid"))
-	sessionID, _ := strconv.ParseInt(sid, 10, 64)
-	session, err := h.probeSvc.GetLogSession(c, sessionID)
-	if err != nil || session.ProbeID != probeID {
+	var uri probeLogSessionURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	sid := strconv.FormatInt(uri.SID, 10)
+	session, err := h.probeSvc.GetLogSession(c, uri.SID)
+	if err != nil || session.ProbeID != uri.ID {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrSessionNotFound.Error()})
 		return
 	}

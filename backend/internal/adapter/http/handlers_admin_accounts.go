@@ -3,15 +3,29 @@ package http
 import (
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 	"xiaoheiplay/internal/domain"
 )
 
+type adminIDURI struct {
+	ID int64 `uri:"id" binding:"required,gt=0"`
+}
+
+type permissionGroupIDURI struct {
+	ID int64 `uri:"id" binding:"gte=0"`
+}
+
 func (h *Handler) AdminAdmins(c *gin.Context) {
 	limit, offset := paging(c)
-	status := strings.TrimSpace(c.Query("status"))
+	var query struct {
+		Status string `form:"status" binding:"omitempty,oneof=active disabled all"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	status := strings.TrimSpace(query.Status)
 	if status == "" {
 		status = "active"
 	}
@@ -48,7 +62,11 @@ func (h *Handler) AdminAdminCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminAdminUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Username          string `json:"username" binding:"required"`
 		Email             string `json:"email" binding:"required,email"`
@@ -63,8 +81,8 @@ func (h *Handler) AdminAdminUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrQqMustBeNumeric.Error()})
 		return
 	}
-	if id == getUserID(c) {
-		existing, err := h.adminSvc.GetUser(c, id)
+	if uri.ID == getUserID(c) {
+		existing, err := h.adminSvc.GetUser(c, uri.ID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -83,7 +101,7 @@ func (h *Handler) AdminAdminUpdate(c *gin.Context) {
 		}
 		payload.PermissionGroupID = existing.PermissionGroupID
 	}
-	if err := h.adminSvc.UpdateAdmin(c, getUserID(c), id, payload.Username, payload.Email, payload.QQ, payload.PermissionGroupID); err != nil {
+	if err := h.adminSvc.UpdateAdmin(c, getUserID(c), uri.ID, payload.Username, payload.Email, payload.QQ, payload.PermissionGroupID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -91,7 +109,11 @@ func (h *Handler) AdminAdminUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminAdminStatus(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Status string `json:"status"`
 	}
@@ -99,7 +121,7 @@ func (h *Handler) AdminAdminStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if id == getUserID(c) {
+	if uri.ID == getUserID(c) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrCannotUpdateSelfStatus.Error()})
 		return
 	}
@@ -108,7 +130,7 @@ func (h *Handler) AdminAdminStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidStatus.Error()})
 		return
 	}
-	if err := h.adminSvc.UpdateAdminStatus(c, getUserID(c), id, domain.UserStatus(status)); err != nil {
+	if err := h.adminSvc.UpdateAdminStatus(c, getUserID(c), uri.ID, domain.UserStatus(status)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -116,8 +138,12 @@ func (h *Handler) AdminAdminStatus(c *gin.Context) {
 }
 
 func (h *Handler) AdminAdminDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.adminSvc.DeleteAdmin(c, getUserID(c), id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.adminSvc.DeleteAdmin(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -157,7 +183,11 @@ func (h *Handler) AdminPermissionGroupCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminPermissionGroupUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri permissionGroupIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Name        string   `json:"name" binding:"required"`
 		Description string   `json:"description"`
@@ -169,7 +199,7 @@ func (h *Handler) AdminPermissionGroupUpdate(c *gin.Context) {
 	}
 	permJSON := mustJSON(payload.Permissions)
 	group := domain.PermissionGroup{
-		ID:              id,
+		ID:              uri.ID,
 		Name:            payload.Name,
 		Description:     payload.Description,
 		PermissionsJSON: permJSON,
@@ -182,8 +212,12 @@ func (h *Handler) AdminPermissionGroupUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminPermissionGroupDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.adminSvc.DeletePermissionGroup(c, getUserID(c), id); err != nil {
+	var uri permissionGroupIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.adminSvc.DeletePermissionGroup(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

@@ -13,6 +13,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type walletOrderIDURI struct {
+	ID int64 `uri:"id" binding:"required,gt=0"`
+}
+
+type walletProviderURI struct {
+	Provider string `uri:"provider" binding:"required,max=64"`
+}
+
+type notificationStatusQuery struct {
+	Status string `form:"status" binding:"omitempty,oneof=read unread all"`
+}
+
+type orderListQuery struct {
+	Status string `form:"status" binding:"omitempty,oneof=all draft pending_payment pending_review rejected approved provisioning active failed canceled"`
+}
+
 func (h *Handler) WalletInfo(c *gin.Context) {
 	if h.walletSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrWalletDisabled.Error()})
@@ -210,8 +226,8 @@ func (h *Handler) WalletOrderPay(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrWalletOrdersDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id == 0 {
+	var uri walletOrderIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
@@ -219,7 +235,7 @@ func (h *Handler) WalletOrderPay(c *gin.Context) {
 		Extra map[string]string `json:"extra"`
 	}
 	_ = bindJSONOptional(c, &payload)
-	order, err := h.walletOrder.GetUserOrder(c, getUserID(c), id)
+	order, err := h.walletOrder.GetUserOrder(c, getUserID(c), uri.ID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrForbidden {
@@ -310,8 +326,8 @@ func (h *Handler) WalletOrderCancel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrWalletOrdersDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id == 0 {
+	var uri walletOrderIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
@@ -319,7 +335,7 @@ func (h *Handler) WalletOrderCancel(c *gin.Context) {
 		Reason string `json:"reason"`
 	}
 	_ = bindJSONOptional(c, &payload)
-	order, err := h.walletOrder.CancelByUser(c, getUserID(c), id, payload.Reason)
+	order, err := h.walletOrder.CancelByUser(c, getUserID(c), uri.ID, payload.Reason)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrForbidden {
@@ -401,11 +417,12 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrWalletOrdersDisabled.Error()})
 		return
 	}
-	provider := strings.TrimSpace(c.Param("provider"))
-	if provider == "" {
+	var uri walletProviderURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
+	provider := strings.TrimSpace(uri.Provider)
 	body, _ := io.ReadAll(c.Request.Body)
 	headers := map[string][]string{}
 	for k, v := range c.Request.Header {
@@ -480,7 +497,12 @@ func (h *Handler) Notifications(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrMessageCenterDisabled.Error()})
 		return
 	}
-	status := strings.TrimSpace(c.Query("status"))
+	var query notificationStatusQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	status := strings.TrimSpace(query.Status)
 	limit, offset := paging(c)
 	items, total, err := h.messageSvc.List(c, getUserID(c), status, limit, offset)
 	if err != nil {
@@ -512,12 +534,12 @@ func (h *Handler) NotificationRead(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrMessageCenterDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id == 0 {
+	var uri walletOrderIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.messageSvc.MarkRead(c, getUserID(c), id); err != nil {
+	if err := h.messageSvc.MarkRead(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -537,8 +559,12 @@ func (h *Handler) NotificationReadAll(c *gin.Context) {
 }
 
 func (h *Handler) OrderCancel(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.orderSvc.CancelOrder(c, getUserID(c), id); err != nil {
+	var uri walletOrderIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.orderSvc.CancelOrder(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -547,22 +573,14 @@ func (h *Handler) OrderCancel(c *gin.Context) {
 
 func (h *Handler) OrderList(c *gin.Context) {
 	limit, offset := paging(c)
-	status := strings.TrimSpace(c.Query("status"))
-	if status == "all" {
-		status = ""
-	}
-	if status != "" &&
-		status != string(domain.OrderStatusDraft) &&
-		status != string(domain.OrderStatusPendingPayment) &&
-		status != string(domain.OrderStatusPendingReview) &&
-		status != string(domain.OrderStatusRejected) &&
-		status != string(domain.OrderStatusApproved) &&
-		status != string(domain.OrderStatusProvisioning) &&
-		status != string(domain.OrderStatusActive) &&
-		status != string(domain.OrderStatusFailed) &&
-		status != string(domain.OrderStatusCanceled) {
+	var query orderListQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidStatus.Error()})
 		return
+	}
+	status := strings.TrimSpace(query.Status)
+	if status == "all" {
+		status = ""
 	}
 	filter := appshared.OrderFilter{UserID: getUserID(c), Status: status}
 	orders, total, err := h.orderSvc.ListOrders(c, filter, limit, offset)
@@ -574,22 +592,30 @@ func (h *Handler) OrderList(c *gin.Context) {
 }
 
 func (h *Handler) OrderDetail(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	order, items, err := h.orderSvc.GetOrder(c, id, getUserID(c))
+	var uri walletOrderIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	order, items, err := h.orderSvc.GetOrder(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrOrderNotFound.Error()})
 		return
 	}
 	var payments []domain.OrderPayment
 	if h.orderSvc != nil {
-		payments, _ = h.orderSvc.ListPaymentsForOrder(c, getUserID(c), id)
+		payments, _ = h.orderSvc.ListPaymentsForOrder(c, getUserID(c), uri.ID)
 	}
 	c.JSON(http.StatusOK, gin.H{"order": toOrderDTO(order), "items": toOrderItemDTOs(items), "payments": toOrderPaymentDTOs(payments)})
 }
 
 func (h *Handler) OrderEvents(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	_, _, err := h.orderSvc.GetOrder(c, id, getUserID(c))
+	var uri walletOrderIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	_, _, err := h.orderSvc.GetOrder(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrOrderNotFound.Error()})
 		return
@@ -599,12 +625,16 @@ func (h *Handler) OrderEvents(c *gin.Context) {
 	if last != "" {
 		lastSeq, _ = strconv.ParseInt(last, 10, 64)
 	}
-	_ = h.broker.Stream(c, c.Writer, id, lastSeq)
+	_ = h.broker.Stream(c, c.Writer, uri.ID, lastSeq)
 }
 
 func (h *Handler) OrderRefresh(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	instances, err := h.orderSvc.RefreshOrder(c, getUserID(c), id)
+	var uri walletOrderIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	instances, err := h.orderSvc.RefreshOrder(c, getUserID(c), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

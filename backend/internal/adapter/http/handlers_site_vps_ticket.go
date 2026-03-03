@@ -13,12 +13,44 @@ import (
 )
 
 type vpsFirewallRuleCreatePayload struct {
-	Direction string `json:"direction" validate:"required"`
-	Protocol  string `json:"protocol" validate:"required"`
-	Method    string `json:"method" validate:"required"`
-	Port      string `json:"port" validate:"required"`
-	IP        string `json:"ip" validate:"required"`
+	Direction string `json:"direction" binding:"required,max=32"`
+	Protocol  string `json:"protocol" binding:"required,max=32"`
+	Method    string `json:"method" binding:"required,max=32"`
+	Port      string `json:"port" binding:"required,max=64"`
+	IP        string `json:"ip" binding:"required,max=128"`
 	Priority  *int   `json:"priority"`
+}
+
+type vpsIDURI struct {
+	ID int64 `uri:"id" binding:"required,gt=0"`
+}
+
+type vpsSnapshotURI struct {
+	ID         int64 `uri:"id" binding:"required,gt=0"`
+	SnapshotID int64 `uri:"snapshotId" binding:"required,gt=0"`
+}
+
+type vpsBackupURI struct {
+	ID       int64 `uri:"id" binding:"required,gt=0"`
+	BackupID int64 `uri:"backupId" binding:"required,gt=0"`
+}
+
+type vpsFirewallRuleURI struct {
+	ID     int64 `uri:"id" binding:"required,gt=0"`
+	RuleID int64 `uri:"ruleId" binding:"required,gt=0"`
+}
+
+type vpsPortMappingURI struct {
+	ID        int64 `uri:"id" binding:"required,gt=0"`
+	MappingID int64 `uri:"mappingId" binding:"required,gt=0"`
+}
+
+type vpsKeywordsQuery struct {
+	Keywords string `form:"keywords" binding:"omitempty,max=128"`
+}
+
+type ticketStatusQuery struct {
+	Status string `form:"status" binding:"omitempty,max=32"`
 }
 
 func (h *Handler) VPSList(c *gin.Context) {
@@ -31,8 +63,12 @@ func (h *Handler) VPSList(c *gin.Context) {
 }
 
 func (h *Handler) VPSDetail(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -41,8 +77,12 @@ func (h *Handler) VPSDetail(c *gin.Context) {
 }
 
 func (h *Handler) VPSRefresh(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -56,8 +96,12 @@ func (h *Handler) VPSRefresh(c *gin.Context) {
 }
 
 func (h *Handler) VPSPanel(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -74,8 +118,12 @@ func (h *Handler) VPSPanel(c *gin.Context) {
 }
 
 func (h *Handler) VPSMonitor(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -109,8 +157,12 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 }
 
 func (h *Handler) VPSVNC(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -127,8 +179,12 @@ func (h *Handler) VPSVNC(c *gin.Context) {
 }
 
 func (h *Handler) VPSStart(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -141,8 +197,12 @@ func (h *Handler) VPSStart(c *gin.Context) {
 }
 
 func (h *Handler) VPSShutdown(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -155,8 +215,12 @@ func (h *Handler) VPSShutdown(c *gin.Context) {
 }
 
 func (h *Handler) VPSReboot(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -169,8 +233,12 @@ func (h *Handler) VPSReboot(c *gin.Context) {
 }
 
 func (h *Handler) VPSResetOS(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -197,7 +265,7 @@ func (h *Handler) VPSResetOS(c *gin.Context) {
 	hostID := parseInt(payload["host_id"])
 	templateID := parseInt(payload["template_id"])
 	password, _ := payload["password"].(string)
-	if hostID != 0 && hostID != id {
+	if hostID != 0 && hostID != uri.ID {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
@@ -257,8 +325,12 @@ func (h *Handler) VPSResetOS(c *gin.Context) {
 }
 
 func (h *Handler) VPSResetOSPassword(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -285,8 +357,12 @@ func (h *Handler) VPSResetOSPassword(c *gin.Context) {
 }
 
 func (h *Handler) VPSSnapshots(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -322,9 +398,12 @@ func (h *Handler) VPSSnapshots(c *gin.Context) {
 }
 
 func (h *Handler) VPSSnapshotDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	snapshotID, _ := strconv.ParseInt(c.Param("snapshotId"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsSnapshotURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -332,7 +411,7 @@ func (h *Handler) VPSSnapshotDelete(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "snapshot", "快照") {
 		return
 	}
-	if err := h.vpsSvc.DeleteSnapshot(c, inst, snapshotID); err != nil {
+	if err := h.vpsSvc.DeleteSnapshot(c, inst, uri.SnapshotID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
 			status = http.StatusNotImplemented
@@ -344,9 +423,12 @@ func (h *Handler) VPSSnapshotDelete(c *gin.Context) {
 }
 
 func (h *Handler) VPSSnapshotRestore(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	snapshotID, _ := strconv.ParseInt(c.Param("snapshotId"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsSnapshotURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -354,7 +436,7 @@ func (h *Handler) VPSSnapshotRestore(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "snapshot", "快照") {
 		return
 	}
-	if err := h.vpsSvc.RestoreSnapshot(c, inst, snapshotID); err != nil {
+	if err := h.vpsSvc.RestoreSnapshot(c, inst, uri.SnapshotID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
 			status = http.StatusNotImplemented
@@ -366,8 +448,12 @@ func (h *Handler) VPSSnapshotRestore(c *gin.Context) {
 }
 
 func (h *Handler) VPSBackups(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -403,9 +489,12 @@ func (h *Handler) VPSBackups(c *gin.Context) {
 }
 
 func (h *Handler) VPSBackupDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	backupID, _ := strconv.ParseInt(c.Param("backupId"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsBackupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -413,7 +502,7 @@ func (h *Handler) VPSBackupDelete(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "backup", "备份") {
 		return
 	}
-	if err := h.vpsSvc.DeleteBackup(c, inst, backupID); err != nil {
+	if err := h.vpsSvc.DeleteBackup(c, inst, uri.BackupID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
 			status = http.StatusNotImplemented
@@ -425,9 +514,12 @@ func (h *Handler) VPSBackupDelete(c *gin.Context) {
 }
 
 func (h *Handler) VPSBackupRestore(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	backupID, _ := strconv.ParseInt(c.Param("backupId"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsBackupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -435,7 +527,7 @@ func (h *Handler) VPSBackupRestore(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "backup", "备份") {
 		return
 	}
-	if err := h.vpsSvc.RestoreBackup(c, inst, backupID); err != nil {
+	if err := h.vpsSvc.RestoreBackup(c, inst, uri.BackupID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
 			status = http.StatusNotImplemented
@@ -447,8 +539,12 @@ func (h *Handler) VPSBackupRestore(c *gin.Context) {
 }
 
 func (h *Handler) VPSFirewallRules(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -503,9 +599,12 @@ func (h *Handler) VPSFirewallRules(c *gin.Context) {
 }
 
 func (h *Handler) VPSFirewallDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ruleID, _ := strconv.ParseInt(c.Param("ruleId"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsFirewallRuleURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -513,7 +612,7 @@ func (h *Handler) VPSFirewallDelete(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "firewall", "防火墙") {
 		return
 	}
-	if err := h.vpsSvc.DeleteFirewallRule(c, inst, ruleID); err != nil {
+	if err := h.vpsSvc.DeleteFirewallRule(c, inst, uri.RuleID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
 			status = http.StatusNotImplemented
@@ -525,8 +624,12 @@ func (h *Handler) VPSFirewallDelete(c *gin.Context) {
 }
 
 func (h *Handler) VPSPortMappings(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -604,8 +707,12 @@ func parsePortValue(value any) (int64, bool) {
 }
 
 func (h *Handler) VPSPortCandidates(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -613,7 +720,12 @@ func (h *Handler) VPSPortCandidates(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "port_mapping", "端口映射") {
 		return
 	}
-	keywords := strings.TrimSpace(c.Query("keywords"))
+	var query vpsKeywordsQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	keywords := strings.TrimSpace(query.Keywords)
 	items, err := h.vpsSvc.FindPortCandidates(c, inst, keywords)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -627,9 +739,12 @@ func (h *Handler) VPSPortCandidates(c *gin.Context) {
 }
 
 func (h *Handler) VPSPortMappingDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	mappingID, _ := strconv.ParseInt(c.Param("mappingId"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsPortMappingURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -637,7 +752,7 @@ func (h *Handler) VPSPortMappingDelete(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "port_mapping", "端口映射") {
 		return
 	}
-	if err := h.vpsSvc.DeletePortMapping(c, inst, mappingID); err != nil {
+	if err := h.vpsSvc.DeletePortMapping(c, inst, uri.MappingID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
 			status = http.StatusNotImplemented
@@ -687,7 +802,12 @@ func (h *Handler) TicketCreate(c *gin.Context) {
 }
 
 func (h *Handler) TicketList(c *gin.Context) {
-	status := strings.TrimSpace(c.Query("status"))
+	var query ticketStatusQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	status := strings.TrimSpace(query.Status)
 	limit, offset := paging(c)
 	userID := getUserID(c)
 	filter := appshared.TicketFilter{UserID: &userID, Status: status, Limit: limit, Offset: offset}
@@ -704,8 +824,12 @@ func (h *Handler) TicketList(c *gin.Context) {
 }
 
 func (h *Handler) TicketDetail(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ticket, messages, resources, err := h.ticketSvc.GetDetail(c, id)
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	ticket, messages, resources, err := h.ticketSvc.GetDetail(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -726,8 +850,12 @@ func (h *Handler) TicketDetail(c *gin.Context) {
 }
 
 func (h *Handler) TicketMessageCreate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ticket, err := h.ticketSvc.Get(c, id)
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	ticket, err := h.ticketSvc.Get(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -760,8 +888,12 @@ func (h *Handler) TicketMessageCreate(c *gin.Context) {
 }
 
 func (h *Handler) TicketClose(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ticket, err := h.ticketSvc.Get(c, id)
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	ticket, err := h.ticketSvc.Get(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -774,8 +906,12 @@ func (h *Handler) TicketClose(c *gin.Context) {
 }
 
 func (h *Handler) VPSEmergencyRenew(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -791,12 +927,16 @@ func (h *Handler) VPSEmergencyRenew(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	updated, _ := h.vpsSvc.Get(c, id, getUserID(c))
+	updated, _ := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	c.JSON(http.StatusOK, h.toVPSInstanceDTOWithLifecycle(c, updated))
 }
 
 func (h *Handler) VPSRenewOrder(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		RenewDays      int `json:"renew_days"`
 		DurationMonths int `json:"duration_months"`
@@ -805,7 +945,7 @@ func (h *Handler) VPSRenewOrder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	order, err := h.orderSvc.CreateRenewOrder(c, getUserID(c), id, payload.RenewDays, payload.DurationMonths)
+	order, err := h.orderSvc.CreateRenewOrder(c, getUserID(c), uri.ID, payload.RenewDays, payload.DurationMonths)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrRealNameRequired || err == appshared.ErrForbidden {
@@ -820,7 +960,11 @@ func (h *Handler) VPSRenewOrder(c *gin.Context) {
 }
 
 func (h *Handler) VPSResizeOrder(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Spec            *appshared.CartSpec `json:"spec"`
 		TargetPackageID int64               `json:"target_package_id"`
@@ -840,7 +984,7 @@ func (h *Handler) VPSResizeOrder(c *gin.Context) {
 		}
 		scheduledAt = &t
 	}
-	order, _, err := h.orderSvc.CreateResizeOrder(c, getUserID(c), id, payload.Spec, payload.TargetPackageID, payload.ResetAddons, scheduledAt)
+	order, _, err := h.orderSvc.CreateResizeOrder(c, getUserID(c), uri.ID, payload.Spec, payload.TargetPackageID, payload.ResetAddons, scheduledAt)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrRealNameRequired || err == appshared.ErrForbidden || err == appshared.ErrResizeDisabled {
@@ -855,7 +999,11 @@ func (h *Handler) VPSResizeOrder(c *gin.Context) {
 }
 
 func (h *Handler) VPSResizeQuote(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Spec            *appshared.CartSpec `json:"spec"`
 		TargetPackageID int64               `json:"target_package_id"`
@@ -865,7 +1013,7 @@ func (h *Handler) VPSResizeQuote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	quote, targetSpec, err := h.orderSvc.QuoteResizeOrder(c, getUserID(c), id, payload.Spec, payload.TargetPackageID, payload.ResetAddons)
+	quote, targetSpec, err := h.orderSvc.QuoteResizeOrder(c, getUserID(c), uri.ID, payload.Spec, payload.TargetPackageID, payload.ResetAddons)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrRealNameRequired || err == appshared.ErrForbidden || err == appshared.ErrResizeDisabled {
@@ -876,7 +1024,7 @@ func (h *Handler) VPSResizeQuote(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	resp := quote.ToPayload(id, targetSpec)
+	resp := quote.ToPayload(uri.ID, targetSpec)
 	resp["charge_amount"] = centsToFloat(quote.ChargeAmount)
 	resp["refund_amount"] = centsToFloat(quote.RefundAmount)
 	c.JSON(http.StatusOK, gin.H{"quote": resp})
@@ -887,8 +1035,12 @@ func (h *Handler) VPSRefund(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrOrdersDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	inst, err := h.vpsSvc.Get(c, id, getUserID(c))
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -903,7 +1055,7 @@ func (h *Handler) VPSRefund(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	order, amount, err := h.orderSvc.CreateRefundOrder(c, getUserID(c), id, payload.Reason)
+	order, amount, err := h.orderSvc.CreateRefundOrder(c, getUserID(c), uri.ID, payload.Reason)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrForbidden {
