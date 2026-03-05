@@ -120,32 +120,30 @@ script\build-win.bat
 ### Docker 快速启动（后端）
 
 ```bash
-# 构建后端镜像（含前端静态资源）
-./docker/build/build-docker-image.sh
+# 构建 Debian 镜像（默认，含前端静态资源）
+docker build -f docker/Dockerfile -t xiaohei:debian .
 
-# 使用 MySQL 启动（默认）⭐⭐⭐⭐⭐
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml up -d --build
+# 可选：构建 Alpine 镜像
+docker build -f docker/Dockerfile.alpine -t xiaohei:alpine .
 
-# 使用 PostgreSQL 启动 ⭐⭐⭐
-docker compose -f docker/docker-compose/docker-compose.postgres.yaml up -d --build
-
-# 使用 SQLite 启动（仅开发/测试）⭐
-docker compose -f docker/docker-compose/docker-compose.sqlite.yaml up -d --build
+# 使用 docker-compose 启动（MySQL + Debian 应用）
+docker compose -f docker/docker-compose.yml up -d --build
 
 # 查看服务日志
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml logs -f xiaoheifs
+docker compose -f docker/docker-compose.yml logs -f xiaohei-debian
 ```
 
-说明：SQLite 不建议用于生产环境。
+说明：当前仓库中的 compose 配置默认使用 MySQL（`mysql:8.4`）+ Debian 运行时镜像。
 
 更多说明见：`docker/README.md`
 
 ### CI 工作流
 
-- `release-build.yml`：主系统构建与发布
-- `release-pingbot-probe.yml`：探针发布
-- `release-xiaoheifs-app.yml`：管理端 App 发布
-- `release-xiaoheifs-userapp.yml`：用户端 App 发布
+- `docker-build.yml`：构建 Debian/Alpine Docker 镜像；在 `main`/`develop` 相关变更时触发，非 PR 场景推送到 Docker Hub
+- `release-build.yml`：构建主系统 Linux/Windows 发布包（含内置插件）并上传到 GitHub Release
+- `release-pingbot-probe.yml`：构建 pingbot 探针多平台包（linux amd64/arm64、windows amd64）并上传到 GitHub Release
+- `release-xiaoheifs-app.yml`：构建管理端 Flutter App（Android APK、Windows 包）并在 release 事件上传资产
+- `release-xiaoheifs-userapp.yml`：构建用户端 Flutter App（Android APK、Windows 包）并在 release 事件上传资产
 
 ## 子项目入口
 
@@ -165,7 +163,7 @@ docker compose -f docker/docker-compose/docker-compose.mysql.yaml logs -f xiaohe
 - duncai：支付实名接口与关键设计灵感
 - kaqi：安全测试与漏洞修复建议
 - kingbatsoft：安全测试与漏洞反馈
-- luochen：测试与设计建议
+- luochen：测试与设计建议，Docker 镜像构建与容器化支持
 - xiaohei：测试与设计建议，项目命名灵感来源
 - Caius：实名、财务统计与审计能力设计灵感
 - Pika：OpenIDC 系统开发与自动化插件接入支持
