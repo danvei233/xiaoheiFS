@@ -4,10 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/gin-gonic/gin"
-	mysqlDriver "github.com/go-sql-driver/mysql"
-	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/yaml.v3"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -19,6 +15,11 @@ import (
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
+
+	"github.com/gin-gonic/gin"
+	mysqlDriver "github.com/go-sql-driver/mysql"
+	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/yaml.v3"
 )
 
 const installConfigPath = "app.config.yaml"
@@ -401,7 +402,7 @@ persistConfig:
 
 	c.JSON(http.StatusOK, gin.H{
 		"ok":               true,
-		"restart_required": cfg.DBType != "sqlite",
+		"restart_required": cfg.DBType == "sqlite",
 		"config_file":      configPath,
 	})
 	if cfg.DBType != "sqlite" && gin.Mode() != gin.TestMode {

@@ -1,64 +1,23 @@
-/frontend/node_modules/
-/sdk/
-/mui2/
-/auroraboat-main/
-/frontend/nul
-
+# ============================================
+# Go / Backend
+# ============================================
 /backend/.claude/
 /backend/.plan/
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+/backend/tmp/
+/backend/data/
+/backend/uploads/
+vendor/
+*.test
+*.out
 
-# plugin build outputs (multi-platform)
+# Plugin build outputs
 /backend/plugins/**/bin/
 /backend/plugins/**/plugin
 
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool
-*.out
-
-# Dependency directories
-vendor/
-
-# Go workspace file
-go.work
-
-# Air temp directory
-tmp/
-
-# Database
-*.db
-*.db-shm
-*.db-wal
-install.lock
-app.config.json
-app.config.yaml
-app.config.yml
-
-# Config (sensitive data)
-config.local.yaml
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.trae/
-
-# OS
-.DS_Store
-Thumbs.db
-/.plan/
-
-/build/
-
+# ============================================
+# Frontend
+# ============================================
+/frontend/node_modules/
 /frontend/.vite/
 /frontend/.claude/
 /frontend/.idea/
@@ -69,45 +28,78 @@ Thumbs.db
 /frontend/.turbo/
 /frontend/.eslintcache
 /frontend/.stylelintcache
-/CLAUDE.md
-/backend/.claude/
-/backend/.plan/
-/backend/tmp/
-/backend/data/
-
-
-app/xiaoheifs_app/.claude
-app/xiaoheifs_app/.vscode
-app/xiaoheifs_app/.idea
-app/xiaoheifs_app/.dart_tool
-app/xiaoheifs_app/build
-app/xiaoheifs_app/android/app/google-services.json
-
-
-
-/backend/uploads/
 /frontend/dist/
+
+# ============================================
+# Flutter App
+# ============================================
+/app/xiaoheifs_app/.dart_tool/
+/app/xiaoheifs_app/.claude/
+/app/xiaoheifs_app/.vscode
+/app/xiaoheifs_app/.idea/
+/app/xiaoheifs_app/build/
+/app/xiaoheifs_app/android/app/google-services.json
+
 /app/xiaoheifs_userapp/.dart_tool/
 /app/xiaoheifs_userapp/.claude/
 /app/xiaoheifs_userapp/.idea/
 /app/xiaoheifs_userapp/build/
-app/xiaoheifs_userapp/assets/nul
-/dist/xiaohei-local-windows-amd64.zip
-/dist/
 
-# Root build artifacts
+# ============================================
+# Build Output
+# ============================================
 /build/
 /dist/
 /tmp/
 /app/userapp/
+
+# ============================================
+# Database & Config
+# ============================================
+*.db
+*.db-shm
+*.db-wal
+install.lock
+app.config.json
+app.config.yaml
+app.config.yml
+config.local.yaml
+
+# ============================================
+# IDE
+# ============================================
+.vscode/
+!.idea/.gitignore
+.idea/
+!.idea/runConfigurations/
+!.idea/.run/
+*.swp
+*.swo
+*~
+.claude/
+.plan/
+
+# ============================================
+# OS
+# ============================================
+.DS_Store
+Thumbs.db
+
+# ============================================
+# Docs
+# ============================================
 /docs/duanxinbao/
 /docs/shiming/
 
-# Added by speckit implement
+# ============================================
+# Misc
+# ============================================
 *.log
 .env
 .env.*
-/.codex/
 /.specify/
-
 /specs/
+/.sdk/
+/mui2/
+/auroraboat-main/
+/CLAUDE.md

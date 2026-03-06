@@ -14,7 +14,7 @@
     "@tinymce/tinymce-vue": "^6.3.0",
     "@vueup/vue-quill": "^1.2.0",
     "ant-design-vue": "^4.2.1",
-    "axios": "^1.6.8",
+    "axios": "^1.13.5",
     "ckeditor5": "^47.3.0",
     "dayjs": "^1.11.10",
     "echarts": "^5.5.0",
