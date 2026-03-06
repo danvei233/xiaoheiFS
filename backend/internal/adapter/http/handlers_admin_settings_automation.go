@@ -83,32 +83,113 @@ func (h *Handler) AdminSettingsUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
+
+	// 批量更新模式
 	if len(payload.Items) > 0 {
+		normalizedItems := make([]struct {
+			Key   string
+			Value string
+		}, 0, len(payload.Items))
+
+		// 验证所有配置项
 		for _, item := range payload.Items {
 			if strings.TrimSpace(item.Key) == "" {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidKey.Error()})
 				return
 			}
-			if err := validateSettingJSONValue(item.Key, item.Value); err != nil {
+			normalizedValue, err := validateAndNormalizeSettingValue(item.Key, item.Value)
+			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
+			normalizedItems = append(normalizedItems, struct {
+				Key   string
+				Value string
+			}{
+				Key:   item.Key,
+				Value: normalizedValue,
+			})
+		}
+
+		// 执行更新
+		for _, item := range normalizedItems {
 			if err := h.adminSvc.UpdateSetting(c, getUserID(c), item.Key, item.Value); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
 		}
 	} else {
-		if err := validateSettingJSONValue(payload.Key, payload.Value); err != nil {
+		// 单个更新模式
+		if strings.TrimSpace(payload.Key) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidKey.Error()})
+			return
+		}
+
+		normalizedValue, err := validateAndNormalizeSettingValue(payload.Key, payload.Value)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := h.adminSvc.UpdateSetting(c, getUserID(c), payload.Key, payload.Value); err != nil {
+
+		if err := h.adminSvc.UpdateSetting(c, getUserID(c), payload.Key, normalizedValue); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func validateAndNormalizeSettingValue(key, value string) (string, error) {
+	switch key {
+	case "copyright_text":
+		if strings.TrimSpace(value) == "" {
+			return "", fmt.Errorf("版权信息不能为空")
+		}
+		if len([]rune(value)) > 200 {
+			return "", fmt.Errorf("版权信息不能超过200字")
+		}
+		return value, nil
+	case "beian_info_list":
+		if err := validateBeianInfoList(value); err != nil {
+			return "", err
+		}
+		return value, nil
+	case "admin_path":
+		normalizedPath := strings.TrimSpace(value)
+		if err := ValidateAdminPath(normalizedPath); err != nil {
+			return "", err
+		}
+		return normalizedPath, nil
+	default:
+		return value, nil
+	}
+}
+
+// validateBeianInfoList 验证备案信息列表的格式
+func validateBeianInfoList(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "[]" {
+		return nil
+	}
+	
+	var beianList []struct {
+		Number  string `json:"number"`
+		IconURL string `json:"icon_url"`
+		LinkURL string `json:"link_url"`
+	}
+	
+	if err := json.Unmarshal([]byte(value), &beianList); err != nil {
+		return fmt.Errorf("备案信息格式错误: %v", err)
+	}
+	
+	for i, beian := range beianList {
+		// 如果填写了任何字段，备案号必填
+		if (beian.IconURL != "" || beian.LinkURL != "") && strings.TrimSpace(beian.Number) == "" {
+			return fmt.Errorf("备案信息 %d 的备案号不能为空", i+1)
+		}
+	}
+	
+	return nil
 }
 
 func (h *Handler) AdminPushTokenRegister(c *gin.Context) {
@@ -264,7 +345,7 @@ func (h *Handler) AdminAutomationConfig(c *gin.Context) {
 	cfg, present, binding, enabled, err := h.readAutomationPluginConfig(c)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{
-			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
+			"error":         domain.ErrNoWritableAutomationPluginInstance.Error(),
 			"code":          "no_writable_automation_instance",
 			"redirect_path": "/admin/catalog",
 		})
@@ -318,7 +399,7 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 	binding, err := h.resolveWritableAutomationBinding(c)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{
-			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
+			"error":         domain.ErrNoWritableAutomationPluginInstance.Error(),
 			"code":          "no_writable_automation_instance",
 			"redirect_path": "/admin/catalog",
 		})

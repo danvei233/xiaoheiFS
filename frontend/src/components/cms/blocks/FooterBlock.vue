@@ -116,7 +116,93 @@
       <!-- Footer Bottom -->
       <div class="footer-bottom">
         <div class="footer-bottom-left">
-          <p>&copy; {{ new Date().getFullYear() }} {{ siteName }}. {{ $t('footer.rights') || 'All rights reserved.' }}</p>
+          <!-- 版权信息 -->
+          <p class="copyright-text">© {{ copyrightText || `${new Date().getFullYear()} ${siteName}. ${$t('footer.rights') || 'All rights reserved.'}` }}</p>
+        </div>
+
+        <!-- 备案信息 - 可编辑数组 - 移到中间 -->
+        <div class="footer-bottom-center">
+          <div class="beian-info" :class="{ 'beian-multiline': beianInfoList.length > 4 }">
+            <template v-if="isVisualMode">
+              <div
+                v-for="(beian, index) in editableBeianInfo"
+                :key="`beian-${index}`"
+                class="beian-item-edit"
+              >
+                <InlineEdit
+                  :field-path="`footer.beian_info.${index}.number`"
+                  v-model="beian.number"
+                  edit-type="text"
+                  label="备案号"
+                  :is-array-item="true"
+                  :can-add="index === editableBeianInfo.length - 1"
+                  :can-remove="editableBeianInfo.length > 1"
+                  @add-item="addBeianItem"
+                  @remove-item="() => removeBeianItem(index)"
+                />
+                <InlineEdit
+                  :field-path="`footer.beian_info.${index}.link_url`"
+                  v-model="beian.link_url"
+                  edit-type="url"
+                  label="备案链接"
+                />
+                <InlineEdit
+                  :field-path="`footer.beian_info.${index}.icon_url`"
+                  v-model="beian.icon_url"
+                  edit-type="url"
+                  label="图标URL（可选）"
+                />
+              </div>
+              <div v-if="editableBeianInfo.length === 0" class="empty-beian">
+                <a-button type="dashed" @click="addBeianItem">+ 添加备案信息</a-button>
+              </div>
+            </template>
+            <template v-else>
+              <!-- 当备案信息大于4条时，分两行显示 -->
+              <template v-if="beianInfoList.length > 4">
+                <div class="beian-row beian-row-first">
+                  <a
+                    v-for="(beian, index) in beianInfoList.slice(0, 3)"
+                    :key="index"
+                    :href="beian.link_url || '#'"
+                    :target="beian.link_url ? '_blank' : '_self'"
+                    rel="noopener noreferrer"
+                    class="beian-link"
+                  >
+                    <img v-if="beian.icon_url" :src="beian.icon_url" class="beian-icon" :alt="beian.number" />
+                    <span>{{ beian.number }}</span>
+                  </a>
+                </div>
+                <div class="beian-row beian-row-second">
+                  <a
+                    v-for="(beian, index) in beianInfoList.slice(3)"
+                    :key="index + 3"
+                    :href="beian.link_url || '#'"
+                    :target="beian.link_url ? '_blank' : '_self'"
+                    rel="noopener noreferrer"
+                    class="beian-link"
+                  >
+                    <img v-if="beian.icon_url" :src="beian.icon_url" class="beian-icon" :alt="beian.number" />
+                    <span>{{ beian.number }}</span>
+                  </a>
+                </div>
+              </template>
+              <!-- 4条或更少时，单行显示 -->
+              <template v-else>
+                <a
+                  v-for="(beian, index) in beianInfoList"
+                  :key="index"
+                  :href="beian.link_url || '#'"
+                  :target="beian.link_url ? '_blank' : '_self'"
+                  rel="noopener noreferrer"
+                  class="beian-link"
+                >
+                  <img v-if="beian.icon_url" :src="beian.icon_url" class="beian-icon" :alt="beian.number" />
+                  <span>{{ beian.number }}</span>
+                </a>
+              </template>
+            </template>
+          </div>
         </div>
 
         <!-- Badges - 可编辑数组 -->
@@ -161,6 +247,8 @@ const props = defineProps<{
   content: { description?: string; social_links?: Array<{ key?: string; url?: string }> }
   sections: Array<{ title?: string; links: Array<{ label?: string; url?: string }> }>
   badges: string[]
+  copyrightText?: string
+  beianInfoList?: Array<{ number: string; icon_url?: string; link_url?: string }>
 }>()
 
 const isInternalLink = (url?: string) => {
@@ -197,6 +285,14 @@ const editableSections = computed({
 // 编辑模式下的 badges 数组
 const editableBadges = computed({
   get: () => props.badges || [],
+  set: (val) => {
+    // 数组直接引用
+  }
+})
+
+// 编辑模式下的 beian_info 数组
+const editableBeianInfo = computed({
+  get: () => props.beianInfoList || [],
   set: (val) => {
     // 数组直接引用
   }
@@ -246,12 +342,26 @@ const addBadgeItem = () => {
 const removeBadgeItem = (index: number) => {
   cmsEditContext?.removeArrayItem('footer.badges', index)
 }
+
+// Beian Info 数组操作
+const addBeianItem = () => {
+  cmsEditContext?.addArrayItem('footer.beian_info', {
+    number: '新备案号',
+    link_url: '',
+    icon_url: ''
+  })
+}
+
+const removeBeianItem = (index: number) => {
+  cmsEditContext?.removeArrayItem('footer.beian_info', index)
+}
 </script>
 
 <style scoped>
 .empty-social,
 .empty-sections,
-.empty-badges {
+.empty-badges,
+.empty-beian {
   display: flex;
   justify-content: center;
   padding: 12px;
@@ -277,5 +387,106 @@ const removeBadgeItem = (index: number) => {
 .footer-bottom-right :deep(.editable-region) {
   display: inline-block;
   margin-right: 8px;
+}
+
+/* 覆盖父级 footer-bottom 布局 - 改为三列网格布局 */
+.footer-bottom {
+  display: grid !important;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 24px;
+}
+
+/* 备案信息样式 */
+.footer-bottom-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.copyright-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.footer-bottom-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.footer-bottom-right {
+  display: flex;
+  gap: 16px;
+  justify-content: flex-end;
+}
+
+.beian-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.beian-info.beian-multiline {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.beian-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.beian-item-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px dashed var(--color-border);
+  border-radius: 4px;
+  flex: 0 0 auto;
+}
+
+.beian-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  transition: color 0.2s;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.beian-link:hover {
+  color: var(--color-primary-light);
+}
+
+.beian-icon {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+/* 响应式 - 移动端居中显示 */
+@media (max-width: 768px) {
+  .footer-bottom {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+    text-align: center;
+  }
+
+  .footer-bottom-left,
+  .footer-bottom-center,
+  .footer-bottom-right {
+    justify-content: center;
+  }
 }
 </style>

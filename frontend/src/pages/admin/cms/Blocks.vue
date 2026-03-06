@@ -1136,6 +1136,39 @@
                   >
                 </div>
               </a-form-item>
+              <a-form-item label="备案信息">
+                <div class="form-list">
+                  <div
+                    class="form-list-item column-group"
+                    v-for="(beian, index) in formContent.footer.beian_info"
+                    :key="index"
+                  >
+                    <a-input
+                      v-model:value="beian.number"
+                      placeholder="备案号"
+                    />
+                    <a-input
+                      v-model:value="beian.link_url"
+                      placeholder="备案链接"
+                    />
+                    <a-input
+                      v-model:value="beian.icon_url"
+                      placeholder="图标URL（可选）"
+                    />
+                    <a-button
+                      type="link"
+                      danger
+                      @click="removeListItem(formContent.footer.beian_info, index)"
+                      >删除</a-button
+                    >
+                  </div>
+                  <a-button
+                    type="dashed"
+                    @click="addListItem(formContent.footer.beian_info, { number: '', link_url: '', icon_url: '' })"
+                    >新增备案信息</a-button
+                  >
+                </div>
+              </a-form-item>
             </template>
             <a-form-item label="自定义HTML" v-if="form.type === 'custom_html'">
               <a-textarea v-model:value="form.custom_html" :rows="6" />
@@ -1323,6 +1356,7 @@
                       :content="previewFooterContent"
                       :sections="previewFooterSections"
                       :badges="previewFooterBadges"
+                      :beian-info-list="previewFooterBeianInfo"
                     />
                   </div>
                 </template>
@@ -1859,6 +1893,7 @@ const formContent = reactive({
       },
     ],
     badges: ["99.99% Uptime", "SOC2 Certified"],
+    beian_info: [],
   },
 });
 const defaultHeroCards = JSON.parse(JSON.stringify(formContent.hero.cards));
@@ -2248,6 +2283,9 @@ const previewFooterSections = computed(() =>
 );
 const previewFooterBadges = computed(() =>
   Array.isArray(activeContent.value.badges) ? activeContent.value.badges : [],
+);
+const previewFooterBeianInfo = computed(() =>
+  Array.isArray(activeContent.value.beian_info) ? activeContent.value.beian_info : [],
 );
 const defaultBlocksByPage: Record<string, Record<string, any>> = {
   home: {
