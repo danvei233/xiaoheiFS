@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 	"time"
+
 	appcart "xiaoheiplay/internal/app/cart"
 	apporder "xiaoheiplay/internal/app/order"
 	appshared "xiaoheiplay/internal/app/shared"
@@ -205,6 +206,154 @@ func TestOrderService_CreateRefundOrder_UsesInstanceMonthlyPrice(t *testing.T) {
 	}
 	if refundOrder.TotalAmount != -3000 {
 		t.Fatalf("expected refund order total -3000, got %d", refundOrder.TotalAmount)
+	}
+}
+
+func TestOrderService_CreateRenewOrder_UsesInstanceMonthlyPrice(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "renewprice", "renewprice@example.com", "pass")
+
+	baseOrder := domain.Order{
+		UserID:      user.ID,
+		OrderNo:     "ORD-RENEW-BASE-MP",
+		Status:      domain.OrderStatusActive,
+		TotalAmount: seed.Package.Monthly,
+		Currency:    "CNY",
+	}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:   baseOrder.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    seed.Package.Monthly,
+		Status:    domain.OrderItemStatusActive,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	items, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	if err != nil || len(items) == 0 {
+		t.Fatalf("list base items: %v", err)
+	}
+
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		AutomationInstanceID: "1009",
+		Name:                 "vm-renew-price",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         1234,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		CreatedAt:            time.Now(),
+	}
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	inst.ExpireAt = &expire
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	order, err := svc.CreateRenewOrder(context.Background(), user.ID, inst.ID, 0, 2)
+	if err != nil {
+		t.Fatalf("create renew order: %v", err)
+	}
+	if order.TotalAmount != 2468 {
+		t.Fatalf("expected renew order total 2468 from instance monthly price, got %d", order.TotalAmount)
+	}
+	if order.Status != domain.OrderStatusPendingPayment {
+		t.Fatalf("expected pending payment renew order, got %s", order.Status)
+	}
+
+	renewItems, err := repo.ListOrderItems(context.Background(), order.ID)
+	if err != nil || len(renewItems) != 1 {
+		t.Fatalf("list renew items: %v", err)
+	}
+	if renewItems[0].Amount != 2468 {
+		t.Fatalf("expected renew item amount 2468, got %d", renewItems[0].Amount)
+	}
+}
+
+func TestOrderService_CreateRenewOrder_RejectsOverflowInputs(t *testing.T) {
+	tests := []struct {
+		name           string
+		monthlyPrice   int64
+		durationMonths int
+	}{
+		{
+			name:           "amount overflow",
+			monthlyPrice:   31,
+			durationMonths: int((int64(^uint64(0)>>1) / 31) + 1),
+		},
+		{
+			name:           "renew days overflow",
+			monthlyPrice:   1,
+			durationMonths: int((int(^uint(0)>>1) / 30) + 1),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, repo := testutil.NewTestDB(t, false)
+			seed := testutil.SeedCatalog(t, repo)
+			user := testutil.CreateUser(t, repo, "renewoverflow", "renewoverflow@example.com", "pass")
+
+			baseOrder := domain.Order{
+				UserID:      user.ID,
+				OrderNo:     "ORD-RENEW-OVERFLOW",
+				Status:      domain.OrderStatusActive,
+				TotalAmount: seed.Package.Monthly,
+				Currency:    "CNY",
+			}
+			if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+				t.Fatalf("create base order: %v", err)
+			}
+			baseItem := domain.OrderItem{
+				OrderID:   baseOrder.ID,
+				PackageID: seed.Package.ID,
+				SystemID:  seed.SystemImage.ID,
+				Amount:    seed.Package.Monthly,
+				Status:    domain.OrderItemStatusActive,
+				Action:    "create",
+				SpecJSON:  "{}",
+			}
+			if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+				t.Fatalf("create base item: %v", err)
+			}
+			items, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+			if err != nil || len(items) == 0 {
+				t.Fatalf("list base items: %v", err)
+			}
+
+			inst := domain.VPSInstance{
+				UserID:               user.ID,
+				OrderItemID:          items[0].ID,
+				AutomationInstanceID: "1010",
+				Name:                 "vm-renew-overflow",
+				PackageID:            seed.Package.ID,
+				PackageName:          seed.Package.Name,
+				MonthlyPrice:         tt.monthlyPrice,
+				SpecJSON:             "{}",
+				Status:               domain.VPSStatusRunning,
+				CreatedAt:            time.Now(),
+			}
+			expire := time.Now().Add(30 * 24 * time.Hour)
+			inst.ExpireAt = &expire
+			if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+				t.Fatalf("create instance: %v", err)
+			}
+
+			svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+			if _, err := svc.CreateRenewOrder(context.Background(), user.ID, inst.ID, 0, tt.durationMonths); err != appshared.ErrInvalidInput {
+				t.Fatalf("expected invalid input, got %v", err)
+			}
+		})
 	}
 }
 
