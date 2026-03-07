@@ -2338,24 +2338,25 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 	}
 	renewDays = months * 30
 	monthlyPrice := inst.MonthlyPrice
-	if monthlyPrice <= 0 && inst.PackageID > 0 {
-		if pkg, err := s.catalog.GetPackage(ctx, inst.PackageID); err == nil {
-			monthlyPrice = pkg.Monthly
-		}
-	}
-	amount := monthlyPrice * int64(months)
-	if amount <= 0 {
+	if monthlyPrice < 0 {
 		return domain.Order{}, ErrInvalidInput
 	}
+	amount := monthlyPrice * int64(months)
 	if renewDays <= 0 {
 		renewDays = 30
 	}
 	orderNo := fmt.Sprintf("REN-%d-%d", userID, time.Now().Unix())
+	status := domain.OrderStatusPendingPayment
+	itemStatus := domain.OrderItemStatusPendingPayment
+	if amount == 0 {
+		status = domain.OrderStatusPendingReview
+		itemStatus = domain.OrderItemStatusPendingReview
+	}
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
 		Source:      resolveOrderSource(ctx),
-		Status:      domain.OrderStatusPendingPayment,
+		Status:      status,
 		TotalAmount: amount,
 		Currency:    "CNY",
 	}
@@ -2366,7 +2367,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 		OrderID:  order.ID,
 		Qty:      1,
 		Amount:   amount,
-		Status:   domain.OrderItemStatusPendingPayment,
+		Status:   itemStatus,
 		Action:   "renew",
 		SpecJSON: mustJSON(map[string]any{"vps_id": vpsID, "renew_days": renewDays, "duration_months": months}),
 	}
@@ -2374,7 +2375,19 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 		return domain.Order{}, err
 	}
 	if s.events != nil {
-		_, _ = s.events.Publish(ctx, order.ID, "order.pending_payment", map[string]any{"status": order.Status, "total": amount})
+		eventName := "order.pending_payment"
+		if status == domain.OrderStatusPendingReview {
+			eventName = "order.pending_review"
+		}
+		_, _ = s.events.Publish(ctx, order.ID, eventName, map[string]any{"status": order.Status, "total": amount})
+	}
+	if amount == 0 {
+		if err := s.ApproveOrder(ctx, 0, order.ID); err != nil {
+			return domain.Order{}, err
+		}
+		if updated, err := s.orders.GetOrder(ctx, order.ID); err == nil {
+			order = updated
+		}
 	}
 	return order, nil
 }

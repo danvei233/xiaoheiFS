@@ -208,6 +208,77 @@ func TestOrderService_CreateRefundOrder_UsesInstanceMonthlyPrice(t *testing.T) {
 	}
 }
 
+func TestOrderService_CreateRenewOrder_UsesInstanceMonthlyPrice(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "renewprice", "renewprice@example.com", "pass")
+
+	baseOrder := domain.Order{
+		UserID:      user.ID,
+		OrderNo:     "ORD-RENEW-BASE-MP",
+		Status:      domain.OrderStatusActive,
+		TotalAmount: seed.Package.Monthly,
+		Currency:    "CNY",
+	}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:   baseOrder.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    seed.Package.Monthly,
+		Status:    domain.OrderItemStatusActive,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	items, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	if err != nil || len(items) == 0 {
+		t.Fatalf("list base items: %v", err)
+	}
+
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		AutomationInstanceID: "1009",
+		Name:                 "vm-renew-price",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         1234,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		CreatedAt:            time.Now(),
+	}
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	inst.ExpireAt = &expire
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	order, err := svc.CreateRenewOrder(context.Background(), user.ID, inst.ID, 0, 2)
+	if err != nil {
+		t.Fatalf("create renew order: %v", err)
+	}
+	if order.TotalAmount != 2468 {
+		t.Fatalf("expected renew order total 2468 from instance monthly price, got %d", order.TotalAmount)
+	}
+	if order.Status != domain.OrderStatusPendingPayment {
+		t.Fatalf("expected pending payment renew order, got %s", order.Status)
+	}
+
+	renewItems, err := repo.ListOrderItems(context.Background(), order.ID)
+	if err != nil || len(renewItems) != 1 {
+		t.Fatalf("list renew items: %v", err)
+	}
+	if renewItems[0].Amount != 2468 {
+		t.Fatalf("expected renew item amount 2468, got %d", renewItems[0].Amount)
+	}
+}
+
 func TestOrderService_CreateRefundOrder_UserAPIKeySourceAutoApprove(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	seed := testutil.SeedCatalog(t, repo)
