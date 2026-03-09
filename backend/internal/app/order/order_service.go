@@ -1404,6 +1404,12 @@ func (s *OrderService) handleRenew(ctx context.Context, item domain.OrderItem) e
 	if payload.RenewDays <= 0 {
 		payload.RenewDays = 30
 	}
+	// Guard against time.Duration overflow: cap renewDays to the same safe
+	// upper bound enforced at order creation (600 months = 18000 days).
+	const maxRenewDays = 600 * 30
+	if payload.RenewDays > maxRenewDays {
+		return ErrInvalidInput
+	}
 	inst, err := s.vps.GetInstance(ctx, payload.VPSID)
 	if err != nil {
 		return err
@@ -1464,6 +1470,12 @@ func (s *OrderService) handleEmergencyRenew(ctx context.Context, item domain.Ord
 	renewDays := payload.RenewDays
 	if renewDays <= 0 {
 		renewDays = policy.RenewDays
+	}
+	// Guard against time.Duration overflow: emergency renew days should be
+	// a small value (configured via policy), but cap defensively.
+	const maxEmergencyRenewDays = 365
+	if renewDays > maxEmergencyRenewDays {
+		renewDays = maxEmergencyRenewDays
 	}
 	hostID := parseHostID(inst.AutomationInstanceID)
 	if hostID == 0 {
@@ -2336,26 +2348,42 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 	if months <= 0 {
 		months = 1
 	}
+	// Limit months to a safe upper bound that prevents time.Duration overflow.
+	// time.Duration(days)*24*time.Hour overflows when days > ~106751 (292 years).
+	// We cap at 600 months (50 years) which is a reasonable business maximum
+	// and stays well within time.Duration's safe range.
+	const maxRenewMonths = 600
+	if months > maxRenewMonths {
+		return domain.Order{}, ErrInvalidInput
+	}
 	renewDays = months * 30
 	monthlyPrice := inst.MonthlyPrice
-	if monthlyPrice <= 0 && inst.PackageID > 0 {
-		if pkg, err := s.catalog.GetPackage(ctx, inst.PackageID); err == nil {
-			monthlyPrice = pkg.Monthly
-		}
+	if monthlyPrice < 0 {
+		return domain.Order{}, ErrInvalidInput
+	}
+	maxInt64 := int64(^uint64(0) >> 1)
+	if monthlyPrice > 0 && int64(months) > maxInt64/monthlyPrice {
+		return domain.Order{}, ErrInvalidInput
 	}
 	amount := monthlyPrice * int64(months)
-	if amount <= 0 {
+	if amount < 0 {
 		return domain.Order{}, ErrInvalidInput
 	}
 	if renewDays <= 0 {
 		renewDays = 30
 	}
 	orderNo := fmt.Sprintf("REN-%d-%d", userID, time.Now().Unix())
+	status := domain.OrderStatusPendingPayment
+	itemStatus := domain.OrderItemStatusPendingPayment
+	if amount == 0 {
+		status = domain.OrderStatusPendingReview
+		itemStatus = domain.OrderItemStatusPendingReview
+	}
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
 		Source:      resolveOrderSource(ctx),
-		Status:      domain.OrderStatusPendingPayment,
+		Status:      status,
 		TotalAmount: amount,
 		Currency:    "CNY",
 	}
@@ -2366,7 +2394,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 		OrderID:  order.ID,
 		Qty:      1,
 		Amount:   amount,
-		Status:   domain.OrderItemStatusPendingPayment,
+		Status:   itemStatus,
 		Action:   "renew",
 		SpecJSON: mustJSON(map[string]any{"vps_id": vpsID, "renew_days": renewDays, "duration_months": months}),
 	}
@@ -2374,7 +2402,19 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 		return domain.Order{}, err
 	}
 	if s.events != nil {
-		_, _ = s.events.Publish(ctx, order.ID, "order.pending_payment", map[string]any{"status": order.Status, "total": amount})
+		eventName := "order.pending_payment"
+		if status == domain.OrderStatusPendingReview {
+			eventName = "order.pending_review"
+		}
+		_, _ = s.events.Publish(ctx, order.ID, eventName, map[string]any{"status": order.Status, "total": amount})
+	}
+	if amount == 0 {
+		if err := s.ApproveOrder(ctx, 0, order.ID); err != nil {
+			return domain.Order{}, err
+		}
+		if updated, err := s.orders.GetOrder(ctx, order.ID); err == nil {
+			order = updated
+		}
 	}
 	return order, nil
 }

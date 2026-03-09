@@ -158,6 +158,11 @@ func (s *Service) RenewNow(ctx context.Context, inst domain.VPSInstance, days in
 	if days <= 0 {
 		days = 30
 	}
+	// Cap days to prevent time.Duration overflow (same bound as order creation: 600 months).
+	const maxRenewDays = 600 * 30
+	if days > maxRenewDays {
+		return appshared.ErrInvalidInput
+	}
 	next := time.Now().Add(time.Duration(days) * 24 * time.Hour)
 	if inst.ExpireAt != nil && inst.ExpireAt.After(time.Now()) {
 		next = inst.ExpireAt.Add(time.Duration(days) * 24 * time.Hour)
