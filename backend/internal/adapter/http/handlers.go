@@ -1,7 +1,7 @@
 package http
 
 import (
-	"github.com/microcosm-cc/bluemonday"
+	"net/url"
 	"regexp"
 	"time"
 	appadmin "xiaoheiplay/internal/app/admin"
@@ -24,6 +24,8 @@ import (
 	appuserapikey "xiaoheiplay/internal/app/userapikey"
 	appwallet "xiaoheiplay/internal/app/wallet"
 	appwalletorder "xiaoheiplay/internal/app/walletorder"
+
+	"github.com/microcosm-cc/bluemonday"
 )
 
 var (
@@ -174,12 +176,18 @@ type authSettings struct {
 	PasswordResetChannels  []string
 	PasswordResetVerifyTTL time.Duration
 
-	SMSCodeLength       int
-	SMSCodeComplexity   string
-	EmailCodeLength     int
-	EmailCodeComplexity string
-	CaptchaLength       int
-	CaptchaComplexity   string
+	SMSCodeLength          int
+	SMSCodeComplexity      string
+	EmailCodeLength        int
+	EmailCodeComplexity    string
+	CaptchaLength          int
+	CaptchaComplexity      string
+	CaptchaCtxForTurnstile struct {
+		// TODO: support multiple captcha providers in the future
+		Secret      string
+		SiteKey     string
+		APIEndpoint *url.URL
+	}
 
 	EmailBindEnabled               bool
 	PhoneBindEnabled               bool

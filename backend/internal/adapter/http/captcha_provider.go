@@ -10,8 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"xiaoheiplay/internal/domain"
+
+	"github.com/gin-gonic/gin"
 )
 
 type geeTestValidatePayload struct {
@@ -25,16 +26,22 @@ func normalizeCaptchaProvider(provider string) string {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "geetest":
 		return "geetest"
+	case "Turnstile":
+		return "Turnstile"
 	default:
 		return "image"
 	}
 }
 
 func (h *Handler) verifyHumanCaptcha(c *gin.Context, settings authSettings, captchaID, captchaCode string, gt geeTestValidatePayload) error {
-	if normalizeCaptchaProvider(settings.CaptchaProvider) == "geetest" {
+	switch normalizeCaptchaProvider(settings.CaptchaProvider) {
+	case "geeTest":
 		return h.verifyGeeTestCaptcha(settings, gt)
+	case "Turnstile":
+		return h.verifyTurnstileCaptcha(settings, captchaCode)
+	default:
+		return h.authSvc.VerifyCaptcha(c, captchaID, captchaCode)
 	}
-	return h.authSvc.VerifyCaptcha(c, captchaID, captchaCode)
 }
 
 func (h *Handler) verifyGeeTestCaptcha(settings authSettings, payload geeTestValidatePayload) error {
@@ -81,6 +88,25 @@ func (h *Handler) verifyGeeTestCaptcha(settings authSettings, payload geeTestVal
 	return nil
 }
 
+func (h *Handler) verifyTurnstileCaptcha(settings authSettings, token string) error {
+	if settings.CaptchaCtxForTurnstile.APIEndpoint == nil {
+		settings.CaptchaCtxForTurnstile.APIEndpoint = &url.URL{
+			Scheme: "https",
+			Host:   "challenges.cloudflare.com",
+			Path:   "turnstiles/v0/siteverify",
+		}
+
+	}
+	if func() error { // 网络连通性测试，cloudflare 在中国大陆的访问可能会有问题
+		_, err := http.Post(settings.CaptchaCtxForTurnstile.APIEndpoint.String(), "", strings.NewReader(""))
+		return err
+	}() != nil {
+		return domain.ErrCaptchaFailed
+	}
+	time.Sleep(time.Second * 2) // 防止 cloudflare 的风控限制
+	// WIP: 将在下一个提交中实现。
+	return nil
+}
 func hmacEncodeSHA256Hex(key string, data string) string {
 	mac := hmac.New(sha256.New, []byte(key))
 	mac.Write([]byte(data))
