@@ -10,31 +10,32 @@ on:
         required: true
         type: string
 
-permissions:
-  contents: write
-
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-
+  # ========== 准备阶段：解析版本号 ==========
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.value }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Resolve tag
         id: tag
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
             echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
-            exit 0
+          else
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
           fi
-          echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+
+  # ========== Windows 构建任务 ==========
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    needs: prepare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -49,112 +50,328 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
+      # --- 阶段 1: 构建主程序 ---
+      - name: Build main program
         shell: pwsh
         run: |
-          Write-Host "[1/5] Build frontend/static/backend via script/build-win.bat..."
+          Write-Host "[1/3] Build frontend and backend..."
           cmd /c script\build-win.bat
 
-          Write-Host "[4/5] Build built-in plugins (windows)..."
+      # --- 阶段 2: 构建插件 ---
+      - name: Build plugins
+        shell: pwsh
+        run: |
+          Write-Host "[2/3] Build built-in plugins..."
           Push-Location backend
-          $plugins = @(
-            @{ id = "payment/ezpay"; pkg = "./plugin-demo/pluginv1/payment_ezpay" },
-            @{ id = "payment/wechatpay_v3"; pkg = "./plugin-demo/pluginv1/payment_wechatpay_v3" },
-            @{ id = "payment/alipay_open"; pkg = "./plugin-demo/pluginv1/payment_alipay_open" },
-            @{ id = "sms/alisms"; pkg = "./plugin-demo/pluginv1/sms_alisms_mock" },
-            @{ id = "sms/tencent_sms"; pkg = "./plugin-demo/pluginv1/sms_tencent_mock" },
-            @{ id = "sms/duanxinbao"; pkg = "./plugin-demo/pluginv1/sms_duanxinbao" },
-            @{ id = "kyc/aliyun_kyc"; pkg = "./plugin-demo/pluginv1/kyc_aliyun_mock" },
-            @{ id = "kyc/tencent_kyc"; pkg = "./plugin-demo/pluginv1/kyc_tencent_mock" },
-            @{ id = "kyc/mangzhu_realname"; pkg = "./plugin-demo/pluginv1/kyc_mangzhu_realname" },
-            @{ id = "automation/lightboat"; pkg = "./plugin-demo/pluginv1/automation_lightboat" },
-            @{ id = "automation/xiaohei_proxy"; pkg = "./plugin-demo/pluginv1/automation_xiaohei_proxy" },
-            @{ id = "automation/mofang_openapi"; pkg = "./plugin-demo/pluginv1/automation_mofang_openapi" }
+          
+          $pluginList = @(
+            "payment/ezpay",
+            "payment/wechatpay_v3",
+            "payment/alipay_open",
+            "sms/alisms",
+            "sms/tencent_sms",
+            "sms/duanxinbao",
+            "kyc/aliyun_kyc",
+            "kyc/tencent_kyc",
+            "kyc/mangzhu_realname",
+            "automation/lightboat",
+            "automation/xiaohei_proxy",
+            "automation/mofang_openapi"
           )
+          
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          foreach ($p in $plugins) {
-            $outDir = Join-Path "plugins/$($p.id)" "bin/windows_amd64"
+          
+          foreach ($id in $pluginList) {
+            $pkg = "./plugin-demo/pluginv1/$($id -replace '/', '_')"
+            $outDir = Join-Path "plugins/$id" "bin/windows_amd64"
             New-Item -ItemType Directory -Force $outDir | Out-Null
             $outFile = Join-Path $outDir "plugin.exe"
-            go build -o $outFile $p.pkg
+            Write-Host "  Building $id..."
+            go build -o $outFile $pkg
           }
           Pop-Location
 
-          Write-Host "[5/5] Copy plugins to build/windows/plugins..."
-          Remove-Item -Recurse -Force build/windows/plugins -ErrorAction SilentlyContinue
-          Copy-Item -Path backend/plugins -Destination build/windows/plugins -Recurse -Force
-
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          echo "[1/5] Build frontend/static/backend via script/build-linux.sh..."
-          chmod +x script/build-linux.sh
-          ./script/build-linux.sh
-
-          echo "[4/5] Build built-in plugins (linux)..."
-          cd backend
-          export CGO_ENABLED=0
-          export GOOS=linux
-          export GOARCH=amd64
-          for p in \
-            "payment/ezpay ./plugin-demo/pluginv1/payment_ezpay" \
-            "payment/wechatpay_v3 ./plugin-demo/pluginv1/payment_wechatpay_v3" \
-            "payment/alipay_open ./plugin-demo/pluginv1/payment_alipay_open" \
-            "sms/alisms ./plugin-demo/pluginv1/sms_alisms_mock" \
-            "sms/tencent_sms ./plugin-demo/pluginv1/sms_tencent_mock" \
-            "sms/duanxinbao ./plugin-demo/pluginv1/sms_duanxinbao" \
-            "kyc/aliyun_kyc ./plugin-demo/pluginv1/kyc_aliyun_mock" \
-            "kyc/tencent_kyc ./plugin-demo/pluginv1/kyc_tencent_mock" \
-            "kyc/mangzhu_realname ./plugin-demo/pluginv1/kyc_mangzhu_realname" \
-            "automation/lightboat ./plugin-demo/pluginv1/automation_lightboat" \
-            "automation/xiaohei_proxy ./plugin-demo/pluginv1/automation_xiaohei_proxy" \
-            "automation/mofang_openapi ./plugin-demo/pluginv1/automation_mofang_openapi"; do
-              id="$(echo "$p" | cut -d' ' -f1)"
-              pkg="$(echo "$p" | cut -d' ' -f2)"
-              out_dir="plugins/$id/bin/linux_amd64"
-              mkdir -p "$out_dir"
-              go build -o "$out_dir/plugin" "$pkg"
-          done
-          cd ..
-
-          echo "[5/5] Copy plugins to build/linux/plugins..."
-          rm -rf build/linux/plugins
-          cp -a backend/plugins build/linux/
-
-      - name: Package (Windows)
-        if: runner.os == 'Windows'
+      # --- 阶段 3: 整理插件目录 ---
+      - name: Organize plugins
         shell: pwsh
         run: |
-          $tag = '${{ steps.tag.outputs.value }}'
+          Write-Host "[3/3] Organize plugins directory..."
+          Remove-Item -Recurse -Force build\windows\plugins -ErrorAction SilentlyContinue
+          Copy-Item -Path backend\plugins -Destination build\windows\plugins -Recurse -Force
+
+      # --- 打包 ---
+      - name: Package
+        shell: pwsh
+        run: |
+          $tag = "${{ needs.prepare.outputs.tag }}"
+          Write-Host "Packaging for Windows (tag: $tag)..."
+          
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/xiaohei-$tag-windows-amd64.zip"
           if (Test-Path $zip) { Remove-Item -Force $zip }
-          Push-Location build/windows
+          
+          Push-Location build\windows
           $repoRoot = (Resolve-Path ../..).Path
           $dest = Join-Path $repoRoot $zip
+          
           Compress-Archive -Path server.exe, static, plugins -DestinationPath $dest -Force
           Pop-Location
-          (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $zip -Leaf) | Set-Content "$zip.sha256" -NoNewline
+          
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $name = Split-Path $zip -Leaf
+          echo "$hash  $name" | Set-Content "$zip.sha256" -NoNewline
+          
+          Write-Host "Package created: $zip"
 
-      - name: Package (Linux)
-        if: runner.os == 'Linux'
+      # --- 上传产物 ---
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: dist/*
+          retention-days: 1
+
+  # ========== Linux 构建任务 ==========
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # --- 阶段 1: 构建主程序 ---
+      - name: Build main program
         shell: bash
         run: |
-          tag='${{ steps.tag.outputs.value }}'
+          echo "[1/3] Build frontend and backend..."
+          chmod +x script/build-linux.sh
+          ./script/build-linux.sh
+
+      # --- 阶段 2: 构建插件 ---
+      - name: Build plugins
+        shell: bash
+        run: |
+          echo "[2/3] Build built-in plugins..."
+          cd backend
+          
+          go env -w CGO_ENABLED=0
+          go env -w GOOS=linu
+          go env -w GOARCH=amd64
+          
+          PLUGIN_LIST=(
+            "payment/ezpay"
+            "payment/wechatpay_v3"
+            "payment/alipay_open"
+            "sms/alisms"
+            "sms/tencent_sms"
+            "sms/duanxinbao"
+            "kyc/aliyun_kyc"
+            "kyc/tencent_kyc"
+            "kyc/mangzhu_realname"
+            "automation/lightboat"
+            "automation/xiaohei_proxy"
+            "automation/mofang_openapi"
+          )
+          
+          for id in "${PLUGIN_LIST[@]}"; do
+            pkg="./plugin-demo/pluginv1/${id//\//_}"
+            out_dir="plugins/$id/bin/linux_amd64"
+            mkdir -p "$out_dir"
+            echo "  Building $id..."
+            go build -o "$out_dir/plugin" "$pkg"
+          done
+          cd ..
+
+      # --- 阶段 3: 整理插件目录 ---
+      - name: Organize plugins
+        shell: bash
+        run: |
+          echo "[3/3] Organize plugins directory..."
+          rm -rf build/linux/plugins
+          cp -a backend/plugins build/linux/
+
+      # --- 打包 ---
+      - name: Package
+        shell: bash
+        run: |
+          tag="${{ needs.prepare.outputs.tag }}"
+          echo "Packaging for Linux (tag: $tag)..."
+          
           mkdir -p dist
           out="dist/xiaohei-$tag-linux-amd64.tar.gz"
           tar -C build/linux -czf "$out" server static plugins
+          
           hash="$(sha256sum "$out" | cut -d' ' -f1)"
           echo "$hash  $(basename "$out")" > "$out.sha256"
+          
+          echo "Package created: $out"
 
-      - name: Upload assets to release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.tag.outputs.value }}
+      # --- 上传产物 ---
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: dist/*
+          retention-days: 1
+
+  # ========== FreeBSD 构建任务 (交叉编译) ==========
+  build-freebsd:
+    name: Build (FreeBSD - Cross)
+    runs-on: ubuntu-latest
+    needs: prepare
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # --- 阶段 1: 构建主程序 (前端复用 Linux 构建，后端交叉编译) ---
+      - name: Build main program
         shell: bash
         run: |
-          gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          echo "[1/3] Build frontend and backend (FreeBSD cross)..."
+          # 构建前端 (静态资源，所有平台通用)
+          chmod +x script/build-linux.sh
+          ./script/build-linux.sh
+          
+          # 交叉编译后端
+          echo "  Cross-compiling backend for FreeBSD..."
+          cd backend
+          go env -w CGO_ENABLED=0
+          go env -w GOOS=freebsd
+          go env -w GOARCH=amd64
+          go build -o ../build/freebsd/server ./cmd/server
+          cd ..
+
+      # --- 阶段 2: 构建插件 (交叉编译) ---
+      - name: Build plugins
+        shell: bash
+        run: |
+          echo "[2/3] Build built-in plugins (FreeBSD cross)..."
+          cd backend
+          
+          go env -w CGO_ENABLED=0
+          go env -w GOOS=freebsd
+          go env -w GOARCH=amd64
+          
+          PLUGIN_LIST=(
+            "payment/ezpay"
+            "payment/wechatpay_v3"
+            "payment/alipay_open"
+            "sms/alisms"
+            "sms/tencent_sms"
+            "sms/duanxinbao"
+            "kyc/aliyun_kyc"
+            "kyc/tencent_kyc"
+            "kyc/mangzhu_realname"
+            "automation/lightboat"
+            "automation/xiaohei_proxy"
+            "automation/mofang_openapi"
+          )
+          
+          for id in "${PLUGIN_LIST[@]}"; do
+            pkg="./plugin-demo/pluginv1/${id//\//_}"
+            out_dir="plugins/$id/bin/freebsd_amd64"
+            mkdir -p "$out_dir"
+            echo "  Building $id..."
+            go build -o "$out_dir/plugin" "$pkg"
+          done
+          cd ..
+
+      # --- 阶段 3: 整理插件目录 ---
+      - name: Organize plugins
+        shell: bash
+        run: |
+          echo "[3/3] Organize plugins directory..."
+          rm -rf build/freebsd/plugins
+          cp -a backend/plugins build/freebsd/
+
+      # --- 打包 ---
+      - name: Package
+        shell: bash
+        run: |
+          tag="${{ needs.prepare.outputs.tag }}"
+          echo "Packaging for FreeBSD (tag: $tag)..."
+          
+          mkdir -p dist
+          out="dist/xiaohei-$tag-freebsd-amd64.tar.gz"
+          tar -C build/freebsd -czf "$out" server static plugins
+          
+          hash="$(sha256sum "$out" | cut -d' ' -f1)"
+          echo "$hash  $(basename "$out")" > "$out.sha256"
+          
+          echo "Package created: $out"
+
+      # --- 上传产物 ---
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: freebsd-release
+          path: dist/*
+          retention-days: 1
+
+  # ========== 发布阶段：上传到 Release ==========
+  release:
+    name: Upload to Release
+    runs-on: ubuntu-latest
+    needs: [prepare, build-windows, build-linux, build-freebsd]
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release
+          path: dist
+
+      - name: Download Linux artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-release
+          path: dist
+
+      - name: Download FreeBSD artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: freebsd-release
+          path: dist
+
+      - name: List artifacts
+        shell: bash
+        run: |
+          echo "Uploading the following files to release ${{ needs.prepare.outputs.tag }}:"
+          ls -la dist/
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release upload "${{ needs.prepare.outputs.tag }}" dist/* --clobber --repo "$GITHUB_REPOSITORY"
