@@ -1,10 +1,13 @@
 package http
 
 import (
+	"bytes"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -38,7 +41,7 @@ func (h *Handler) verifyHumanCaptcha(c *gin.Context, settings authSettings, capt
 	case "geeTest":
 		return h.verifyGeeTestCaptcha(settings, gt)
 	case "Turnstile":
-		return h.verifyTurnstileCaptcha(settings, captchaCode)
+		return h.verifyTurnstileCaptcha(c, settings, captchaCode)
 	default:
 		return h.authSvc.VerifyCaptcha(c, captchaID, captchaCode)
 	}
@@ -73,7 +76,12 @@ func (h *Handler) verifyGeeTestCaptcha(settings authSettings, payload geeTestVal
 	if err != nil {
 		return domain.ErrCaptchaFailed
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Fatalf("Failed to close response body: %v", err)
+		}
+	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		return domain.ErrCaptchaFailed
 	}
@@ -88,23 +96,83 @@ func (h *Handler) verifyGeeTestCaptcha(settings authSettings, payload geeTestVal
 	return nil
 }
 
-func (h *Handler) verifyTurnstileCaptcha(settings authSettings, token string) error {
-	if settings.CaptchaCtxForTurnstile.APIEndpoint == nil {
-		settings.CaptchaCtxForTurnstile.APIEndpoint = &url.URL{
-			Scheme: "https",
-			Host:   "challenges.cloudflare.com",
-			Path:   "turnstiles/v0/siteverify",
+func (h *Handler) verifyTurnstileCaptcha(c *gin.Context, settings authSettings, token string) error {
+	stripPort := func(host string) string {
+		if idx := strings.Index(host, ":"); idx > 0 {
+			return host[:idx]
 		}
-
+		return host
 	}
-	if func() error { // 网络连通性测试，cloudflare 在中国大陆的访问可能会有问题
-		_, err := http.Post(settings.CaptchaCtxForTurnstile.APIEndpoint.String(), "", strings.NewReader(""))
-		return err
-	}() != nil {
+
+	getRemoteIP := func() string {
+		if ip := c.GetHeader("CF-Connecting-IP"); ip != "" {
+			return ip
+		}
+		if ip := c.GetHeader("X-Forwarded-For"); ip != "" {
+			return strings.Split(ip, ", ")[0]
+		}
+		return c.ClientIP()
+	}
+
+	getSiteverifyURL := func() string {
+		if settings.CaptchaCtxForTurnstile.APIEndpoint != nil {
+			return settings.CaptchaCtxForTurnstile.APIEndpoint.String()
+		}
+		return "https://challenges.cloudflare.com/turnstiles/v0/siteverify"
+	}
+
+	buildRequestBody := func() []byte {
+		bodyRaw := struct {
+			Secret   string `json:"secret"`
+			Response string `json:"response"`
+			Remoteip string `json:"remoteip"`
+		}{
+			Secret:   settings.CaptchaCtxForTurnstile.Secret,
+			Response: token,
+			Remoteip: getRemoteIP(),
+		}
+		body, err := json.Marshal(bodyRaw)
+		if err != nil {
+			log.Panicf("Failed to marshal json: %v", err)
+		}
+		return body
+	}
+
+	siteverifyURL := getSiteverifyURL()
+	req, err := http.NewRequest(http.MethodPost, siteverifyURL, bytes.NewReader(buildRequestBody()))
+	if err != nil {
 		return domain.ErrCaptchaFailed
 	}
-	time.Sleep(time.Second * 2) // 防止 cloudflare 的风控限制
-	// WIP: 将在下一个提交中实现。
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil || resp == nil {
+		if resp != nil {
+			defer resp.Body.Close()
+		}
+		return domain.ErrCaptchaFailed
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return domain.ErrCaptchaFailed
+	}
+
+	var result struct {
+		Success     bool      `json:"success"`
+		ChallengeTs time.Time `json:"challenge_ts"`
+		Hostname    string    `json:"hostname"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return domain.ErrCaptchaFailed
+	}
+
+	expectedHostname := stripPort(c.Request.Host)
+	actualHostname := stripPort(result.Hostname)
+	if !result.Success || actualHostname != expectedHostname {
+		return domain.ErrCaptchaFailed
+	}
 	return nil
 }
 func hmacEncodeSHA256Hex(key string, data string) string {
