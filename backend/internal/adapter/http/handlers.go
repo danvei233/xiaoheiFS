@@ -184,6 +184,7 @@ type authSettings struct {
 	CaptchaComplexity      string
 	CaptchaCtxForTurnstile struct {
 		// TODO: support multiple captcha providers in the future
+		SiteKey     string
 		Secret      string
 		APIEndpoint *url.URL
 	}

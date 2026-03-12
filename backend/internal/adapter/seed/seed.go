@@ -363,6 +363,8 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"auth_email_code_complexity":               "alnum",
 		"auth_captcha_code_len":                    "5",
 		"auth_captcha_code_complexity":             "alnum",
+		"auth_captcha_cf_turnstile_secret":         "",
+		"auth_captcha_cf_turnstile_sitekey":        "",
 		"auth_email_bind_enabled":                  "true",
 		"auth_phone_bind_enabled":                  "true",
 		"auth_contact_change_notify_old_enabled":   "true",
