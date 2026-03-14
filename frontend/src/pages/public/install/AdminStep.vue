@@ -244,7 +244,7 @@ const validateAdminPath = async (_rule: RuleObject, value: StoreValue) => {
   return Promise.resolve();
 };
 
-const generateAdminPath = async () => {
+const generateAdminPath = async (options: { silent?: boolean } = {}) => {
   generating.value = true;
   try {
     for (let i = 0; i < 20; i += 1) {
@@ -259,7 +259,9 @@ const generateAdminPath = async () => {
       const candidate = Array.from(bytes, (b) => randomCharset[b % randomCharset.length]).join("");
       if (!reservedAdminPaths.has(candidate.toLowerCase())) {
         form.adminPath = candidate;
-        message.success("已生成随机路径");
+        if (!options.silent) {
+          message.success("已生成随机路径");
+        }
         return;
       }
     }
@@ -316,7 +318,9 @@ const onSubmit = async () => {
 };
 
 onMounted(async () => {
-  await generateAdminPath();
+  if (!String(form.adminPath || "").trim()) {
+    await generateAdminPath({ silent: true });
+  }
 });
 </script>
 
