@@ -8,7 +8,7 @@ Auto-generated from all feature plans. Last updated: 2026-02-21
 
 **Before writing or modifying any code, you MUST read the project constitution:**
 
-```
+```file
 constitution.md
 ```
 
@@ -27,6 +27,7 @@ The constitution defines **non-negotiable principles** that govern all developme
 ---
 
 ## Active Technologies
+
 - Go 1.25.0 (backend), TypeScript (frontend) + Gin, GORM, go-playground/validator, zerolog, Vue 3 + Pinia + Ant Design Vue + ECharts (001-revenue-analytics)
 - MySQL/PostgreSQL/SQLite via GORM (orders, order_payments, catalog hierarchy tables) (001-revenue-analytics)
 
@@ -49,6 +50,7 @@ npm test; npm run lint
 Go 1.25.0 (backend), TypeScript + Vue 3 (frontend): Follow standard conventions
 
 ## Recent Changes
+
 - 001-revenue-analytics: Added Go 1.25.0 (backend), TypeScript (frontend) + Gin, GORM, go-playground/validator, zerolog, Vue 3 + Pinia + Ant Design Vue + ECharts
 
 - main: Added Go 1.25.0 (backend), TypeScript + Vue 3 (frontend) + Gin, GORM, go-playground/validator, Vue + Pinia + Ant Design Vue, ECharts wrapper
@@ -56,4 +58,6 @@ Go 1.25.0 (backend), TypeScript + Vue 3 (frontend): Follow standard conventions
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
 
-**Author**: 星云猫 nebulamao
+| **Author** |
+| :---: |
+| 星云猫 nebulamao |

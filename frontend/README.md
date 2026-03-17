@@ -25,6 +25,7 @@ VITE_API_BASE=http://localhost:8080
 ## 与后端对接说明（严格以 openapi.yaml + frontend-readme.md 为准）
 
 用户端：
+
 - `GET /api/v1/captcha`
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
@@ -44,6 +45,7 @@ VITE_API_BASE=http://localhost:8080
 - `POST /api/v1/vps/{id}/resize`
 
 管理端：
+
 - `POST /admin/api/v1/auth/login`
 - `GET/PATCH /admin/api/v1/users`
 - `GET /admin/api/v1/orders` + approve/reject/retry
@@ -81,7 +83,7 @@ VITE_API_BASE=http://localhost:8080
 
 订单详情页使用 `fetch + ReadableStream` 解析：
 
-```
+```api
 GET /api/v1/orders/{id}/events
 ```
 
