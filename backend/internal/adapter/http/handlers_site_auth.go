@@ -119,8 +119,8 @@ func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
 			Secret      string
 			APIEndpoint *url.URL
 		}{
-			SiteKey: getString("auth_captcha_cf_turnstile_secret", ""),
-			Secret:  getString("auth_captcha_cf_turnstile_sitekey", ""),
+			SiteKey: getString("auth_captcha_cf_turnstile_sitekey", ""),
+			Secret:  getString("auth_captcha_cf_turnstile_secret", ""),
 			APIEndpoint: func() (Url *url.URL) {
 				err := new(error)
 				switch {
