@@ -3,7 +3,6 @@ package http
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -86,7 +85,11 @@ func (h *Handler) OpenUserAPIKeyPatch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrApiKeyDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Status string `json:"status"`
 	}
@@ -94,7 +97,7 @@ func (h *Handler) OpenUserAPIKeyPatch(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if err := h.userAPIKeySvc.UpdateStatus(c, getUserID(c), id, domain.APIKeyStatus(strings.TrimSpace(payload.Status))); err != nil {
+	if err := h.userAPIKeySvc.UpdateStatus(c, getUserID(c), uri.ID, domain.APIKeyStatus(strings.TrimSpace(payload.Status))); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -106,8 +109,12 @@ func (h *Handler) OpenUserAPIKeyDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrApiKeyDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.userAPIKeySvc.Delete(c, getUserID(c), id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.userAPIKeySvc.Delete(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

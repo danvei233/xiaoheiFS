@@ -98,6 +98,10 @@ func TestHandlers_AdminConfigEndpoints(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("admin list: %d", rec.Code)
 	}
+	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/admin/api/v1/admins?status=all", nil, token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin list status all: %d", rec.Code)
+	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodPatch, "/admin/api/v1/admins/"+testutil.Itoa(adminResp.ID), map[string]any{
 		"username":            "opsadmin2",
 		"email":               "opsadmin2@example.com",
@@ -194,6 +198,16 @@ func TestHandlers_AdminConfigEndpoints(t *testing.T) {
 	}, token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("email template update: %d", rec.Code)
+	}
+	rec = testutil.DoJSON(t, env.Router, http.MethodPatch, "/admin/api/v1/email-templates/not-a-number", map[string]any{
+		"id":      tmpl.ID,
+		"name":    "custom",
+		"subject": "hello3",
+		"body":    "<p>hi3</p>",
+		"enabled": true,
+	}, token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("email template update invalid uri id: %d", rec.Code)
 	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodDelete, "/admin/api/v1/email-templates/"+testutil.Itoa(tmpl.ID), nil, token)
 	if rec.Code != http.StatusOK {

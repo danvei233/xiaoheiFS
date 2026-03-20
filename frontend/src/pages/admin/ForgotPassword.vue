@@ -18,7 +18,7 @@
       </a-form>
 
       <div class="auth-footer">
-        <router-link to="/admin/login">返回登录</router-link>
+        <a href="#" @click.prevent="goToLogin">返回登录</a>
       </div>
     </div>
   </div>
@@ -29,6 +29,7 @@ import { reactive, ref } from "vue";
 import { forgotPassword } from "@/services/user";
 import { message } from "ant-design-vue";
 import { useRouter } from "vue-router";
+import { buildAdminUrl } from "@/services/adminPath";
 
 const router = useRouter();
 const loading = ref(false);
@@ -42,12 +43,16 @@ const handleSubmit = async () => {
   try {
     await forgotPassword(form.email);
     message.success("重置邮件已发送，请查收邮箱");
-    router.push("/admin/login");
+    router.push(buildAdminUrl("login"));
   } catch (e) {
     message.error(e.response?.data?.error || "发送失败，请检查邮箱是否正确");
   } finally {
     loading.value = false;
   }
+};
+
+const goToLogin = () => {
+  router.push(buildAdminUrl("login"));
 };
 </script>
 

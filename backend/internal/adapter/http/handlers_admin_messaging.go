@@ -239,10 +239,11 @@ func (h *Handler) AdminSMSTemplateUpsert(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if idParam := strings.TrimSpace(c.Param("id")); idParam != "" {
-		if id, err := strconv.ParseInt(idParam, 10, 64); err == nil {
-			payload.ID = id
-		}
+	var uri struct {
+		ID int64 `uri:"id" binding:"omitempty,gt=0"`
+	}
+	if err := c.ShouldBindUri(&uri); err == nil && uri.ID > 0 {
+		payload.ID = uri.ID
 	}
 	payload.Name = strings.TrimSpace(payload.Name)
 	payload.Content = strings.TrimSpace(payload.Content)
@@ -293,8 +294,8 @@ func (h *Handler) AdminSMSTemplateUpsert(c *gin.Context) {
 }
 
 func (h *Handler) AdminSMSTemplateDelete(c *gin.Context) {
-	id, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
-	if err != nil || id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
@@ -304,7 +305,7 @@ func (h *Handler) AdminSMSTemplateDelete(c *gin.Context) {
 	}
 	out := make([]smsTemplateItem, 0, len(items))
 	for _, item := range items {
-		if item.ID == id {
+		if item.ID == uri.ID {
 			continue
 		}
 		out = append(out, item)

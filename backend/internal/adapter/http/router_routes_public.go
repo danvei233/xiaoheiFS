@@ -10,6 +10,9 @@ func (publicRoutesRegistrar) Register(r *gin.Engine, handler *Handler, _ *Middle
 		public.GET("/install/status", handler.InstallStatus)
 		public.POST("/install/db/check", handler.InstallDBCheck)
 		public.POST("/install", handler.InstallRun)
+		public.GET("/install/generate-admin-path", handler.InstallGenerateAdminPath)
+		public.POST("/install/validate-admin-path", handler.ValidateAdminPathHandler)
+		public.POST("/check-admin-path", handler.CheckAdminPath)
 
 		public.GET("/captcha", handler.Captcha)
 		public.GET("/auth/settings", handler.AuthSettings)

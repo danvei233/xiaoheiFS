@@ -294,7 +294,7 @@ func shouldSanitizePlainSetting(key string) bool {
 	switch strings.ToLower(strings.TrimSpace(key)) {
 	case "site_name", "site_title", "site_subtitle", "site_description", "site_keywords",
 		"company_name", "contact_phone", "contact_email", "contact_qq",
-		"icp_number", "psbe_number", "maintenance_message":
+		"icp_number", "psbe_number", "maintenance_message", "copyright_text":
 		return true
 	default:
 		return false

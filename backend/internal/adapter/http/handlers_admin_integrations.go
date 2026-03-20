@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 	appshared "xiaoheiplay/internal/app/shared"
@@ -147,13 +146,14 @@ func (h *Handler) AdminRealNameRecords(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	var userID *int64
-	if val := c.Query("user_id"); val != "" {
-		if id, err := strconv.ParseInt(val, 10, 64); err == nil {
-			userID = &id
-		}
+	var query struct {
+		UserID *int64 `form:"user_id" binding:"omitempty,gt=0"`
 	}
-	items, total, err := h.realnameSvc.List(c, userID, limit, offset)
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	items, total, err := h.realnameSvc.List(c, query.UserID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

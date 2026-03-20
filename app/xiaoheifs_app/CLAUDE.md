@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Xiaohei Cloud Financial Management System (小黑云财务管理系统)** - A Flutter cross-platform mobile admin console for managing a VPS cloud platform. This is the mobile/admin companion app to the web platform (located in `../../backend/` and `../../frontend/`).
 
 **Tech Stack:**
+
 - Flutter 3.10+ with Material Design 3
 - Dart programming language
 - Provider for state management
@@ -72,6 +73,7 @@ class AppState extends ChangeNotifier {
 ```
 
 **Usage Pattern:**
+
 ```dart
 // Read without rebuild
 final client = context.read<AppState>().apiClient;
@@ -91,7 +93,7 @@ Consumer<AppState>(
 The app uses a bottom navigation bar with 5 tabs (RootScaffold):
 
 | Tab | Screen | Purpose |
-|-----|--------|---------|
+| ----- | -------- | --------- |
 | 0 | HomeScreen | Dashboard/overview |
 | 1 | OrdersScreen | Order management |
 | 2 | UsersScreen | User management |
@@ -99,13 +101,14 @@ The app uses a bottom navigation bar with 5 tabs (RootScaffold):
 | 4 | SettingsScreen | System settings hub |
 
 **Navigation Patterns:**
+
 - Main tabs: `IndexedStack` in RootScaffold preserves state
 - Detail screens: `Navigator.push()` with `MaterialPageRoute`
 - Return values: `Navigator.pop(context, true)` signals parent to refresh
 
 ### Directory Structure
 
-```
+```tree
 lib/
 ├── main.dart                    # App entry point, theme configuration
 ├── app_state.dart               # Global state (auth, session)
@@ -157,12 +160,14 @@ lib/
 The app supports **two authentication methods**:
 
 ### 1. API Key Authentication (Simple)
+
 - User enters: API URL + API Key + Display Name
 - Direct API calls with `Authorization: Bearer <api_key>`
 - No profile data loaded
 - Useful for service accounts or quick access
 
 ### 2. Password Authentication (Recommended)
+
 - User enters: API URL + Username + Password
 - Calls `POST /admin/api/v1/auth/login` to get JWT token
 - Fetches admin profile from `GET /admin/api/v1/profile`
@@ -189,6 +194,7 @@ Future<Map<String, dynamic>> deleteJson(path, {body, query})
 ```
 
 **Features:**
+
 - Automatic base URL normalization
 - Bearer token authentication (JWT or API Key)
 - JSON request/response handling
@@ -196,6 +202,7 @@ Future<Map<String, dynamic>> deleteJson(path, {body, query})
 - Query parameter encoding
 
 **Error Handling Pattern:**
+
 ```dart
 try {
   final resp = await client.getJson('/admin/api/v1/endpoint');
@@ -289,6 +296,7 @@ class XxxDetailScreen extends StatefulWidget {
 File: `lib/screens/catalog/simple_crud_screen.dart`
 
 Reusable component for basic CRUD operations:
+
 - Configurable field definitions (text, number, boolean)
 - Automatic form generation
 - List view with add/edit/delete
@@ -297,6 +305,7 @@ Reusable component for basic CRUD operations:
 ## UI/UX Design System
 
 ### Theme Configuration
+
 - **Design Language:** Material Design 3 (Material You)
 - **Color Scheme:** Teal/Cyan primary (`#00BFA6`)
 - **Font Family:** Google Noto Sans SC (Chinese), Noto Serif SC (headings)
@@ -304,6 +313,7 @@ Reusable component for basic CRUD operations:
 - **Card Style:** White background, 16px border radius, no elevation
 
 ### Typography Scale
+
 - Headline Large: 32px, Noto Serif SC, W800
 - Headline Medium: 26px, Noto Serif SC, W700
 - Title Large: 20px, Noto Serif SC, W700
@@ -312,6 +322,7 @@ Reusable component for basic CRUD operations:
 ### Common UI Patterns
 
 **Show error:**
+
 ```dart
 ScaffoldMessenger.of(context).showSnackBar(
   SnackBar(content: Text('错误：$e')),
@@ -319,6 +330,7 @@ ScaffoldMessenger.of(context).showSnackBar(
 ```
 
 **Navigate to detail:**
+
 ```dart
 Navigator.push(
   context,
@@ -327,6 +339,7 @@ Navigator.push(
 ```
 
 **Refresh on return:**
+
 ```dart
 final result = await Navigator.push(...);
 if (result == true) _refresh();
@@ -337,7 +350,7 @@ if (result == true) _refresh();
 The app communicates with a Go backend at `/admin/api/v1/`:
 
 | Endpoint | Method | Purpose |
-|----------|--------|---------|
+| ---------- | -------- | --------- |
 | `/auth/login` | POST | Admin login (JWT) |
 | `/profile` | GET | Current admin profile |
 | `/dashboard/overview` | POST | Dashboard statistics |
@@ -358,18 +371,21 @@ The app communicates with a Go backend at `/admin/api/v1/`:
 ## Status Mappings
 
 ### Order Statuses
+
 `pending_review`, `rejected`, `approved`, `provisioning`, `active`, `failed`, `canceled`
 
 ### VPS Automation States
+
 `1=running`, `2=stopped`, `3=reinstalling`, `4=resizing`, `5=renewing`, `6=error`
 
 ### VPS Admin Status
+
 `normal`, `abuse`, `fraud`, `locked`
 
 ## Key Dependencies
 
 | Package | Version | Purpose |
-|---------|---------|---------|
+| --------- | --------- | --------- |
 | provider | ^6.0.0 | State management |
 | http | ^1.2.2 | HTTP requests |
 | shared_preferences | ^2.2.3 | Key-value storage |
@@ -385,10 +401,12 @@ This Flutter app is the **mobile admin interface** for the Go backend in `../../
 **Backend Location:** `D:\项目\golang\xiaohei\backend\`
 
 **API Documentation:**
+
 - `backend/docs/openapi.yaml` - OpenAPI specification
 - `backend/docs/frontend-readme.md` - Integration guide with status mappings
 
 **Shared Features:**
+
 - Same API endpoints as web admin
 - Same JWT tokens
 - Same permission system
@@ -397,12 +415,14 @@ This Flutter app is the **mobile admin interface** for the Go backend in `../../
 ## Code Style
 
 **Analysis Options** (analysis_options.yaml):
+
 - Most const/constructors lint rules are disabled for rapid development
 - Consider enabling stricter rules for production
 
 **Formatting:**
+
 - Use `flutter format .` to format code
-- Follow Dart style guide: https://dart.dev/guides/language/effective-dart/style
+- Follow Dart style guide: <https://dart.dev/guides/language/effective-dart/style>
 
 ## Known Limitations
 
@@ -421,6 +441,7 @@ This Flutter app is the **mobile admin interface** for the Go backend in `../../
 1. Create screen file in `lib/screens/`
 2. Extend `StatefulWidget`
 3. Implement `didChangeDependencies` for client detection:
+
    ```dart
    @override
    void didChangeDependencies() {
@@ -432,6 +453,7 @@ This Flutter app is the **mobile admin interface** for the Go backend in `../../
      }
    }
    ```
+
 4. Add navigation route from parent screen
 5. Test with Widgetbook if reusable component
 
@@ -456,7 +478,7 @@ context.read<AppState>().updateProfile(...);
 ## Files to Check When Modifying
 
 | Change | Files to Update |
-|--------|----------------|
+| -------- | ---------------- |
 | Add new API endpoint | `lib/services/api_client.dart`, specific screen |
 | Add new screen | Screen file, parent navigation |
 | Change theme | `lib/main.dart` ThemeData |

@@ -3,7 +3,6 @@ package http
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -60,14 +59,18 @@ func (h *Handler) AdminCouponProductGroupUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload CouponProductGroupDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 	group := domain.CouponProductGroup{
-		ID:          id,
+		ID:          uri.ID,
 		Name:        strings.TrimSpace(payload.Name),
 		Scope:       domain.CouponGroupScope(strings.TrimSpace(payload.Scope)),
 		GoodsTypeID: payload.GoodsTypeID,
@@ -92,8 +95,12 @@ func (h *Handler) AdminCouponProductGroupDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.couponSvc.DeleteProductGroup(c, getUserID(c), id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.couponSvc.DeleteProductGroup(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -105,24 +112,31 @@ func (h *Handler) AdminCoupons(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
+	var query struct {
+		Limit     int    `form:"limit" binding:"omitempty,gte=1,lte=200"`
+		Offset    int    `form:"offset" binding:"omitempty,gte=0"`
+		GroupID   int64  `form:"product_group_id" binding:"omitempty,gte=0"`
+		ActiveRaw string `form:"active"`
+		Keyword   string `form:"keyword"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	limit := 20
-	if v, err := strconv.Atoi(strings.TrimSpace(c.Query("limit"))); err == nil && v > 0 && v <= 200 {
-		limit = v
+	if query.Limit > 0 {
+		limit = query.Limit
 	}
-	offset := 0
-	if v, err := strconv.Atoi(strings.TrimSpace(c.Query("offset"))); err == nil && v >= 0 {
-		offset = v
-	}
-	groupID, _ := strconv.ParseInt(strings.TrimSpace(c.Query("product_group_id")), 10, 64)
+	offset := query.Offset
 	var active *bool
-	activeRaw := strings.TrimSpace(c.Query("active"))
+	activeRaw := strings.TrimSpace(query.ActiveRaw)
 	if activeRaw != "" {
 		v := activeRaw == "1" || strings.EqualFold(activeRaw, "true")
 		active = &v
 	}
 	items, total, err := h.couponSvc.ListCoupons(c, appshared.CouponFilter{
-		Keyword:        strings.TrimSpace(c.Query("keyword")),
-		ProductGroupID: groupID,
+		Keyword:        strings.TrimSpace(query.Keyword),
+		ProductGroupID: query.GroupID,
 		Active:         active,
 	}, limit, offset)
 	if err != nil {
@@ -166,14 +180,18 @@ func (h *Handler) AdminCouponUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload CouponDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 	item := domain.Coupon{
-		ID:               id,
+		ID:               uri.ID,
 		Code:             payload.Code,
 		DiscountPermille: payload.DiscountPermille,
 		ProductGroupID:   payload.ProductGroupID,
@@ -197,8 +215,12 @@ func (h *Handler) AdminCouponDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.couponSvc.DeleteCoupon(c, getUserID(c), id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.couponSvc.DeleteCoupon(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

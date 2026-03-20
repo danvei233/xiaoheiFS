@@ -205,6 +205,74 @@ func TestOrderService_RenewAndResizeFlow(t *testing.T) {
 	}
 }
 
+func TestOrderService_CreateRenewOrder_ZeroInstancePriceAutoApproves(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "renewzero", "renewzero@example.com", "pass")
+
+	baseOrder := domain.Order{UserID: user.ID, OrderNo: "ORD-RENEW-ZERO", Status: domain.OrderStatusActive, TotalAmount: seed.Package.Monthly, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:   baseOrder.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    seed.Package.Monthly,
+		Status:    domain.OrderItemStatusActive,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	baseItems, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	if err != nil || len(baseItems) == 0 {
+		t.Fatalf("list base items: %v", err)
+	}
+
+	expireAt := time.Now().Add(24 * time.Hour)
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          baseItems[0].ID,
+		AutomationInstanceID: "456",
+		Name:                 "vm-zero",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         0,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		ExpireAt:             &expireAt,
+	}
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	fakeAuto := &testutil.FakeAutomationClient{}
+	autoResolver := &testutil.FakeAutomationResolver{Client: fakeAuto}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, autoResolver, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+
+	order, err := svc.CreateRenewOrder(context.Background(), user.ID, inst.ID, 0, 1)
+	if err != nil {
+		t.Fatalf("create renew order: %v", err)
+	}
+	if order.TotalAmount != 0 {
+		t.Fatalf("expected zero renew amount, got %d", order.TotalAmount)
+	}
+	waitForOrderStatus(t, repo, order.ID, domain.OrderStatusActive)
+
+	if len(fakeAuto.RenewCalls) == 0 {
+		t.Fatalf("expected renew call for zero amount auto-approved order")
+	}
+	updated, err := repo.GetInstance(context.Background(), inst.ID)
+	if err != nil {
+		t.Fatalf("get updated instance: %v", err)
+	}
+	if updated.ExpireAt == nil || !updated.ExpireAt.After(expireAt) {
+		t.Fatalf("expected instance expire time to be extended, got %v", updated.ExpireAt)
+	}
+}
+
 func waitForOrderStatus(t *testing.T, repo appports.OrderRepository, orderID int64, status domain.OrderStatus) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)

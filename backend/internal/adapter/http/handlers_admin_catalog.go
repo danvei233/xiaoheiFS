@@ -4,7 +4,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"sort"
-	"strconv"
 	"xiaoheiplay/internal/domain"
 )
 
@@ -19,10 +18,20 @@ func (h *Handler) AdminAuditLogs(c *gin.Context) {
 }
 
 func (h *Handler) AdminSystemImages(c *gin.Context) {
-	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
-	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
-	if planGroupID > 0 {
-		plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID)
+	var query struct {
+		LineID      *int64 `form:"line_id" binding:"omitempty,gt=0"`
+		PlanGroupID *int64 `form:"plan_group_id" binding:"omitempty,gt=0"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	lineID := int64(0)
+	if query.LineID != nil {
+		lineID = *query.LineID
+	}
+	if query.PlanGroupID != nil {
+		plan, err := h.catalogSvc.GetPlanGroup(c, *query.PlanGroupID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPlanGroupNotFound.Error()})
 			return
@@ -42,7 +51,17 @@ func (h *Handler) AdminSystemImages(c *gin.Context) {
 }
 
 func (h *Handler) AdminRegions(c *gin.Context) {
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	var query struct {
+		GoodsTypeID *int64 `form:"goods_type_id" binding:"omitempty,gt=0"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	goodsTypeID := int64(0)
+	if query.GoodsTypeID != nil {
+		goodsTypeID = *query.GoodsTypeID
+	}
 	items, err := h.catalogSvc.ListRegions(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
@@ -78,16 +97,20 @@ func (h *Handler) AdminRegionCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminRegionUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload RegionDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	payload.ID = id
+	payload.ID = uri.ID
 	region := regionDTOToDomain(payload)
 	if region.GoodsTypeID <= 0 {
-		if current, err := h.catalogSvc.GetRegion(c, id); err == nil && current.GoodsTypeID > 0 {
+		if current, err := h.catalogSvc.GetRegion(c, uri.ID); err == nil && current.GoodsTypeID > 0 {
 			region.GoodsTypeID = current.GoodsTypeID
 		}
 	}
@@ -99,8 +122,12 @@ func (h *Handler) AdminRegionUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminRegionDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.catalogSvc.DeleteRegion(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.catalogSvc.DeleteRegion(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -129,7 +156,17 @@ func (h *Handler) AdminRegionBulkDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminPlanGroups(c *gin.Context) {
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	var query struct {
+		GoodsTypeID *int64 `form:"goods_type_id" binding:"omitempty,gt=0"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	goodsTypeID := int64(0)
+	if query.GoodsTypeID != nil {
+		goodsTypeID = *query.GoodsTypeID
+	}
 	items, err := h.catalogSvc.ListPlanGroups(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
@@ -180,7 +217,11 @@ func (h *Handler) AdminLineCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminPlanGroupUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		RegionID          *int64   `json:"region_id"`
 		Name              *string  `json:"name"`
@@ -210,7 +251,7 @@ func (h *Handler) AdminPlanGroupUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	plan, err := h.catalogSvc.GetPlanGroup(c, id)
+	plan, err := h.catalogSvc.GetPlanGroup(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -299,7 +340,11 @@ func (h *Handler) AdminLineUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminLineSystemImages(c *gin.Context) {
-	planGroupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidLineId.Error()})
+		return
+	}
 	var payload struct {
 		ImageIDs []int64 `json:"image_ids"`
 	}
@@ -307,11 +352,7 @@ func (h *Handler) AdminLineSystemImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if planGroupID <= 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidLineId.Error()})
-		return
-	}
-	plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID)
+	plan, err := h.catalogSvc.GetPlanGroup(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -328,8 +369,12 @@ func (h *Handler) AdminLineSystemImages(c *gin.Context) {
 }
 
 func (h *Handler) AdminPlanGroupDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.catalogSvc.DeletePlanGroup(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.catalogSvc.DeletePlanGroup(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -362,8 +407,22 @@ func (h *Handler) AdminLineDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminPackages(c *gin.Context) {
-	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	var query struct {
+		PlanGroupID *int64 `form:"plan_group_id" binding:"omitempty,gt=0"`
+		GoodsTypeID *int64 `form:"goods_type_id" binding:"omitempty,gt=0"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	planGroupID := int64(0)
+	goodsTypeID := int64(0)
+	if query.PlanGroupID != nil {
+		planGroupID = *query.PlanGroupID
+	}
+	if query.GoodsTypeID != nil {
+		goodsTypeID = *query.GoodsTypeID
+	}
 	items, err := h.catalogSvc.ListPackages(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
@@ -423,7 +482,11 @@ func (h *Handler) AdminProductCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminPackageUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		PlanGroupID          *int64   `json:"plan_group_id"`
 		ProductID            *int64   `json:"product_id"`
@@ -445,7 +508,7 @@ func (h *Handler) AdminPackageUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	pkg, err := h.catalogSvc.GetPackage(c, id)
+	pkg, err := h.catalogSvc.GetPackage(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -514,8 +577,12 @@ func (h *Handler) AdminProductUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminPackageDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.catalogSvc.DeletePackage(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.catalogSvc.DeletePackage(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -523,20 +590,20 @@ func (h *Handler) AdminPackageDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminPackageCapabilitiesGet(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if _, err := h.catalogSvc.GetPackage(c, id); err != nil {
+	if _, err := h.catalogSvc.GetPackage(c, uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
-	resizeEnabled, resizeSource := h.packageCapabilityResolvedValue(c, id, "resize", "resize_enabled", true)
-	refundEnabled, refundSource := h.packageCapabilityResolvedValue(c, id, "refund", "refund_enabled", true)
-	raw := h.getPackageCapabilityPolicy(c, id)
+	resizeEnabled, resizeSource := h.packageCapabilityResolvedValue(c, uri.ID, "resize", "resize_enabled", true)
+	refundEnabled, refundSource := h.packageCapabilityResolvedValue(c, uri.ID, "refund", "refund_enabled", true)
+	raw := h.getPackageCapabilityPolicy(c, uri.ID)
 	c.JSON(http.StatusOK, gin.H{
-		"package_id":             id,
+		"package_id":             uri.ID,
 		"resize_enabled":         resizeEnabled,
 		"refund_enabled":         refundEnabled,
 		"resize_source":          resizeSource,
@@ -547,12 +614,12 @@ func (h *Handler) AdminPackageCapabilitiesGet(c *gin.Context) {
 }
 
 func (h *Handler) AdminPackageCapabilitiesUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id <= 0 {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if _, err := h.catalogSvc.GetPackage(c, id); err != nil {
+	if _, err := h.catalogSvc.GetPackage(c, uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
@@ -564,7 +631,7 @@ func (h *Handler) AdminPackageCapabilitiesUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if err := h.savePackageCapabilityPolicy(c, id, packageCapabilityPolicy{
+	if err := h.savePackageCapabilityPolicy(c, uri.ID, packageCapabilityPolicy{
 		ResizeEnabled: payload.ResizeEnabled,
 		RefundEnabled: payload.RefundEnabled,
 	}); err != nil {
@@ -622,13 +689,17 @@ func (h *Handler) AdminBillingCycleCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminBillingCycleUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload BillingCycleDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	payload.ID = id
+	payload.ID = uri.ID
 	cycle := billingCycleDTOToDomain(payload)
 	if err := h.catalogSvc.UpdateBillingCycle(c, cycle); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -638,8 +709,12 @@ func (h *Handler) AdminBillingCycleUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminBillingCycleDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.catalogSvc.DeleteBillingCycle(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.catalogSvc.DeleteBillingCycle(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -682,13 +757,17 @@ func (h *Handler) AdminSystemImageCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminSystemImageUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload SystemImageDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	payload.ID = id
+	payload.ID = uri.ID
 	img := systemImageDTOToDomain(payload)
 	if err := h.catalogSvc.UpdateSystemImage(c, img); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -698,8 +777,12 @@ func (h *Handler) AdminSystemImageUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminSystemImageDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.catalogSvc.DeleteSystemImage(c, id); err != nil {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.catalogSvc.DeleteSystemImage(c, uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -733,10 +816,21 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 		return
 	}
 
-	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
-	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
-	if planGroupID > 0 {
-		plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID)
+	var query struct {
+		LineID      *int64 `form:"line_id" binding:"omitempty,gt=0"`
+		PlanGroupID *int64 `form:"plan_group_id" binding:"omitempty,gt=0"`
+		GoodsTypeID *int64 `form:"goods_type_id" binding:"omitempty,gt=0"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	lineID := int64(0)
+	if query.LineID != nil {
+		lineID = *query.LineID
+	}
+	if query.PlanGroupID != nil {
+		plan, err := h.catalogSvc.GetPlanGroup(c, *query.PlanGroupID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPlanGroupNotFound.Error()})
 			return
@@ -765,7 +859,10 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 		return
 	}
 
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	goodsTypeID := int64(0)
+	if query.GoodsTypeID != nil {
+		goodsTypeID = *query.GoodsTypeID
+	}
 	if goodsTypeID <= 0 {
 		if h.goodsTypes == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrGoodsTypeIdRequired.Error()})

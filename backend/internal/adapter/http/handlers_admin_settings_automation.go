@@ -41,7 +41,11 @@ func (h *Handler) AdminAPIKeyCreate(c *gin.Context) {
 }
 
 func (h *Handler) AdminAPIKeyUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Status string `json:"status"`
 	}
@@ -50,7 +54,7 @@ func (h *Handler) AdminAPIKeyUpdate(c *gin.Context) {
 		return
 	}
 	status := domain.APIKeyStatus(payload.Status)
-	if err := h.adminSvc.UpdateAPIKeyStatus(c, getUserID(c), id, status); err != nil {
+	if err := h.adminSvc.UpdateAPIKeyStatus(c, getUserID(c), uri.ID, status); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -79,32 +83,113 @@ func (h *Handler) AdminSettingsUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
+
+	// 批量更新模式
 	if len(payload.Items) > 0 {
+		normalizedItems := make([]struct {
+			Key   string
+			Value string
+		}, 0, len(payload.Items))
+
+		// 验证所有配置项
 		for _, item := range payload.Items {
 			if strings.TrimSpace(item.Key) == "" {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidKey.Error()})
 				return
 			}
-			if err := validateSettingJSONValue(item.Key, item.Value); err != nil {
+			normalizedValue, err := validateAndNormalizeSettingValue(item.Key, item.Value)
+			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
+			normalizedItems = append(normalizedItems, struct {
+				Key   string
+				Value string
+			}{
+				Key:   item.Key,
+				Value: normalizedValue,
+			})
+		}
+
+		// 执行更新
+		for _, item := range normalizedItems {
 			if err := h.adminSvc.UpdateSetting(c, getUserID(c), item.Key, item.Value); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
 		}
 	} else {
-		if err := validateSettingJSONValue(payload.Key, payload.Value); err != nil {
+		// 单个更新模式
+		if strings.TrimSpace(payload.Key) == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidKey.Error()})
+			return
+		}
+
+		normalizedValue, err := validateAndNormalizeSettingValue(payload.Key, payload.Value)
+		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := h.adminSvc.UpdateSetting(c, getUserID(c), payload.Key, payload.Value); err != nil {
+
+		if err := h.adminSvc.UpdateSetting(c, getUserID(c), payload.Key, normalizedValue); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+func validateAndNormalizeSettingValue(key, value string) (string, error) {
+	switch key {
+	case "copyright_text":
+		if strings.TrimSpace(value) == "" {
+			return "", fmt.Errorf("版权信息不能为空")
+		}
+		if len([]rune(value)) > 200 {
+			return "", fmt.Errorf("版权信息不能超过200字")
+		}
+		return value, nil
+	case "beian_info_list":
+		if err := validateBeianInfoList(value); err != nil {
+			return "", err
+		}
+		return value, nil
+	case "admin_path":
+		normalizedPath := strings.TrimSpace(value)
+		if err := ValidateAdminPath(normalizedPath); err != nil {
+			return "", err
+		}
+		return normalizedPath, nil
+	default:
+		return value, nil
+	}
+}
+
+// validateBeianInfoList 验证备案信息列表的格式
+func validateBeianInfoList(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "[]" {
+		return nil
+	}
+	
+	var beianList []struct {
+		Number  string `json:"number"`
+		IconURL string `json:"icon_url"`
+		LinkURL string `json:"link_url"`
+	}
+	
+	if err := json.Unmarshal([]byte(value), &beianList); err != nil {
+		return fmt.Errorf("备案信息格式错误: %v", err)
+	}
+	
+	for i, beian := range beianList {
+		// 如果填写了任何字段，备案号必填
+		if (beian.IconURL != "" || beian.LinkURL != "") && strings.TrimSpace(beian.Number) == "" {
+			return fmt.Errorf("备案信息 %d 的备案号不能为空", i+1)
+		}
+	}
+	
+	return nil
 }
 
 func (h *Handler) AdminPushTokenRegister(c *gin.Context) {
@@ -185,7 +270,16 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	types := strings.ToLower(strings.TrimSpace(c.Query("types")))
+	var query struct {
+		Types   string `form:"types"`
+		OrderID *int64 `form:"order_id" binding:"omitempty,gt=0"`
+		Target  string `form:"target"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	types := strings.ToLower(strings.TrimSpace(query.Types))
 	includeAll := types == ""
 	includeType := func(name string) bool {
 		if includeAll {
@@ -209,7 +303,10 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		resp["audit_logs"] = gin.H{"items": toAdminAuditLogDTOs(items), "total": total}
 	}
 	if includeType("automation") && h.autoLogSvc != nil {
-		orderID, _ := strconv.ParseInt(c.Query("order_id"), 10, 64)
+		orderID := int64(0)
+		if query.OrderID != nil {
+			orderID = *query.OrderID
+		}
 		items, total, err := h.autoLogSvc.List(c, orderID, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListAutomationLogsError.Error()})
@@ -218,8 +315,7 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		resp["automation_logs"] = gin.H{"items": toAutomationLogDTOs(items), "total": total}
 	}
 	if includeType("sync") && h.integration != nil {
-		target := c.Query("target")
-		items, total, err := h.integration.ListSyncLogs(c, target, limit, offset)
+		items, total, err := h.integration.ListSyncLogs(c, query.Target, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListSyncLogsError.Error()})
 			return
@@ -249,7 +345,7 @@ func (h *Handler) AdminAutomationConfig(c *gin.Context) {
 	cfg, present, binding, enabled, err := h.readAutomationPluginConfig(c)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{
-			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
+			"error":         domain.ErrNoWritableAutomationPluginInstance.Error(),
 			"code":          "no_writable_automation_instance",
 			"redirect_path": "/admin/catalog",
 		})
@@ -303,7 +399,7 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 	binding, err := h.resolveWritableAutomationBinding(c)
 	if err != nil {
 		c.JSON(http.StatusConflict, gin.H{
-			"error":         "no writable automation plugin instance found; configure automation plugin instance first",
+			"error":         domain.ErrNoWritableAutomationPluginInstance.Error(),
 			"code":          "no_writable_automation_instance",
 			"redirect_path": "/admin/catalog",
 		})
@@ -578,8 +674,14 @@ func (h *Handler) AdminAutomationSync(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	mode := c.Query("mode")
-	result, err := h.integration.SyncAutomation(c, mode)
+	var query struct {
+		Mode string `form:"mode" binding:"omitempty,oneof=merge replace"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	result, err := h.integration.SyncAutomation(c, query.Mode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -593,8 +695,14 @@ func (h *Handler) AdminAutomationSyncLogs(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	target := c.Query("target")
-	items, total, err := h.integration.ListSyncLogs(c, target, limit, offset)
+	var query struct {
+		Target string `form:"target"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	items, total, err := h.integration.ListSyncLogs(c, query.Target, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

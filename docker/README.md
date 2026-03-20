@@ -1,91 +1,113 @@
-# Docker 使用说明
+# Docker Build
 
-本目录用于构建并运行 `xiaoheifs` 后端服务。
+本目录包含用于构建和运行 xiaoheiFS 应用的 Docker 配置。
 
-## 目录结构
+## Dockerfile 说明
 
-- `build/Dockerfile`：镜像构建文件
-- `build/start.sh`：容器启动脚本（根据环境变量生成 `app.config.yaml`）
-- `build/build-docker-image.sh`：手动构建镜像脚本
-- `docker-compose/docker-compose.mysql.yaml`：MySQL 部署（默认推荐）
-- `docker-compose/docker-compose.postgres.yaml`：PostgreSQL 部署
-- `docker-compose/docker-compose.sqlite.yaml`：SQLite 部署（仅开发测试）
+### `Dockerfile` (Debian - 默认)
+基于 Debian bookworm-slim，提供全面的系统支持。
 
-## 1. 构建镜像
+**优点：**
+- 更广泛的工具和库支持
+- 更好的兼容性
+- 适合生产环境
 
-在仓库根目录执行：
+**镜像大小：** ~400-500MB
 
+### `Dockerfile.alpine`
+基于 Alpine Linux，极小化镜像大小。
+
+**优点：**
+- 更小的镜像尺寸 (~150-200MB)
+- 快速启动时间
+- 适合云环境和边缘计算
+
+**缺点：**
+- 某些库可能不可用
+
+## 本地构建
+
+### 构建 Debian 版本
 ```bash
-./docker/build/build-docker-image.sh
+docker build -f docker/Dockerfile -t xiaohei:debian .
 ```
 
-指定镜像名：
-
+### 构建 Alpine 版本
 ```bash
-./docker/build/build-docker-image.sh your-registry/xiaoheifs-backend:tag
+docker build -f docker/Dockerfile.alpine -t xiaohei:alpine .
 ```
 
-## 2. 启动服务
-
-默认（MySQL）：
+## 使用 Docker Compose 本地测试
 
 ```bash
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml up -d --build
+docker-compose -f docker/docker-compose.yml up
 ```
 
-PostgreSQL：
+这将同时运行两个版本的应用：
+- Debian 版本：http://localhost:8080
+- Alpine 版本：http://localhost:8081
 
+## 运行容器
+
+### Debian 版本
 ```bash
-docker compose -f docker/docker-compose/docker-compose.postgres.yaml up -d --build
+docker run -d -p 8080:8080 --name xiaohei-debian xiaohei:debian
 ```
 
-SQLite（仅开发/测试）：
-
+### Alpine 版本
 ```bash
-docker compose -f docker/docker-compose/docker-compose.sqlite.yaml up -d --build
+docker run -d -p 8080:8080 --name xiaohei-alpine xiaohei:alpine
 ```
 
-警告：SQLite 不建议用于生产环境。
+## GitHub Actions 自动构建
 
-## 3. 停止与清理
+提交代码到 `main` 或 `develop` 分支时，GitHub Actions 会自动：
+1. 构建两个版本的镜像（Debian 和 Alpine）
+2. 推送到 GitHub Container Registry (GHCR)
 
-停止并删除容器：
+### 镜像标签
+
+pushed 到 GHCR 的镜像将包含以下标签：
+
+- `ghcr.io/username/xiaoheiFS:latest` (Debian)
+- `ghcr.io/username/xiaoheiFS:latest-alpine` (Alpine)
+- `ghcr.io/username/xiaoheiFS:v1.0.0` (基于 git 标签)
+- `ghcr.io/username/xiaoheiFS:sha-abc123def456` (基于提交 SHA)
+
+### 拉取镜像
 
 ```bash
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml down
+# 拉取 Debian 版本
+docker pull ghcr.io/username/xiaoheiFS:latest
+
+# 拉取 Alpine 版本
+docker pull ghcr.io/username/xiaoheiFS:latest-alpine
 ```
 
-连同数据卷一起删除（会清空数据库）：
+## 环境变量
+
+应用支持以下环境变量：
+
+- `LOG_LEVEL`: 日志级别 (默认: info)
+- 其他应用级别的环境变量可根据需要添加
+
+## 健康检查
+
+两个镜像都配置了健康检查，会定期检查 `/health` 端点：
+
+- 间隔：30 秒
+- 超时：3 秒
+- 启动延迟：40 秒
+- 失败阈值：3 次
+
+## 多平台支持
+
+GitHub Actions 工作流配置为支持多个平台：
+- `linux/amd64` (x86-64)
+- `linux/arm64` (ARM64/Apple Silicon)
+
+注意：本地构建默认为当前平台。若要跨平台构建，使用：
 
 ```bash
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml down -v
-```
-
-## 4. 关键环境变量（写在 compose 中）
-
-后端容器：
-
-- `APP_ADDR`
-- `APP_API_BASE_URL`
-- `APP_JWT_SECRET`
-- `APP_PLUGIN_MASTER_KEY`
-- `APP_PLUGINS_DIR`
-- `APP_DB_TYPE`
-- `APP_DB_PATH`
-- `APP_DB_HOST`
-- `APP_DB_PORT`
-- `APP_DB_NAME`
-- `APP_DB_USER`
-- `APP_DB_PASSWORD`
-- `APP_DB_OPTIONS`
-
-数据库容器：
-
-- MySQL：`MYSQL_ROOT_PASSWORD` / `MYSQL_DATABASE` / `MYSQL_USER` / `MYSQL_PASSWORD`
-- PostgreSQL：`POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD`
-
-## 5. 查看日志
-
-```bash
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml logs -f xiaoheifs
+docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile -t xiaohei:debian .
 ```

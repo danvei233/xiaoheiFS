@@ -2,13 +2,25 @@ package http
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"xiaoheiplay/internal/domain"
 )
+
+type adminGroupRuleURI struct {
+	ID     int64 `uri:"id" binding:"required,gt=0"`
+	RuleID int64 `uri:"rule_id" binding:"required,gt=0"`
+}
+
+type adminGroupURI struct {
+	ID int64 `uri:"id" binding:"required,gt=0"`
+}
+
+type adminRebuildGroupURI struct {
+	ID int64 `uri:"id" binding:"gte=0"`
+}
 
 func (h *Handler) AdminUserTierGroups(c *gin.Context) {
 	if h.userTierSvc == nil {
@@ -52,8 +64,12 @@ func (h *Handler) AdminUserTierGroupUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	old, err := h.userTierSvc.GetGroup(c, id)
+	var uri adminGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	old, err := h.userTierSvc.GetGroup(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -80,8 +96,12 @@ func (h *Handler) AdminUserTierGroupDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.userTierSvc.DeleteGroup(c, getUserID(c), id); err != nil {
+	var uri adminGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.userTierSvc.DeleteGroup(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -93,8 +113,12 @@ func (h *Handler) AdminUserTierDiscountRules(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	items, err := h.userTierSvc.ListDiscountRules(c, groupID)
+	var uri adminGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	items, err := h.userTierSvc.ListDiscountRules(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -107,14 +131,18 @@ func (h *Handler) AdminUserTierDiscountRuleCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload UserTierDiscountRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 	rule := domain.UserTierDiscountRule{
-		GroupID:          groupID,
+		GroupID:          uri.ID,
 		Scope:            domain.UserTierScope(strings.TrimSpace(payload.Scope)),
 		GoodsTypeID:      payload.GoodsTypeID,
 		RegionID:         payload.RegionID,
@@ -139,16 +167,19 @@ func (h *Handler) AdminUserTierDiscountRuleUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ruleID, _ := strconv.ParseInt(c.Param("rule_id"), 10, 64)
+	var uri adminGroupRuleURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload UserTierDiscountRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 	rule := domain.UserTierDiscountRule{
-		ID:               ruleID,
-		GroupID:          groupID,
+		ID:               uri.RuleID,
+		GroupID:          uri.ID,
 		Scope:            domain.UserTierScope(strings.TrimSpace(payload.Scope)),
 		GoodsTypeID:      payload.GoodsTypeID,
 		RegionID:         payload.RegionID,
@@ -173,9 +204,12 @@ func (h *Handler) AdminUserTierDiscountRuleDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ruleID, _ := strconv.ParseInt(c.Param("rule_id"), 10, 64)
-	if err := h.userTierSvc.DeleteDiscountRule(c, getUserID(c), groupID, ruleID); err != nil {
+	var uri adminGroupRuleURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.userTierSvc.DeleteDiscountRule(c, getUserID(c), uri.ID, uri.RuleID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -187,8 +221,12 @@ func (h *Handler) AdminUserTierAutoRules(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	items, err := h.userTierSvc.ListAutoRules(c, groupID)
+	var uri adminGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	items, err := h.userTierSvc.ListAutoRules(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -201,14 +239,18 @@ func (h *Handler) AdminUserTierAutoRuleCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload UserTierAutoRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 	rule := domain.UserTierAutoRule{
-		GroupID:        groupID,
+		GroupID:        uri.ID,
 		DurationDays:   payload.DurationDays,
 		ConditionsJSON: payload.ConditionsJSON,
 		SortOrder:      payload.SortOrder,
@@ -225,16 +267,19 @@ func (h *Handler) AdminUserTierAutoRuleUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ruleID, _ := strconv.ParseInt(c.Param("rule_id"), 10, 64)
+	var uri adminGroupRuleURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload UserTierAutoRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
 	rule := domain.UserTierAutoRule{
-		ID:             ruleID,
-		GroupID:        groupID,
+		ID:             uri.RuleID,
+		GroupID:        uri.ID,
 		DurationDays:   payload.DurationDays,
 		ConditionsJSON: payload.ConditionsJSON,
 		SortOrder:      payload.SortOrder,
@@ -251,9 +296,12 @@ func (h *Handler) AdminUserTierAutoRuleDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	groupID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	ruleID, _ := strconv.ParseInt(c.Param("rule_id"), 10, 64)
-	if err := h.userTierSvc.DeleteAutoRule(c, getUserID(c), groupID, ruleID); err != nil {
+	var uri adminGroupRuleURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.userTierSvc.DeleteAutoRule(c, getUserID(c), uri.ID, uri.RuleID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -265,9 +313,13 @@ func (h *Handler) AdminUserTierRebuild(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if id > 0 {
-		h.userTierSvc.RebuildGroupPriceCacheAsync(id)
+	var uri adminRebuildGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if uri.ID > 0 {
+		h.userTierSvc.RebuildGroupPriceCacheAsync(uri.ID)
 	} else {
 		h.userTierSvc.RebuildAllPriceCachesAsync()
 	}
@@ -279,7 +331,11 @@ func (h *Handler) AdminUserSetTier(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	userID, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri adminGroupURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		GroupID  int64  `json:"group_id"`
 		ExpireAt string `json:"expire_at"`
@@ -297,7 +353,7 @@ func (h *Handler) AdminUserSetTier(c *gin.Context) {
 		}
 		exp = &v
 	}
-	if err := h.userTierSvc.SetUserGroup(c, getUserID(c), userID, payload.GroupID, exp); err != nil {
+	if err := h.userTierSvc.SetUserGroup(c, getUserID(c), uri.ID, payload.GroupID, exp); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: xiaohei-mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=Xiaohei123$%^
+      - MYSQL_DATABASE=xiaohei
+      - MYSQL_USER=xiaohei
+      - MYSQL_PASSWORD=Xiaohei123$%^
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  xiaohei-debian:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: xiaohei-app-debian
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      - LOG_LEVEL=info
+      - APP_DB_TYPE=mysql
+      - APP_DB_DSN=xiaohei:Xiaohei123$%^@tcp(mysql:3306)/xiaohei?parseTime=true&loc=Local&charset=utf8mb4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  mysql-data:

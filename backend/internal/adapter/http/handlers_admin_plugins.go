@@ -17,14 +17,38 @@ func pluginUploadAllowed() bool {
 	return gin.Mode() == gin.DebugMode
 }
 
+type pluginKeyURI struct {
+	Key string `uri:"key" binding:"required"`
+}
+
+type pluginCategoryPluginURI struct {
+	Category string `uri:"category" binding:"required"`
+	PluginID string `uri:"plugin_id" binding:"required"`
+}
+
+type pluginCategoryPluginInstanceURI struct {
+	Category   string `uri:"category" binding:"required"`
+	PluginID   string `uri:"plugin_id" binding:"required"`
+	InstanceID string `uri:"instance_id" binding:"required"`
+}
+
 func (h *Handler) AdminPaymentProviders(c *gin.Context) {
 	if h.paymentSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	includeDisabled := strings.EqualFold(strings.TrimSpace(c.Query("include_disabled")), "true")
-	includeLegacy := strings.EqualFold(strings.TrimSpace(c.Query("include_legacy")), "true")
-	scene := strings.TrimSpace(c.Query("scene"))
+	var query struct {
+		IncludeDisabled string `form:"include_disabled"`
+		IncludeLegacy   string `form:"include_legacy"`
+		Scene           string `form:"scene"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	includeDisabled := strings.EqualFold(strings.TrimSpace(query.IncludeDisabled), "true")
+	includeLegacy := strings.EqualFold(strings.TrimSpace(query.IncludeLegacy), "true")
+	scene := strings.TrimSpace(query.Scene)
 	items, err := h.paymentSvc.ListProvidersByScene(c, includeDisabled, scene)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -49,7 +73,11 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	key := c.Param("key")
+	var uri pluginKeyURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		Enabled    *bool  `json:"enabled"`
 		ConfigJSON string `json:"config_json"`
@@ -63,7 +91,7 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 	if payload.Enabled != nil {
 		enabled = *payload.Enabled
 	}
-	trimmedKey := strings.TrimSpace(key)
+	trimmedKey := strings.TrimSpace(uri.Key)
 	trimmedScene := strings.TrimSpace(payload.Scene)
 	if trimmedScene != "" {
 		if h.paymentSvc == nil {
@@ -121,7 +149,7 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	if err := h.paymentSvc.UpdateProvider(c, key, enabled, payload.ConfigJSON); err != nil {
+	if err := h.paymentSvc.UpdateProvider(c, uri.Key, enabled, payload.ConfigJSON); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -213,9 +241,18 @@ func (h *Handler) AdminPluginPaymentMethodsList(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := strings.TrimSpace(c.Query("category"))
-	pluginID := strings.TrimSpace(c.Query("plugin_id"))
-	instanceID := strings.TrimSpace(c.Query("instance_id"))
+	var query struct {
+		Category   string `form:"category"`
+		PluginID   string `form:"plugin_id"`
+		InstanceID string `form:"instance_id"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	category := strings.TrimSpace(query.Category)
+	pluginID := strings.TrimSpace(query.PluginID)
+	instanceID := strings.TrimSpace(query.InstanceID)
 	items, err := h.pluginAdmin.ListPaymentMethods(c, category, pluginID, instanceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "required") {
@@ -342,8 +379,11 @@ func (h *Handler) AdminPluginImportFromDisk(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 
 	var payload struct {
 		AdminPassword string `json:"admin_password"`
@@ -353,7 +393,7 @@ func (h *Handler) AdminPluginImportFromDisk(c *gin.Context) {
 		return
 	}
 
-	targetSig, err := h.pluginAdmin.SignatureStatusOnDisk(category, pluginID)
+	targetSig, err := h.pluginAdmin.SignatureStatusOnDisk(uri.Category, uri.PluginID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -375,7 +415,7 @@ func (h *Handler) AdminPluginImportFromDisk(c *gin.Context) {
 		}
 	}
 
-	inst, err := h.pluginAdmin.ImportFromDisk(c, category, pluginID)
+	inst, err := h.pluginAdmin.ImportFromDisk(c, uri.Category, uri.PluginID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -393,14 +433,17 @@ func (h *Handler) AdminPluginEnable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	if err := h.pluginAdmin.EnableInstance(c, category, pluginID, apppluginadmin.DefaultInstanceID); err != nil {
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.EnableInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.enable", "plugin", category+"/"+pluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.enable", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -410,14 +453,17 @@ func (h *Handler) AdminPluginDisable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	if err := h.pluginAdmin.DisableInstance(c, category, pluginID, apppluginadmin.DefaultInstanceID); err != nil {
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DisableInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.disable", "plugin", category+"/"+pluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.disable", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -427,14 +473,17 @@ func (h *Handler) AdminPluginUninstall(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	if err := h.pluginAdmin.DeleteInstance(c, category, pluginID, apppluginadmin.DefaultInstanceID); err != nil {
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DeleteInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.uninstall", "plugin", category+"/"+pluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.uninstall", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -444,9 +493,12 @@ func (h *Handler) AdminPluginConfigSchema(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c, category, pluginID, apppluginadmin.DefaultInstanceID)
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -459,9 +511,12 @@ func (h *Handler) AdminPluginConfigGet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	cfg, err := h.pluginAdmin.GetConfigInstance(c, category, pluginID, apppluginadmin.DefaultInstanceID)
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	cfg, err := h.pluginAdmin.GetConfigInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -474,8 +529,11 @@ func (h *Handler) AdminPluginConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		ConfigJSON string `json:"config_json"`
 	}
@@ -487,12 +545,12 @@ func (h *Handler) AdminPluginConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.pluginAdmin.UpdateConfigInstance(c, category, pluginID, apppluginadmin.DefaultInstanceID, payload.ConfigJSON); err != nil {
+	if err := h.pluginAdmin.UpdateConfigInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID, payload.ConfigJSON); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.config_update", "plugin", category+"/"+pluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.config_update", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -502,8 +560,11 @@ func (h *Handler) AdminPluginInstanceCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		InstanceID string `json:"instance_id"`
 		ConfigJSON string `json:"config_json"`
@@ -513,7 +574,7 @@ func (h *Handler) AdminPluginInstanceCreate(c *gin.Context) {
 		return
 	}
 
-	inst, err := h.pluginAdmin.CreateInstance(c, category, pluginID, payload.InstanceID)
+	inst, err := h.pluginAdmin.CreateInstance(c, uri.Category, uri.PluginID, payload.InstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -523,14 +584,14 @@ func (h *Handler) AdminPluginInstanceCreate(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := h.pluginAdmin.UpdateConfigInstance(c, category, pluginID, inst.InstanceID, payload.ConfigJSON); err != nil {
-			_ = h.pluginAdmin.DeleteInstance(c, category, pluginID, inst.InstanceID)
+		if err := h.pluginAdmin.UpdateConfigInstance(c, uri.Category, uri.PluginID, inst.InstanceID, payload.ConfigJSON); err != nil {
+			_ = h.pluginAdmin.DeleteInstance(c, uri.Category, uri.PluginID, inst.InstanceID)
 			writePluginHandlerError(c, err)
 			return
 		}
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.instance_create", "plugin", category+"/"+pluginID+"/"+inst.InstanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.instance_create", "plugin", uri.Category+"/"+uri.PluginID+"/"+inst.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "plugin": inst})
 }
@@ -540,15 +601,17 @@ func (h *Handler) AdminPluginInstanceEnable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	instanceID := c.Param("instance_id")
-	if err := h.pluginAdmin.EnableInstance(c, category, pluginID, instanceID); err != nil {
+	var uri pluginCategoryPluginInstanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.EnableInstance(c, uri.Category, uri.PluginID, uri.InstanceID); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.enable", "plugin", category+"/"+pluginID+"/"+instanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.enable", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -558,15 +621,17 @@ func (h *Handler) AdminPluginInstanceDisable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	instanceID := c.Param("instance_id")
-	if err := h.pluginAdmin.DisableInstance(c, category, pluginID, instanceID); err != nil {
+	var uri pluginCategoryPluginInstanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DisableInstance(c, uri.Category, uri.PluginID, uri.InstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.disable", "plugin", category+"/"+pluginID+"/"+instanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.disable", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -576,15 +641,17 @@ func (h *Handler) AdminPluginInstanceDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	instanceID := c.Param("instance_id")
-	if err := h.pluginAdmin.DeleteInstance(c, category, pluginID, instanceID); err != nil {
+	var uri pluginCategoryPluginInstanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DeleteInstance(c, uri.Category, uri.PluginID, uri.InstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.instance_delete", "plugin", category+"/"+pluginID+"/"+instanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.instance_delete", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -594,10 +661,12 @@ func (h *Handler) AdminPluginInstanceConfigSchema(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	instanceID := c.Param("instance_id")
-	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c, category, pluginID, instanceID)
+	var uri pluginCategoryPluginInstanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c, uri.Category, uri.PluginID, uri.InstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -610,10 +679,12 @@ func (h *Handler) AdminPluginInstanceConfigGet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	instanceID := c.Param("instance_id")
-	cfg, err := h.pluginAdmin.GetConfigInstance(c, category, pluginID, instanceID)
+	var uri pluginCategoryPluginInstanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	cfg, err := h.pluginAdmin.GetConfigInstance(c, uri.Category, uri.PluginID, uri.InstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -626,9 +697,11 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	instanceID := c.Param("instance_id")
+	var uri pluginCategoryPluginInstanceURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		ConfigJSON string `json:"config_json"`
 	}
@@ -640,12 +713,12 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.pluginAdmin.UpdateConfigInstance(c, category, pluginID, instanceID, payload.ConfigJSON); err != nil {
+	if err := h.pluginAdmin.UpdateConfigInstance(c, uri.Category, uri.PluginID, uri.InstanceID, payload.ConfigJSON); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.config_update", "plugin", category+"/"+pluginID+"/"+instanceID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.config_update", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -687,14 +760,17 @@ func (h *Handler) AdminPluginDeleteFiles(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	category := c.Param("category")
-	pluginID := c.Param("plugin_id")
-	if err := h.pluginAdmin.DeletePluginFiles(c, category, pluginID); err != nil {
+	var uri pluginCategoryPluginURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DeletePluginFiles(c, uri.Category, uri.PluginID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.delete_files", "plugin", category+"/"+pluginID, map[string]any{})
+		h.adminSvc.Audit(c, getUserID(c), "plugin.delete_files", "plugin", uri.Category+"/"+uri.PluginID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

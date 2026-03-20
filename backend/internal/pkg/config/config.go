@@ -72,6 +72,7 @@ func Load() Config {
 
 	fc, configPath := readLocalConfig()
 	applyFileConfig(&cfg, fc)
+	applyEnvConfig(&cfg)
 	if strings.TrimSpace(configPath) != "" {
 		cfg.ConfigDir = filepath.Dir(configPath)
 	} else {
@@ -312,6 +313,48 @@ func applyFileConfig(cfg *Config, fc *fileConfig) {
 	if strings.TrimSpace(fc.DB.DSN) != "" {
 		cfg.DBDSN = strings.TrimSpace(fc.DB.DSN)
 	}
+}
+
+func applyEnvConfig(cfg *Config) {
+	if cfg == nil {
+		return
+	}
+	if v, ok := getEnvTrimmed("APP_ADDR"); ok {
+		cfg.Addr = v
+	}
+	if v, ok := getEnvTrimmed("APP_API_BASE_URL"); ok {
+		cfg.APIBase = v
+	}
+	if v, ok := getEnvTrimmed("APP_DB_TYPE"); ok {
+		cfg.DBType = v
+	}
+	if v, ok := getEnvTrimmed("APP_DB_PATH"); ok {
+		cfg.DBPath = v
+	}
+	if v, ok := getEnvTrimmed("APP_DB_DSN"); ok {
+		cfg.DBDSN = v
+	}
+	if v, ok := getEnvTrimmed("APP_JWT_SECRET"); ok {
+		cfg.JWTSecret = v
+	}
+	if v, ok := getEnvTrimmed("APP_PLUGIN_MASTER_KEY"); ok {
+		cfg.PluginMasterKey = v
+	}
+	if v, ok := getEnvTrimmed("APP_PLUGINS_DIR"); ok {
+		cfg.PluginsDir = v
+	}
+}
+
+func getEnvTrimmed(key string) (string, bool) {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return "", false
+	}
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "", false
+	}
+	return v, true
 }
 
 func generateSecret() string {

@@ -64,3 +64,26 @@ func TestLoadGeneratesJWTSecretAndPersists(t *testing.T) {
 		t.Fatalf("expected jwt secret to be stable across loads")
 	}
 }
+
+func TestLoadEnvOverridesDBConfig(t *testing.T) {
+	td := t.TempDir()
+	oldWD, _ := os.Getwd()
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+	_ = os.Chdir(td)
+
+	b := []byte("db:\n  type: sqlite\n  path: ./data/test.db\n")
+	if err := os.WriteFile(filepath.Join(td, localConfigYAML), b, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("APP_DB_TYPE", "mysql")
+	t.Setenv("APP_DB_DSN", "root:pass@tcp(mysql:3306)/xiaohei")
+
+	cfg := Load()
+	if cfg.DBType != "mysql" {
+		t.Fatalf("expected env db type override, got %q", cfg.DBType)
+	}
+	if cfg.DBDSN != "root:pass@tcp(mysql:3306)/xiaohei" {
+		t.Fatalf("expected env db dsn override, got %q", cfg.DBDSN)
+	}
+}

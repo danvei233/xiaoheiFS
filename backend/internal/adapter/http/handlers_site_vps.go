@@ -40,6 +40,8 @@ func (h *Handler) SiteSettings(c *gin.Context) {
 		"site_icp":                 true,
 		"site_maintenance_mode":    true,
 		"site_maintenance_message": true,
+		"copyright_text":           true,
+		"beian_info_list":          true,
 	}
 	aliases := map[string]string{
 		"site_logo":                "logo_url",
