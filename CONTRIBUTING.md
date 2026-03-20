@@ -81,6 +81,7 @@ func (s *Service) GetUser(id int64) (*User, error) {
 ```
 
 **Adding new errors**: Add to `internal/domain/errors.go`:
+
 ```go
 var (
     ErrNewFeatureNotEnabled = errors.New("new feature not enabled")
@@ -92,7 +93,7 @@ var (
 
 **Never** bypass layer boundaries. Follow the dependency direction:
 
-```
+```txt
 HTTP Handlers → Application Services → Repositories → Database
 ```
 
@@ -195,12 +196,14 @@ npm run lint
 2. **Write tests** for new functionality
 
 3. **Ensure all tests pass**:
+
    ```bash
    go test ./...
    npm test
    ```
 
 4. **Run linter**:
+
    ```bash
    golangci-lint run
    npm run lint
@@ -224,7 +227,7 @@ Before submitting a PR, verify:
 
 ## Architecture Overview
 
-```
+```tree
 backend/
 ├── cmd/
 │   └── server/          # Application entry point
@@ -250,4 +253,6 @@ backend/
 
 By contributing to this project, you agree to follow the principles defined in the constitution.
 
-**Author**: 星云猫 nebulamao
+| **Author** |
+| :---: |
+| 星云猫 nebulamao |

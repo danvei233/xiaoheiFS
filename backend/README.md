@@ -11,6 +11,7 @@ go run ./cmd/server
 Backend supports a local YAML config file for basic settings (bind address, site domain, DB, etc.).
 
 Load order (later wins):
+
 1) Defaults
 2) Config file (`app.config.yaml`, then `app.config.yml`, then legacy `app.config.json`)
 
@@ -26,6 +27,7 @@ db:
 ```
 
 Notes:
+
 - The config file is for non-sensitive runtime settings (bind address/db/etc.).
 - `jwt_secret` is auto-generated on first run if missing, and written into the config file.
 - The installer (`POST /api/v1/install`) creates the first admin user in the database (password stored as a bcrypt hash); admin credentials are not stored in the config file.

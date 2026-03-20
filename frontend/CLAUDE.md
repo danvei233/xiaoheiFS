@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 Cloud VPS Console (小黑云控制台) - A Vue 3 full-stack web application for managing cloud VPS services with dual interfaces:
+
 - **User Console** (`/console`) - Customer-facing VPS purchasing and management
 - **Admin Console** (`/admin`) - Operations staff interface for system management
 
@@ -27,11 +28,13 @@ npm run preview
 ## API Proxy Configuration
 
 The development server proxies API requests to the backend (Go) at `http://localhost:8080`:
+
 - `/api` → `http://localhost:8080`
 - `/admin/api` → `http://localhost:8080`
 - `/sdk` → `http://localhost:8080`
 
 To connect directly to a backend, set:
+
 ```bash
 VITE_API_BASE=http://localhost:8080
 ```
@@ -40,7 +43,7 @@ VITE_API_BASE=http://localhost:8080
 
 ### Directory Structure
 
-```
+```tree
 src/
 ├── components/       # Reusable UI components (ProTable, StatusTag, Charts, etc.)
 ├── layouts/          # UserLayout.vue and AdminLayout.vue
@@ -67,6 +70,7 @@ src/
 ### State Management (Pinia)
 
 All stores use `defineStore` with Options API. Key stores:
+
 - `auth.ts` / `adminAuth.ts` - User/Admin authentication (tokens in localStorage)
 - `cart.ts` - Shopping cart state
 - `catalog.ts` - Product catalog
@@ -85,6 +89,7 @@ All stores use `defineStore` with Options API. Key stores:
 ### Backend Compatibility
 
 The frontend supports field name variations from the Go backend:
+
 - Both camelCase and PascalCase (e.g., `id`/`ID`, `name`/`Name`)
 
 ### Routing
@@ -111,12 +116,14 @@ The frontend supports field name variations from the Go backend:
 ## API Endpoints
 
 **User API** (`/api/v1/`):
+
 - Auth: `captcha`, `auth/register`, `auth/login`, `me`
 - Dashboard, catalog, cart, orders
 - VPS: `vps`, `vps/{id}/*`, `vps/{id}/renew`, `vps/{id}/resize`
 - Order events: `orders/{id}/events` (SSE)
 
 **Admin API** (`/admin/api/v1/`):
+
 - Auth: `auth/login`
 - Users, orders (approve/reject/retry)
 - VPS (lock/unlock/delete/resize/refresh/status/emergency-renew)
