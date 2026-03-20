@@ -121,14 +121,19 @@ func installGateMiddleware(handler *Handler) gin.HandlerFunc {
 		}
 
 		// Allow direct access to installer page itself.
-		if path == "/install" || strings.HasPrefix(path, "/install/") {
+		if path == "/install" {
+			c.Redirect(http.StatusTemporaryRedirect, "/install/")
+			c.Abort()
+			return
+		}
+		if strings.HasPrefix(path, "/install/") {
 			c.Next()
 			return
 		}
 
-		// Browser navigation: redirect to /install.
+		// Browser navigation: redirect to /install/.
 		if c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead {
-			c.Redirect(http.StatusFound, "/install")
+			c.Redirect(http.StatusFound, "/install/")
 			c.Abort()
 			return
 		}
@@ -244,6 +249,10 @@ func resolveSPATarget(
 	adminStaticDir string,
 	adminPathResolver func() string,
 ) (string, string) {
+	if isInstallerSPAPrefix(reqPath) && dirExists(adminStaticDir) {
+		return adminStaticDir, trimInstallerSPAPrefix(reqPath)
+	}
+
 	adminPath := ""
 	if adminPathResolver != nil {
 		adminPath = normalizeAdminRequestPath(adminPathResolver())
@@ -257,6 +266,15 @@ func resolveSPATarget(
 	}
 
 	return publicStaticDir, strings.TrimPrefix(reqPath, "/")
+}
+
+func isInstallerSPAPrefix(reqPath string) bool {
+	return reqPath == "/install" || reqPath == "/install/" || strings.HasPrefix(reqPath, "/install/")
+}
+
+func trimInstallerSPAPrefix(reqPath string) string {
+	rel := strings.TrimPrefix(reqPath, "/install")
+	return strings.TrimPrefix(rel, "/")
 }
 
 func normalizeAdminRequestPath(path string) string {

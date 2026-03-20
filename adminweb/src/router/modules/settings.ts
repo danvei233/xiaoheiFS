@@ -11,6 +11,21 @@ export const settingsRoutes: AppRouteRecord = {
   },
   children: [
     {
+      path: 'scheduled-tasks',
+      name: 'SettingsScheduledTasks',
+      component: '/ops/scheduled-tasks',
+      meta: {
+        title: '计划任务',
+        keepAlive: true,
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [
+          { title: '列表', authMark: 'scheduled_tasks.list' },
+          { title: '更新', authMark: 'scheduled_tasks.update' },
+          { title: '运行记录', authMark: 'scheduled_tasks.runs' }
+        ]
+      }
+    },
+    {
       path: 'site',
       name: 'SettingsSite',
       component: '/settings/site',
@@ -196,6 +211,42 @@ export const settingsRoutes: AppRouteRecord = {
           { title: '查看设置', authMark: 'settings.view' },
           { title: '更新设置', authMark: 'settings.update' }
         ]
+      }
+    },
+    {
+      path: 'realname-config',
+      name: 'SettingsRealnameConfig',
+      component: '/realname/config',
+      meta: {
+        title: '实名认证配置',
+        keepAlive: true,
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [
+          { title: '查看配置', authMark: 'realname.view' },
+          { title: '更新配置', authMark: 'realname.update' }
+        ]
+      }
+    },
+    {
+      path: 'realname-records',
+      name: 'SettingsRealnameRecords',
+      component: '/realname/records',
+      meta: {
+        title: '实名认证记录',
+        keepAlive: true,
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [{ title: '查看记录', authMark: 'realname.list' }]
+      }
+    },
+    {
+      path: 'automation',
+      name: 'SettingsAutomation',
+      component: '/automation/index',
+      meta: {
+        title: '自动化对接',
+        keepAlive: true,
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [{ title: '自动化对接', authMark: 'automation.view' }]
       }
     }
   ]

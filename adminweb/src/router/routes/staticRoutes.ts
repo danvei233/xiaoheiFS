@@ -25,6 +25,12 @@ export const staticRoutes: AppRouteRecordRaw[] = [
     meta: { title: 'menus.login.title', isHideTab: true }
   },
   {
+    path: '/install',
+    name: 'Install',
+    component: () => import('@views/install/index.vue'),
+    meta: { title: '系统安装', isHideTab: true }
+  },
+  {
     path: '/auth/forget-password',
     name: 'ForgetPassword',
     component: () => import('@views/auth/forget-password/index.vue'),

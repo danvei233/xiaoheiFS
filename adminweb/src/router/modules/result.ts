@@ -6,7 +6,8 @@ export const resultRoutes: AppRouteRecord = {
   component: '/index/index',
   meta: {
     title: 'menus.result.title',
-    icon: 'ri:checkbox-circle-line'
+    icon: 'ri:checkbox-circle-line',
+    isHide: true
   },
   children: [
     {
@@ -16,7 +17,8 @@ export const resultRoutes: AppRouteRecord = {
       meta: {
         title: 'menus.result.success',
         icon: 'ri:checkbox-circle-line',
-        keepAlive: true
+        keepAlive: true,
+        isHide: true
       }
     },
     {
@@ -26,7 +28,8 @@ export const resultRoutes: AppRouteRecord = {
       meta: {
         title: 'menus.result.fail',
         icon: 'ri:close-circle-line',
-        keepAlive: true
+        keepAlive: true,
+        isHide: true
       }
     }
   ]

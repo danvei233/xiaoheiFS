@@ -52,6 +52,7 @@ import { fetchGetUserInfo } from '@/api/auth'
 import { ApiStatus } from '@/utils/http/status'
 import { isHttpError } from '@/utils/http/error'
 import { ensureCurrentAdminPath } from '@/utils/adminPath'
+import { useInstallStore } from '@/store/modules/install'
 import { RouteRegistry, MenuProcessor, IframeRouteManager, RoutePermissionValidator } from '../core'
 
 // 路由注册器实例
@@ -146,6 +147,7 @@ async function handleRouteGuard(
 ): Promise<void> {
   const settingStore = useSettingStore()
   const userStore = useUserStore()
+  const installStore = useInstallStore()
 
   // 启动进度条
   if (settingStore.showNprogress) {
@@ -153,6 +155,10 @@ async function handleRouteGuard(
   }
 
   await ensureCurrentAdminPath()
+
+  if (!(await handleInstallStatus(to, installStore, next))) {
+    return
+  }
 
   // 1. 检查登录状态
   if (!handleLoginStatus(to, userStore, next)) {
@@ -198,6 +204,26 @@ async function handleRouteGuard(
 
   // 6. 未匹配到路由，跳转到 404
   next({ name: 'Exception404' })
+}
+
+async function handleInstallStatus(
+  to: RouteLocationNormalized,
+  installStore: ReturnType<typeof useInstallStore>,
+  next: NavigationGuardNext
+): Promise<boolean> {
+  if (!installStore.loaded) {
+    await installStore.fetchStatus()
+  }
+
+  if (installStore.installed || to.path === RoutesAlias.Install) {
+    return true
+  }
+
+  next({
+    path: RoutesAlias.Install,
+    replace: true
+  })
+  return false
 }
 
 /**

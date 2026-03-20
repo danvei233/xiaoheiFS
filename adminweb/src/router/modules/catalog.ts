@@ -7,7 +7,9 @@ export const catalogRoutes: AppRouteRecord = {
   meta: {
     title: '商品目录',
     icon: 'ri:store-3-line',
+    isHide: true,
     keepAlive: true,
+    activePath: '/product/catalog',
     roles: ['R_SUPER', 'R_ADMIN'],
     authList: [
       { title: '商品类型', authMark: 'goods_type.list' },

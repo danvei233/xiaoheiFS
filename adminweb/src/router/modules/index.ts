@@ -8,6 +8,7 @@ import { debugRoutes } from './debug'
 import { marketingRoutes } from './marketing'
 import { opsRoutes } from './ops'
 import { orderRoutes } from './order'
+import { productRoutes } from './product'
 import { probeRoutes } from './probe'
 import { realnameRoutes } from './realname'
 import { settingsRoutes } from './settings'
@@ -23,23 +24,24 @@ import { exceptionRoutes } from './exception'
  * 导出所有模块化路由
  */
 export const routeModules: AppRouteRecord[] = [
-  automationRoutes,
-  auditRoutes,
-  catalogRoutes,
+  productRoutes,
   cmsRoutes,
   dashboardRoutes,
-  debugRoutes,
   marketingRoutes,
-  opsRoutes,
   orderRoutes,
   probeRoutes,
-  realnameRoutes,
   settingsRoutes,
-  systemsRoutes,
   systemRoutes,
   ticketRoutes,
   vpsRoutes,
   walletRoutes,
+  auditRoutes,
+  debugRoutes,
+  automationRoutes,
+  catalogRoutes,
+  opsRoutes,
+  realnameRoutes,
+  systemsRoutes,
   resultRoutes,
   exceptionRoutes
 ]

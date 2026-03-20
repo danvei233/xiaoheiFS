@@ -7,7 +7,9 @@ export const opsRoutes: AppRouteRecord = {
   meta: {
     title: '计划任务',
     icon: 'ri:time-line',
+    isHide: true,
     keepAlive: true,
+    activePath: '/settings/scheduled-tasks',
     roles: ['R_SUPER', 'R_ADMIN'],
     authList: [
       { title: '列表', authMark: 'scheduled_tasks.list' },
