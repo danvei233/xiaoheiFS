@@ -112,30 +112,6 @@ func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
 		RegisterVerifyChannels: verifyChannels,
 		RegisterVerifyTTL:      time.Duration(getInt("auth_register_verify_ttl_sec", 600)) * time.Second,
 		RegisterCaptchaEnabled: getBool("auth_register_captcha_enabled", true),
-		CaptchaProvider:        normalizeCaptchaProvider(getString("auth_captcha_provider", "image")),
-		GeeTestCaptchaID:       getString("auth_geetest_captcha_id", ""),
-		GeeTestCaptchaKey:      getString("auth_geetest_captcha_key", ""),
-		GeeTestAPIServer:       strings.TrimRight(getString("auth_geetest_api_server", "https://gcaptcha4.geetest.com"), "/"),
-		RegisterEmailSubject:   getString("auth_register_email_subject", "Your verification code"),
-		RegisterEmailBody:      getString("auth_register_email_body", "Your verification code is: {{code}}"),
-		RegisterSMSPluginID:    getString("auth_register_sms_plugin_id", getString("sms_plugin_id", "")),
-		RegisterSMSInstanceID:  getString("auth_register_sms_instance_id", getString("sms_instance_id", "default")),
-		RegisterSMSTemplateID:  getString("auth_register_sms_template_id", getString("sms_provider_template_id", "")),
-		LoginCaptchaEnabled:    getBool("auth_login_captcha_enabled", false),
-		LoginRateLimitEnabled:  getBool("auth_login_rate_limit_enabled", true),
-		LoginRateLimitWindow:   time.Duration(getInt("auth_login_rate_limit_window_sec", 300)) * time.Second,
-		LoginRateLimitMax:      getInt("auth_login_rate_limit_max_attempts", 5),
-		LoginNotifyEnabled:     getBool("auth_login_notify_enabled", true),
-		LoginNotifyOnFirst:     getBool("auth_login_notify_on_first_login", true),
-		LoginNotifyOnIPChange:  getBool("auth_login_notify_on_ip_change", true),
-		LoginNotifyChannels:    normalizeChannels(getStringSlice("auth_login_notify_channels", []string{"email"})),
-		PasswordResetEnabled:   getBool("auth_password_reset_enabled", true),
-		PasswordResetChannels:  normalizeChannels(getStringSlice("auth_password_reset_channels", []string{"email"})),
-		PasswordResetVerifyTTL: time.Duration(getInt("auth_password_reset_verify_ttl_sec", 600)) * time.Second,
-		SMSCodeLength:          getCodeLength("auth_sms_code_len", 6),
-		SMSCodeComplexity:      getCodeComplexity("auth_sms_code_complexity", appshared.CodeComplexityDigits),
-		EmailCodeLength:        getCodeLength("auth_email_code_len", 6),
-		EmailCodeComplexity:    getCodeComplexity("auth_email_code_complexity", appshared.CodeComplexityAlnum),
 		CaptchaLength:          getCodeLength("auth_captcha_code_len", 5),
 		CaptchaComplexity:      getCodeComplexity("auth_captcha_code_complexity", appshared.CodeComplexityAlnum),
 		CaptchaCtxForTurnstile: struct {
@@ -147,11 +123,21 @@ func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
 			Secret:  getString("auth_captcha_cf_turnstile_sitekey", ""),
 			APIEndpoint: func() (Url *url.URL) {
 				err := new(error)
-				if urlRaw, isExists := os.LookupEnv("CF_TURNSTILE_API_ENDPOINT"); isExists {
-					Url, *err = url.Parse(urlRaw)
-				} else {
-					Url, *err = url.Parse("https://challenges.cloudflare.com/turnstile/v0/siteverify")
+				switch {
+				case getString("auth_captcha_cf_turnstile_api_url", "") != "":
+					if Url, *err = url.Parse(getString("auth_captcha_cf_turnstile_api_url", "https://challenges.cloudflare.com/turnstile/v0/siteverify")); *err != nil {
+						log.Errorf(context.Background(), "Failed to parse CF Turnstile API endpoint URL from settings: %v", err)
+					} else {
+						return Url
+					}
+				case os.Getenv("CF_TURNSTILE_API_ENDPOINT") != "":
+					if Url, *err = url.Parse(os.Getenv("CF_TURNSTILE_API_ENDPOINT")); err != nil {
+						log.Errorf(context.Background(), "Failed to parse CF Turnstile API endpoint URL from Env: %v", err)
+					} else {
+						return Url
+					}
 				}
+
 				if err != nil {
 					log.Errorf(context.Background(), "Failed to parse CF Turnstile API endpoint URL: %v", err)
 					return nil
@@ -159,6 +145,31 @@ func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
 				return
 			}(),
 		},
+
+		CaptchaProvider:                normalizeCaptchaProvider(getString("auth_captcha_provider", "image")),
+		GeeTestCaptchaID:               getString("auth_geetest_captcha_id", ""),
+		GeeTestCaptchaKey:              getString("auth_geetest_captcha_key", ""),
+		GeeTestAPIServer:               strings.TrimRight(getString("auth_geetest_api_server", "https://gcaptcha4.geetest.com"), "/"),
+		RegisterEmailSubject:           getString("auth_register_email_subject", "Your verification code"),
+		RegisterEmailBody:              getString("auth_register_email_body", "Your verification code is: {{code}}"),
+		RegisterSMSPluginID:            getString("auth_register_sms_plugin_id", getString("sms_plugin_id", "")),
+		RegisterSMSInstanceID:          getString("auth_register_sms_instance_id", getString("sms_instance_id", "default")),
+		RegisterSMSTemplateID:          getString("auth_register_sms_template_id", getString("sms_provider_template_id", "")),
+		LoginCaptchaEnabled:            getBool("auth_login_captcha_enabled", false),
+		LoginRateLimitEnabled:          getBool("auth_login_rate_limit_enabled", true),
+		LoginRateLimitWindow:           time.Duration(getInt("auth_login_rate_limit_window_sec", 300)) * time.Second,
+		LoginRateLimitMax:              getInt("auth_login_rate_limit_max_attempts", 5),
+		LoginNotifyEnabled:             getBool("auth_login_notify_enabled", true),
+		LoginNotifyOnFirst:             getBool("auth_login_notify_on_first_login", true),
+		LoginNotifyOnIPChange:          getBool("auth_login_notify_on_ip_change", true),
+		LoginNotifyChannels:            normalizeChannels(getStringSlice("auth_login_notify_channels", []string{"email"})),
+		PasswordResetEnabled:           getBool("auth_password_reset_enabled", true),
+		PasswordResetChannels:          normalizeChannels(getStringSlice("auth_password_reset_channels", []string{"email"})),
+		PasswordResetVerifyTTL:         time.Duration(getInt("auth_password_reset_verify_ttl_sec", 600)) * time.Second,
+		SMSCodeLength:                  getCodeLength("auth_sms_code_len", 6),
+		SMSCodeComplexity:              getCodeComplexity("auth_sms_code_complexity", appshared.CodeComplexityDigits),
+		EmailCodeLength:                getCodeLength("auth_email_code_len", 6),
+		EmailCodeComplexity:            getCodeComplexity("auth_email_code_complexity", appshared.CodeComplexityAlnum),
 		EmailBindEnabled:               getBool("auth_email_bind_enabled", true),
 		PhoneBindEnabled:               getBool("auth_phone_bind_enabled", true),
 		ContactChangeNotifyOldEnabled:  getBool("auth_contact_change_notify_old_enabled", true),
@@ -227,6 +238,7 @@ func (h *Handler) Captcha(c *gin.Context) {
 	enc := base64.NewEncoder(base64.StdEncoding, &buf)
 	if err := png.Encode(enc, img); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrCaptchaEncodeError.Error()})
+		_ = enc.Close()
 		return
 	}
 	_ = enc.Close()
