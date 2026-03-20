@@ -17,6 +17,7 @@ cp -a frontend/dist/. build/linux/static/
 
 echo "[3/3] Build backend (linux)..."
 cd backend
+go env -w CGO_ENABLED=0
 go build -o ../build/linux/server ./cmd/server
 cd ..
 

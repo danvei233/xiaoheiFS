@@ -20,6 +20,7 @@ xcopy "frontend\dist\*" "%OUT_STATIC%\\" /E /I /Y >nul
 
 echo [3/3] Build backend (windows)...
 pushd "backend" >nul
+go env -w CGO_ENABLED=0
 go build -o "..\%OUT_DIR%\server.exe" .\cmd\server || exit /b 1
 popd >nul
 
