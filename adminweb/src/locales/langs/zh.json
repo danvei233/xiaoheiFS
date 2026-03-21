@@ -292,5 +292,75 @@
     "zebra": "斑马纹",
     "border": "边框",
     "headerBackground": "表头背景"
+  },
+  "systemImage": {
+    "page": {
+      "actions": {
+        "bulkDelete": "批量删除",
+        "sync": "同步镜像",
+        "lineConfig": "线路镜像配置",
+        "create": "新增镜像"
+      },
+      "tip": "同步会调用自动化镜像接口，并更新所选线路的已启用镜像映射关系。",
+      "columns": {
+        "imageId": "镜像 ID",
+        "name": "名称",
+        "type": "类型",
+        "status": "状态",
+        "operation": "操作"
+      },
+      "operation": {
+        "edit": "编辑",
+        "delete": "删除"
+      }
+    },
+    "search": {
+      "keyword": "关键词",
+      "status": "状态",
+      "keywordPlaceholder": "按镜像 ID 或名称搜索",
+      "statusPlaceholder": "请选择状态"
+    },
+    "dialog": {
+      "createTitle": "新增镜像",
+      "editTitle": "编辑镜像",
+      "imageId": "镜像 ID",
+      "name": "名称",
+      "namePlaceholder": "请输入镜像名称",
+      "type": "类型",
+      "typePlaceholder": "请选择镜像类型",
+      "enabled": "启用",
+      "save": "保存"
+    },
+    "lineDialog": {
+      "configTitle": "线路镜像配置",
+      "syncTitle": "同步镜像",
+      "line": "线路",
+      "linePlaceholder": "请选择线路",
+      "enabledImages": "已启用镜像",
+      "enabledImagesPlaceholder": "请选择已启用镜像",
+      "syncAlert": "同步会调用自动化镜像接口，并更新所选线路的已启用镜像关联。",
+      "startSync": "开始同步",
+      "save": "保存"
+    },
+    "status": {
+      "enabled": "启用",
+      "disabled": "停用"
+    },
+    "messages": {
+      "imageIdPositive": "镜像 ID 必须是正整数",
+      "nameRequired": "请输入镜像名称",
+      "typeRequired": "请选择镜像类型",
+      "saved": "镜像已保存",
+      "confirmDeleteTitle": "确认删除",
+      "confirmDelete": "确认删除该镜像？",
+      "deleted": "已删除镜像",
+      "confirmBulkDeleteTitle": "确认批量删除",
+      "confirmBulkDelete": "确认删除所选 {count} 个镜像？",
+      "bulkDeleted": "已批量删除镜像",
+      "lineRequired": "请选择线路",
+      "resolveLineFailed": "无法解析云线路 ID",
+      "syncStarted": "已触发镜像同步",
+      "lineConfigSaved": "线路镜像配置已保存"
+    }
   }
 }

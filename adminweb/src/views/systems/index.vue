@@ -22,26 +22,25 @@
               :disabled="!selectedImageIds.length"
               @click="removeSelectedImages"
             >
-              Bulk Delete
+              {{ t('systemImage.page.actions.bulkDelete') }}
             </ElButton>
 
-            <ElButton v-if="canSync" @click="openSyncDialog">Sync Images</ElButton>
+            <ElButton v-if="canSync" @click="openSyncDialog">
+              {{ t('systemImage.page.actions.sync') }}
+            </ElButton>
 
             <ElButton v-if="canConfigLineImages" @click="openLineConfigDialog">
-              Line Image Config
+              {{ t('systemImage.page.actions.lineConfig') }}
             </ElButton>
 
             <ElButton v-if="canCreate" type="primary" @click="openCreateDialog">
-              Create Image
+              {{ t('systemImage.page.actions.create') }}
             </ElButton>
           </ElSpace>
         </template>
       </ArtTableHeader>
 
-      <div class="page-tip">
-        Sync will call the automation mirror image endpoint and update the enabled image mapping for
-        the selected line.
-      </div>
+      <div class="page-tip">{{ t('systemImage.page.tip') }}</div>
 
       <ArtTable
         row-key="id"
@@ -63,18 +62,18 @@
 
         <template #enabled="{ row }">
           <ElTag :type="row.enabled ? 'success' : 'danger'">
-            {{ row.enabled ? 'Enabled' : 'Disabled' }}
+            {{ row.enabled ? t('systemImage.status.enabled') : t('systemImage.status.disabled') }}
           </ElTag>
         </template>
 
         <template #operation="{ row }">
           <div class="table-actions">
-            <ElButton v-if="canUpdate" link type="primary" @click="openEditDialog(row)"
-              >Edit</ElButton
-            >
-            <ElButton v-if="canDelete" link type="danger" @click="removeImage(row)"
-              >Delete</ElButton
-            >
+            <ElButton v-if="canUpdate" link type="primary" @click="openEditDialog(row)">{{
+              t('systemImage.page.operation.edit')
+            }}</ElButton>
+            <ElButton v-if="canDelete" link type="danger" @click="removeImage(row)">{{
+              t('systemImage.page.operation.delete')
+            }}</ElButton>
             <span v-if="!canUpdate && !canDelete" class="muted">-</span>
           </div>
         </template>
@@ -106,9 +105,7 @@
 
 <script setup lang="ts">
   import type { CatalogPlanGroup, CatalogSystemImage } from '@/api/admin'
-  import {
-    createDefaultSystemImageDialogForm
-  } from '@/components/business/system-image-dialog/model'
+  import { createDefaultSystemImageDialogForm } from '@/components/business/system-image-dialog/model'
   import type { SystemImageDialogFormValue } from '@/components/business/system-image-dialog/model'
   import {
     bulkDeleteAdminSystemImages,
@@ -124,6 +121,7 @@
   import { useTableColumns } from '@/hooks/core/useTableColumns'
   import { useUserStore } from '@/store/modules/user'
   import { ElMessage, ElMessageBox } from 'element-plus'
+  import { useI18n } from 'vue-i18n'
   import LineImageDialog from './modules/line-image-dialog.vue'
   import SystemImageDialog from './modules/system-image-dialog.vue'
   import SystemImageSearch from './modules/system-image-search.vue'
@@ -151,6 +149,7 @@
 
   const userStore = useUserStore()
   const { info } = storeToRefs(userStore)
+  const { t } = useI18n()
 
   const showSearchBar = ref(true)
   const loading = ref(false)
@@ -177,11 +176,22 @@
 
   const { columnChecks, columns } = useTableColumns<SystemImageRow>(() => [
     { prop: 'id', label: 'ID', width: 80 },
-    { prop: 'image_id', label: 'Image ID', width: 110 },
-    { prop: 'name', label: 'Name', minWidth: 220, showOverflowTooltip: true },
-    { prop: 'type', label: 'Type', width: 120, useSlot: true },
-    { prop: 'enabled', label: 'Status', width: 110, useSlot: true },
-    { prop: 'operation', label: 'Operation', width: 150, fixed: 'right', useSlot: true }
+    { prop: 'image_id', label: t('systemImage.page.columns.imageId'), width: 110 },
+    {
+      prop: 'name',
+      label: t('systemImage.page.columns.name'),
+      minWidth: 220,
+      showOverflowTooltip: true
+    },
+    { prop: 'type', label: t('systemImage.page.columns.type'), width: 120, useSlot: true },
+    { prop: 'enabled', label: t('systemImage.page.columns.status'), width: 110, useSlot: true },
+    {
+      prop: 'operation',
+      label: t('systemImage.page.columns.operation'),
+      width: 150,
+      fixed: 'right',
+      useSlot: true
+    }
   ])
 
   const canView = computed(() => hasAdminPermission(info.value?.buttons, ['system_image.list']))
@@ -445,12 +455,12 @@
   async function handleDialogSubmit(form: SystemImageDialogFormValue) {
     const imageId = Number(form.image_id || 0)
     if (!Number.isInteger(imageId) || imageId <= 0) {
-      ElMessage.error('Image ID must be a positive integer')
+      ElMessage.error(t('systemImage.messages.imageIdPositive'))
       return
     }
 
     if (!String(form.name || '').trim()) {
-      ElMessage.error('Please enter an image name')
+      ElMessage.error(t('systemImage.messages.nameRequired'))
       return
     }
 
@@ -458,7 +468,7 @@
       .trim()
       .toLowerCase()
     if (!['linux', 'windows'].includes(type)) {
-      ElMessage.error('Please select an image type')
+      ElMessage.error(t('systemImage.messages.typeRequired'))
       return
     }
 
@@ -478,7 +488,7 @@
         await createAdminSystemImage(payload)
       }
 
-      ElMessage.success('Image saved')
+      ElMessage.success(t('systemImage.messages.saved'))
       dialogVisible.value = false
       await fetchData()
     } finally {
@@ -492,15 +502,19 @@
     }
 
     try {
-      await ElMessageBox.confirm('Delete this image?', 'Confirm Delete', {
-        type: 'warning'
-      })
+      await ElMessageBox.confirm(
+        t('systemImage.messages.confirmDelete'),
+        t('systemImage.messages.confirmDeleteTitle'),
+        {
+          type: 'warning'
+        }
+      )
     } catch {
       return
     }
 
     await deleteAdminSystemImage(row.id)
-    ElMessage.success('Image deleted')
+    ElMessage.success(t('systemImage.messages.deleted'))
     await fetchData()
   }
 
@@ -511,8 +525,8 @@
 
     try {
       await ElMessageBox.confirm(
-        `Delete ${selectedImageIds.value.length} selected images?`,
-        'Confirm Bulk Delete',
+        t('systemImage.messages.confirmBulkDelete', { count: selectedImageIds.value.length }),
+        t('systemImage.messages.confirmBulkDeleteTitle'),
         { type: 'warning' }
       )
     } catch {
@@ -521,7 +535,7 @@
 
     await bulkDeleteAdminSystemImages(selectedImageIds.value)
     selectedImageIds.value = []
-    ElMessage.success('Selected images deleted')
+    ElMessage.success(t('systemImage.messages.bulkDeleted'))
     await fetchData()
   }
 
@@ -546,7 +560,7 @@
 
   async function handleLineDialogSubmit() {
     if (!lineDialogLineId.value) {
-      ElMessage.error('Please select a line')
+      ElMessage.error(t('systemImage.messages.lineRequired'))
       return
     }
 
@@ -556,7 +570,7 @@
       if (lineDialogMode.value === 'sync') {
         const cloudLineId = getCloudLineId(lineDialogLineId.value)
         if (!cloudLineId) {
-          ElMessage.error('Unable to resolve cloud line id')
+          ElMessage.error(t('systemImage.messages.resolveLineFailed'))
           return
         }
 
@@ -564,13 +578,13 @@
           line_id: cloudLineId
         })
 
-        ElMessage.success('Image sync started')
+        ElMessage.success(t('systemImage.messages.syncStarted'))
       } else {
         await setAdminLineSystemImages(lineDialogLineId.value, {
           image_ids: lineDialogImageIds.value
         })
 
-        ElMessage.success('Line image configuration saved')
+        ElMessage.success(t('systemImage.messages.lineConfigSaved'))
       }
 
       lineDialogVisible.value = false

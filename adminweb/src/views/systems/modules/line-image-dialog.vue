@@ -1,14 +1,23 @@
 <template>
   <ElDialog
     v-model="dialogVisible"
-    :title="mode === 'config' ? 'Line Image Configuration' : 'Sync Images'"
+    :title="
+      mode === 'config'
+        ? t('systemImage.lineDialog.configTitle')
+        : t('systemImage.lineDialog.syncTitle')
+    "
     width="560px"
     destroy-on-close
     align-center
   >
     <ElForm label-position="top">
-      <ElFormItem label="Line">
-        <ElSelect v-model="lineModel" placeholder="Select line" filterable class="full-width">
+      <ElFormItem :label="t('systemImage.lineDialog.line')">
+        <ElSelect
+          v-model="lineModel"
+          :placeholder="t('systemImage.lineDialog.linePlaceholder')"
+          filterable
+          class="full-width"
+        >
           <ElOption
             v-for="line in safeLines"
             :key="line.id"
@@ -18,13 +27,13 @@
         </ElSelect>
       </ElFormItem>
 
-      <ElFormItem v-if="mode === 'config'" label="Enabled Images">
+      <ElFormItem v-if="mode === 'config'" :label="t('systemImage.lineDialog.enabledImages')">
         <ElSelect
           v-model="imageIdsModel"
           class="full-width"
           multiple
           filterable
-          placeholder="Select enabled images"
+          :placeholder="t('systemImage.lineDialog.enabledImagesPlaceholder')"
         >
           <ElOption
             v-for="item in imageOptions"
@@ -40,15 +49,19 @@
         type="info"
         show-icon
         :closable="false"
-        title="Sync will call the automation mirror image endpoint and update the enabled image relationships for the selected line."
+        :title="t('systemImage.lineDialog.syncAlert')"
       />
     </ElForm>
 
     <template #footer>
       <div class="dialog-footer">
-        <ElButton @click="dialogVisible = false">Cancel</ElButton>
+        <ElButton @click="dialogVisible = false">{{ t('common.cancel') }}</ElButton>
         <ElButton type="primary" :loading="submitting" @click="emit('submit')">
-          {{ mode === 'config' ? 'Save' : 'Start Sync' }}
+          {{
+            mode === 'config'
+              ? t('systemImage.lineDialog.save')
+              : t('systemImage.lineDialog.startSync')
+          }}
         </ElButton>
       </div>
     </template>
@@ -56,6 +69,8 @@
 </template>
 
 <script setup lang="ts">
+  import { useI18n } from 'vue-i18n'
+
   interface LineRecord {
     id: number | null
     name: string
@@ -97,6 +112,7 @@
     submitting: false
   })
   const emit = defineEmits<Emits>()
+  const { t } = useI18n()
 
   const dialogVisible = computed({
     get: () => props.visible,

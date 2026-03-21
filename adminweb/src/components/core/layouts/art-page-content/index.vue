@@ -15,19 +15,17 @@
     </div>
 
     <RouterView v-if="isRefresh" v-slot="{ Component, route }" :style="contentStyle">
-      <!-- 缓存路由动画 -->
-      <Transition :name="showTransitionMask ? '' : actualTransition" mode="out-in" appear>
-        <KeepAlive :max="10" :exclude="keepAliveExclude">
-          <component
-            class="art-page-view"
-            :is="Component"
-            :key="route.path"
-            v-if="route.meta.keepAlive"
-          />
-        </KeepAlive>
-      </Transition>
+      <!-- 缓存页面大多是后台重页面，直接切换可显著降低卡顿感 -->
+      <KeepAlive :max="10" :exclude="keepAliveExclude">
+        <component
+          class="art-page-view"
+          :is="Component"
+          :key="route.path"
+          v-if="route.meta.keepAlive"
+        />
+      </KeepAlive>
 
-      <!-- 非缓存路由动画 -->
+      <!-- 非缓存路由保留原有过渡效果 -->
       <Transition :name="showTransitionMask ? '' : actualTransition" mode="out-in" appear>
         <component
           class="art-page-view"

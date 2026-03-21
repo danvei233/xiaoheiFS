@@ -11,6 +11,8 @@
 </template>
 
 <script setup lang="ts">
+  import { useI18n } from 'vue-i18n'
+
   interface SystemImageSearchForm {
     keyword: string
     status?: string
@@ -33,6 +35,7 @@
 
   const searchBarRef = ref()
   const rules = {}
+  const { t } = useI18n()
 
   const formData = computed({
     get: () => props.modelValue,
@@ -41,24 +44,24 @@
 
   const formItems = computed(() => [
     {
-      label: 'Keyword',
+      label: t('systemImage.search.keyword'),
       key: 'keyword',
       type: 'input',
       props: {
         clearable: true,
-        placeholder: 'Search by image id or name'
+        placeholder: t('systemImage.search.keywordPlaceholder')
       }
     },
     {
-      label: 'Status',
+      label: t('systemImage.search.status'),
       key: 'status',
       type: 'select',
       props: {
         clearable: true,
-        placeholder: 'Select status',
+        placeholder: t('systemImage.search.statusPlaceholder'),
         options: [
-          { label: 'Enabled', value: 'enabled' },
-          { label: 'Disabled', value: 'disabled' }
+          { label: t('systemImage.status.enabled'), value: 'enabled' },
+          { label: t('systemImage.status.disabled'), value: 'disabled' }
         ]
       }
     }

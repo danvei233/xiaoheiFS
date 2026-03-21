@@ -292,5 +292,75 @@
     "zebra": "Zebra",
     "border": "Border",
     "headerBackground": "Header BG"
+  },
+  "systemImage": {
+    "page": {
+      "actions": {
+        "bulkDelete": "Bulk Delete",
+        "sync": "Sync Images",
+        "lineConfig": "Line Image Config",
+        "create": "Create Image"
+      },
+      "tip": "Sync calls the automation mirror image endpoint and updates the enabled image mapping for the selected line.",
+      "columns": {
+        "imageId": "Image ID",
+        "name": "Name",
+        "type": "Type",
+        "status": "Status",
+        "operation": "Operation"
+      },
+      "operation": {
+        "edit": "Edit",
+        "delete": "Delete"
+      }
+    },
+    "search": {
+      "keyword": "Keyword",
+      "status": "Status",
+      "keywordPlaceholder": "Search by image ID or name",
+      "statusPlaceholder": "Select status"
+    },
+    "dialog": {
+      "createTitle": "Create Image",
+      "editTitle": "Edit Image",
+      "imageId": "Image ID",
+      "name": "Name",
+      "namePlaceholder": "Enter image name",
+      "type": "Type",
+      "typePlaceholder": "Select image type",
+      "enabled": "Enabled",
+      "save": "Save"
+    },
+    "lineDialog": {
+      "configTitle": "Line Image Configuration",
+      "syncTitle": "Sync Images",
+      "line": "Line",
+      "linePlaceholder": "Select line",
+      "enabledImages": "Enabled Images",
+      "enabledImagesPlaceholder": "Select enabled images",
+      "syncAlert": "Sync calls the automation mirror image endpoint and updates the enabled image relationships for the selected line.",
+      "startSync": "Start Sync",
+      "save": "Save"
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "messages": {
+      "imageIdPositive": "Image ID must be a positive integer",
+      "nameRequired": "Please enter an image name",
+      "typeRequired": "Please select an image type",
+      "saved": "Image saved",
+      "confirmDeleteTitle": "Confirm Delete",
+      "confirmDelete": "Delete this image?",
+      "deleted": "Image deleted",
+      "confirmBulkDeleteTitle": "Confirm Bulk Delete",
+      "confirmBulkDelete": "Delete {count} selected images?",
+      "bulkDeleted": "Selected images deleted",
+      "lineRequired": "Please select a line",
+      "resolveLineFailed": "Unable to resolve cloud line ID",
+      "syncStarted": "Image sync started",
+      "lineConfigSaved": "Line image configuration saved"
+    }
   }
 }
