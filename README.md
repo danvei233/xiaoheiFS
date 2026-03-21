@@ -44,7 +44,7 @@
 ## 技术栈
 
 - 后端：Go 1.25.0 + Gin + GORM + validator
-- 前端：Vue 3 + Vite + Pinia + Ant Design Vue + ECharts
+- Web：Vue 3 + Vite（`frontend` 使用 Pinia + Ant Design Vue，`adminweb` 使用 Element Plus）
 - 客户端：Flutter（管理员端/用户端）
 - 数据库：MySQL / PostgreSQL / SQLite（通过 GORM）
 - 插件机制：go-plugin + gRPC + protobuf
@@ -52,12 +52,13 @@
 ## 仓库结构
 
 - `.github/workflows/`：发布与构建流水线
-- `backend/`：后端主服务（API、业务、插件管理）
-- `frontend/`：Web 前端（用户端 + 管理端）
+- `backend/`：后端主服务（API、业务、插件管理、内置插件）
+- `frontend/`：默认 Web 前端（用户端 + 现有后台页），当前构建脚本与发布流水线默认使用它
+- `adminweb/`：独立管理端 Web 工程（Vue 3 + Vite + Element Plus）
 - `app/`：Flutter 客户端工程
 - `pingbot/`：探针服务
-- `plugins/`：插件相关资源
 - `docs/`：部署与能力文档
+- `docker/`：镜像与 Compose 部署配置
 - `script/`：构建脚本
 
 ## 快速开始（本地开发）
@@ -78,7 +79,7 @@ go run ./cmd/server
 
 说明：后端支持 `app.config.yaml` / `app.config.yml` / `app.config.json` 配置加载（详见 `backend/README.md`）。
 
-### 2) 启动前端
+### 2) 启动默认 Web 前端（frontend）
 
 ```bash
 cd frontend
@@ -92,7 +93,19 @@ npm run dev
 - `/admin/api` -> `http://localhost:8080`
 - `/sdk` -> `http://localhost:8080`
 
-### 3) 完成初始化安装
+说明：`script/build-linux.sh`、`script/build-win.bat` 和 `.github/workflows/release-build.yml` 当前默认构建的是 `frontend/` 静态资源。
+
+### 3) 启动独立管理端（adminweb，可选）
+
+```bash
+cd adminweb
+pnpm install
+pnpm dev
+```
+
+说明：`adminweb` 是单独的 Vite 工程，默认也会代理 `/api` 和 `/admin/api` 到后端；生产构建默认输出到仓库根目录下的 `static-admin/`。
+
+### 4) 完成初始化安装
 
 1. 访问 `http://localhost:8080/` 进入安装页
 2. 填写数据库连接并初始化管理员账号
@@ -118,6 +131,8 @@ script\build-win.bat
 
 - Linux：`build/linux/`
 - Windows：`build/windows/`
+
+说明：当前一键构建只打包 `backend + frontend`，不包含 `adminweb/` 与 Flutter App。
 
 ### Docker 快速启动（后端）
 
@@ -153,6 +168,7 @@ docker compose -f docker/docker-compose/docker-compose.mysql.yaml logs -f xiaohe
 
 - 后端说明：`backend/README.md`
 - 前端说明：`frontend/README.md`
+- 独立管理端说明：`adminweb/README.md`
 - 探针部署：`docs/probe-deploy.md`
 - App 部署：`docs/app-deploy.md`
 - 自动化插件开发：`docs/automation-plugin-development.md`

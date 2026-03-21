@@ -50,6 +50,7 @@ vendor/
 # ============================================
 /build/
 /dist/
+/static-admin/
 /tmp/
 /app/userapp/
 
@@ -59,6 +60,9 @@ vendor/
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 install.lock
 app.config.json
 app.config.yaml
@@ -78,6 +82,13 @@ config.local.yaml
 *~
 .claude/
 .plan/
+
+# ============================================
+# Local Workspace
+# ============================================
+/.ai/
+/.aiassistant/
+/.tmp/
 
 # ============================================
 # OS
