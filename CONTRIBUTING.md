@@ -193,14 +193,31 @@ npm run lint
    - Bugfix: `fix/###-bug-name`
    - Refactor: `refactor/###-description`
 
-2. **Write tests** for new functionality
+2. **Keep the PR narrowly scoped**
 
-3. **Ensure all tests pass**:
+   A pull request must represent one coherent change that can be reviewed and validated on its own.
 
-   ```bash
-   go test ./...
-   npm test
-   ```
+   **Required rules:**
+   - Do not combine unrelated concerns in one PR (for example: template import + deployment changes + CI changes + docs rewrite)
+   - Do not submit large-scale "sweep" refactors without splitting them into incremental steps
+   - Do not vendor or copy an upstream template/application into the repository unless that is the explicit goal of the PR and the ownership, update strategy, and build impact are documented
+   - Do not mix "introduce a new subsystem" with "switch production build/release paths" in the same PR unless rollback and validation are both straightforward
+
+   **Refactors must be progressive:**
+   - Step 1: prepare infrastructure or compatibility layer
+   - Step 2: introduce the new implementation behind a clear boundary
+   - Step 3: switch callers/build paths
+   - Step 4: remove dead code only after the new path is verified
+
+   If a reviewer cannot explain the merge impact, test strategy, and rollback path after reading the PR description, the PR is too large.
+
+3. **Write tests** for new functionality
+
+4. **Ensure all tests pass**:
+    ```bash
+    go test ./...
+    npm test
+    ```
 
 4. **Run linter**:
 
@@ -209,9 +226,30 @@ npm run lint
    npm run lint
    ```
 
-5. **Verify constitution compliance** (see checklist below)
+6. **Verify constitution compliance** (see checklist below)
 
-6. **Submit PR** with clear description
+7. **Submit PR** with clear description
+
+## PR Size And Reviewability
+
+The repository does not accept "vibe-coded" or poorly bounded mega-PRs.
+
+This includes PRs with one or more of the following signals:
+- Hundreds of files changed without a narrow functional boundary
+- Template or generated project imports mixed with manual integration work
+- Build, CI, runtime configuration, and product behavior changed all at once
+- Documentation claiming support for paths that the build or release pipeline does not yet produce
+- Reviewers needing AI assistance just to establish the basic risk surface
+
+These PRs are difficult to validate, difficult to roll back, and easy to merge in a broken intermediate state.
+
+**Contributors must instead prefer:**
+- Small PRs with one operationally testable goal
+- Explicit migration sequencing
+- Temporary compatibility shims when needed
+- Follow-up cleanup PRs after rollout is proven
+
+When in doubt, split the work. Reviewability is a quality requirement, not a preference.
 
 ## Constitution Compliance Checklist
 
@@ -224,6 +262,10 @@ Before submitting a PR, verify:
 - [ ] All dependencies injected via constructors
 - [ ] Tests written for new functionality
 - [ ] No sensitive data in logs
+- [ ] The PR has one clear purpose and does not mix unrelated concerns
+- [ ] Build, runtime, CI, and docs changes are either all verified together or split into separate PRs
+- [ ] Any new frontend/app/template import has an explicit ownership and cleanup strategy
+- [ ] The rollback path is obvious if the change fails after merge
 
 ## Architecture Overview
 
