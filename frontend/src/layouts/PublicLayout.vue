@@ -72,6 +72,8 @@
       :content="footerContent"
       :sections="footerSections"
       :badges="footerBadges"
+      :copyright-text="copyrightText"
+      :beian-info-list="beianInfoList"
     />
 
     </div>
@@ -83,7 +85,7 @@ import { ref, onMounted, onUnmounted, reactive, computed } from 'vue'
 import { ConfigProvider, theme } from 'ant-design-vue'
 import { useAuthStore } from "@/stores/auth"
 import { useSiteStore } from "@/stores/site"
-import { getCmsBlocks } from "@/services/user"
+import { getCmsBlocks, getSiteSettings } from "@/services/user"
 import FooterBlock from "@/components/cms/blocks/FooterBlock.vue"
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue"
 
@@ -92,6 +94,8 @@ const site = useSiteStore()
 
 const isScrolled = ref(false)
 const headerNavItems = computed(() => site.headerNavItems.filter((x) => x.label && x.url))
+const copyrightText = ref('')
+const beianInfoList = ref<Array<{ number: string; icon_url?: string; link_url?: string }>>([])
 
 const isInternal = (url: string) => {
   const u = (url || "").trim()
@@ -164,10 +168,18 @@ const parseContentJson = (raw) => {
 const applyFooterBlock = (block) => {
   if (!block?.content_json) return
   const content = parseContentJson(block.content_json)
+  console.log('Footer block content:', content)
   if (content.description) footerContent.description = content.description
   if (Array.isArray(content.social_links)) footerContent.social_links = content.social_links
   if (Array.isArray(content.sections)) footerContent.sections = content.sections
   if (Array.isArray(content.badges)) footerContent.badges = content.badges
+  // 从 CMS blocks 中获取备案信息
+  if (Array.isArray(content.beian_info) && content.beian_info.length > 0) {
+    beianInfoList.value = content.beian_info
+    console.log('Beian info loaded from CMS blocks:', beianInfoList.value)
+  } else {
+    console.log('No beian_info in CMS blocks, using site settings')
+  }
 }
 
 const footerSections = computed(() =>
@@ -184,15 +196,60 @@ const handleScroll = () => {
   isScrolled.value = window.scrollY > 20
 }
 
+const fetchSiteSettings = async () => {
+  try {
+    const res = await getSiteSettings()
+    const items = res.data?.items || []
+    
+    console.log('Site settings items:', items)
+    
+    // 将 items 数组转换为对象
+    const settings = {}
+    items.forEach(item => {
+      settings[item.key] = item.value
+    })
+    
+    console.log('Parsed settings:', settings)
+    
+    // 获取版权信息
+    if (settings.copyright_text) {
+      copyrightText.value = settings.copyright_text
+      console.log('Copyright text loaded:', copyrightText.value)
+    }
+    
+    // 获取备案信息列表
+    if (settings.beian_info_list) {
+      try {
+        const parsed = typeof settings.beian_info_list === 'string' 
+          ? JSON.parse(settings.beian_info_list) 
+          : settings.beian_info_list
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          beianInfoList.value = parsed
+          console.log('Beian info loaded from site settings:', beianInfoList.value)
+        }
+      } catch (e) {
+        console.error('Failed to parse beian_info_list:', e)
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch site settings:', error)
+  }
+}
+
 onMounted(async () => {
   window.addEventListener('scroll', handleScroll)
   footerContent.description = defaultFooter.description
   footerContent.sections = defaultFooter.sections
   footerContent.badges = defaultFooter.badges
+  
+  // 先获取站点设置（版权信息作为备用）
+  await fetchSiteSettings()
+  
   try {
     const res = await getCmsBlocks({ page: "footer", lang: site.currentLang || "zh-CN" })
     const items = res.data?.items || []
     const footerBlock = items.find((item) => item.type === "footer")
+    // CMS blocks 中的备案信息会覆盖站点设置中的备案信息
     applyFooterBlock(footerBlock)
   } catch (error) {
     // fallback to defaults
@@ -533,15 +590,28 @@ onUnmounted(() => {
   border-top: 1px solid var(--color-border);
 }
 
+.footer-bottom-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .footer-bottom-left p {
   font-size: 14px;
   color: var(--color-text-muted);
   margin: 0;
 }
 
+.footer-bottom-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
 .footer-bottom-right {
   display: flex;
   gap: 16px;
+  justify-content: flex-end;
 }
 
 .footer-badge {

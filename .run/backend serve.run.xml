@@ -1,0 +1,12 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="backend serve" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="xiaoheiFS" />
+    <working_directory value="/tmp/" />
+    <kind value="PACKAGE" />
+    <package value="xiaoheiplay/cmd/server" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$/backend/cmd/server/main.go" />
+    <pty_enabled value="true" />
+    <method v="2" />
+  </configuration>
+</component>

@@ -219,11 +219,12 @@ npm run lint
     npm test
     ```
 
-5. **Run linter**:
-    ```bash
-    golangci-lint run
-    npm run lint
-    ```
+4. **Run linter**:
+
+   ```bash
+   golangci-lint run
+   npm run lint
+   ```
 
 6. **Verify constitution compliance** (see checklist below)
 

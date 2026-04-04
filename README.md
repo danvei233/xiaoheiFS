@@ -87,6 +87,7 @@ npm run dev
 ```
 
 默认开发代理：
+
 - `/api` -> `http://localhost:8080`
 - `/admin/api` -> `http://localhost:8080`
 - `/sdk` -> `http://localhost:8080`
@@ -114,6 +115,7 @@ script\build-win.bat
 ```
 
 输出目录：
+
 - Linux：`build/linux/`
 - Windows：`build/windows/`
 

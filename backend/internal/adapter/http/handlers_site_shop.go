@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 	apporder "xiaoheiplay/internal/app/order"
@@ -14,9 +13,48 @@ import (
 	"xiaoheiplay/internal/domain"
 )
 
+type siteIDURI struct {
+	ID int64 `uri:"id" binding:"required,gt=0"`
+}
+
+type siteProviderURI struct {
+	Provider string `uri:"provider" binding:"required"`
+}
+
+type siteCatalogQuery struct {
+	GoodsTypeID *int64 `form:"goods_type_id" binding:"omitempty,gt=0"`
+}
+
+type siteSystemImagesQuery struct {
+	LineID      *int64 `form:"line_id" binding:"omitempty,gt=0"`
+	PlanGroupID *int64 `form:"plan_group_id" binding:"omitempty,gt=0"`
+}
+
+type sitePlanGroupsQuery struct {
+	RegionID    *int64 `form:"region_id" binding:"omitempty,gt=0"`
+	GoodsTypeID *int64 `form:"goods_type_id" binding:"omitempty,gt=0"`
+}
+
+type sitePackagesQuery struct {
+	PlanGroupID *int64 `form:"plan_group_id" binding:"omitempty,gt=0"`
+	GoodsTypeID *int64 `form:"goods_type_id" binding:"omitempty,gt=0"`
+}
+
+type sitePaymentMethodsQuery struct {
+	Scene string `form:"scene" binding:"omitempty,max=64"`
+}
+
 func (h *Handler) Catalog(c *gin.Context) {
 	userID := getUserID(c)
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	var query siteCatalogQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	var goodsTypeID int64
+	if query.GoodsTypeID != nil {
+		goodsTypeID = *query.GoodsTypeID
+	}
 	regions, plans, packages, images, cycles, err := h.catalogSvc.Catalog(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrCatalogError.Error()})
@@ -132,8 +170,19 @@ func (h *Handler) defaultGoodsTypeID(ctx context.Context) int64 {
 }
 
 func (h *Handler) SystemImages(c *gin.Context) {
-	lineID, _ := strconv.ParseInt(c.Query("line_id"), 10, 64)
-	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
+	var query siteSystemImagesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	var lineID int64
+	if query.LineID != nil {
+		lineID = *query.LineID
+	}
+	var planGroupID int64
+	if query.PlanGroupID != nil {
+		planGroupID = *query.PlanGroupID
+	}
 	if planGroupID > 0 {
 		plan, err := h.catalogSvc.GetPlanGroup(c, planGroupID)
 		if err != nil {
@@ -156,8 +205,19 @@ func (h *Handler) SystemImages(c *gin.Context) {
 }
 
 func (h *Handler) PlanGroups(c *gin.Context) {
-	regionID, _ := strconv.ParseInt(c.Query("region_id"), 10, 64)
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	var query sitePlanGroupsQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	var regionID int64
+	if query.RegionID != nil {
+		regionID = *query.RegionID
+	}
+	var goodsTypeID int64
+	if query.GoodsTypeID != nil {
+		goodsTypeID = *query.GoodsTypeID
+	}
 	items, err := h.catalogSvc.ListPlanGroups(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
@@ -187,8 +247,19 @@ func (h *Handler) PlanGroups(c *gin.Context) {
 
 func (h *Handler) Packages(c *gin.Context) {
 	userID := getUserID(c)
-	planGroupID, _ := strconv.ParseInt(c.Query("plan_group_id"), 10, 64)
-	goodsTypeID, _ := strconv.ParseInt(c.Query("goods_type_id"), 10, 64)
+	var query sitePackagesQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	var planGroupID int64
+	if query.PlanGroupID != nil {
+		planGroupID = *query.PlanGroupID
+	}
+	var goodsTypeID int64
+	if query.GoodsTypeID != nil {
+		goodsTypeID = *query.GoodsTypeID
+	}
 	items, err := h.catalogSvc.ListPackages(c)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
@@ -285,10 +356,10 @@ func (h *Handler) CartList(c *gin.Context) {
 
 func (h *Handler) CartAdd(c *gin.Context) {
 	var payload struct {
-		PackageID int64              `json:"package_id"`
-		SystemID  int64              `json:"system_id"`
+		PackageID int64              `json:"package_id" binding:"required,gt=0"`
+		SystemID  int64              `json:"system_id" binding:"omitempty,gte=0"`
 		Spec      appshared.CartSpec `json:"spec"`
-		Qty       int                `json:"qty"`
+		Qty       int                `json:"qty" binding:"required,gte=1"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -303,16 +374,20 @@ func (h *Handler) CartAdd(c *gin.Context) {
 }
 
 func (h *Handler) CartUpdate(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri siteIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
 		Spec appshared.CartSpec `json:"spec"`
-		Qty  int                `json:"qty"`
+		Qty  int                `json:"qty" binding:"required,gte=1"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	item, err := h.cartSvc.Update(c, getUserID(c), id, payload.Spec, payload.Qty)
+	item, err := h.cartSvc.Update(c, getUserID(c), uri.ID, payload.Spec, payload.Qty)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -321,8 +396,12 @@ func (h *Handler) CartUpdate(c *gin.Context) {
 }
 
 func (h *Handler) CartDelete(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err := h.cartSvc.Remove(c, getUserID(c), id); err != nil {
+	var uri siteIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	if err := h.cartSvc.Remove(c, getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -366,15 +445,11 @@ func (h *Handler) OrderCreate(c *gin.Context) {
 
 func (h *Handler) OrderCreateItems(c *gin.Context) {
 	var payload struct {
-		Items      []appshared.OrderItemInput `json:"items"`
-		CouponCode string                     `json:"coupon_code"`
+		Items      []appshared.OrderItemInput `json:"items" binding:"required,min=1,dive"`
+		CouponCode string                     `json:"coupon_code" binding:"omitempty,max=64"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
-		return
-	}
-	if len(payload.Items) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrItemsRequired.Error()})
 		return
 	}
 	idem := c.GetHeader("Idempotency-Key")
@@ -388,7 +463,7 @@ func (h *Handler) OrderCreateItems(c *gin.Context) {
 
 func (h *Handler) CouponPreview(c *gin.Context) {
 	var payload struct {
-		CouponCode string                     `json:"coupon_code"`
+		CouponCode string                     `json:"coupon_code" binding:"required,max=64"`
 		Items      []appshared.OrderItemInput `json:"items"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
@@ -396,10 +471,6 @@ func (h *Handler) CouponPreview(c *gin.Context) {
 		return
 	}
 	code := strings.TrimSpace(payload.CouponCode)
-	if code == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
-		return
-	}
 	var (
 		resp apporder.CouponPreview
 		err  error
@@ -422,14 +493,18 @@ func (h *Handler) CouponPreview(c *gin.Context) {
 }
 
 func (h *Handler) OrderPayment(c *gin.Context) {
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri siteIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
-		Method        string `json:"method"`
+		Method        string `json:"method" binding:"required,max=64"`
 		Amount        any    `json:"amount"`
-		Currency      string `json:"currency"`
-		TradeNo       string `json:"trade_no"`
+		Currency      string `json:"currency" binding:"omitempty,max=16"`
+		TradeNo       string `json:"trade_no" binding:"omitempty,max=128"`
 		Note          string `json:"note"`
-		ScreenshotURL string `json:"screenshot_url"`
+		ScreenshotURL string `json:"screenshot_url" binding:"omitempty,max=500"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -449,7 +524,7 @@ func (h *Handler) OrderPayment(c *gin.Context) {
 		ScreenshotURL: payload.ScreenshotURL,
 	}
 	idem := c.GetHeader("Idempotency-Key")
-	payment, err := h.orderSvc.SubmitPayment(c, getUserID(c), id, input, idem)
+	payment, err := h.orderSvc.SubmitPayment(c, getUserID(c), uri.ID, input, idem)
 	if err != nil {
 		if err == appshared.ErrNoPaymentRequired {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -478,7 +553,12 @@ func (h *Handler) PaymentMethods(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	scene := strings.TrimSpace(c.Query("scene"))
+	var query sitePaymentMethodsQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	scene := strings.TrimSpace(query.Scene)
 	methods, err := h.paymentSvc.ListUserMethodsByScene(c, getUserID(c), scene)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -492,9 +572,13 @@ func (h *Handler) OrderPay(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+	var uri siteIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
 	var payload struct {
-		Method string            `json:"method"`
+		Method string            `json:"method" binding:"required,max=64"`
 		Extra  map[string]string `json:"extra"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
@@ -514,8 +598,8 @@ func (h *Handler) OrderPay(c *gin.Context) {
 		payload.Extra["device"] = detectEZPayDeviceFromUA(c.GetHeader("User-Agent"))
 	}
 	method := strings.TrimSpace(payload.Method)
-	returnURL, notifyURL := h.defaultOrderPaymentCallbackURLs(c, id, method)
-	result, err := h.paymentSvc.SelectPayment(c, getUserID(c), id, appshared.PaymentSelectInput{
+	returnURL, notifyURL := h.defaultOrderPaymentCallbackURLs(c, uri.ID, method)
+	result, err := h.paymentSvc.SelectPayment(c, getUserID(c), uri.ID, appshared.PaymentSelectInput{
 		Method:    method,
 		ReturnURL: returnURL,
 		NotifyURL: notifyURL,
@@ -562,7 +646,11 @@ func (h *Handler) PaymentNotify(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	provider := c.Param("provider")
+	var uri siteProviderURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	body, _ := io.ReadAll(c.Request.Body)
 	headers := map[string][]string{}
 	for k, v := range c.Request.Header {
@@ -570,7 +658,7 @@ func (h *Handler) PaymentNotify(c *gin.Context) {
 		copy(copied, v)
 		headers[k] = copied
 	}
-	result, err := h.paymentSvc.HandleNotify(c, provider, appshared.RawHTTPRequest{
+	result, err := h.paymentSvc.HandleNotify(c, uri.Provider, appshared.RawHTTPRequest{
 		Method:   c.Request.Method,
 		Path:     c.Request.URL.Path,
 		RawQuery: c.Request.URL.RawQuery,

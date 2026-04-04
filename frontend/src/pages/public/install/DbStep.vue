@@ -97,12 +97,13 @@
               <a-input v-model:value="wiz.mysql.host" size="large" placeholder="127.0.0.1" @change="wiz.touchDB()" class="styled-input" />
             </a-form-item>
             <a-form-item label="端口">
-              <a-input-number
+              <a-input
                 v-model:value="wiz.mysql.port"
+                type="number"
                 size="large"
                 :min="1"
                 :max="65535"
-                style="width: 100%"
+                placeholder="3306"
                 @change="wiz.touchDB()"
                 class="styled-input"
               />
@@ -198,12 +199,13 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { message } from "ant-design-vue";
-import { useRouter, useRoute } from "vue-router";
 import { checkInstallDB } from "@/services/user";
 import { useInstallWizardStore } from "@/stores/installWizard";
 
-const router = useRouter();
-const route = useRoute();
+const emit = defineEmits<{
+  next: []
+}>();
+
 const wiz = useInstallWizardStore();
 
 const checking = ref(false);
@@ -241,9 +243,8 @@ const onCheck = async () => {
   }
 };
 
-const next = async () => {
-  const q = route.query && typeof route.query.redirect === "string" ? { redirect: route.query.redirect } : {};
-  await router.push({ path: "/install/site", query: q });
+const next = () => {
+  emit('next');
 };
 </script>
 
@@ -424,43 +425,26 @@ const next = async () => {
 
 /* Styled Input Override */
 :deep(.styled-input .ant-input),
-:deep(.styled-input .ant-input-number),
 :deep(.styled-input .ant-input-password) {
-  background: rgba(15, 23, 42, 0.6);
-  border-color: rgba(71, 85, 105, 0.5);
-  color: #ffffff;
+  background: rgba(15, 23, 42, 0.6) !important;
+  border-color: rgba(71, 85, 105, 0.5) !important;
+  color: #ffffff !important;
 }
 
-:deep(.styled-input .ant-input::placeholder),
-:deep(.styled-input .ant-input input::placeholder) {
-  color: rgba(255, 255, 255, 0.3);
+:deep(.styled-input .ant-input::placeholder) {
+  color: rgba(255, 255, 255, 0.3) !important;
 }
 
 :deep(.styled-input .ant-input:hover),
-:deep(.styled-input .ant-input-number:hover),
 :deep(.styled-input .ant-input-password:hover) {
   border-color: rgba(34, 211, 238, 0.5);
 }
 
 :deep(.styled-input .ant-input:focus),
-:deep(.styled-input .ant-input-number:focus),
 :deep(.styled-input .ant-input-password:focus),
-:deep(.styled-input .ant-input-number-focused),
 :deep(.styled-input .ant-input-password-focused) {
   border-color: #22d3ee;
   box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.1);
-}
-
-:deep(.styled-input .ant-input-number-handler-wrap) {
-  background: rgba(15, 23, 42, 0.6);
-}
-
-:deep(.styled-input .ant-input-number-handler) {
-  color: rgba(255, 255, 255, 0.5);
-}
-
-:deep(.styled-input .ant-input-number-handler:hover) {
-  color: #22d3ee;
 }
 
 :deep(.styled-input .ant-input-password-icon) {

@@ -28,7 +28,7 @@
       </a-form>
 
       <div class="auth-footer">
-        <router-link to="/admin/login">返回登录</router-link>
+        <a href="#" @click.prevent="goToLogin">返回登录</a>
       </div>
     </div>
   </div>
@@ -39,6 +39,7 @@ import { reactive, ref, onMounted } from "vue";
 import { resetPassword } from "@/services/user";
 import { message } from "ant-design-vue";
 import { useRouter, useRoute } from "vue-router";
+import { buildAdminUrl } from "@/services/adminPath";
 
 const router = useRouter();
 const route = useRoute();
@@ -67,12 +68,16 @@ const handleSubmit = async () => {
   try {
     await resetPassword(token.value, form.new_password);
     message.success("密码已重置，请使用新密码登录");
-    router.push("/admin/login");
+    router.push(buildAdminUrl("login"));
   } catch (e) {
     message.error(e.response?.data?.error || "重置失败，令牌可能已过期");
   } finally {
     loading.value = false;
   }
+};
+
+const goToLogin = () => {
+  router.push(buildAdminUrl("login"));
 };
 
 onMounted(() => {

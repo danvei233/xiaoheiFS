@@ -1,0 +1,55 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Development files
+.vscode
+.idea
+*.log
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+.npm
+.eslintcache
+
+# Go
+*.o
+*.a
+*.so
+.DS_Store
+dist/
+build/
+
+# Tests
+.coverage
+.pytest_cache
+.venv
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+azure-pipelines.yml
+
+# Documentation
+docs/
+README.md
+CHANGELOG.md
+LICENSE
+
+# Build artifacts
+dist
+build
+*.tar.gz
+*.zip
+
+# Platform specific
+.env.local
+.env.*.local
