@@ -105,8 +105,8 @@ func (s *Service) RefreshStatus(ctx context.Context, inst domain.VPSInstance) (d
 	if err != nil {
 		return domain.VPSInstance{}, err
 	}
-	status := MapAutomationState(info.State)
-	if err := s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State); err != nil {
+	status, automationState := refreshLifecycleStatus(inst, info.State)
+	if err := s.vps.UpdateInstanceStatus(ctx, inst.ID, status, automationState); err != nil {
 		return domain.VPSInstance{}, err
 	}
 	if info.RemoteIP != "" || info.PanelPassword != "" || info.VNCPassword != "" {
@@ -119,6 +119,20 @@ func (s *Service) RefreshStatus(ctx context.Context, inst domain.VPSInstance) (d
 		}
 	}
 	return s.vps.GetInstance(ctx, inst.ID)
+}
+
+func refreshLifecycleStatus(inst domain.VPSInstance, automationState int) (domain.VPSStatus, int) {
+	status := MapAutomationState(automationState)
+	if inst.AdminStatus == "" || inst.AdminStatus == domain.VPSAdminStatusNormal {
+		if inst.Status == domain.VPSStatusExpiredLocked && inst.ExpireAt != nil && !inst.ExpireAt.After(time.Now()) {
+			return domain.VPSStatusExpiredLocked, 10
+		}
+		return status, automationState
+	}
+	if inst.AdminStatus == domain.VPSAdminStatusLocked && inst.ExpireAt != nil && !inst.ExpireAt.After(time.Now()) {
+		return domain.VPSStatusExpiredLocked, 10
+	}
+	return domain.VPSStatusLocked, 10
 }
 
 func (s *Service) SetStatus(ctx context.Context, inst domain.VPSInstance, status domain.VPSStatus, automationState int) error {
