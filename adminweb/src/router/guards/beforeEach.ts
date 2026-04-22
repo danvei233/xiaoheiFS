@@ -45,15 +45,17 @@ import { setWorktab } from '@/utils/navigation'
 import { setPageTitle } from '@/utils/router'
 import { RoutesAlias } from '../routesAlias'
 import { staticRoutes } from '../routes/staticRoutes'
+import { asyncRoutes } from '../routes/asyncRoutes'
 import { loadingService } from '@/utils/ui'
 import { useCommon } from '@/hooks/core/useCommon'
 import { useWorktabStore } from '@/store/modules/worktab'
 import { fetchGetUserInfo } from '@/api/auth'
 import { ApiStatus } from '@/utils/http/status'
-import { isHttpError } from '@/utils/http/error'
+import { isAdminTwoFactorRequiredError, isHttpError } from '@/utils/http/error'
 import { ensureCurrentAdminPath } from '@/utils/adminPath'
 import { useInstallStore } from '@/store/modules/install'
 import { RouteRegistry, MenuProcessor, IframeRouteManager, RoutePermissionValidator } from '../core'
+import type { AppRouteRecord } from '@/types/router'
 
 // 路由注册器实例
 let routeRegistry: RouteRegistry | null = null
@@ -195,6 +197,10 @@ async function handleRouteGuard(
   }
 
   // 5. 处理已匹配的路由
+  if (handleRegisteredRoutePermission(to, next)) {
+    return
+  }
+
   if (to.matched.length > 0) {
     setWorktab(to)
     setPageTitle(to)
@@ -277,6 +283,74 @@ function isStaticRoute(path: string): boolean {
   }
 
   return checkRoute(staticRoutes, path)
+}
+
+function handleRegisteredRoutePermission(
+  to: RouteLocationNormalized,
+  next: NavigationGuardNext
+): boolean {
+  if (isStaticRoute(to.path)) {
+    return false
+  }
+
+  const menuStore = useMenuStore()
+  if (!menuStore.menuList.length) {
+    return false
+  }
+
+  if (to.name === 'Exception404' && isKnownAsyncRoutePath(to.path)) {
+    next({ name: 'Exception403', replace: true })
+    return true
+  }
+
+  if (
+    to.name !== 'Exception404' &&
+    to.matched.length > 0 &&
+    !RoutePermissionValidator.hasPermission(to.path, menuStore.menuList)
+  ) {
+    next({ name: 'Exception403', replace: true })
+    return true
+  }
+
+  return false
+}
+
+function isKnownAsyncRoutePath(targetPath: string): boolean {
+  return matchKnownRoutePath(targetPath, asyncRoutes)
+}
+
+function matchKnownRoutePath(
+  targetPath: string,
+  routes: AppRouteRecord[],
+  parentPath = ''
+): boolean {
+  return routes.some((route) => {
+    const routePath = buildKnownRoutePath(route.path || '', parentPath)
+    if (
+      routePath &&
+      (routePath === targetPath || RoutePermissionValidator.isDynamicRouteMatch(targetPath, routePath))
+    ) {
+      return true
+    }
+
+    return route.children?.length
+      ? matchKnownRoutePath(targetPath, route.children, routePath)
+      : false
+  })
+}
+
+function buildKnownRoutePath(path: string, parentPath: string): string {
+  if (!path) {
+    return parentPath
+  }
+
+  if (path.startsWith('/')) {
+    return path
+  }
+
+  const cleanParent = parentPath.replace(/\/$/, '')
+  const cleanChild = path.replace(/^\//, '')
+  return cleanParent ? `${cleanParent}/${cleanChild}` : `/${cleanChild}`
 }
 
 /**
@@ -372,7 +446,7 @@ async function handleDynamicRoutes(
     closeLoading()
 
     // 401 错误：axios 拦截器已处理退出登录，取消当前导航
-    if (isUnauthorizedError(error)) {
+    if (isUnauthorizedError(error) || isAdminTwoFactorRequiredError(error)) {
       // 重置状态，允许重新登录后再次初始化
       routeInitInProgress = false
       next(false)

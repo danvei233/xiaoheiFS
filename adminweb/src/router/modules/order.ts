@@ -19,6 +19,7 @@ export const orderRoutes: AppRouteRecord = {
         keepAlive: true,
         roles: ['R_SUPER', 'R_ADMIN'],
         authList: [
+          { title: '列表', authMark: 'order.list' },
           { title: '查看', authMark: 'order.view' },
           { title: '更新', authMark: 'order.update' },
           { title: '删除', authMark: 'order.delete' }

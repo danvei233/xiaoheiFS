@@ -643,7 +643,7 @@
     fetchAdminRegions,
     fetchAdminSystemImages,
     hasAdminPermission,
-    setAdminPlanGroupSystemImages,
+    setAdminLineSystemImages,
     syncAdminGoodsTypeAutomation,
     syncAdminSystemImages,
     updateAdminBillingCycle,
@@ -1679,7 +1679,7 @@
       let currentId = form.id
       if (form.id) await updateAdminPlanGroup(form.id, payload)
       else currentId = toNullableNumber(((await createAdminPlanGroup(payload)) as any)?.id)
-      if (currentId) await setAdminPlanGroupSystemImages(currentId, { image_ids: form.image_ids })
+      if (currentId) await setAdminLineSystemImages(currentId, { image_ids: form.image_ids })
       planGroupDrawerVisible.value = false
       ElMessage.success('线路已保存')
       await loadCatalogData()

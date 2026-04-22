@@ -2298,18 +2298,7 @@ export function bulkDeleteAdminPlanGroups(ids: Array<number | string>) {
   })
 }
 
-export function setAdminPlanGroupSystemImages(
-  id: number | string,
-  data: {
-    image_ids: Array<number | string>
-  }
-) {
-  return request.post<{ ok?: boolean }>({
-    url: `/admin/api/v1/plan-groups/${id}/system-images`,
-    data
-  })
-}
-
+// The backend accepts a PlanGroup id here and resolves it to the underlying LineID.
 export function setAdminLineSystemImages(
   id: number | string,
   data: {

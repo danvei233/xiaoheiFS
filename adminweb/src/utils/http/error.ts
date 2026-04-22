@@ -28,13 +28,43 @@ import { $t } from '@/locales'
 // 错误响应接口
 export interface ErrorResponse {
   /** 错误状态码 */
-  code?: number
+  code?: number | string
   /** 错误消息 */
   msg?: string
   /** raw backend error message */
   error?: string
   /** 错误附加数据 */
   data?: unknown
+}
+
+export const ADMIN_TWO_FACTOR_REQUIRED_CODES = [
+  'admin_2fa_required',
+  'admin_2fa_bind_required'
+] as const
+
+export type AdminTwoFactorRequiredCode = (typeof ADMIN_TWO_FACTOR_REQUIRED_CODES)[number]
+
+export function getBackendErrorCode(data: unknown): string {
+  if (!data || typeof data !== 'object') {
+    return ''
+  }
+
+  const value = (data as { code?: unknown }).code
+  return typeof value === 'string' ? value : ''
+}
+
+export function isAdminTwoFactorRequiredCode(
+  code: string
+): code is AdminTwoFactorRequiredCode {
+  return ADMIN_TWO_FACTOR_REQUIRED_CODES.includes(code as AdminTwoFactorRequiredCode)
+}
+
+export function isAdminTwoFactorRequiredError(error: unknown): error is HttpError {
+  return (
+    error instanceof HttpError &&
+    error.code === ApiStatus.forbidden &&
+    isAdminTwoFactorRequiredCode(getBackendErrorCode(error.data))
+  )
 }
 
 // 错误日志数据接口

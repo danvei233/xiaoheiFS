@@ -17,7 +17,11 @@ export const systemRoutes: AppRouteRecord = {
       meta: {
         title: 'menus.system.user',
         keepAlive: true,
-        roles: ['R_SUPER', 'R_ADMIN']
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [
+          { title: '查看用户列表', authMark: 'user.list' },
+          { title: '查看用户详情', authMark: 'user.view' }
+        ]
       }
     },
     {
@@ -27,7 +31,11 @@ export const systemRoutes: AppRouteRecord = {
       meta: {
         title: '管理员管理',
         keepAlive: true,
-        roles: ['R_SUPER', 'R_ADMIN']
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [
+          { title: '查看管理员列表', authMark: 'admin.list' },
+          { title: '查看管理员详情', authMark: 'admin.view' }
+        ]
       }
     },
     {
@@ -37,7 +45,11 @@ export const systemRoutes: AppRouteRecord = {
       meta: {
         title: '权限组管理',
         keepAlive: true,
-        roles: ['R_SUPER', 'R_ADMIN']
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [
+          { title: '查看权限组列表', authMark: 'permission_group.list' },
+          { title: '查看权限组详情', authMark: 'permission_group.view' }
+        ]
       }
     },
     {
@@ -47,17 +59,11 @@ export const systemRoutes: AppRouteRecord = {
       meta: {
         title: '用户等级',
         keepAlive: true,
-        roles: ['R_SUPER', 'R_ADMIN']
-      }
-    },
-    {
-      path: 'role',
-      name: 'Role',
-      component: '/system/role',
-      meta: {
-        title: 'menus.system.role',
-        keepAlive: true,
-        roles: ['R_SUPER']
+        roles: ['R_SUPER', 'R_ADMIN'],
+        authList: [
+          { title: '查看用户等级', authMark: 'user_tiers.list' },
+          { title: '查看用户列表', authMark: 'user.list' }
+        ]
       }
     },
     {
@@ -69,21 +75,6 @@ export const systemRoutes: AppRouteRecord = {
         isHide: true,
         keepAlive: true,
         isHideTab: true
-      }
-    },
-    {
-      path: 'menu',
-      name: 'Menus',
-      component: '/system/menu',
-      meta: {
-        title: 'menus.system.menu',
-        keepAlive: true,
-        roles: ['R_SUPER'],
-        authList: [
-          { title: '新增', authMark: 'add' },
-          { title: '编辑', authMark: 'edit' },
-          { title: '删除', authMark: 'delete' }
-        ]
       }
     }
   ]

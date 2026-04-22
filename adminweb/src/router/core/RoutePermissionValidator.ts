@@ -105,11 +105,10 @@ export class RoutePermissionValidator {
 
       const routePath = route.path.startsWith('/') ? route.path : `/${route.path}`
 
-      if (
-        routePath === targetPath ||
-        this.isDynamicRouteMatch(targetPath, routePath) ||
-        targetPath.startsWith(`${routePath}/`)
-      ) {
+      if (routePath === targetPath || this.isDynamicRouteMatch(targetPath, routePath)) {
+        if (route.children?.length && route.meta?.isHide) {
+          continue
+        }
         return true
       }
 

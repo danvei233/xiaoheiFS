@@ -35,6 +35,7 @@ import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/modules/user'
 import { useAppMode } from '@/hooks/core/useAppMode'
 import type { AppRouteRecord } from '@/types/router'
+import { hasAdminPermission } from '@/api/admin'
 
 type AuthItem = NonNullable<AppRouteRecord['meta']['authList']>[number]
 
@@ -45,13 +46,18 @@ export const useAuth = () => {
   const { isFrontendMode } = useAppMode()
   const { info } = storeToRefs(userStore)
 
-  // 前端按钮权限（例如：['add', 'edit']）
-  const frontendAuthList = info.value?.buttons ?? []
-
   // 后端路由 meta 配置的权限列表（例如：[{ authMark: 'add' }]）
   const backendAuthList: AuthItem[] = Array.isArray(route.meta.authList)
     ? (route.meta.authList as AuthItem[])
     : []
+
+  const getFrontendAuthList = (): string[] => {
+    const currentInfo = info.value as Partial<Api.Auth.UserInfo> & { permissions?: string[] }
+    const buttons = Array.isArray(currentInfo?.buttons) ? currentInfo.buttons : []
+    const permissions = Array.isArray(currentInfo?.permissions) ? currentInfo.permissions : []
+
+    return Array.from(new Set([...buttons, ...permissions].filter(Boolean)))
+  }
 
   /**
    * 检查是否拥有某权限标识（前后端模式通用）
@@ -61,7 +67,7 @@ export const useAuth = () => {
   const hasAuth = (auth: string): boolean => {
     // 前端模式
     if (isFrontendMode.value) {
-      return frontendAuthList.includes(auth)
+      return hasAdminPermission(getFrontendAuthList(), auth)
     }
 
     // 后端模式

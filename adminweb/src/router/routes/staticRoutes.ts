@@ -1,4 +1,5 @@
 import { AppRouteRecordRaw } from '@/utils/router'
+import { legacyAdminRedirectRoutes } from '../legacyAdminRoutes'
 
 /**
  * 静态路由配置（不需要权限就能访问的路由）
@@ -48,6 +49,7 @@ export const staticRoutes: AppRouteRecordRaw[] = [
     component: () => import('@views/exception/403/index.vue'),
     meta: { title: '403', isHideTab: true }
   },
+  ...legacyAdminRedirectRoutes,
   {
     path: '/:pathMatch(.*)*',
     name: 'Exception404',

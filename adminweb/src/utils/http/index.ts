@@ -17,7 +17,16 @@
 import axios, { AxiosRequestConfig, AxiosResponse, InternalAxiosRequestConfig } from 'axios'
 import { useUserStore } from '@/store/modules/user'
 import { ApiStatus } from './status'
-import { HttpError, handleError, showError, showSuccess } from './error'
+import {
+  getBackendErrorCode,
+  HttpError,
+  handleError,
+  isAdminTwoFactorRequiredCode,
+  isAdminTwoFactorRequiredError,
+  showError,
+  showSuccess,
+  type ErrorResponse
+} from './error'
 import { $t } from '@/locales'
 import { BaseResponse } from '@/types'
 
@@ -27,10 +36,13 @@ const LOGOUT_DELAY = 500
 const MAX_RETRIES = 0
 const RETRY_DELAY = 1000
 const UNAUTHORIZED_DEBOUNCE_TIME = 3000
+const ADMIN_TWO_FACTOR_REDIRECT_DEBOUNCE_TIME = 1500
 
 /** 401防抖状态 */
 let isUnauthorizedErrorShown = false
 let unauthorizedTimer: NodeJS.Timeout | null = null
+let isAdminTwoFactorRedirecting = false
+let adminTwoFactorRedirectTimer: NodeJS.Timeout | null = null
 
 /** 扩展 AxiosRequestConfig */
 interface ExtendedAxiosRequestConfig extends AxiosRequestConfig {
@@ -111,6 +123,16 @@ axiosInstance.interceptors.response.use(
     throw createHttpError(msg || $t('httpMsg.requestFailed'), code)
   },
   (error) => {
+    const responseData = error.response?.data as ErrorResponse | undefined
+    const backendCode = getBackendErrorCode(responseData)
+
+    if (
+      error.response?.status === ApiStatus.forbidden &&
+      isAdminTwoFactorRequiredCode(backendCode)
+    ) {
+      return Promise.reject(handleAdminTwoFactorRequired(responseData, error.config))
+    }
+
     if (error.response?.status === ApiStatus.unauthorized) handleUnauthorizedError()
     return Promise.reject(handleError(error))
   }
@@ -138,6 +160,35 @@ function handleUnauthorizedError(message?: string): never {
   throw error
 }
 
+function handleAdminTwoFactorRequired(
+  responseData?: ErrorResponse,
+  requestConfig?: AxiosRequestConfig
+): HttpError {
+  const backendCode = getBackendErrorCode(responseData)
+  const message =
+    backendCode === 'admin_2fa_bind_required'
+      ? '需要完成管理员 2FA 绑定，请重新登录'
+      : '需要完成管理员 2FA 验证，请重新登录'
+  const error = new HttpError(message, ApiStatus.forbidden, {
+    data: responseData,
+    url: requestConfig?.url,
+    method: requestConfig?.method?.toUpperCase()
+  })
+
+  if (!isAdminTwoFactorRedirecting) {
+    isAdminTwoFactorRedirecting = true
+    ElMessage.warning(message)
+    logOut(getCurrentHashFullPath())
+
+    adminTwoFactorRedirectTimer = setTimeout(
+      resetAdminTwoFactorRedirect,
+      ADMIN_TWO_FACTOR_REDIRECT_DEBOUNCE_TIME
+    )
+  }
+
+  return error
+}
+
 /** 重置401防抖状态 */
 function resetUnauthorizedError() {
   isUnauthorizedErrorShown = false
@@ -145,11 +196,26 @@ function resetUnauthorizedError() {
   unauthorizedTimer = null
 }
 
+function resetAdminTwoFactorRedirect() {
+  isAdminTwoFactorRedirecting = false
+  if (adminTwoFactorRedirectTimer) clearTimeout(adminTwoFactorRedirectTimer)
+  adminTwoFactorRedirectTimer = null
+}
+
 /** 退出登录函数 */
-function logOut() {
+function logOut(redirect?: string) {
   setTimeout(() => {
-    useUserStore().logOut()
+    useUserStore().logOut(redirect)
   }, LOGOUT_DELAY)
+}
+
+function getCurrentHashFullPath(): string {
+  const hash = window.location.hash || ''
+  if (!hash.startsWith('#')) {
+    return '/'
+  }
+
+  return hash.slice(1) || '/'
 }
 
 /** 是否需要重试 */
@@ -210,7 +276,11 @@ async function request<T = any>(config: ExtendedAxiosRequestConfig): Promise<T> 
 
     return res.data as T
   } catch (error) {
-    if (error instanceof HttpError && error.code !== ApiStatus.unauthorized) {
+    if (
+      error instanceof HttpError &&
+      error.code !== ApiStatus.unauthorized &&
+      !isAdminTwoFactorRequiredError(error)
+    ) {
       const showMsg = config.showErrorMessage !== false
       showError(error, showMsg)
     }

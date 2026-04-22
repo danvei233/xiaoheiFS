@@ -10,6 +10,7 @@
 import type { AppRouteRecord } from '@/types/router'
 import { useUserStore } from '@/store/modules/user'
 import { useAppMode } from '@/hooks/core/useAppMode'
+import { hasAdminPermission } from '@/api/admin'
 import { fetchGetMenuList } from '@/api/system-manage'
 import { asyncRoutes } from '../routes/asyncRoutes'
 import { RoutesAlias } from '../routesAlias'
@@ -41,14 +42,13 @@ export class MenuProcessor {
    */
   private async processFrontendMenu(): Promise<AppRouteRecord[]> {
     const userStore = useUserStore()
-    const roles = userStore.info?.roles
+    const roles = userStore.info?.roles ?? []
+    const permissions = this.getUserPermissions(userStore.info)
 
     let menuList = [...asyncRoutes]
 
     // 根据角色过滤菜单
-    if (roles && roles.length > 0) {
-      menuList = this.filterMenuByRoles(menuList, roles)
-    }
+    menuList = this.filterMenuByAccess(menuList, roles, permissions)
 
     return this.filterEmptyMenus(menuList)
   }
@@ -64,21 +64,69 @@ export class MenuProcessor {
   /**
    * 根据角色过滤菜单
    */
-  private filterMenuByRoles(menu: AppRouteRecord[], roles: string[]): AppRouteRecord[] {
+  private filterMenuByAccess(
+    menu: AppRouteRecord[],
+    roles: string[],
+    permissions: string[]
+  ): AppRouteRecord[] {
     return menu.reduce((acc: AppRouteRecord[], item) => {
-      const itemRoles = item.meta?.roles
-      const hasPermission = !itemRoles || itemRoles.some((role) => roles?.includes(role))
-
-      if (hasPermission) {
-        const filteredItem = { ...item }
-        if (filteredItem.children?.length) {
-          filteredItem.children = this.filterMenuByRoles(filteredItem.children, roles)
-        }
-        acc.push(filteredItem)
+      if (!this.canAccessRoute(item, roles, permissions)) {
+        return acc
       }
 
+      const filteredItem = { ...item, meta: { ...item.meta } }
+      if (filteredItem.children?.length) {
+        filteredItem.children = this.filterMenuByAccess(filteredItem.children, roles, permissions)
+        if (!filteredItem.children.length) {
+          return acc
+        }
+        if (!this.hasVisibleMenuItem(filteredItem.children)) {
+          filteredItem.meta.isHide = true
+        }
+      }
+
+      acc.push(filteredItem)
       return acc
     }, [])
+  }
+
+  private canAccessRoute(route: AppRouteRecord, roles: string[], permissions: string[]): boolean {
+    if (hasAdminPermission(permissions, '*')) {
+      return true
+    }
+
+    const authMarks = route.meta?.authList
+      ?.map((authItem) => authItem.authMark)
+      .filter((authMark): authMark is string => Boolean(authMark))
+
+    if (authMarks?.length) {
+      return hasAdminPermission(permissions, authMarks)
+    }
+
+    const routeRoles = route.meta?.roles
+    return !routeRoles?.length || routeRoles.some((role) => roles.includes(role))
+  }
+
+  private getUserPermissions(info: Partial<Api.Auth.UserInfo>): string[] {
+    const extendedInfo = info as Partial<Api.Auth.UserInfo> & { permissions?: string[] }
+    const buttons = Array.isArray(info?.buttons) ? info.buttons : []
+    const permissions = Array.isArray(extendedInfo.permissions) ? extendedInfo.permissions : []
+
+    return Array.from(new Set([...buttons, ...permissions].filter(Boolean)))
+  }
+
+  private hasVisibleMenuItem(menu: AppRouteRecord[]): boolean {
+    return menu.some((item) => {
+      if (item.meta?.isHide) {
+        return false
+      }
+
+      if (this.isNavigableRoute(item)) {
+        return true
+      }
+
+      return item.children?.length ? this.hasVisibleMenuItem(item.children) : false
+    })
   }
 
   /**
@@ -100,7 +148,7 @@ export class MenuProcessor {
       .filter((item) => {
         // 如果定义了 children 属性（即使是空数组），说明这是一个目录菜单，应该保留
         if ('children' in item) {
-          return true
+          return Boolean(item.children?.length)
         }
 
         // 如果有外链或 iframe，保留
