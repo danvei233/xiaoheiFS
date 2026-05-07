@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -155,15 +156,15 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 		return
 	}
 	var payload struct {
-		Username   string `json:"username"`
-		Password   string `json:"password"`
-		AdminPath  string `json:"admin_path"`
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		AdminPath string `json:"admin_path"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	
+
 	// 校验管理端路径
 	requestPath := strings.TrimSpace(payload.AdminPath)
 	if requestPath != "" {
@@ -175,13 +176,13 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 	} else {
 		requestPath = "admin"
 	}
-	
+
 	// 获取配置的管理路径
 	configuredPath := GetAdminPathFromSettings(h.settingsSvc)
 	if configuredPath == "" {
 		configuredPath = "admin"
 	}
-	
+
 	// 验证路径是否匹配
 	if !strings.EqualFold(requestPath, configuredPath) {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminPathMismatch.Error()})
@@ -237,7 +238,7 @@ func (h *Handler) AdminLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":      accessToken,
 		"refresh_token":     refreshToken,
-		"expires_in":        86400,
+		"expires_in":        tokenExpirySeconds,
 		"totp_enabled":      totpEnabled,
 		"mfa_required":      mfaRequired,
 		"mfa_bind_required": mfaBindRequired,
@@ -297,7 +298,7 @@ func (h *Handler) AdminRefresh(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":  accessToken,
 		"refresh_token": newRefreshToken,
-		"expires_in":    86400,
+		"expires_in":    tokenExpirySeconds,
 	})
 }
 
@@ -372,7 +373,7 @@ func (h *Handler) Admin2FAUnlock(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
-		"expires_in":    86400,
+		"expires_in":    tokenExpirySeconds,
 		"mfa_unlocked":  true,
 	})
 }
@@ -645,7 +646,7 @@ func (h *Handler) AdminUserStatus(c *gin.Context) {
 }
 
 func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
-	if h.realnameSvc == nil {
+	if h.realNameSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrRealnameDisabled.Error()})
 		return
 	}
@@ -671,7 +672,7 @@ func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAdminUserNotEditable.Error()})
 		return
 	}
-	record, err := h.realnameSvc.Latest(c, uri.ID)
+	record, err := h.realNameSvc.Latest(c, uri.ID)
 	if err != nil {
 		if err == appshared.ErrNotFound {
 			c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrRealnameRecordNotFound.Error()})
@@ -680,11 +681,11 @@ func (h *Handler) AdminUserRealNameStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.realnameSvc.UpdateStatus(c, record.ID, payload.Status, payload.Reason); err != nil {
+	if err := h.realNameSvc.UpdateStatus(c, record.ID, payload.Status, payload.Reason); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	updated, err := h.realnameSvc.Latest(c, uri.ID)
+	updated, err := h.realNameSvc.Latest(c, uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -718,7 +719,7 @@ func (h *Handler) AdminUserImpersonate(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"access_token": signed, "expires_in": 86400, "user": gin.H{"id": user.ID, "username": user.Username, "role": user.Role}})
+	c.JSON(http.StatusOK, gin.H{"access_token": signed, "expires_in": tokenExpirySeconds, "user": gin.H{"id": user.ID, "username": user.Username, "role": user.Role}})
 }
 
 func (h *Handler) AdminQQAvatar(c *gin.Context) {
@@ -742,7 +743,7 @@ func (h *Handler) AdminQQAvatar(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrFetchFailed.Error()})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAvatarNotFound.Error()})
 		return
@@ -753,6 +754,6 @@ func (h *Handler) AdminQQAvatar(c *gin.Context) {
 	}
 	const maxAvatarSize = 10 << 20 // 10MB
 	body := &io.LimitedReader{R: resp.Body, N: maxAvatarSize}
-	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header("Cache-Control", fmt.Sprintf("public, max-age=%d", tokenExpirySeconds))
 	c.DataFromReader(http.StatusOK, -1, contentType, body, nil)
 }

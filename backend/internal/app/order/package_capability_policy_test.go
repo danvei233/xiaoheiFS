@@ -10,7 +10,7 @@ func TestLoadCapabilityPolicy(t *testing.T) {
 		goodsTypeCapabilitiesSettingKey: `{"10":{"refund_enabled":false},"20":{"resize_enabled":true}}`,
 	}}
 
-	got := loadCapabilityPolicy(context.Background(), repo, 100, 10)
+	got := loadCapabilityPolicy(context.Background(), repo, 10)
 	if got.ResizeEnabled != nil {
 		t.Fatalf("expected resize_enabled unset for goods-type 10, got %+v", got)
 	}
@@ -18,7 +18,7 @@ func TestLoadCapabilityPolicy(t *testing.T) {
 		t.Fatalf("expected goods-type 10 refund_enabled=false, got %+v", got)
 	}
 
-	got = loadCapabilityPolicy(context.Background(), repo, 200, 20)
+	got = loadCapabilityPolicy(context.Background(), repo, 20)
 	if got.ResizeEnabled == nil || !*got.ResizeEnabled {
 		t.Fatalf("expected goods-type 20 resize_enabled=true, got %+v", got)
 	}
@@ -26,7 +26,7 @@ func TestLoadCapabilityPolicy(t *testing.T) {
 		t.Fatalf("expected refund_enabled unset for goods-type 20, got %+v", got)
 	}
 
-	got = loadCapabilityPolicy(context.Background(), repo, 999, 999)
+	got = loadCapabilityPolicy(context.Background(), repo, 999)
 	if got.ResizeEnabled != nil || got.RefundEnabled != nil {
 		t.Fatalf("expected empty policy for unknown package/goods_type, got %+v", got)
 	}

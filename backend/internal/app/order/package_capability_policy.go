@@ -14,7 +14,7 @@ type packageCapabilityPolicy struct {
 	RefundEnabled *bool `json:"refund_enabled,omitempty"`
 }
 
-func loadCapabilityPolicy(ctx context.Context, repo SettingsRepository, _ int64, goodsTypeID int64) packageCapabilityPolicy {
+func loadCapabilityPolicy(ctx context.Context, repo SettingsRepository, goodsTypeID int64) packageCapabilityPolicy {
 	if repo == nil {
 		return packageCapabilityPolicy{}
 	}

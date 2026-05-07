@@ -1,7 +1,6 @@
 package http
 
 import (
-	"github.com/microcosm-cc/bluemonday"
 	"regexp"
 	"time"
 	appadmin "xiaoheiplay/internal/app/admin"
@@ -24,6 +23,8 @@ import (
 	appuserapikey "xiaoheiplay/internal/app/userapikey"
 	appwallet "xiaoheiplay/internal/app/wallet"
 	appwalletorder "xiaoheiplay/internal/app/walletorder"
+
+	"github.com/microcosm-cc/bluemonday"
 )
 
 var (
@@ -37,13 +38,14 @@ var (
 	resetVerifyLimiter   = newRateLimiter()
 	contactCodeLimiter   = newRateLimiter()
 	contactVerifyLimiter = newRateLimiter()
-	simpleTemplateVarRE  = regexp.MustCompile(`\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}`)
+	simpleTemplateVarRE  = regexp.MustCompile(`\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}`)
 )
 
 const (
 	adminLoginFailureThreshold = 10
 	adminLoginCooldown         = 10 * time.Minute
 	admin2FAFailureThreshold   = 10
+	tokenExpirySeconds         = 86400 // 24h
 )
 
 func sanitizeHTML(raw string) string {
@@ -72,7 +74,7 @@ type HandlerDeps struct {
 	MessageSvc        *appmessage.Service
 	PushSvc           *apppush.Service
 	StatusSvc         StatusService
-	RealnameSvc       *apprealname.Service
+	RealNameSvc       *apprealname.Service
 	OrderEventSvc     OrderEventService
 	AutoLogSvc        AutomationLogService
 	SettingsSvc       SettingsService
@@ -115,7 +117,7 @@ type Handler struct {
 	messageSvc        *appmessage.Service
 	pushSvc           *apppush.Service
 	statusSvc         StatusService
-	realnameSvc       *apprealname.Service
+	realNameSvc       *apprealname.Service
 	orderEventSvc     OrderEventService
 	autoLogSvc        AutomationLogService
 	settingsSvc       SettingsService
@@ -216,7 +218,7 @@ func NewHandler(deps HandlerDeps) *Handler {
 		messageSvc:        deps.MessageSvc,
 		pushSvc:           deps.PushSvc,
 		statusSvc:         deps.StatusSvc,
-		realnameSvc:       deps.RealnameSvc,
+		realNameSvc:       deps.RealNameSvc,
 		orderEventSvc:     deps.OrderEventSvc,
 		autoLogSvc:        deps.AutoLogSvc,
 		settingsSvc:       deps.SettingsSvc,
