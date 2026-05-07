@@ -13,6 +13,11 @@ service AutomationService {
   rpc ListPackages(ListPackagesRequest) returns (ListPackagesResponse);
   rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
 
+  // Catalog write-back (optional; gated by Manifest.AutomationCapability.catalog_readonly=false)
+  // 小黑云管理端套餐 CRUD 时用于反向同步到上游（强一致）。
+  rpc UpsertPackage(UpsertPackageRequest) returns (OperationResult);
+  rpc DeletePackage(DeletePackageRequest) returns (OperationResult);
+
   // Instance lifecycle
   rpc CreateInstance(CreateInstanceRequest) returns (CreateInstanceResponse);
   rpc GetInstance(GetInstanceRequest) returns (GetInstanceResponse);
@@ -65,6 +70,9 @@ message AutomationArea {
   int64 id = 1;
   string name = 2;
   int32 state = 3;
+  // code 是区域的稳定业务键（例："CN"），name 是可读名称（例："成都"）。
+  // 上游 HostAgent server_area 约定格式 "code,name"；空值统一归并为 code="default"。
+  string code = 4;
 }
 
 message AutomationLine {
@@ -90,6 +98,9 @@ message AutomationImage {
   int64 id = 1;
   string name = 2;
   string type = 3;
+  // enabled 映射 HostAgent OSConfig.sys_flag：false 表示上游手动停用了该镜像。
+  // 缺省为 true，适配老版 HostAgent 无此字段的情况。
+  bool enabled = 4;
 }
 
 message AutomationInstance {
@@ -115,6 +126,26 @@ message ListPackagesResponse { repeated AutomationPackage items = 1; }
 
 message ListImagesRequest { int64 line_id = 1; }
 message ListImagesResponse { repeated AutomationImage items = 1; }
+
+// ---- Catalog write-back ----
+// UpsertPackageRequest 映射 HostAgent POST /api/server/plan/<hs_name>
+// line_id 由插件反查为 hs_name；package_name 直接作为 HostAgent plan_name（业务稳定键）。
+message UpsertPackageRequest {
+  int64 line_id = 1;
+  string package_name = 2;
+  int32 cpu = 3;
+  int32 memory_gb = 4;
+  int32 disk_gb = 5;
+  int32 bandwidth_mbps = 6;
+  int32 traffic_gb = 7;
+  int32 gpu_mem_gb = 8;
+}
+
+// DeletePackageRequest 映射 HostAgent DELETE /api/server/plan/<hs_name>/<plan_name>
+message DeletePackageRequest {
+  int64 line_id = 1;
+  string package_name = 2;
+}
 
 message CreateInstanceRequest {
   int64 line_id = 1;

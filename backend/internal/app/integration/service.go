@@ -188,8 +188,12 @@ func (s *Service) SyncAutomationForGoodsType(ctx context.Context, goodsTypeID in
 
 	createdLines := 0
 	for _, line := range lines {
-		code := fmt.Sprintf("area-%d", line.AreaID)
 		area := areaNameByID[line.AreaID]
+		// 使用上游 area.Code 作为 region code；未提供时回退到 area-{id}
+		code := strings.TrimSpace(area.Code)
+		if code == "" {
+			code = fmt.Sprintf("area-%d", line.AreaID)
+		}
 		areaName := strings.TrimSpace(area.Name)
 		if areaName == "" {
 			areaName = fmt.Sprintf("Area %d", line.AreaID)
@@ -524,11 +528,20 @@ func (s *Service) appendSyncLog(ctx context.Context, target, mode, status, messa
 
 func normalizeImageType(v string) string {
 	normalized := strings.ToLower(strings.TrimSpace(v))
+	if normalized == "" {
+		return "linux"
+	}
 	if strings.Contains(normalized, "win") {
 		return "windows"
 	}
-	if normalized == "" {
-		return "linux"
+	if strings.Contains(normalized, "mac") ||
+		strings.Contains(normalized, "osx") ||
+		strings.Contains(normalized, "darwin") {
+		return "macos"
+	}
+	switch normalized {
+	case "linux", "windows", "macos":
+		return normalized
 	}
 	return "linux"
 }

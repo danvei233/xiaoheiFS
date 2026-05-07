@@ -28,7 +28,7 @@ func NewPluginInstanceClient(mgr *plugins.Manager, pluginID, instanceID string, 
 		mgr:        mgr,
 		pluginID:   strings.TrimSpace(pluginID),
 		instanceID: strings.TrimSpace(instanceID),
-		timeout:    12 * time.Second,
+		timeout:    1800 * time.Second,
 		settings:   settings,
 		autoLogs:   autoLogs,
 	}

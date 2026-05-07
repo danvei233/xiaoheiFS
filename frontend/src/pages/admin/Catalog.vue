@@ -34,6 +34,13 @@
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
+                  <a-button
+                    v-if="isOpenIDCPlugin(record)"
+                    size="small"
+                    type="primary"
+                    ghost
+                    @click="openGoodsTypeManage(record)"
+                  >管理</a-button>
                   <a-button size="small" @click="openGoodsType(record)">编辑</a-button>
                   <a-button size="small" @click="syncGoodsType(record)">同步</a-button>
                   <a-button size="small" danger @click="removeGoodsType(record)">删除</a-button>
@@ -61,7 +68,13 @@
           >
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'active'">
-                <a-tag :color="record.active ? 'green' : 'red'">{{ record.active ? '启用' : '停用' }}</a-tag>
+                <a-switch
+                  :checked="!!record.active"
+                  :loading="!!regionActiveBusy[record.id]"
+                  checked-children="启用"
+                  un-checked-children="停用"
+                  @change="(v) => toggleRegionActive(record, v as boolean)"
+                />
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
@@ -95,7 +108,13 @@
                 {{ regionNameById(record.region_id) }}
               </template>
               <template v-else-if="column.key === 'active'">
-                <a-tag :color="record.active ? 'green' : 'red'">{{ record.active ? '启用' : '停用' }}</a-tag>
+                <a-switch
+                  :checked="!!record.active"
+                  :loading="!!lineActiveBusy[record.id]"
+                  checked-children="启用"
+                  un-checked-children="停用"
+                  @change="(v) => toggleLineActiveSwitch(record, v as boolean)"
+                />
               </template>
               <template v-else-if="column.key === 'visible'">
                 <a-tag :color="record.visible ? 'green' : 'default'">{{ record.visible ? '可见' : '隐藏' }}</a-tag>
@@ -104,15 +123,20 @@
                 <a-tag :color="capacityTagColor(record.capacity_remaining)">{{ formatCapacity(record.capacity_remaining) }}</a-tag>
               </template>
               <template v-else-if="column.key === 'action'">
-                <a-space>
-                  <template v-if="isCatalogReadonly">
-                    <a-button
-                      size="small"
-                      :type="record.active ? 'default' : 'primary'"
-                      @click="toggleLineActive(record)"
-                    >{{ record.active ? '禁用' : '启用' }}</a-button>
-                  </template>
-                  <template v-else>
+                <a-space wrap>
+                  <a-button
+                    v-if="canOpenHostAgent"
+                    size="small"
+                    type="primary"
+                    ghost
+                    @click="openLineVMs(record)"
+                  >管理虚拟机</a-button>
+                  <a-button
+                    v-if="canOpenHostAgent"
+                    size="small"
+                    @click="openLineHost(record)"
+                  >编辑主机</a-button>
+                  <template v-if="!isCatalogReadonly">
                     <a-button size="small" @click="openLine(record)">编辑</a-button>
                     <a-button size="small" danger @click="removeLine(record)">删除</a-button>
                   </template>
@@ -203,8 +227,20 @@
                   <span style="margin-left: 6px">{{ formatImageType(record.type) }}</span>
                 </a-tag>
               </template>
+              <template v-else-if="column.key === 'lines'">
+                <template v-if="record.line_names && record.line_names.length">
+                  <a-tag v-for="ln in record.line_names" :key="ln" color="blue">{{ ln }}</a-tag>
+                </template>
+                <span v-else class="subtle">—</span>
+              </template>
               <template v-else-if="column.key === 'enabled'">
-                <a-tag :color="record.enabled ? 'green' : 'red'">{{ record.enabled ? '启用' : '停用' }}</a-tag>
+                <a-switch
+                  :checked="!!record.enabled"
+                  :loading="!!imageEnabledBusy[record.id]"
+                  checked-children="启用"
+                  un-checked-children="停用"
+                  @change="(v) => toggleImageEnabled(record, v as boolean)"
+                />
               </template>
               <template v-else-if="column.key === 'action'">
                 <a-space>
@@ -558,6 +594,8 @@ import {
   bulkDeleteBillingCycles,
   listGoodsTypes,
   syncGoodsTypeAutomation,
+  getGoodsTypeOpenIDCURL,
+  setRegionActive,
   getGoodsTypeAutomationOptions,
   getGoodsTypeCapabilities,
   updateGoodsTypeCapabilities,
@@ -942,6 +980,7 @@ const regionColumns = [
   { title: "ID", dataIndex: "id", key: "id", sorter: sortByNumber("id") },
   { title: "名称", dataIndex: "name", key: "name", sorter: sortByString("name") },
   { title: "代码", dataIndex: "code", key: "code", sorter: sortByString("code") },
+  { title: "线路数量", dataIndex: "line_count", key: "line_count", sorter: sortByNumber("line_count") },
   { title: "状态", dataIndex: "active", key: "active", sorter: sortByNumber("active") },
   { title: "操作", key: "action" }
 ];
@@ -984,10 +1023,18 @@ const packageColumns = [
 ];
 
 const imageColumns = [
-  { title: "ID", dataIndex: "id", key: "id", sorter: sortByNumber("id") },
-  { title: "镜像 ID", dataIndex: "image_id", key: "image_id", sorter: sortByString("image_id") },
+  { title: "ID", dataIndex: "id", key: "id", sorter: sortByNumber("id"), width: 80 },
+  {
+    title: "镜像 ID",
+    dataIndex: "image_id",
+    key: "image_id",
+    sorter: sortByString("image_id"),
+    width: 160,
+    ellipsis: true
+  },
   { title: "名称", dataIndex: "name", key: "name", sorter: sortByString("name") },
   { title: "类型", dataIndex: "type", key: "type", sorter: sortByString("type") },
+  { title: "线路", key: "lines" },
   { title: "启用", dataIndex: "enabled", key: "enabled", sorter: sortByNumber("enabled") },
   { title: "操作", key: "action" }
 ];
@@ -1363,10 +1410,49 @@ const syncGoodsType = async (record: any) => {
   await load();
 };
 
+// 需求1：判断商品类型是否绑定 openidc 插件，用于决定"管理"按钮是否显示
+const isOpenIDCPlugin = (record: any): boolean => {
+  const pid = String(record?.automation_plugin_id || "").toLowerCase();
+  return pid.includes("openidc");
+};
+
+// 需求1：点击"管理" → 拉取 Base URL 并新标签页打开 HostAgent 后台
+const openGoodsTypeManage = async (record: any) => {
+  try {
+    const res = await getGoodsTypeOpenIDCURL(record.id);
+    const data = res?.data || {};
+    if (!data.available || !data.base_url) {
+      const reason = data.reason || "unavailable";
+      message.warning(`无法打开 HostAgent 管理后台：${reason}`);
+      return;
+    }
+    window.open(data.base_url, "_blank", "noopener");
+  } catch (e: any) {
+    message.error(e?.message || "获取 Base URL 失败");
+  }
+};
+
 watch(goodsTypeId, async () => {
   resetRegion();
-  await load();
+  await Promise.all([load(), refreshHostAgentBaseURL()]);
 });
+
+// 需求1/4：在 goodsType 切换时预取 HostAgent Base URL，供线路操作按钮跳转 & 判断显隐
+const refreshHostAgentBaseURL = async () => {
+  hostAgentBaseURL.value = "";
+  const gid = goodsTypeId.value;
+  if (!gid) return;
+  try {
+    const res = await getGoodsTypeOpenIDCURL(gid);
+    const data = res?.data || {};
+    if (data.available && data.base_url) {
+      hostAgentBaseURL.value = String(data.base_url).replace(/\/$/, "");
+    }
+  } catch {
+    // 静默失败：按钮自动隐藏
+    hostAgentBaseURL.value = "";
+  }
+};
 
 watch(imageLineId, async () => {
   await loadScopedImages();
@@ -1421,6 +1507,23 @@ const removeRegion = (record) => {
       load();
     }
   });
+};
+
+// 需求2：地区启用/禁用开关，使用独立端点，不受 catalog_readonly 限制
+const regionActiveBusy = reactive<Record<number, boolean>>({});
+const toggleRegionActive = async (record: any, nextActive: boolean) => {
+  const rid = record?.id;
+  if (!rid) return;
+  regionActiveBusy[rid] = true;
+  try {
+    await setRegionActive(rid, nextActive);
+    record.active = nextActive;
+    message.success(nextActive ? "已启用" : "已停用");
+  } catch (e: any) {
+    message.error(e?.message || "操作失败");
+  } finally {
+    regionActiveBusy[rid] = false;
+  }
 };
 
 const bulkRemoveRegions = () => {
@@ -1503,6 +1606,52 @@ const toggleLineActive = async (record) => {
   load();
 };
 
+// 需求4：线路启用/禁用开关版本（与 HostAgent host_enable 联动，由后端 PATCH 反写上游）
+const lineActiveBusy = reactive<Record<number, boolean>>({});
+const toggleLineActiveSwitch = async (record: any, nextActive: boolean) => {
+  const rid = record?.id;
+  if (!rid) return;
+  lineActiveBusy[rid] = true;
+  try {
+    await updateLine(rid, { active: nextActive });
+    record.active = nextActive;
+    message.success(nextActive ? "已启用" : "已停用");
+  } catch (e: any) {
+    // 反写失败时 UI 不改（switch 自动回弹到上一状态）
+    message.error(extractUpstreamErrorMessage(e));
+  } finally {
+    lineActiveBusy[rid] = false;
+  }
+};
+
+// 需求4：是否允许显示"管理虚拟机"/"编辑主机"按钮
+// 仅在当前商品类型绑定了 openidc 插件（即 hostAgentBaseURL 已就绪）时启用
+const hostAgentBaseURL = ref<string>("");
+const canOpenHostAgent = computed(() => !!hostAgentBaseURL.value);
+
+// 需求4：PlanGroup.name 即 HostAgent hs_name
+const resolveHsNameFromLine = (record: any): string => String(record?.name || "").trim();
+
+const openLineVMs = (record: any) => {
+  const base = hostAgentBaseURL.value;
+  const hs = resolveHsNameFromLine(record);
+  if (!base || !hs) {
+    message.warning("HostAgent 管理地址未配置");
+    return;
+  }
+  window.open(`${base.replace(/\/$/, "")}/hosts/${encodeURIComponent(hs)}/vms`, "_blank", "noopener");
+};
+
+const openLineHost = (record: any) => {
+  const base = hostAgentBaseURL.value;
+  const hs = resolveHsNameFromLine(record);
+  if (!base || !hs) {
+    message.warning("HostAgent 管理地址未配置");
+    return;
+  }
+  window.open(`${base.replace(/\/$/, "")}/hosts`, "_blank", "noopener");
+};
+
 const removeLine = (record) => {
   Modal.confirm({
     title: "确认删除该线路?",
@@ -1555,25 +1704,50 @@ const resetPackage = () =>
   });
 
 const submitPackage = async () => {
-  if (packageForm.id) {
-    await updatePackage(packageForm.id, packageForm);
-  } else {
-    await createPackage(packageForm);
+  try {
+    if (packageForm.id) {
+      await updatePackage(packageForm.id, packageForm);
+    } else {
+      await createPackage(packageForm);
+    }
+    message.success("已保存套餐");
+    packageOpen.value = false;
+    load();
+  } catch (e: any) {
+    // 需求3：强一致——HostAgent 反写失败时后端返回 502 并带 code 前缀 "upstream_"
+    const msg = extractUpstreamErrorMessage(e);
+    message.error(msg);
   }
-  message.success("已保存套餐");
-  packageOpen.value = false;
-  load();
 };
 
 const removePackage = (record) => {
   Modal.confirm({
     title: "确认删除该套餐?",
+    content: "删除后会同步清理 HostAgent 上的同名 plan，HostAgent 反向同步失败则本地删除也会回滚。",
     onOk: async () => {
-      await deletePackage(record.id);
-      message.success("已删除");
-      load();
+      try {
+        await deletePackage(record.id);
+        message.success("已删除");
+        load();
+      } catch (e: any) {
+        message.error(extractUpstreamErrorMessage(e));
+      }
     }
   });
+};
+
+// 需求3：从后端统一错误结构中提取用户可读信息，优先展示上游反写问题
+const extractUpstreamErrorMessage = (e: any): string => {
+  const raw = e?.response?.data?.error || e?.message || "";
+  const code = e?.response?.data?.code || "";
+  if (typeof code === "string" && code.startsWith("upstream_")) {
+    if (code === "upstream_host_enable_failed") return `HostAgent 启用/禁用失败：${raw}`;
+    if (code === "upstream_upsert_plan_failed") return `HostAgent 写入套餐失败：${raw}`;
+    if (code === "upstream_delete_plan_failed") return `HostAgent 删除套餐失败：${raw}`;
+    if (code === "upstream_config_error") return `HostAgent 连接配置错误：${raw}`;
+    return `HostAgent 同步失败：${raw}`;
+  }
+  return raw || "操作失败";
 };
 
 const bulkRemovePackages = () => {
@@ -1641,6 +1815,26 @@ const removeImage = (record) => {
       load();
     }
   });
+};
+
+// 需求5：镜像启用开关 ↔ Python sys_flag
+// 说明：当前后端 UpdateSystemImage 仅改本地 enabled 字段，下次同步时会把 HostAgent
+//       sys_flag 作为 source-of-truth 覆盖回来。真正的 HostAgent sys_flag 写入需要
+//       HostAgent 先提供 set_server_os_flag 接口（已与 1.9.x 预留 sys_flag 字段对齐）。
+const imageEnabledBusy = reactive<Record<number, boolean>>({});
+const toggleImageEnabled = async (record: any, nextEnabled: boolean) => {
+  const rid = record?.id;
+  if (!rid) return;
+  imageEnabledBusy[rid] = true;
+  try {
+    await updateSystemImage(rid, { enabled: nextEnabled });
+    record.enabled = nextEnabled;
+    message.success(nextEnabled ? "已启用" : "已停用");
+  } catch (e: any) {
+    message.error(extractUpstreamErrorMessage(e));
+  } finally {
+    imageEnabledBusy[rid] = false;
+  }
 };
 
 const bulkRemoveImages = () => {
@@ -1899,5 +2093,6 @@ onMounted(async () => {
   loadAutomationInstances();
   await loadGoodsTypeList();
   await load();
+  await refreshHostAgentBaseURL();
 });
 </script>

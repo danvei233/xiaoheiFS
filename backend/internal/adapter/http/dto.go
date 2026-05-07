@@ -45,6 +45,8 @@ type RegionDTO struct {
 	Code        string `json:"code"`
 	Name        string `json:"name"`
 	Active      bool   `json:"active"`
+	// LineCount 归属该地区的线路数量（仅在列表响应下发）
+	LineCount int `json:"line_count"`
 }
 
 type PlanGroupDTO struct {
@@ -101,6 +103,10 @@ type SystemImageDTO struct {
 	Name    string `json:"name"`
 	Type    string `json:"type"`
 	Enabled bool   `json:"enabled"`
+	// LineIDs / LineNames 展示该镜像关联的线路（需求4）
+	// 只在列表响应下发；Upsert 时无需填写
+	LineIDs   []int64  `json:"line_ids,omitempty"`
+	LineNames []string `json:"line_names,omitempty"`
 }
 
 type BillingCycleDTO struct {

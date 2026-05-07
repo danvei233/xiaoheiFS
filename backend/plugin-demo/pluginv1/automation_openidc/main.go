@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"log"
+	"math/big"
 	"os"
 	"strings"
 	"sync"
@@ -37,6 +39,14 @@ type config struct {
 	TimeoutSec int    `json:"timeout_sec"`
 	Retry      int    `json:"retry"`
 	DryRun     bool   `json:"dry_run"`
+	// DefaultNicType 创建虚拟机时默认下发的网卡类型。
+	// HostAgent 在"管理员/Token 登录"路径不会自动补网卡（只有普通用户+配额模式才会补），
+	// 插件又固定走 API Token，所以若不显式下发 nic_all，VM 会没有任何网卡。
+	// 取值：
+	//   - "" 或 "nat"：默认分配 1 张 NAT 网卡（默认行为，兼容绝大多数内网机房）
+	//   - "pub"：默认分配 1 张公网网卡（有独立公网 IP 池的机房使用）
+	//   - "none"：不下发任何网卡（需要运维/用户后续手动添加）
+	DefaultNicType string `json:"default_nic_type"`
 }
 
 // ---- ID 编解码 ----
@@ -59,6 +69,22 @@ func fnv64(s string) int64 {
 		v = -v // 保证正数，避免部分系统对负 ID 的处理问题
 	}
 	return v
+}
+
+// generateRandomPassword 生成指定长度的随机密码（字母+数字）
+func generateRandomPassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		n, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		if err != nil {
+			// 极端情况下回退到固定字符
+			b[i] = charset[i%len(charset)]
+			continue
+		}
+		b[i] = charset[n.Int64()]
+	}
+	return string(b)
 }
 
 // idStore 维护 int64 ID → 字符串 的双向映射缓存
@@ -132,16 +158,19 @@ func (s *coreServer) GetManifest(_ context.Context, _ *pluginv1.Empty) (*pluginv
 		PluginId:    "openidc_default",
 		Name:        "OpenIDCS Automation (Built-in)",
 		Version:     "0.1.0",
-		Description: "Built-in OpenIDCS-Client automation plugin (catalog + lifecycle + port_mapping + backup).",
+		Description: "Built-in OpenIDCS-Client automation plugin (catalog + lifecycle + port_mapping + backup + catalog_writeback).",
 		Automation: &pluginv1.AutomationCapability{
 			Features: []pluginv1.AutomationFeature{
 				pluginv1.AutomationFeature_AUTOMATION_FEATURE_CATALOG_SYNC,
 				pluginv1.AutomationFeature_AUTOMATION_FEATURE_LIFECYCLE,
 				pluginv1.AutomationFeature_AUTOMATION_FEATURE_PORT_MAPPING,
 				pluginv1.AutomationFeature_AUTOMATION_FEATURE_BACKUP,
+				pluginv1.AutomationFeature_AUTOMATION_FEATURE_SNAPSHOT,
+				pluginv1.AutomationFeature_AUTOMATION_FEATURE_FIREWALL,
 			},
 			NotSupportedReasons: map[int32]string{},
-			CatalogReadonly:     true,
+			// 套餐支持反向写回 HostAgent（走 HTTP 直通，不依赖 gRPC proto 未生成符号）
+			CatalogReadonly: false,
 		},
 	}, nil
 }
@@ -155,9 +184,16 @@ func (s *coreServer) GetConfigSchema(_ context.Context, _ *pluginv1.Empty) (*plu
     "base_url": { "type": "string", "title": "Base URL", "description": "OpenIDCS-Client 服务地址，例如 http://192.168.1.100:1880" },
     "api_key": { "type": "string", "title": "API Key", "format": "password", "description": "OpenIDCS-Client 的 Bearer Token" },
     "hs_name": { "type": "string", "title": "默认主机名（hs_name）", "description": "指定该商品类型对应的 OpenIDCS 主机名，用于镜像同步。留空则使用所有主机。" },
-    "timeout_sec": { "type": "integer", "title": "超时时间（秒）", "default": 15, "minimum": 1, "maximum": 60 },
+    "timeout_sec": { "type": "integer", "title": "超时时间（秒）", "description": "HTTP 请求超时，会覆盖 CreateVM 等长耗时接口。建议 >= 180 以覆盖虚拟机创建（importdisk + resize + boot）最慢场景。", "default": 60, "minimum": 1, "maximum": 600 },
     "retry": { "type": "integer", "title": "重试次数", "default": 1, "minimum": 0, "maximum": 5 },
-    "dry_run": { "type": "boolean", "title": "Dry Run（演练模式）", "default": false }
+    "dry_run": { "type": "boolean", "title": "Dry Run（演练模式）", "default": false },
+    "default_nic_type": {
+      "type": "string",
+      "title": "默认网卡类型",
+      "description": "创建虚拟机时默认分配的网卡类型。HostAgent 在 Token 登录路径不会自动补网卡，必须由插件显式下发。nat=内网NAT网卡，pub=公网网卡，none=不分配（运维自行管理）。",
+      "enum": ["nat", "pub", "none"],
+      "default": "nat"
+    }
   },
   "required": ["base_url","api_key"]
 }`,
@@ -175,11 +211,17 @@ func (s *coreServer) ValidateConfig(_ context.Context, req *pluginv1.ValidateCon
 	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.APIKey) == "" {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "base_url/api_key required"}, nil
 	}
-	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 60 {
-		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "timeout_sec out of range [0,60]"}, nil
+	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 600 {
+		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "timeout_sec out of range [0,600]"}, nil
 	}
 	if cfg.Retry < 0 || cfg.Retry > 5 {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "retry out of range [0,5]"}, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.DefaultNicType)) {
+	case "", "nat", "pub", "none":
+		// ok
+	default:
+		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "default_nic_type must be one of: nat, pub, none"}, nil
 	}
 	return &pluginv1.ValidateConfigResponse{Ok: true}, nil
 }
@@ -218,12 +260,14 @@ func (s *coreServer) ReloadConfig(_ context.Context, req *pluginv1.ReloadConfigR
 }
 
 func (s *coreServer) Health(_ context.Context, req *pluginv1.HealthCheckRequest) (*pluginv1.HealthCheckResponse, error) {
+	status := pluginv1.HealthStatus_HEALTH_STATUS_OK
 	msg := "ok"
 	if req.GetInstanceId() == "" || s.instance == "" {
+		status = pluginv1.HealthStatus_HEALTH_STATUS_ERROR
 		msg = "not initialized"
 	}
 	return &pluginv1.HealthCheckResponse{
-		Status:     pluginv1.HealthStatus_HEALTH_STATUS_OK,
+		Status:     status,
 		Message:    msg,
 		UnixMillis: time.Now().UnixMilli(),
 	}, nil
@@ -238,7 +282,8 @@ func (s *coreServer) newClient() (*Client, error) {
 	}
 	timeout := time.Duration(s.cfg.TimeoutSec) * time.Second
 	if timeout <= 0 {
-		timeout = 15 * time.Second
+		// 兜底 1800s：覆盖备份/快照等长耗时操作。
+		timeout = 1800 * time.Second
 	}
 	return NewClient(s.cfg.BaseURL, s.cfg.APIKey, timeout), nil
 }
@@ -288,10 +333,12 @@ func (s *coreServer) resolveInstanceWithFallback(ctx context.Context, instanceID
 	if err != nil {
 		return "", "", fmt.Errorf("resolve instance_id %d: list servers failed: %w", instanceID, err)
 	}
+	var failedHosts []string
 	for hs := range servers {
 		s.ids.lineID(hs) // 顺便缓存 line_id
 		vms, vmErr := c.ListVMs(ctx, hs)
 		if vmErr != nil {
+			failedHosts = append(failedHosts, fmt.Sprintf("%s(%v)", hs, vmErr))
 			continue
 		}
 		for _, vm := range vms {
@@ -300,6 +347,9 @@ func (s *coreServer) resolveInstanceWithFallback(ctx context.Context, instanceID
 				return hs, vm.VMUUID, nil
 			}
 		}
+	}
+	if len(failedHosts) > 0 {
+		return "", "", fmt.Errorf("instance_id %d not found in OpenIDCS (failed to list VMs on hosts: %s)", instanceID, strings.Join(failedHosts, ", "))
 	}
 	return "", "", fmt.Errorf("instance_id %d not found in OpenIDCS", instanceID)
 }
@@ -328,6 +378,12 @@ func (s *coreServer) resolveLineWithFallback(ctx context.Context, lineID int64) 
 }
 
 // wrapHTTPTraceErr 包装 HTTP 追踪错误信息
+//
+// 关键点：`last` 仅记录最近一次 HTTP 请求，err 可能来自**本次 HTTP 请求之后**
+// 的解析/逻辑阶段（例如 JSON 解码、字段校验）。因此不能仅依赖上游 body.msg
+// 构造错误描述——当上游响应本身是成功（success=true / msg ∈ {success, ok}）时，
+// 必须退回到原始 err 的文本，否则用户会看到「rpc error desc = success」
+// 这种自相矛盾的提示。
 func wrapHTTPTraceErr(err error, last *HTTPLogEntry) error {
 	if err == nil {
 		return nil
@@ -342,15 +398,57 @@ func wrapHTTPTraceErr(err error, last *HTTPLogEntry) error {
 		"success":  last.Success,
 		"message":  last.Message,
 	}
-	msg := extractTraceMessage(trace)
-	if strings.TrimSpace(msg) == "" {
+	// 当上游 HTTP 本身成功时，msg 代表的是成功提示（例如 "success" / "ok"），
+	// 不能作为错误描述，直接用本地 err。
+	var msg string
+	if isHTTPTraceSuccess(trace) {
 		msg = err.Error()
+	} else {
+		msg = extractTraceMessage(trace)
+		if strings.TrimSpace(msg) == "" {
+			msg = err.Error()
+		}
 	}
 	raw, marshalErr := json.Marshal(trace)
 	if marshalErr != nil {
 		return fmt.Errorf("%s", msg)
 	}
 	return fmt.Errorf("%s | http_trace=%s", msg, string(raw))
+}
+
+// isHTTPTraceSuccess 判断上游 HTTP 是否本身就成功了
+// 约定：trace.success=true 或 body_json.msg ∈ {success, ok}（忽略大小写）都视为成功
+func isHTTPTraceSuccess(trace map[string]any) bool {
+	if trace == nil {
+		return false
+	}
+	if ok, isBool := trace["success"].(bool); isBool && ok {
+		return true
+	}
+	if resp, ok := trace["response"].(map[string]any); ok {
+		if bodyJSON, ok := resp["body_json"].(map[string]any); ok {
+			if msg, ok := bodyJSON["msg"].(string); ok {
+				m := strings.ToLower(strings.TrimSpace(msg))
+				if m == "success" || m == "ok" {
+					return true
+				}
+			}
+			// code==200 也视为上游成功
+			if code, ok := bodyJSON["code"]; ok {
+				switch v := code.(type) {
+				case float64:
+					if int(v) == 200 {
+						return true
+					}
+				case int:
+					if v == 200 {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func extractTraceMessage(trace map[string]any) string {
@@ -396,8 +494,8 @@ func (a *automationServer) ListAreas(ctx context.Context, _ *pluginv1.Empty) (*p
 	}
 	out := make([]*pluginv1.AutomationArea, 0, len(areas))
 	for _, area := range areas {
-		// 缓存 area_id → area_name
-		a.core.ids.put(area.ID, "area/"+area.Name)
+		// 缓存 area_id → "area/<code>"，后续按 code 反查上游 server_area
+		a.core.ids.put(area.ID, "area/"+area.Code)
 		out = append(out, &pluginv1.AutomationArea{
 			Id:    area.ID,
 			Name:  area.Name,
@@ -430,11 +528,9 @@ func (a *automationServer) ListLines(ctx context.Context, _ *pluginv1.Empty) (*p
 		if info.Status != "online" {
 			state = 0
 		}
-		// 尝试从主机 server_area 获取 area_id
-		var areaID int64
-		if info.ServerArea != "" {
-			areaID = fnv64("area/" + info.ServerArea)
-		}
+		// 根据 HostAgent server_area 解析出 area_code，空值统一归并到 default 区域
+		areaCode, _ := parseServerArea(info.ServerArea)
+		areaID := areaIDFromCode(areaCode)
 		out = append(out, &pluginv1.AutomationLine{
 			Id:     lineID,
 			Name:   name,
@@ -445,8 +541,22 @@ func (a *automationServer) ListLines(ctx context.Context, _ *pluginv1.Empty) (*p
 	return &pluginv1.ListLinesResponse{Items: out}, nil
 }
 
-// ListPackages 套餐列表（从 OpenIDCS server_plan 字段获取）
-// line_id = fnv64(hs_name)
+// ListPackages 套餐列表
+//
+// 数据源说明：
+//   HostAgent 当前只暴露 GET /api/server/detail，该接口已经返回完整 HSConfig
+//   （含 server_plan：key=plan_name, value=VMConfig）。
+//   因此这里直接复用 ListServers 的结果，在本地解包出套餐；无需依赖未实现的
+//   /api/server/plans/{hs} 接口。将来 HostAgent 若单独提供该接口，只需把 detail
+//   换成 ListPlans 即可平滑切换。
+//
+// 字段映射（VMConfig → AutomationPackage）：
+//   cpu_num → Cpu
+//   mem_num (MB) → MemoryGb（除 1024 取整）
+//   hdd_num (MB) → DiskGb（除 1024 取整）
+//   max(speed_u, speed_d) → BandwidthMbps
+//   nat_num → PortNum（VM 分配端口数，对应小黑云套餐 port_num）
+//   monthly_price 目前保持 0，由小黑云财务侧维护（上游 VMConfig 无价格字段）。
 func (a *automationServer) ListPackages(ctx context.Context, req *pluginv1.ListPackagesRequest) (*pluginv1.ListPackagesResponse, error) {
 	hsName, err := a.core.resolveLineWithFallback(ctx, req.GetLineId())
 	if err != nil {
@@ -457,28 +567,40 @@ func (a *automationServer) ListPackages(ctx context.Context, req *pluginv1.ListP
 	if err != nil {
 		return nil, err
 	}
-	var plans []PlanInfo
+	var servers map[string]ServerInfo
 	err = a.core.retry(func() error {
 		var callErr error
-		plans, callErr = c.ListPlans(ctx, hsName)
+		servers, callErr = c.ListServers(ctx)
 		return callErr
 	})
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
+	info, ok := servers[hsName]
+	if !ok {
+		// 目标主机不存在：返回空列表而非报错，避免把"一台主机掉线"放大为整个目录同步失败
+		return &pluginv1.ListPackagesResponse{Items: []*pluginv1.AutomationPackage{}}, nil
+	}
+	plans := info.Config.ServerPlan
 	out := make([]*pluginv1.AutomationPackage, 0, len(plans))
-	for _, plan := range plans {
-		// plan_id = fnv64(hs_name + "/plan/" + plan.ID)
-		planKey := hsName + "/plan/" + plan.ID
+	for planName, p := range plans {
+		// plan_id = fnv64(hs_name + "/plan/" + plan_name)
+		planKey := hsName + "/plan/" + planName
 		planID := fnv64(planKey)
 		a.core.ids.put(planID, planKey)
+		bw := p.SpeedU
+		if p.SpeedD > bw {
+			bw = p.SpeedD
+		}
 		out = append(out, &pluginv1.AutomationPackage{
-			Id:           planID,
-			Name:         plan.Name,
-			Cpu:          int32(plan.CPU),
-			MemoryGb:     int32(plan.MemoryGB),
-			DiskGb:       int32(plan.DiskGB),
-			MonthlyPrice: 0, // 价格由财务系统管理
+			Id:            planID,
+			Name:          planName,
+			Cpu:           int32(p.CPUNum),
+			MemoryGb:      int32(p.MemNum / 1024),
+			DiskGb:        int32(p.HDDNum / 1024),
+			BandwidthMbps: int32(bw),
+			PortNum:       int32(p.NATNum),
+			MonthlyPrice:  0, // 价格由小黑云财务系统管理，上游 VMConfig 不承载
 		})
 	}
 	return &pluginv1.ListPackagesResponse{Items: out}, nil
@@ -509,31 +631,81 @@ func (a *automationServer) ListImages(ctx context.Context, req *pluginv1.ListIma
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	out := make([]*pluginv1.AutomationImage, 0)
-	for _, images := range imageMap {
-		for _, img := range images {
-			name := img.Name
-			if name == "" {
-				name = img.File
-			}
-			// 根据名称判断镜像类型
-			imgType := "linux"
-			lowerName := strings.ToLower(name)
-			if strings.Contains(lowerName, "win") {
-				imgType = "windows"
-			}
-			// image_id = fnv64(hs_name + "/img/" + img.File)，缓存反查
-			imageKey := hsName + "/img/" + img.File
-			imageID := fnv64(imageKey)
-			a.core.ids.put(imageID, imageKey)
-			out = append(out, &pluginv1.AutomationImage{
-				Id:   imageID,
-				Name: name,
-				Type: imgType,
-			})
+	// 【介质分类说明】HostAgent HSConfig 的两个字段承载的业务语义完全不同：
+	//   - system_maps → OSImage{Category="system"}：系统磁盘模板 / 装机母盘
+	//     * CreateVM 的 os_name 从这里取，"安装系统"唯一合法来源
+	//     * 文件名通常是 .vmdk / .qcow2 / .img / .raw / .template 等磁盘格式
+	//   - images_maps → OSImage{Category="iso"}：光驱 ISO 镜像
+	//     * MountISO 的 iso_name 从这里取，仅用于运维（FirPE/WinPE 等工具盘）
+	//     * 文件名基本是 .iso
+	//
+	// 过往事故：ListImages 把两类合并返回 → 小黑云前台"购买 VPS / 重装系统"
+	// 的镜像下拉里混入 FirPE 等 ISO，用户误选后装机失败。
+	//
+	// 本次彻底修复（双重过滤，保证任何 HostAgent 配置形态下都不泄漏 ISO）：
+	//   1) 主过滤：Category == "system" 才入选；
+	//   2) 副过滤：Name / File 任一以 .iso 结尾（忽略大小写）一律剔除，
+	//      兜住"运维把 ISO 错配到 system_maps 里"的人为失误；
+	//   3) iso 分类同时仍写入 a.core.ids 缓存，保留 Rebuild / MountISO 通过
+	//      已知 image_id 反查 sys_file 的向后兼容能力。
+	//   4) 日志打点 raw 与 filtered 数量，方便部署后直接在 plugin.log 校验生效。
+	systemImages := imageMap["system"]
+	isoImages := imageMap["iso"]
+
+	// ISO 分类：仅注入缓存（不对外返回），保留 Rebuild/MountISO 老流程
+	for _, img := range isoImages {
+		if strings.TrimSpace(img.File) == "" {
+			continue
 		}
+		imageKey := hsName + "/img/" + img.File
+		imageID := fnv64(imageKey)
+		a.core.ids.put(imageID, imageKey)
+	}
+
+	out := make([]*pluginv1.AutomationImage, 0, len(systemImages))
+	droppedByExt := 0
+	for _, img := range systemImages {
+		name := img.Name
+		if name == "" {
+			name = img.File
+		}
+		// 副过滤：若 system_maps 里混入 .iso 文件（通常是运维误配），也从结果里剔除。
+		if hasISOExt(img.File) || hasISOExt(img.Name) {
+			droppedByExt++
+			// 仍注入缓存以便 Rebuild 兼容
+			if strings.TrimSpace(img.File) != "" {
+				imageKey := hsName + "/img/" + img.File
+				a.core.ids.put(fnv64(imageKey), imageKey)
+			}
+			continue
+		}
+		// image_id = fnv64(hs_name + "/img/" + img.File)，缓存反查
+		imageKey := hsName + "/img/" + img.File
+		imageID := fnv64(imageKey)
+		a.core.ids.put(imageID, imageKey)
+		// Type 来自 HostAgent sys_type（WinNT/Linux/macOS），在 http_client 已归一化
+		// Enabled 来自 HostAgent sys_flag（老版本无此字段时默认 true）
+		out = append(out, &pluginv1.AutomationImage{
+			Id:      imageID,
+			Name:    name,
+			Type:    img.Type,
+			Enabled: img.Enabled,
+		})
+	}
+
+	if pluginLog != nil {
+		// 强版本戳 "[v2-iso-filter]" 方便部署后一眼辨识新二进制是否加载成功
+		pluginLog.Printf("[v2-iso-filter] ListImages hs=%s raw=system:%d,iso:%d dropped_by_ext=%d returned=%d",
+			hsName, len(systemImages), len(isoImages), droppedByExt, len(out))
 	}
 	return &pluginv1.ListImagesResponse{Items: out}, nil
+}
+
+// hasISOExt 判定文件名是否以 .iso 结尾（忽略大小写），用于兜底剔除
+// 运维误配到 system_maps 的 ISO 文件。
+func hasISOExt(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	return n != "" && strings.HasSuffix(n, ".iso")
 }
 
 // ---- 实例生命周期 ----
@@ -565,10 +737,13 @@ func (a *automationServer) CreateInstance(ctx context.Context, req *pluginv1.Cre
 		}
 	}
 	body := map[string]any{
+		// 不传 vm_uuid，让 HostAgent 根据主机配置的 filter_name 前缀 + 随机字符自动生成。
+		// 这样 vm_uuid 格式为 "{filter_name}-{random8}"，与 HostAgent 面板一致。
+		// vm_name 仅作为显示名传递，HostAgent 当前版本会忽略此字段。
 		"vm_name": req.GetName(),
 		"cpu_num": req.GetCpu(),
 		"mem_num": req.GetMemoryGb() * 1024, // GB → MB
-		"hdd_num": req.GetDiskGb(),
+		"hdd_num": req.GetDiskGb() * 1024,   // GB → MB（HostAgent VMConfig.hdd_num 单位为 MB）
 	}
 	if isoName != "" {
 		body["os_name"] = isoName
@@ -576,15 +751,73 @@ func (a *automationServer) CreateInstance(ctx context.Context, req *pluginv1.Cre
 		body["os_name"] = req.GetOs()
 	}
 	if req.GetPassword() != "" {
-		body["password"] = req.GetPassword()
+		body["os_pass"] = req.GetPassword()
 	}
+	// VNC 密码：优先使用传入值，否则自动生成8位随机密码传入 HostAgent
 	if req.GetVncPassword() != "" {
-		body["vnc_password"] = req.GetVncPassword()
+		body["vc_pass"] = req.GetVncPassword()
+	} else {
+		body["vc_pass"] = generateRandomPassword(8)
 	}
-	vmUUID, err := c.CreateVM(ctx, hsName, body)
+
+	// 默认网卡配置：
+	// HostAgent 的 RestManager.create_vm 只有在"普通用户+配额模式"下才会自动补一张默认网卡，
+	// 我们走 API Token（is_token_login=true）路径，HostAgent 不会补，
+	// 因此必须由插件显式下发 nic_all，否则创建出来的 VM 没有任何网卡，外界无法访问。
+	// 由运维通过配置项 default_nic_type 选择走 NAT 还是公网（PUB），或显式关闭（none）。
+	nicType := strings.ToLower(strings.TrimSpace(a.core.cfg.DefaultNicType))
+	if nicType == "" {
+		nicType = "nat" // 未配置时兼容默认：分配一张 NAT 网卡
+	}
+	if nicType != "none" {
+		body["nic_all"] = map[string]any{
+			"nic0": map[string]any{"nic_type": nicType},
+		}
+	}
+
+	vmUUID, err := c.CreateVM(ctx, hsName, "", body)
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
+	if vmUUID == "" {
+		return nil, fmt.Errorf("HostAgent did not return vm_uuid in create response")
+	}
+
+	// 创建成功后，根据操作系统类型自动映射远程连接端口（NAT）
+	// Linux→22(SSH), Windows→3389(RDP), macOS→5900(VNC)
+	osNameLower := strings.ToLower(body["os_name"].(string))
+	if osNameLower == "" {
+		osNameLower = strings.ToLower(req.GetOs())
+	}
+	lanPort := 0
+	switch {
+	case strings.Contains(osNameLower, "win"):
+		lanPort = 3389
+	case strings.Contains(osNameLower, "mac") || strings.Contains(osNameLower, "darwin"):
+		lanPort = 5900
+	default:
+		// 默认按 Linux 处理
+		lanPort = 22
+	}
+	if lanPort > 0 {
+		// 从可用端口列表中获取一个宿主机端口
+		wanPort := 0
+		avail, portErr := c.GetAvailablePorts(ctx, hsName)
+		if portErr == nil && len(avail.AvailablePorts) > 0 {
+			wanPort = int(avail.AvailablePorts[0])
+		}
+		if wanPort > 0 {
+			natErr := c.AddNATRule(ctx, hsName, vmUUID, wanPort, lanPort, "tcp", fmt.Sprintf("auto-remote-%d", lanPort))
+			if natErr != nil {
+				pluginLog.Printf("[CreateInstance] 自动映射端口失败 hs=%s vm=%s lan=%d wan=%d: %v", hsName, vmUUID, lanPort, wanPort, natErr)
+			} else {
+				pluginLog.Printf("[CreateInstance] 自动映射端口成功 hs=%s vm=%s lan=%d wan=%d", hsName, vmUUID, lanPort, wanPort)
+			}
+		} else {
+			pluginLog.Printf("[CreateInstance] 无可用宿主机端口，跳过自动映射 hs=%s vm=%s", hsName, vmUUID)
+		}
+	}
+
 	instanceID := a.core.ids.instanceID(hsName, vmUUID)
 	return &pluginv1.CreateInstanceResponse{InstanceId: instanceID}, nil
 }
@@ -608,25 +841,49 @@ func (a *automationServer) GetInstance(ctx context.Context, req *pluginv1.GetIns
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	state := int32(0)
+	// state 值与 MapAutomationState 约定一致：
+	//   2 = 运行中(running)       ← isReadyState
+	//   3 = 已关机(stopped)       ← isReadyState
+	//  10 = 已锁定(locked)        ← isReadyState
+	//
+	// 重要：只要 GetVM 能成功返回虚拟机信息，就说明 HostAgent 已完成创建，
+	// 默认 state=3（stopped/就绪）。不再依赖虚拟机电源状态来判断是否"开通完成"，
+	// 避免因 vm_flag=UNKNOWN/STOPPED 导致 provision_worker 误判为仍在创建中。
+	state := int32(3) // 默认：已就绪（stopped）
 	switch strings.ToLower(info.Status) {
-	case "running", "powered_on":
-		state = 1
-	case "stopped", "powered_off":
-		state = 0
-	case "suspended":
+	case "running", "powered_on", "starting":
 		state = 2
+	case "suspended":
+		state = 10
 	}
 	instanceID := a.core.ids.instanceID(hsName, info.VMUUID)
+
+	// 构建远程地址：public_addr:映射端口
+	// 查询主机 public_addr 和 NAT 规则，拼接为 "公网IP:宿主机端口" 格式
+	remoteAddr := info.IPAddress // 兜底：使用虚拟机内网 IP
+	if publicIP := resolvePublicIP(ctx, c, hsName); publicIP != "" {
+		remoteAddr = publicIP // 有公网 IP 时优先使用
+		// 查询 NAT 规则，找到远程连接端口（SSH/RDP/VNC）
+		natRules, natErr := c.ListNATRules(ctx, hsName, info.VMUUID)
+		if natErr == nil {
+			for _, rule := range natRules {
+				if rule.LanPort == 22 || rule.LanPort == 3389 || rule.LanPort == 5900 {
+					remoteAddr = fmt.Sprintf("%s:%d", publicIP, rule.WanPort)
+					break
+				}
+			}
+		}
+	}
+
 	return &pluginv1.GetInstanceResponse{
 		Instance: &pluginv1.AutomationInstance{
 			Id:       instanceID,
-			Name:     info.VMName,
+			Name:     hsName + "/" + info.VMUUID, // GetPanelURL 需要 "{hs_name}/{vm_uuid}" 格式
 			State:    state,
 			Cpu:      int32(info.CPUNum),
 			MemoryGb: int32(info.MemNum / 1024), // MB → GB
-			DiskGb:   int32(info.HDDNum),
-			RemoteIp: info.IPAddress,
+			DiskGb:   int32(info.HDDNum / 1024), // MB → GB（HostAgent VMConfig.hdd_num 单位为 MB）
+			RemoteIp: remoteAddr,
 		},
 	}, nil
 }
@@ -762,9 +1019,7 @@ func (a *automationServer) Rebuild(ctx context.Context, req *pluginv1.RebuildReq
 		return nil, fmt.Errorf("image_id %d not found in cache, please call ListImages first", req.GetImageId())
 	}
 	// 步骤1：挂载 ISO
-	if _, mountErr := c.doRequest(ctx, "POST", "/api/client/iso/mount/"+hsName+"/"+vmUUID, map[string]any{
-		"iso_name": isoName,
-	}); mountErr != nil {
+	if mountErr := c.MountISO(ctx, hsName, vmUUID, isoName); mountErr != nil {
 		return nil, wrapHTTPTraceErr(mountErr, last)
 	}
 	// 步骤2：重启虚拟机
@@ -816,7 +1071,7 @@ func (a *automationServer) ElasticUpdate(ctx context.Context, req *pluginv1.Elas
 		body["mem_num"] = req.GetMemoryGb() * 1024 // GB → MB
 	}
 	if req.DiskGb != nil {
-		body["hdd_num"] = req.GetDiskGb()
+		body["hdd_num"] = req.GetDiskGb() * 1024 // GB → MB（HostAgent VMConfig.hdd_num 单位为 MB）
 	}
 	if len(body) == 0 {
 		return &pluginv1.OperationResult{Ok: true}, nil
@@ -906,9 +1161,12 @@ func (a *automationServer) GetVNCURL(ctx context.Context, req *pluginv1.GetVNCUR
 	return &pluginv1.GetVNCURLResponse{Url: url}, nil
 }
 
-// GetPanelURL 获取面板/终端地址
+// GetPanelURL 获取面板「一键登录」URL。
 // instance_name 格式：{hs_name}/{vm_uuid}（财务系统传入的是 VPS 的 name 字段）
-// 为兼容性，同时支持 instance_name 为 fnv64 数字字符串的情况
+// 实现参考 FSPlugins/OpenIDC-SwapIDC/openidc.php 的 openidc_ClientArea()：
+//  1. 先调用 /api/client/temptoken/{hs_name}/{vm_uuid} 获取临时 token；
+//  2. 拼接 {base_url}/api/client/templogin?token={temp_token} 作为跳转地址；
+//  3. 若临时 token 缺失则降级返回 base_url，由用户自行登录。
 func (a *automationServer) GetPanelURL(ctx context.Context, req *pluginv1.GetPanelURLRequest) (*pluginv1.GetPanelURLResponse, error) {
 	c, last, err := a.core.newClientWithTrace()
 	if err != nil {
@@ -926,18 +1184,14 @@ func (a *automationServer) GetPanelURL(ctx context.Context, req *pluginv1.GetPan
 	} else {
 		return nil, fmt.Errorf("invalid instance_name format, expected {hs_name}/{vm_uuid}, got: %s", instanceName)
 	}
-	var access RemoteAccess
+	var url string
 	err = a.core.retry(func() error {
 		var callErr error
-		access, callErr = c.GetRemoteAccess(ctx, hsName, vmUUID)
+		url, callErr = c.GetTempLoginURL(ctx, hsName, vmUUID)
 		return callErr
 	})
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
-	}
-	url := access.TerminalURL
-	if url == "" {
-		url = access.ConsoleURL
 	}
 	return &pluginv1.GetPanelURLResponse{Url: url}, nil
 }
@@ -952,34 +1206,110 @@ func (a *automationServer) GetMonitor(ctx context.Context, req *pluginv1.GetMoni
 	if err != nil {
 		return nil, err
 	}
-	var status VMStatus
+	var statusMap map[string]any
 	err = a.core.retry(func() error {
 		var callErr error
-		status, callErr = c.GetVMStatus(ctx, hsName, vmUUID)
+		statusMap, callErr = c.GetVMStatus(ctx, hsName, vmUUID)
 		return callErr
 	})
 	if err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
 	}
-	// 转换为财务系统期望的监控格式
-	memPercent := 0.0
-	if status.MemoryTotal > 0 {
-		memPercent = float64(status.MemoryUsage) / float64(status.MemoryTotal) * 100
+
+	// HostAgent /api/client/status 返回结构为:
+	//   {"power_status": "...", "history": [{HWStatus}, ...]}
+	// 需要从 history 数组中取最新一条 HWStatus 进行解析。
+	// 同时兼容旧版直接返回扁平 map 的情况。
+	latestStatus := statusMap
+	if historyRaw, ok := statusMap["history"]; ok {
+		if historySlice, ok := historyRaw.([]any); ok && len(historySlice) > 0 {
+			// 取最后一条（最新的）HWStatus
+			if latestEntry, ok := historySlice[len(historySlice)-1].(map[string]any); ok {
+				latestStatus = latestEntry
+			}
+		}
 	}
+
+	// 从 HWStatus 中提取监控数据，兼容多种字段名
+	cpuUsage := extractFloat(latestStatus, "cpu_usage", "cpu_percent", "cpu", "CpuUsage", "CpuStats")
+	cpuTotal := extractFloat(latestStatus, "cpu_total", "cpu_num", "CpuTotal")
+	memUsage := extractFloat(latestStatus, "mem_usage", "memory_usage", "mem_used", "MemoryUsage")
+	memTotal := extractFloat(latestStatus, "mem_total", "memory_total", "MemoryTotal")
+	hddUsage := extractFloat(latestStatus, "hdd_usage", "disk_usage", "DiskUsage")
+	hddTotal := extractFloat(latestStatus, "hdd_total", "disk_total", "DiskTotal")
+	netRx := extractFloat(latestStatus, "network_d", "network_rx_rate", "net_rx", "rx_rate", "rx_bytes", "NetworkRxRate", "bytes_in")
+	netTx := extractFloat(latestStatus, "network_u", "network_tx_rate", "net_tx", "tx_rate", "tx_bytes", "NetworkTxRate", "bytes_out")
+
+	// 计算 CPU 百分比：cpu_usage 是单核百分比（0~100），直接使用
+	cpuPercent := 0.0
+	if cpuUsage > 0 && cpuUsage <= 100 {
+		cpuPercent = cpuUsage
+	} else if cpuTotal > 0 && cpuUsage > 100 {
+		// 兼容旧版返回多核总百分比的情况（如4核满载=400），需除以核心数
+		cpuPercent = cpuUsage / cpuTotal
+	}
+
+	// 计算内存百分比：mem_usage 是已用MB，mem_total 是总MB
+	memPercent := 0.0
+	if mp := extractFloat(latestStatus, "memory_percent", "mem_percent", "memory", "MemoryStats"); mp > 0 {
+		memPercent = mp
+	} else if memTotal > 0 {
+		memPercent = memUsage / memTotal * 100
+	}
+
+	// 计算磁盘使用百分比
+	storagePercent := 0.0
+	if hddTotal > 0 {
+		storagePercent = hddUsage / hddTotal * 100
+	}
+
+	// 网络速率（HostAgent 的 network_u/network_d 单位为 Mbps）
+	// 转换为字节/秒
+	bytesIn := int64(netRx)
+	bytesOut := int64(netTx)
+	if netRx > 0 && netRx < 1000 {
+		bytesIn = int64(netRx * 1024 * 1024 / 8)
+	}
+	if netTx > 0 && netTx < 1000 {
+		bytesOut = int64(netTx * 1024 * 1024 / 8)
+	}
+
 	raw := map[string]any{
-		"CpuStats":     status.CPUUsage,
+		"CpuStats":     cpuPercent,
 		"MemoryStats":  memPercent,
-		"StorageStats": 0,
+		"StorageStats": storagePercent,
 		"NetworkStats": map[string]any{
-			"BytesSentPersec":     int64(status.NetworkTxRate * 1024 * 1024 / 8),
-			"BytesReceivedPersec": int64(status.NetworkRxRate * 1024 * 1024 / 8),
+			"BytesSentPersec":     bytesOut,
+			"BytesReceivedPersec": bytesIn,
 		},
-		"UptimeSeconds": status.UptimeSeconds,
-		"PowerState":    status.PowerState,
-		"IPAddresses":   status.IPAddresses,
 	}
 	b, _ := json.Marshal(raw)
 	return &pluginv1.GetMonitorResponse{RawJson: string(b)}, nil
+}
+
+// extractFloat 从 map 中按多个候选 key 提取 float64 值，返回第一个非零值。
+// 兼容 HostAgent 不同版本返回的字段名差异。
+func extractFloat(m map[string]any, keys ...string) float64 {
+	for _, k := range keys {
+		if v, ok := m[k]; ok {
+			switch val := v.(type) {
+			case float64:
+				return val
+			case int:
+				return float64(val)
+			case int64:
+				return float64(val)
+			case json.Number:
+				f, _ := val.Float64()
+				return f
+			case string:
+				var f float64
+				fmt.Sscanf(val, "%f", &f)
+				return f
+			}
+		}
+	}
+	return 0
 }
 
 // ---- 端口映射 ----
@@ -994,6 +1324,7 @@ func (a *automationServer) ListPortMappings(ctx context.Context, req *pluginv1.L
 	if err != nil {
 		return nil, err
 	}
+	publicIP := resolvePublicIP(ctx, c, hsName)
 	var rules []NATRule
 	err = a.core.retry(func() error {
 		var callErr error
@@ -1005,11 +1336,16 @@ func (a *automationServer) ListPortMappings(ctx context.Context, req *pluginv1.L
 	}
 	out := make([]*pluginv1.AutomationPortMapping, 0, len(rules))
 	for _, rule := range rules {
+		// sport 格式：若有公网 IP 则为 "public_addr:port"，否则仅端口号
+		sport := fmt.Sprintf("%d", rule.WanPort)
+		if publicIP != "" {
+			sport = fmt.Sprintf("%s:%d", publicIP, rule.WanPort)
+		}
 		out = append(out, &pluginv1.AutomationPortMapping{
 			Id:    int64(rule.RuleIndex),
-			Name:  rule.Description,
-			Sport: fmt.Sprintf("%d/%s", rule.HostPort, rule.Protocol),
-			Dport: int64(rule.VMPort),
+			Name:  rule.NatTips,
+			Sport: sport,
+			Dport: int64(rule.LanPort),
 		})
 	}
 	return &pluginv1.ListPortMappingsResponse{Items: out}, nil
@@ -1199,7 +1535,213 @@ func (a *automationServer) RestoreBackup(ctx context.Context, req *pluginv1.Rest
 	return &pluginv1.OperationResult{Ok: true}, nil
 }
 
+// ---- 快照管理 ----
+
+// ListSnapshots 获取快照列表
+func (a *automationServer) ListSnapshots(ctx context.Context, req *pluginv1.ListSnapshotsRequest) (*pluginv1.ListSnapshotsResponse, error) {
+	c, last, err := a.core.newClientWithTrace()
+	if err != nil {
+		return nil, err
+	}
+	hsName, vmUUID, err := a.core.resolveInstanceWithFallback(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, err
+	}
+	var snapshots []SnapshotInfo
+	err = a.core.retry(func() error {
+		var callErr error
+		snapshots, callErr = c.ListSnapshots(ctx, hsName, vmUUID)
+		return callErr
+	})
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	out := make([]*pluginv1.AutomationSnapshot, 0, len(snapshots))
+	for i, s := range snapshots {
+		createdAt := parseTimeToUnix(s.CreatedTime)
+		out = append(out, &pluginv1.AutomationSnapshot{
+			Id:            int64(i),
+			Name:          s.SnapshotName,
+			CreatedAtUnix: createdAt,
+			State:         1,
+		})
+	}
+	return &pluginv1.ListSnapshotsResponse{Items: out}, nil
+}
+
+// CreateSnapshot 创建快照
+func (a *automationServer) CreateSnapshot(ctx context.Context, req *pluginv1.CreateSnapshotRequest) (*pluginv1.OperationResult, error) {
+	if a.core.cfg.DryRun {
+		return &pluginv1.OperationResult{Ok: true}, nil
+	}
+	c, last, err := a.core.newClientWithTrace()
+	if err != nil {
+		return nil, err
+	}
+	hsName, vmUUID, err := a.core.resolveInstanceWithFallback(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, err
+	}
+	if err := c.CreateSnapshot(ctx, hsName, vmUUID, "", ""); err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.OperationResult{Ok: true}, nil
+}
+
+// DeleteSnapshot 删除快照
+// snapshot_id = 快照索引（对应 ListSnapshots 返回的 id）
+func (a *automationServer) DeleteSnapshot(ctx context.Context, req *pluginv1.DeleteSnapshotRequest) (*pluginv1.OperationResult, error) {
+	if a.core.cfg.DryRun {
+		return &pluginv1.OperationResult{Ok: true}, nil
+	}
+	c, last, err := a.core.newClientWithTrace()
+	if err != nil {
+		return nil, err
+	}
+	hsName, vmUUID, err := a.core.resolveInstanceWithFallback(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, err
+	}
+	// 先获取快照列表，通过索引找到快照名称
+	snapshots, listErr := c.ListSnapshots(ctx, hsName, vmUUID)
+	if listErr != nil {
+		return nil, wrapHTTPTraceErr(listErr, last)
+	}
+	idx := int(req.GetSnapshotId())
+	if idx < 0 || idx >= len(snapshots) {
+		return nil, fmt.Errorf("snapshot index %d out of range (total: %d)", idx, len(snapshots))
+	}
+	if err := c.DeleteSnapshot(ctx, hsName, vmUUID, snapshots[idx].SnapshotName); err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.OperationResult{Ok: true}, nil
+}
+
+// RestoreSnapshot 恢复快照
+func (a *automationServer) RestoreSnapshot(ctx context.Context, req *pluginv1.RestoreSnapshotRequest) (*pluginv1.OperationResult, error) {
+	if a.core.cfg.DryRun {
+		return &pluginv1.OperationResult{Ok: true}, nil
+	}
+	c, last, err := a.core.newClientWithTrace()
+	if err != nil {
+		return nil, err
+	}
+	hsName, vmUUID, err := a.core.resolveInstanceWithFallback(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, err
+	}
+	// 先获取快照列表，通过索引找到快照名称
+	snapshots, listErr := c.ListSnapshots(ctx, hsName, vmUUID)
+	if listErr != nil {
+		return nil, wrapHTTPTraceErr(listErr, last)
+	}
+	idx := int(req.GetSnapshotId())
+	if idx < 0 || idx >= len(snapshots) {
+		return nil, fmt.Errorf("snapshot index %d out of range (total: %d)", idx, len(snapshots))
+	}
+	if err := c.RestoreSnapshot(ctx, hsName, vmUUID, snapshots[idx].SnapshotName); err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.OperationResult{Ok: true}, nil
+}
+
+// ---- 防火墙管理 ----
+
+// ListFirewallRules 获取防火墙规则列表
+func (a *automationServer) ListFirewallRules(ctx context.Context, req *pluginv1.ListFirewallRulesRequest) (*pluginv1.ListFirewallRulesResponse, error) {
+	c, last, err := a.core.newClientWithTrace()
+	if err != nil {
+		return nil, err
+	}
+	hsName, vmUUID, err := a.core.resolveInstanceWithFallback(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, err
+	}
+	publicIP := resolvePublicIP(ctx, c, hsName)
+	var rules []FirewallRule
+	err = a.core.retry(func() error {
+		var callErr error
+		rules, callErr = c.ListFirewallRules(ctx, hsName, vmUUID, publicIP)
+		return callErr
+	})
+	if err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	out := make([]*pluginv1.AutomationFirewallRule, 0, len(rules))
+	for _, r := range rules {
+		out = append(out, &pluginv1.AutomationFirewallRule{
+			Id:        int64(r.RuleID),
+			Direction: r.Direction,
+			Protocol:  r.Protocol,
+			Method:    r.Method,
+			Port:      r.Port,
+			Ip:        r.IP,
+			Priority:  int32(r.Priority),
+		})
+	}
+	return &pluginv1.ListFirewallRulesResponse{Items: out}, nil
+}
+
+// AddFirewallRule 添加防火墙规则
+func (a *automationServer) AddFirewallRule(ctx context.Context, req *pluginv1.AddFirewallRuleRequest) (*pluginv1.OperationResult, error) {
+	if a.core.cfg.DryRun {
+		return &pluginv1.OperationResult{Ok: true}, nil
+	}
+	c, last, err := a.core.newClientWithTrace()
+	if err != nil {
+		return nil, err
+	}
+	hsName, vmUUID, err := a.core.resolveInstanceWithFallback(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, err
+	}
+	rule := FirewallRule{
+		Direction: req.GetDirection(),
+		Protocol:  req.GetProtocol(),
+		Method:    req.GetMethod(),
+		Port:      req.GetPort(),
+		IP:        req.GetIp(),
+		Priority:  int(req.GetPriority()),
+	}
+	if err := c.AddFirewallRule(ctx, hsName, vmUUID, rule); err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.OperationResult{Ok: true}, nil
+}
+
+// DeleteFirewallRule 删除防火墙规则
+func (a *automationServer) DeleteFirewallRule(ctx context.Context, req *pluginv1.DeleteFirewallRuleRequest) (*pluginv1.OperationResult, error) {
+	if a.core.cfg.DryRun {
+		return &pluginv1.OperationResult{Ok: true}, nil
+	}
+	c, last, err := a.core.newClientWithTrace()
+	if err != nil {
+		return nil, err
+	}
+	hsName, vmUUID, err := a.core.resolveInstanceWithFallback(ctx, req.GetInstanceId())
+	if err != nil {
+		return nil, err
+	}
+	if err := c.DeleteFirewallRule(ctx, hsName, vmUUID, int(req.GetRuleId())); err != nil {
+		return nil, wrapHTTPTraceErr(err, last)
+	}
+	return &pluginv1.OperationResult{Ok: true}, nil
+}
+
 // ---- 工具函数 ----
+
+// resolvePublicIP 查询主机的公网 IP（取 public_addr 列表的第一个）。
+// 查询失败或 public_addr 为空时返回空字符串。
+func resolvePublicIP(ctx context.Context, c *Client, hsName string) string {
+	servers, err := c.ListServers(ctx)
+	if err != nil {
+		return ""
+	}
+	if srv, ok := servers[hsName]; ok && len(srv.Config.PublicAddr) > 0 {
+		return srv.Config.PublicAddr[0]
+	}
+	return ""
+}
 
 // parseTimeToUnix 解析时间字符串为 Unix 时间戳
 func parseTimeToUnix(s string) int64 {

@@ -86,6 +86,7 @@ type AutomationArea struct {
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	State         int32                  `protobuf:"varint,3,opt,name=state,proto3" json:"state,omitempty"`
+	Code          string                 `protobuf:"bytes,4,opt,name=code,proto3" json:"code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -139,6 +140,13 @@ func (x *AutomationArea) GetState() int32 {
 		return x.State
 	}
 	return 0
+}
+
+func (x *AutomationArea) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
 }
 
 type AutomationLine struct {
@@ -322,6 +330,7 @@ type AutomationImage struct {
 	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Type          string                 `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Enabled       bool                   `protobuf:"varint,4,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -375,6 +384,13 @@ func (x *AutomationImage) GetType() string {
 		return x.Type
 	}
 	return ""
+}
+
+func (x *AutomationImage) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
 }
 
 type AutomationInstance struct {

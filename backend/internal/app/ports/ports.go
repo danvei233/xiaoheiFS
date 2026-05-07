@@ -67,6 +67,9 @@ type SystemImageRepository interface {
 	UpdateSystemImage(ctx context.Context, img domain.SystemImage) error
 	DeleteSystemImage(ctx context.Context, id int64) error
 	SetLineSystemImages(ctx context.Context, lineID int64, systemImageIDs []int64) error
+	// ListLineIDsBySystemImageIDs 批量反查每个 system_image_id 关联的 line_id 列表。
+	// 需求4：用于在管理端镜像列表展示归属线路的 Tag/筛选。
+	ListLineIDsBySystemImageIDs(ctx context.Context, systemImageIDs []int64) (map[int64][]int64, error)
 }
 
 type CartRepository interface {

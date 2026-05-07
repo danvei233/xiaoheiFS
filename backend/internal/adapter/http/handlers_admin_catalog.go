@@ -47,7 +47,40 @@ func (h *Handler) AdminSystemImages(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": toSystemImageDTOs(items)})
+	dtos := toSystemImageDTOs(items)
+	// 需求4：组装每个镜像归属的线路（line_ids + line_names）用于管理端 Tag 展示
+	if len(dtos) > 0 {
+		imageIDs := make([]int64, 0, len(items))
+		for _, it := range items {
+			imageIDs = append(imageIDs, it.ID)
+		}
+		if lineIDsByImage, lerr := h.catalogSvc.ListLineIDsBySystemImageIDs(c, imageIDs); lerr == nil && len(lineIDsByImage) > 0 {
+			// 收集所有出现过的 line_id 以便批量查 plan_group 名字
+			lineNameByID := map[int64]string{}
+			if plans, perr := h.catalogSvc.ListPlanGroups(c); perr == nil {
+				for _, p := range plans {
+					if p.LineID > 0 {
+						lineNameByID[p.LineID] = p.Name
+					}
+				}
+			}
+			for i := range dtos {
+				ids := lineIDsByImage[dtos[i].ID]
+				if len(ids) == 0 {
+					continue
+				}
+				dtos[i].LineIDs = ids
+				names := make([]string, 0, len(ids))
+				for _, id := range ids {
+					if n, ok := lineNameByID[id]; ok && n != "" {
+						names = append(names, n)
+					}
+				}
+				dtos[i].LineNames = names
+			}
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"items": dtos})
 }
 
 func (h *Handler) AdminRegions(c *gin.Context) {
@@ -76,7 +109,23 @@ func (h *Handler) AdminRegions(c *gin.Context) {
 		}
 		items = filtered
 	}
-	c.JSON(http.StatusOK, gin.H{"items": toRegionDTOs(items)})
+	// 需求3：地区列表返回每个地区归属的线路数量（line_count）
+	lineCountByRegion := map[int64]int{}
+	if plans, perr := h.catalogSvc.ListPlanGroups(c); perr == nil {
+		for _, p := range plans {
+			if goodsTypeID > 0 && p.GoodsTypeID != goodsTypeID {
+				continue
+			}
+			if p.RegionID > 0 {
+				lineCountByRegion[p.RegionID]++
+			}
+		}
+	}
+	dtos := toRegionDTOs(items)
+	for i := range dtos {
+		dtos[i].LineCount = lineCountByRegion[dtos[i].ID]
+	}
+	c.JSON(http.StatusOK, gin.H{"items": dtos})
 }
 
 func (h *Handler) AdminRegionCreate(c *gin.Context) {
@@ -132,6 +181,40 @@ func (h *Handler) AdminRegionDelete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// AdminRegionSetActive 需求2：地区启用/禁用开关
+// 独立端点，不受插件 catalog_readonly 只读限制影响。
+// 仅修改 Active 字段；不触发 HostAgent 联动（地区 code 归属 HostAgent server_area 属于主机级字段，
+// 本地启停不需要传回上游，仅作为前台展示与下单准入的闸门）。
+func (h *Handler) AdminRegionSetActive(c *gin.Context) {
+	var uri adminIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	var payload struct {
+		Active *bool `json:"active"`
+	}
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	if payload.Active == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	region, err := h.catalogSvc.GetRegion(c, uri.ID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	region.Active = *payload.Active
+	if err := h.catalogSvc.UpdateRegion(c, region); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, toRegionDTO(region))
 }
 
 func (h *Handler) AdminRegionBulkDelete(c *gin.Context) {

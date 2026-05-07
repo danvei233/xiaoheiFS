@@ -145,3 +145,29 @@ func (r *GormRepo) SetLineSystemImages(ctx context.Context, lineID int64, system
 	})
 
 }
+
+// ListLineIDsBySystemImageIDs 批量反查每个 system_image_id 关联的 line_id 集合。
+// 需求4：用于在管理端镜像列表展示归属线路的 Tag。
+// 空 ids 返回空 map。
+func (r *GormRepo) ListLineIDsBySystemImageIDs(ctx context.Context, systemImageIDs []int64) (map[int64][]int64, error) {
+	out := make(map[int64][]int64)
+	if len(systemImageIDs) == 0 {
+		return out, nil
+	}
+	type joinRow struct {
+		LineID        int64 `gorm:"column:line_id"`
+		SystemImageID int64 `gorm:"column:system_image_id"`
+	}
+	var rows []joinRow
+	if err := r.gdb.WithContext(ctx).
+		Table("line_system_images").
+		Select("line_id, system_image_id").
+		Where("system_image_id IN ?", systemImageIDs).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[row.SystemImageID] = append(out[row.SystemImageID], row.LineID)
+	}
+	return out, nil
+}

@@ -329,7 +329,6 @@ const menuTree = computed(() => {
         { key: `/${adminPath}/settings/payments`, label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
         { key: `/${adminPath}/settings/lifecycle`, label: "生命周期", icon: ClockCircleOutlined, requireAny: ["settings.view"] },
         { key: `/${adminPath}/settings/plugins`, label: "插件管理", icon: ToolOutlined, requireAny: ["plugin.list"] },
-        { key: `/${adminPath}/automation`, label: "自动化对接", icon: ApiOutlined, requireAny: ["automation.view"] },
         { key: `/${adminPath}/settings/webhook`, label: "Webhook", icon: LinkOutlined, requireAny: ["robot.view"] },
         { key: `/${adminPath}/scheduled-tasks`, label: "计划任务", icon: ClockCircleOutlined, requireAny: ["scheduled_tasks.list"] }
       ]

@@ -58,7 +58,6 @@ const loadPage = () => {
     "realname/providers": () => import("@/pages/admin/realname/Providers.vue"),
     "realname/config": () => import("@/pages/admin/realname/Config.vue"),
     "realname/records": () => import("@/pages/admin/realname/Records.vue"),
-    "automation": () => import("@/pages/admin/Automation.vue"),
     "scheduled-tasks": () => import("@/pages/admin/ScheduledTasks.vue"),
     "debug": () => import("@/pages/admin/Debug.vue"),
     "audit": () => import("@/pages/admin/Audit.vue"),

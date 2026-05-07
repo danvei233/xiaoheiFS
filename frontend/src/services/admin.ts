@@ -489,3 +489,17 @@ export const getGoodsTypeCapabilities = (id: number | string) =>
   http.get<GoodsTypeCapabilities>(`/admin/api/v1/goods-types/${id}/capabilities`);
 export const updateGoodsTypeCapabilities = (id: number | string, payload: { resize_enabled?: boolean | null; refund_enabled?: boolean | null }) =>
   http.patch(`/admin/api/v1/goods-types/${id}/capabilities`, payload);
+
+// 需求1：商品类型管理按钮 - 返回 openidc 插件实例 Base URL
+export const getGoodsTypeOpenIDCURL = (id: number | string) =>
+  http.get<{
+    available: boolean;
+    base_url?: string;
+    plugin_id?: string;
+    instance_id?: string;
+    reason?: string;
+  }>(`/admin/api/v1/goods-types/${id}/openidc-url`);
+
+// 需求2：地区启用/禁用开关（不受 catalog_readonly 影响）
+export const setRegionActive = (id: number | string, active: boolean) =>
+  http.patch<{ id: number; active: boolean }>(`/admin/api/v1/regions/${id}/active`, { active });

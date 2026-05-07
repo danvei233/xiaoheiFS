@@ -261,6 +261,8 @@ type AutomationImage struct {
 	ImageID int64
 	Name    string
 	Type    string
+	// Enabled 对应 HostAgent OSConfig.sys_flag；老版本无此字段时应视为 true
+	Enabled bool
 }
 
 type AutomationLine struct {
@@ -272,6 +274,9 @@ type AutomationLine struct {
 
 type AutomationArea struct {
 	ID    int64
+	// Code 是区域稳定业务键（例 "CN"），与上游 HostAgent server_area 的前半段一致；
+	// 上游未填写 server_area 时，统一为 "default"。
+	Code  string
 	Name  string
 	State int
 }

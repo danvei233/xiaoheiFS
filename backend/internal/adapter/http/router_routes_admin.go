@@ -81,6 +81,7 @@ func (adminRoutesRegistrar) Register(r *gin.Engine, handler *Handler, middleware
 		admin.GET("/regions", handler.AdminRegions)
 		admin.POST("/regions", handler.AdminRegionCreate)
 		admin.PATCH("/regions/:id", handler.AdminRegionUpdate)
+		admin.PATCH("/regions/:id/active", handler.AdminRegionSetActive)
 		admin.DELETE("/regions/:id", handler.AdminRegionDelete)
 		admin.POST("/regions/bulk-delete", handler.AdminRegionBulkDelete)
 		admin.GET("/plan-groups", handler.AdminPlanGroups)

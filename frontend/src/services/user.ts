@@ -132,7 +132,7 @@ export const listVps = () => http.get<ApiList<VPSInstance>>("/api/v1/vps");
 export const getVpsDetail = (id: number | string) => http.get<VPSInstance>(`/api/v1/vps/${id}`);
 export const refreshVps = (id: number | string) => http.post(`/api/v1/vps/${id}/refresh`);
 export const getVpsPanel = (id: number | string) => http.get(`/api/v1/vps/${id}/panel`);
-export const getVpsMonitor = (id: number | string) => http.get<MonitorResponse>(`/api/v1/vps/${id}/monitor`);
+export const getVpsMonitor = (id: number | string) => http.get<MonitorResponse>(`/api/v1/vps/${id}/monitor`, { timeout: 60000 });
 export const getVpsVnc = (id: number | string) => http.get(`/api/v1/vps/${id}/vnc`);
 export const startVps = (id: number | string) => http.post(`/api/v1/vps/${id}/start`);
 export const shutdownVps = (id: number | string) => http.post(`/api/v1/vps/${id}/shutdown`);
@@ -142,17 +142,17 @@ export const resetVpsOS = (id: number | string, payload: { template_id: number |
 export const resetVpsOsPassword = (id: number | string, payload: { password: string }) =>
   http.post(`/api/v1/vps/${id}/reset-os-password`, payload);
 export const getVpsSnapshots = (id: number | string) => http.get(`/api/v1/vps/${id}/snapshots`);
-export const createVpsSnapshot = (id: number | string) => http.post(`/api/v1/vps/${id}/snapshots`);
+export const createVpsSnapshot = (id: number | string) => http.post(`/api/v1/vps/${id}/snapshots`, {}, { timeout: 1800000 });
 export const deleteVpsSnapshot = (id: number | string, snapshotId: number | string) =>
   http.delete(`/api/v1/vps/${id}/snapshots/${snapshotId}`);
 export const restoreVpsSnapshot = (id: number | string, snapshotId: number | string) =>
-  http.post(`/api/v1/vps/${id}/snapshots/${snapshotId}/restore`);
+  http.post(`/api/v1/vps/${id}/snapshots/${snapshotId}/restore`, {}, { timeout: 1800000 });
 export const getVpsBackups = (id: number | string) => http.get(`/api/v1/vps/${id}/backups`);
-export const createVpsBackup = (id: number | string) => http.post(`/api/v1/vps/${id}/backups`);
+export const createVpsBackup = (id: number | string) => http.post(`/api/v1/vps/${id}/backups`, {}, { timeout: 1800000 });
 export const deleteVpsBackup = (id: number | string, backupId: number | string) =>
   http.delete(`/api/v1/vps/${id}/backups/${backupId}`);
 export const restoreVpsBackup = (id: number | string, backupId: number | string) =>
-  http.post(`/api/v1/vps/${id}/backups/${backupId}/restore`);
+  http.post(`/api/v1/vps/${id}/backups/${backupId}/restore`, {}, { timeout: 1800000 });
 export const getVpsFirewallRules = (id: number | string) => http.get(`/api/v1/vps/${id}/firewall`);
 export const addVpsFirewallRule = (id: number | string, payload: Record<string, unknown>) =>
   http.post(`/api/v1/vps/${id}/firewall`, payload);

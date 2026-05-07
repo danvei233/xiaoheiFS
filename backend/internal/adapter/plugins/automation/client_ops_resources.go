@@ -248,7 +248,7 @@ func (c *PluginInstanceClient) ListAreas(ctx context.Context) ([]appshared.Autom
 	resp := respAny.(*pluginv1.ListAreasResponse)
 	out := make([]appshared.AutomationArea, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, appshared.AutomationArea{ID: it.GetId(), Name: it.GetName(), State: int(it.GetState())})
+		out = append(out, appshared.AutomationArea{ID: it.GetId(), Code: it.GetCode(), Name: it.GetName(), State: int(it.GetState())})
 	}
 	return out, nil
 }
@@ -264,7 +264,7 @@ func (c *PluginInstanceClient) ListImages(ctx context.Context, lineID int64) ([]
 	resp := respAny.(*pluginv1.ListImagesResponse)
 	out := make([]appshared.AutomationImage, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
-		out = append(out, appshared.AutomationImage{ImageID: it.GetId(), Name: it.GetName(), Type: it.GetType()})
+		out = append(out, appshared.AutomationImage{ImageID: it.GetId(), Name: it.GetName(), Type: it.GetType(), Enabled: it.GetEnabled()})
 	}
 	return out, nil
 }

@@ -172,13 +172,21 @@ func (s *Service) SetLineSystemImages(ctx context.Context, lineID int64, systemI
 	return s.images.SetLineSystemImages(ctx, lineID, systemImageIDs)
 }
 
+// ListLineIDsBySystemImageIDs 需求4：批量反查每个 SystemImage.ID 关联的 line_id 列表。
+func (s *Service) ListLineIDsBySystemImageIDs(ctx context.Context, systemImageIDs []int64) (map[int64][]int64, error) {
+	if len(systemImageIDs) == 0 {
+		return map[int64][]int64{}, nil
+	}
+	return s.images.ListLineIDsBySystemImageIDs(ctx, systemImageIDs)
+}
+
 func (s *Service) GetSystemImage(ctx context.Context, id int64) (domain.SystemImage, error) {
 	return s.images.GetSystemImage(ctx, id)
 }
 
 func validateSystemImageType(t string) error {
 	switch strings.ToLower(t) {
-	case "", "linux", "windows":
+	case "", "linux", "windows", "macos":
 		return nil
 	default:
 		return appshared.ErrInvalidInput

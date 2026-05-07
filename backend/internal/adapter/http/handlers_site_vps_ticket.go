@@ -128,9 +128,6 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
-	if refreshed, err := h.vpsSvc.RefreshStatus(c, inst); err == nil {
-		inst = refreshed
-	}
 	payload := gin.H{
 		"status":           string(inst.Status),
 		"automation_state": inst.AutomationState,
@@ -145,14 +142,21 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 			payload["automation_state"] = 0
 		}
 		payload["monitor_error"] = err.Error()
-		c.JSON(http.StatusOK, payload)
-		return
+	} else {
+		payload["cpu"] = monitor.CPUPercent
+		payload["memory"] = monitor.MemoryPercent
+		payload["bytes_in"] = monitor.BytesIn
+		payload["bytes_out"] = monitor.BytesOut
+		payload["storage"] = monitor.StoragePercent
 	}
-	payload["cpu"] = monitor.CPUPercent
-	payload["memory"] = monitor.MemoryPercent
-	payload["bytes_in"] = monitor.BytesIn
-	payload["bytes_out"] = monitor.BytesOut
-	payload["storage"] = monitor.StoragePercent
+	// 确保监控字段始终存在，前端图表不会因为字段缺失而显示空白
+	if _, ok := payload["cpu"]; !ok {
+		payload["cpu"] = 0
+		payload["memory"] = 0
+		payload["bytes_in"] = int64(0)
+		payload["bytes_out"] = int64(0)
+		payload["storage"] = 0
+	}
 	c.JSON(http.StatusOK, payload)
 }
 
