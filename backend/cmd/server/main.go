@@ -227,7 +227,7 @@ func main() {
 		MessageSvc:        messageSvc,
 		PushSvc:           pushSvc,
 		StatusSvc:         statusSvc,
-		RealnameSvc:       realnameSvc,
+		RealNameSvc:       realnameSvc,
 		OrderEventSvc:     orderEventSvc,
 		AutoLogSvc:        autoLogSvc,
 		SettingsSvc:       settingsSvc,

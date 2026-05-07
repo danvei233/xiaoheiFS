@@ -2,12 +2,13 @@ package http
 
 import (
 	"encoding/json"
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"strings"
 	"time"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+
+	"github.com/gin-gonic/gin"
 )
 
 func (h *Handler) AdminRobotConfig(c *gin.Context) {
@@ -91,11 +92,11 @@ func (h *Handler) AdminRobotTest(c *gin.Context) {
 }
 
 func (h *Handler) AdminRealNameConfig(c *gin.Context) {
-	if h.realnameSvc == nil {
+	if h.realNameSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	enabled, provider, actions := h.realnameSvc.GetConfig(c)
+	enabled, provider, actions := h.realNameSvc.GetConfig(c)
 	c.JSON(http.StatusOK, gin.H{
 		"enabled":       enabled,
 		"provider":      provider,
@@ -104,7 +105,7 @@ func (h *Handler) AdminRealNameConfig(c *gin.Context) {
 }
 
 func (h *Handler) AdminRealNameConfigUpdate(c *gin.Context) {
-	if h.realnameSvc == nil {
+	if h.realNameSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
@@ -117,7 +118,7 @@ func (h *Handler) AdminRealNameConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if err := h.realnameSvc.UpdateConfig(c, payload.Enabled, payload.Provider, payload.BlockActions); err != nil {
+	if err := h.realNameSvc.UpdateConfig(c, payload.Enabled, payload.Provider, payload.BlockActions); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -125,7 +126,7 @@ func (h *Handler) AdminRealNameConfigUpdate(c *gin.Context) {
 }
 
 func (h *Handler) AdminRealNameProviders(c *gin.Context) {
-	if h.realnameSvc == nil {
+	if h.realNameSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
@@ -134,14 +135,14 @@ func (h *Handler) AdminRealNameProviders(c *gin.Context) {
 		Name string `json:"name"`
 	}
 	out := []providerInfo{}
-	for _, provider := range h.realnameSvc.Providers() {
+	for _, provider := range h.realNameSvc.Providers() {
 		out = append(out, providerInfo{Key: provider.Key(), Name: provider.Name()})
 	}
 	c.JSON(http.StatusOK, gin.H{"items": out})
 }
 
 func (h *Handler) AdminRealNameRecords(c *gin.Context) {
-	if h.realnameSvc == nil {
+	if h.realNameSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
@@ -153,7 +154,7 @@ func (h *Handler) AdminRealNameRecords(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	items, total, err := h.realnameSvc.List(c, query.UserID, limit, offset)
+	items, total, err := h.realNameSvc.List(c, query.UserID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

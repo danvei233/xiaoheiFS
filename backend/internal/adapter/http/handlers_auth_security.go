@@ -252,7 +252,7 @@ func (h *Handler) PasswordResetConfirm(c *gin.Context) {
 		"ok":            true,
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
-		"expires_in":    86400,
+		"expires_in":    tokenExpirySeconds,
 		"user":          gin.H{"id": user.ID, "username": user.Username, "role": user.Role},
 	})
 }

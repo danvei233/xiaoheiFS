@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"image/png"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +16,9 @@ import (
 	"time"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+
+	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func (h *Handler) loadAuthSettings(ctx context.Context) authSettings {
@@ -202,6 +205,9 @@ func (h *Handler) Captcha(c *gin.Context) {
 	img := renderCaptcha(code)
 	var buf strings.Builder
 	enc := base64.NewEncoder(base64.StdEncoding, &buf)
+	defer func(enc io.WriteCloser) {
+		_ = enc.Close()
+	}(enc)
 	if err := png.Encode(enc, img); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrCaptchaEncodeError.Error()})
 		return
@@ -354,7 +360,7 @@ func (h *Handler) Register(c *gin.Context) {
 	})
 	if err != nil {
 		status := http.StatusBadRequest
-		if err == appshared.ErrRealNameRequired || err == appshared.ErrForbidden {
+		if errors.Is(err, appshared.ErrRealNameRequired) || errors.Is(err, appshared.ErrForbidden) {
 			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -416,7 +422,7 @@ func (h *Handler) Login(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
-		"expires_in":    86400,
+		"expires_in":    tokenExpirySeconds,
 		"user": gin.H{
 			"id":           user.ID,
 			"username":     user.Username,
@@ -593,9 +599,9 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			return
 		}
 		msg.Content = content
-		cctx, cancel := context.WithTimeout(c, 10*time.Second)
+		cCtx, cancel := context.WithTimeout(c, 10*time.Second)
 		defer cancel()
-		if _, err := h.smsSender.Send(cctx, settings.RegisterSMSPluginID, settings.RegisterSMSInstanceID, msg); err != nil {
+		if _, err := h.smsSender.Send(cCtx, settings.RegisterSMSPluginID, settings.RegisterSMSInstanceID, msg); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrSmsSendFailed.Error()})
 			return
 		}
@@ -823,7 +829,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"access_token":  accessToken,
 		"refresh_token": newRefreshToken,
-		"expires_in":    86400,
+		"expires_in":    tokenExpirySeconds,
 	})
 }
 
@@ -996,7 +1002,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 	})
 	if err != nil {
 		status := http.StatusBadRequest
-		if err == appshared.ErrRealNameRequired || err == appshared.ErrForbidden {
+		if errors.Is(err, appshared.ErrRealNameRequired) || errors.Is(err, appshared.ErrForbidden) {
 			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
@@ -1043,13 +1049,13 @@ func (h *Handler) MePasswordChange(c *gin.Context) {
 }
 
 func (h *Handler) RealNameStatus(c *gin.Context) {
-	if h.realnameSvc == nil {
+	if h.realNameSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	enabled, provider, actions := h.realnameSvc.GetConfig(c)
+	enabled, provider, actions := h.realNameSvc.GetConfig(c)
 	var record *domain.RealNameVerification
-	if latest, err := h.realnameSvc.Latest(c, getUserID(c)); err == nil {
+	if latest, err := h.realNameSvc.Latest(c, getUserID(c)); err == nil {
 		record = &latest
 	}
 	verified := false
@@ -1070,7 +1076,7 @@ func (h *Handler) RealNameStatus(c *gin.Context) {
 }
 
 func (h *Handler) RealNameVerify(c *gin.Context) {
-	if h.realnameSvc == nil {
+	if h.realNameSvc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
@@ -1091,14 +1097,14 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 			}
 		}
 	}
-	if h.realnameSvc != nil {
-		_, providerKey, _ := h.realnameSvc.GetConfig(c)
+	if h.realNameSvc != nil {
+		_, providerKey, _ := h.realNameSvc.GetConfig(c)
 		if realNameProviderNeedsMobile(providerKey) && phone == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPhoneRequired.Error()})
 			return
 		}
 	}
-	record, err := h.realnameSvc.VerifyWithInput(c, getUserID(c), appshared.RealNameVerifyInput{
+	record, err := h.realNameSvc.VerifyWithInput(c, getUserID(c), appshared.RealNameVerifyInput{
 		RealName:    payload.RealName,
 		IDNumber:    payload.IDNumber,
 		Phone:       phone,
@@ -1106,7 +1112,7 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 	})
 	if err != nil {
 		status := http.StatusBadRequest
-		if err == appshared.ErrForbidden {
+		if errors.Is(err, appshared.ErrForbidden) {
 			status = http.StatusForbidden
 		}
 		c.JSON(status, gin.H{"error": err.Error()})

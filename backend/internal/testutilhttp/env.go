@@ -124,7 +124,7 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 		WalletOrder:       walletOrderSvc,
 		PaymentSvc:        paymentSvc,
 		MessageSvc:        messageSvc,
-		RealnameSvc:       realnameSvc,
+		RealNameSvc:       realnameSvc,
 		OrderEventSvc:     orderEventSvc,
 		AutoLogSvc:        autoLogSvc,
 		SettingsSvc:       settingsSvc,

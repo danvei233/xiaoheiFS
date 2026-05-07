@@ -15,9 +15,13 @@ import (
 	"xiaoheiplay/internal/domain"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
+const (
+	defaultPortNum             = 30
+	systemPasswordLength       = 10
+	vncPasswordLength          = 8
+	defaultOrderRenewDays      = 30
+	defaultWalletOrderPageSize = 50
+)
 
 type OrderService struct {
 	orders      OrderRepository
@@ -1285,12 +1289,12 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 
 	portNum := pkg.PortNum
 	if portNum <= 0 {
-		portNum = 30
+		portNum = defaultPortNum
 	}
 
 	hostName := fmt.Sprintf("ecs-%d-%d", order.UserID, time.Now().UnixNano())
-	sysPwd := randomPass(10)
-	vncPwd := randomPass(8)
+	sysPwd := randomPass(systemPasswordLength)
+	vncPwd := randomPass(vncPasswordLength)
 	months := item.DurationMonths
 	if months <= 0 {
 		months = 1
@@ -1402,7 +1406,7 @@ func (s *OrderService) handleRenew(ctx context.Context, item domain.OrderItem) e
 		payload.RenewDays = payload.DurationMonths * 30
 	}
 	if payload.RenewDays <= 0 {
-		payload.RenewDays = 30
+		payload.RenewDays = defaultOrderRenewDays
 	}
 	// Guard against time.Duration overflow: cap renewDays to the same safe
 	// upper bound enforced at order creation (600 months = 18000 days).
@@ -1762,7 +1766,7 @@ func (s *OrderService) promoteRefundWalletOrderIfNeeded(ctx context.Context, wal
 	if walletOrders == nil || txRefID <= 0 {
 		return
 	}
-	orders, _, err := walletOrders.ListWalletOrders(ctx, userID, 50, 0)
+	orders, _, err := walletOrders.ListWalletOrders(ctx, userID, defaultWalletOrderPageSize, 0)
 	if err != nil {
 		return
 	}
@@ -2282,20 +2286,6 @@ func extractHTTPTraceFromMessage(message string) (map[string]any, map[string]any
 	return trace.Request, trace.Response, trace.Action, trace.Message, true
 }
 
-func parseDurationMonths(specJSON string) int {
-	if specJSON == "" {
-		return 1
-	}
-	var spec CartSpec
-	if err := json.Unmarshal([]byte(specJSON), &spec); err != nil {
-		return 1
-	}
-	if spec.DurationMonths > 0 {
-		return spec.DurationMonths
-	}
-	return 1
-}
-
 func parseOrderItemVPSID(specJSON string) int64 {
 	if strings.TrimSpace(specJSON) == "" {
 		return 0
@@ -2341,7 +2331,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 	months := durationMonths
 	if months <= 0 {
 		if renewDays <= 0 {
-			renewDays = 30
+			renewDays = defaultOrderRenewDays
 		}
 		months = int(math.Ceil(float64(renewDays) / 30.0))
 	}
@@ -2370,7 +2360,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 		return domain.Order{}, ErrInvalidInput
 	}
 	if renewDays <= 0 {
-		renewDays = 30
+		renewDays = defaultOrderRenewDays
 	}
 	orderNo := fmt.Sprintf("REN-%d-%d", userID, time.Now().Unix())
 	status := domain.OrderStatusPendingPayment
@@ -2523,7 +2513,7 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	if err != nil {
 		return domain.Order{}, ResizeQuote{}, err
 	}
-	policy := loadCapabilityPolicy(ctx, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	policy := loadCapabilityPolicy(ctx, s.settings, s.capabilityPolicyGoodsTypeID(ctx, inst))
 	if policy.ResizeEnabled != nil {
 		resizeDefault = *policy.ResizeEnabled
 	}
@@ -2625,7 +2615,7 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	if v, ok := getSettingBool(ctx, s.settings, "refund_enabled"); ok {
 		refundDefault = v
 	}
-	pkgPolicy := loadCapabilityPolicy(ctx, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	pkgPolicy := loadCapabilityPolicy(ctx, s.settings, s.capabilityPolicyGoodsTypeID(ctx, inst))
 	if pkgPolicy.RefundEnabled != nil {
 		refundDefault = *pkgPolicy.RefundEnabled
 	}
@@ -2750,7 +2740,7 @@ func (s *OrderService) QuoteResizeOrder(ctx context.Context, userID int64, vpsID
 	if err != nil {
 		return ResizeQuote{}, CartSpec{}, err
 	}
-	policy := loadCapabilityPolicy(ctx, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	policy := loadCapabilityPolicy(ctx, s.settings, s.capabilityPolicyGoodsTypeID(ctx, inst))
 	if policy.ResizeEnabled != nil {
 		resizeDefault = *policy.ResizeEnabled
 	}
