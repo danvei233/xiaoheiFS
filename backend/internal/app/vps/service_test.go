@@ -97,6 +97,58 @@ func TestVPSService_RefreshStatus(t *testing.T) {
 	}
 }
 
+func TestVPSService_RefreshStatus_PreservesExpiredLockState(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	user := testutil.CreateUser(t, repo, "v3-lock", "v3-lock@example.com", "pass")
+
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-VPS-LOCK", Status: domain.OrderStatusApproved, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	item := domain.OrderItem{OrderID: order.ID, Amount: 1000, Status: domain.OrderItemStatusApproved, Action: "create", SpecJSON: "{}"}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{item}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+	items, _ := repo.ListOrderItems(context.Background(), order.ID)
+
+	expiredAt := time.Now().Add(-2 * time.Hour)
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		AutomationInstanceID: "101",
+		Name:                 "expired-vm",
+		SystemID:             1,
+		Status:               domain.VPSStatusExpiredLocked,
+		AutomationState:      10,
+		AdminStatus:          domain.VPSAdminStatusLocked,
+		SpecJSON:             "{}",
+		ExpireAt:             &expiredAt,
+	}
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create vps: %v", err)
+	}
+	fakeAuto := &testutil.FakeAutomationClient{
+		HostInfo: map[int64]appshared.AutomationHostInfo{
+			101: {HostID: 101, State: 2, RemoteIP: "2.2.2.3"},
+		},
+	}
+	autoResolver := &testutil.FakeAutomationResolver{Client: fakeAuto}
+	svc := appvps.NewService(repo, autoResolver, repo)
+	if _, err := svc.RefreshStatus(context.Background(), inst); err != nil {
+		t.Fatalf("refresh: %v", err)
+	}
+	updated, err := repo.GetInstance(context.Background(), inst.ID)
+	if err != nil {
+		t.Fatalf("get updated instance: %v", err)
+	}
+	if updated.Status != domain.VPSStatusExpiredLocked {
+		t.Fatalf("expected expired locked status preserved, got %s", updated.Status)
+	}
+	if updated.AutomationState != 10 {
+		t.Fatalf("expected automation state 10 preserved for locked instance, got %d", updated.AutomationState)
+	}
+}
+
 func TestVPSService_Actions(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	user := testutil.CreateUser(t, repo, "v4", "v4@example.com", "pass")
