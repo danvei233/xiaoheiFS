@@ -92,6 +92,48 @@ func TestSQLiteRepo_InstanceUpdatesAndEvents(t *testing.T) {
 	}
 }
 
+func TestSQLiteRepo_CreateInstanceIsIdempotentByOrderItem(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, repo, "inst-idempotent", "inst-idempotent@example.com", "pass")
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-INST-IDEMPOTENT", Status: domain.OrderStatusApproved, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(ctx, &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := repo.CreateOrderItems(ctx, []domain.OrderItem{{OrderID: order.ID, Amount: 1000, Status: domain.OrderItemStatusApproved, Action: "create", SpecJSON: "{}"}}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+	items, err := repo.ListOrderItems(ctx, order.ID)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("list items: len=%d err=%v", len(items), err)
+	}
+
+	first := domain.VPSInstance{UserID: user.ID, OrderItemID: items[0].ID, AutomationInstanceID: "host-1", Name: "vm-1", Status: domain.VPSStatusRunning, AdminStatus: domain.VPSAdminStatusNormal, SpecJSON: "{}"}
+	if err := repo.CreateInstance(ctx, &first); err != nil {
+		t.Fatalf("create first instance: %v", err)
+	}
+	second := domain.VPSInstance{UserID: user.ID, OrderItemID: items[0].ID, AutomationInstanceID: "host-2", Name: "vm-2", Status: domain.VPSStatusRunning, AdminStatus: domain.VPSAdminStatusNormal, SpecJSON: "{}"}
+	if err := repo.CreateInstance(ctx, &second); err != nil {
+		t.Fatalf("create duplicate instance: %v", err)
+	}
+	if second.ID != first.ID || second.AutomationInstanceID != first.AutomationInstanceID {
+		t.Fatalf("duplicate create did not return existing instance: first=%+v second=%+v", first, second)
+	}
+	instances, total, err := repo.ListInstances(ctx, 10, 0)
+	if err != nil || total != 1 || len(instances) != 1 {
+		t.Fatalf("expected one instance: total=%d len=%d err=%v", total, len(instances), err)
+	}
+
+	adminFirst := domain.VPSInstance{UserID: user.ID, AutomationInstanceID: "manual-1", Name: "manual-1", Status: domain.VPSStatusRunning, AdminStatus: domain.VPSAdminStatusNormal, SpecJSON: "{}"}
+	adminSecond := domain.VPSInstance{UserID: user.ID, AutomationInstanceID: "manual-2", Name: "manual-2", Status: domain.VPSStatusRunning, AdminStatus: domain.VPSAdminStatusNormal, SpecJSON: "{}"}
+	if err := repo.CreateInstance(ctx, &adminFirst); err != nil {
+		t.Fatalf("create first manual instance: %v", err)
+	}
+	if err := repo.CreateInstance(ctx, &adminSecond); err != nil {
+		t.Fatalf("create second manual instance: %v", err)
+	}
+}
+
 func TestSQLiteRepo_UpdateInstanceStatus_AdvancesOrderFromProvisioning(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	ctx := context.Background()

@@ -911,6 +911,22 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 	if err != nil {
 		return err
 	}
+	if order.Status == domain.OrderStatusApproved {
+		items, listErr := s.items.ListOrderItems(ctx, order.ID)
+		if listErr != nil {
+			return listErr
+		}
+		if err := s.finishOrderApprovalPersistence(ctx, adminID, order, items); err != nil {
+			return err
+		}
+		for _, item := range items {
+			if item.Action != "resize" {
+				go s.provisionOrder(order.ID)
+				break
+			}
+		}
+		return nil
+	}
 	if order.Status != domain.OrderStatusPendingReview &&
 		order.Status != domain.OrderStatusPendingPayment &&
 		order.Status != domain.OrderStatusRejected {
@@ -979,19 +995,8 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 	if !claimed {
 		return ErrConflict
 	}
-	for _, item := range items {
-		if item.Action != "resize" {
-			continue
-		}
-		if err := s.creditResizeRefundOnApprove(ctx, item); err != nil {
-			return err
-		}
-	}
-	if s.payments != nil {
-		pays, _ := s.payments.ListPaymentsByOrder(ctx, order.ID)
-		for _, pay := range pays {
-			_ = s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusApproved, &adminID, "")
-		}
+	if err := s.finishOrderApprovalPersistence(ctx, adminID, order, items); err != nil {
+		return err
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "order.approve", TargetType: "order", TargetID: fmt.Sprintf("%d", order.ID), DetailJSON: "{}"})
@@ -1019,6 +1024,33 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 		return nil
 	}
 	go s.provisionOrder(order.ID)
+	return nil
+}
+
+func (s *OrderService) finishOrderApprovalPersistence(ctx context.Context, adminID int64, order domain.Order, items []domain.OrderItem) error {
+	for _, item := range items {
+		if item.Action != "resize" {
+			continue
+		}
+		if err := s.creditResizeRefundOnApprove(ctx, item); err != nil {
+			return err
+		}
+	}
+	if s.payments == nil {
+		return nil
+	}
+	pays, err := s.payments.ListPaymentsByOrder(ctx, order.ID)
+	if err != nil {
+		return err
+	}
+	for _, pay := range pays {
+		if pay.Status == domain.PaymentStatusApproved {
+			continue
+		}
+		if err := s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusApproved, &adminID, ""); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1134,6 +1166,9 @@ func (s *OrderService) provisionOrder(orderID int64) {
 	}
 	for _, item := range items {
 		if !shouldProcess(item.Status) {
+			continue
+		}
+		if item.Action == "resize" && s.resizeTasks != nil {
 			continue
 		}
 		switch item.Action {
@@ -1326,7 +1361,8 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 	res := AutomationCreateHostResult{}
 	hostID, _ := strconv.ParseInt(strings.TrimSpace(item.AutomationInstanceID), 10, 64)
 	createdThisAttempt := false
-	if hostID == 0 && strings.HasPrefix(strings.TrimSpace(item.AutomationInstanceID), "creating:") {
+	reconcilingCreate := hostID == 0 && strings.HasPrefix(strings.TrimSpace(item.AutomationInstanceID), "creating:")
+	if reconcilingCreate {
 		hosts, listErr := cli.ListHostSimple(ctx, hostName)
 		if listErr != nil {
 			return domain.VPSInstance{}, listErr
@@ -1336,6 +1372,9 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 				hostID = host.ID
 				break
 			}
+		}
+		if hostID == 0 {
+			return domain.VPSInstance{}, ErrProvisioning
 		}
 	}
 	if hostID == 0 {
@@ -1782,19 +1821,30 @@ func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID 
 			return nil
 		}
 	}
-	order := domain.WalletOrder{
-		UserID:   userID,
-		Type:     domain.WalletOrderRefund,
-		Amount:   amount,
-		Currency: "CNY",
-		Status:   domain.WalletOrderPendingReview,
-		Note:     strings.TrimSpace(note),
-		MetaJSON: mustJSON(meta),
+	order, found := s.findPendingRefundWalletOrder(ctx, walletOrders, userID, txRefID)
+	if !found {
+		order = domain.WalletOrder{
+			UserID:   userID,
+			Type:     domain.WalletOrderRefund,
+			Amount:   amount,
+			Currency: "CNY",
+			Status:   domain.WalletOrderPendingReview,
+			Note:     strings.TrimSpace(note),
+			MetaJSON: mustJSON(meta),
+		}
+		if err := walletOrders.CreateWalletOrder(ctx, &order); err != nil {
+			return err
+		}
 	}
-	if err := walletOrders.CreateWalletOrder(ctx, &order); err != nil {
-		return err
+	adjust := s.wallets.AdjustWalletBalance
+	if idempotent, ok := s.wallets.(interface {
+		AdjustWalletBalanceIdempotent(context.Context, int64, int64, string, string, int64, string, string) (domain.Wallet, error)
+	}); ok {
+		adjust = func(ctx context.Context, userID, amount int64, txType, refType string, refID int64, note string) (domain.Wallet, error) {
+			return idempotent.AdjustWalletBalanceIdempotent(ctx, userID, amount, txType, refType, refID, note, fmt.Sprintf("%s:%d", txRefType, txRefID))
+		}
 	}
-	if _, err := s.wallets.AdjustWalletBalance(ctx, userID, amount, "credit", txRefType, txRefID, fmt.Sprintf("refund wallet order %d", order.ID)); err != nil {
+	if _, err := adjust(ctx, userID, amount, "credit", txRefType, txRefID, fmt.Sprintf("refund wallet order %d", order.ID)); err != nil {
 		alreadyDone := false
 		if txRefType != "" && txRefID > 0 {
 			if exists, checkErr := s.wallets.HasWalletTransaction(ctx, userID, txRefType, txRefID); checkErr == nil && exists {
@@ -1818,6 +1868,25 @@ func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID 
 		})
 	}
 	return nil
+}
+
+func (s *OrderService) findPendingRefundWalletOrder(ctx context.Context, walletOrders WalletOrderRepository, userID, txRefID int64) (domain.WalletOrder, bool) {
+	if txRefID <= 0 {
+		return domain.WalletOrder{}, false
+	}
+	orders, _, err := walletOrders.ListWalletOrders(ctx, userID, defaultWalletOrderPageSize, 0)
+	if err != nil {
+		return domain.WalletOrder{}, false
+	}
+	for _, candidate := range orders {
+		if candidate.Type != domain.WalletOrderRefund || candidate.Status != domain.WalletOrderPendingReview {
+			continue
+		}
+		if getInt64(parseJSON(candidate.MetaJSON)["order_id"]) == txRefID {
+			return candidate, true
+		}
+	}
+	return domain.WalletOrder{}, false
 }
 
 func (s *OrderService) promoteRefundWalletOrderIfNeeded(ctx context.Context, walletOrders WalletOrderRepository, userID int64, txRefID int64) {

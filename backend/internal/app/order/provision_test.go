@@ -20,6 +20,33 @@ type failOnceVPSRepo struct {
 	failed atomic.Bool
 }
 
+type delayedCreateVisibilityAutomation struct {
+	*testutil.FakeAutomationClient
+	createCalls atomic.Int32
+	listCalls   atomic.Int32
+	hostID      int64
+	mu          sync.Mutex
+	hostName    string
+}
+
+func (f *delayedCreateVisibilityAutomation) CreateHost(_ context.Context, req appshared.AutomationCreateHostRequest) (appshared.AutomationCreateHostResult, error) {
+	f.createCalls.Add(1)
+	f.mu.Lock()
+	f.hostName = req.HostName
+	f.mu.Unlock()
+	return appshared.AutomationCreateHostResult{}, context.DeadlineExceeded
+}
+
+func (f *delayedCreateVisibilityAutomation) ListHostSimple(context.Context, string) ([]appshared.AutomationHostSimple, error) {
+	if f.listCalls.Add(1) == 1 {
+		return nil, nil
+	}
+	f.mu.Lock()
+	hostName := f.hostName
+	f.mu.Unlock()
+	return []appshared.AutomationHostSimple{{ID: f.hostID, HostName: hostName}}, nil
+}
+
 func (r *failOnceVPSRepo) CreateInstance(ctx context.Context, instance *domain.VPSInstance) error {
 	if r.failed.CompareAndSwap(false, true) {
 		return errors.New("injected local persistence failure")
@@ -119,6 +146,47 @@ func TestOrderService_RetryAfterLocalFailureReusesCreatedHost(t *testing.T) {
 	waitForProvisionOrderStatus(t, baseRepo, order.ID, domain.OrderStatusActive)
 	if got := fakeAuto.CreateHostRequestCount(); got != 1 {
 		t.Fatalf("retry created a duplicate host: calls=%d", got)
+	}
+}
+
+func TestOrderService_UncertainRemoteCreateReconcilesWithoutSecondCreate(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "prov-delayed", "prov-delayed@example.com", "pass")
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-DELAYED", Status: domain.OrderStatusPendingPayment, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{
+		OrderID: order.ID, PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Amount: 1000,
+		Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}",
+	}}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+
+	const hostID = int64(3001)
+	fakeAuto := &delayedCreateVisibilityAutomation{
+		FakeAutomationClient: &testutil.FakeAutomationClient{HostInfo: map[int64]appshared.AutomationHostInfo{
+			hostID: {HostID: hostID, HostName: "ecs-delayed", State: 2, RemoteIP: "1.1.1.3"},
+		}},
+		hostID: hostID,
+	}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, &testutil.FakeAutomationResolver{Client: fakeAuto}, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	if err := svc.ApproveOrder(context.Background(), 1, order.ID); err != nil {
+		t.Fatalf("approve order: %v", err)
+	}
+	waitForProvisionOrderStatus(t, repo, order.ID, domain.OrderStatusFailed)
+
+	if err := svc.RetryProvision(order.ID); err != nil {
+		t.Fatalf("first retry provision: %v", err)
+	}
+	waitForProvisionOrderStatus(t, repo, order.ID, domain.OrderStatusProvisioning)
+	if err := svc.RetryProvision(order.ID); err != nil {
+		t.Fatalf("second retry provision: %v", err)
+	}
+	waitForProvisionOrderStatus(t, repo, order.ID, domain.OrderStatusActive)
+	if got := fakeAuto.createCalls.Load(); got != 1 {
+		t.Fatalf("uncertain create was repeated: calls=%d", got)
 	}
 }
 

@@ -439,6 +439,7 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 		return
 	}
 	limit := 200
+	approvalConflict := false
 	for _, statusFilter := range []string{
 		string(domain.WalletOrderPendingReview),
 		string(domain.WalletOrderApproved),
@@ -469,8 +470,8 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 				_, _, approveErr := h.walletOrder.Approve(c, 0, item.ID)
 				if approveErr != nil {
 					if approveErr == appshared.ErrConflict {
-						c.JSON(http.StatusOK, gin.H{"ok": true, "trade_no": result.TradeNo})
-						return
+						approvalConflict = true
+						continue
 					}
 					c.JSON(http.StatusBadRequest, gin.H{"error": approveErr.Error()})
 					return
@@ -483,6 +484,10 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 				break
 			}
 		}
+	}
+	if approvalConflict {
+		c.JSON(http.StatusConflict, gin.H{"error": appshared.ErrConflict.Error()})
+		return
 	}
 	c.JSON(http.StatusBadRequest, gin.H{"error": appshared.ErrInvalidInput.Error()})
 }

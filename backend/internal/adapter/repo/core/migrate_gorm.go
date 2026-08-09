@@ -77,7 +77,8 @@ func migrateGorm(db *gorm.DB) error {
 		&probeStatusEventRow{},
 		&probeLogSessionRow{},
 	}
-	if db.Dialector != nil && db.Dialector.Name() == "sqlite" && isLegacySQLiteFromMySQLDump(db) {
+	legacySQLite := db.Dialector != nil && db.Dialector.Name() == "sqlite" && isLegacySQLiteFromMySQLDump(db)
+	if legacySQLite {
 		if err := normalizeSQLiteBigIntPrimaryKeys(db); err != nil {
 			return err
 		}
@@ -92,6 +93,9 @@ func migrateGorm(db *gorm.DB) error {
 	if err := ensureWalletTransactionIdempotencyIndex(db); err != nil {
 		return err
 	}
+	if err := ensureVPSOrderItemUniqueIndex(db, legacySQLite); err != nil {
+		return err
+	}
 	if db.Dialector != nil && db.Dialector.Name() == "mysql" {
 		if err := fixMySQLPartialUniqueIndexes(db); err != nil {
 			return err
@@ -104,6 +108,17 @@ func migrateGorm(db *gorm.DB) error {
 		return err
 	}
 	return nil
+}
+
+func ensureVPSOrderItemUniqueIndex(db *gorm.DB, legacySQLite bool) error {
+	const indexName = "uniq_vps_instances_order_item_id"
+	if db.Migrator().HasIndex(&vpsInstanceRow{}, indexName) {
+		return nil
+	}
+	if legacySQLite {
+		return db.Exec("CREATE UNIQUE INDEX " + indexName + " ON vps_instances(order_item_id) WHERE order_item_id > 0").Error
+	}
+	return db.Migrator().CreateIndex(&vpsInstanceRow{}, indexName)
 }
 
 func ensureWalletTransactionIdempotencyIndex(db *gorm.DB) error {
@@ -168,6 +183,14 @@ func normalizeSQLiteBigIntPrimaryKeys(db *gorm.DB) error {
 		}
 		colList := strings.Join(colNames, ", ")
 
+		type schemaObject struct {
+			SQL string `gorm:"column:sql"`
+		}
+		var schemaObjects []schemaObject
+		if err := db.Raw(`SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index', 'trigger') AND sql IS NOT NULL ORDER BY type, name`, t.Name).Scan(&schemaObjects).Error; err != nil {
+			return err
+		}
+
 		tx := db.Begin()
 		if tx.Error != nil {
 			return tx.Error
@@ -191,6 +214,12 @@ func normalizeSQLiteBigIntPrimaryKeys(db *gorm.DB) error {
 		if err := tx.Exec(fmt.Sprintf(`ALTER TABLE "%s" RENAME TO "%s"`, tmpName, t.Name)).Error; err != nil {
 			tx.Rollback()
 			return err
+		}
+		for _, object := range schemaObjects {
+			if err := tx.Exec(object.SQL).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
 		}
 		if err := tx.Exec("PRAGMA foreign_keys = ON").Error; err != nil {
 			tx.Rollback()

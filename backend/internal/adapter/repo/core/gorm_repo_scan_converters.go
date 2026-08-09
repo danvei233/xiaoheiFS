@@ -196,10 +196,15 @@ func fromOrderItemRow(r orderItemRow) domain.OrderItem {
 }
 
 func toVPSInstanceRow(inst domain.VPSInstance) vpsInstanceRow {
+	var orderItemID *int64
+	if inst.OrderItemID > 0 {
+		value := inst.OrderItemID
+		orderItemID = &value
+	}
 	return vpsInstanceRow{
 		ID:                   inst.ID,
 		UserID:               inst.UserID,
-		OrderItemID:          inst.OrderItemID,
+		OrderItemID:          orderItemID,
 		AutomationInstanceID: inst.AutomationInstanceID,
 		GoodsTypeID:          inst.GoodsTypeID,
 		Name:                 inst.Name,
@@ -229,10 +234,14 @@ func toVPSInstanceRow(inst domain.VPSInstance) vpsInstanceRow {
 }
 
 func fromVPSInstanceRow(r vpsInstanceRow) domain.VPSInstance {
+	var orderItemID int64
+	if r.OrderItemID != nil {
+		orderItemID = *r.OrderItemID
+	}
 	return domain.VPSInstance{
 		ID:                   r.ID,
 		UserID:               r.UserID,
-		OrderItemID:          r.OrderItemID,
+		OrderItemID:          orderItemID,
 		AutomationInstanceID: r.AutomationInstanceID,
 		GoodsTypeID:          r.GoodsTypeID,
 		Name:                 r.Name,

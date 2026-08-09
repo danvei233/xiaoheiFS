@@ -201,6 +201,49 @@ func TestHandlers_WalletPaymentNotifyIdempotent(t *testing.T) {
 	}
 }
 
+func TestHandlers_WalletPaymentNotifyDoesNotAcknowledgeRejectedOrder(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	user := testutil.CreateUser(t, env.Repo, "wn-rejected", "wn-rejected@example.com", "pass")
+	order := domain.WalletOrder{
+		UserID:   user.ID,
+		Type:     domain.WalletOrderRecharge,
+		Amount:   1200,
+		Currency: "CNY",
+		Status:   domain.WalletOrderRejected,
+		MetaJSON: `{"payment_method":"fake","payment_order_no":"WO-REJECTED","payment_trade_no":"WT-REJECTED"}`,
+		Note:     "rejected recharge",
+	}
+	if err := env.Repo.CreateWalletOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create wallet order: %v", err)
+	}
+	env.PaymentReg.RegisterProvider(&testutil.FakePaymentProvider{
+		KeyVal:  "fake",
+		NameVal: "Fake",
+		VerifyRes: shared.PaymentNotifyResult{
+			OrderNo: "WO-REJECTED",
+			TradeNo: "WT-REJECTED",
+			Paid:    true,
+			Amount:  1200,
+		},
+	}, true, "")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/wallet/payments/notify/fake", bytes.NewBufferString("trade_no=WT-REJECTED"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+	env.Router.ServeHTTP(rec, req)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("rejected wallet order callback must not be acknowledged")
+	}
+
+	updated, err := env.Repo.GetWalletOrder(context.Background(), order.ID)
+	if err != nil {
+		t.Fatalf("get wallet order: %v", err)
+	}
+	if updated.Status != domain.WalletOrderRejected {
+		t.Fatalf("expected rejected status, got=%s", updated.Status)
+	}
+}
+
 func TestHandlers_WalletPaymentNotify_MatchByDerivedOrderNo(t *testing.T) {
 	env := testutilhttp.NewTestEnv(t, false)
 	user := testutil.CreateUser(t, env.Repo, "wn2", "wn2@example.com", "pass")

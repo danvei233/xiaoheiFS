@@ -23,6 +23,10 @@ func TestSQLiteRepo_OrderApprovalAndProvisionClaimsAreCAS(t *testing.T) {
 	if err := repo.CreateOrderItems(ctx, []domain.OrderItem{{OrderID: order.ID, Amount: 1000, Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}"}}); err != nil {
 		t.Fatalf("create order item: %v", err)
 	}
+	payment := domain.OrderPayment{OrderID: order.ID, UserID: user.ID, Method: "manual", Amount: order.TotalAmount, Currency: order.Currency, TradeNo: "ORD-CAS-PAY", Status: domain.PaymentStatusPendingReview}
+	if err := repo.CreatePayment(ctx, &payment); err != nil {
+		t.Fatalf("create payment: %v", err)
+	}
 	items, err := repo.ListOrderItems(ctx, order.ID)
 	if err != nil || len(items) != 1 {
 		t.Fatalf("list order items: len=%d err=%v", len(items), err)
@@ -63,6 +67,10 @@ func TestSQLiteRepo_OrderApprovalAndProvisionClaimsAreCAS(t *testing.T) {
 	}
 	if winners != 1 {
 		t.Fatalf("expected one approval winner, got %d", winners)
+	}
+	payments, err := repo.ListPaymentsByOrder(ctx, order.ID)
+	if err != nil || len(payments) != 1 || payments[0].Status != domain.PaymentStatusApproved {
+		t.Fatalf("approval did not atomically approve payment: payments=%+v err=%v", payments, err)
 	}
 
 	claimResults := make(chan bool, 2)
@@ -498,6 +506,93 @@ func TestSQLiteRepo_PayOrderWithBalanceAtomicConcurrent(t *testing.T) {
 	}
 	if gotOrder.Status != domain.OrderStatusPendingReview {
 		t.Fatalf("expected durable pending-review handoff, got %s", gotOrder.Status)
+	}
+}
+
+func TestSQLiteRepo_BalancePaymentAndRejectHaveSingleWinner(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, repo, "balance-reject-cas", "balance-reject-cas@example.com", "pass")
+	if _, err := repo.AdjustWalletBalance(ctx, user.ID, 5000, "credit", "seed", 1, "init"); err != nil {
+		t.Fatalf("seed wallet: %v", err)
+	}
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-BAL-REJECT-CAS", Status: domain.OrderStatusPendingPayment, TotalAmount: 2000, Currency: "CNY"}
+	if err := repo.CreateOrder(ctx, &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := repo.CreateOrderItems(ctx, []domain.OrderItem{{OrderID: order.ID, Amount: order.TotalAmount, Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}"}}); err != nil {
+		t.Fatalf("create order item: %v", err)
+	}
+
+	start := make(chan struct{})
+	results := make(chan bool, 2)
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		payment := domain.OrderPayment{
+			OrderID: order.ID, UserID: user.ID, Method: "balance", Amount: order.TotalAmount, Currency: order.Currency,
+			TradeNo: fmt.Sprintf("BAL-%d", order.ID), Status: domain.PaymentStatusApproved, IdempotencyKey: fmt.Sprintf("balance:%d", order.ID),
+		}
+		_, claimed, err := repo.PayOrderWithBalanceAtomic(ctx, order, &payment)
+		results <- claimed
+		errs <- err
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		rejected := order
+		rejected.Status = domain.OrderStatusRejected
+		rejected.RejectedReason = "declined"
+		claimed, err := repo.RejectOrderAtomic(ctx, rejected, 9, []domain.OrderStatus{domain.OrderStatusPendingPayment})
+		results <- claimed
+		errs <- err
+	}()
+	close(start)
+	wg.Wait()
+	close(results)
+	close(errs)
+
+	winners := 0
+	for claimed := range results {
+		if claimed {
+			winners++
+		}
+	}
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("balance payment/reject race: %v", err)
+		}
+	}
+	if winners != 1 {
+		t.Fatalf("expected one decision winner, got %d", winners)
+	}
+
+	stored, err := repo.GetOrder(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	wallet, err := repo.GetWallet(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get wallet: %v", err)
+	}
+	payments, err := repo.ListPaymentsByOrder(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("list payments: %v", err)
+	}
+	switch stored.Status {
+	case domain.OrderStatusPendingReview:
+		if wallet.Balance != 3000 || len(payments) != 1 || payments[0].Status != domain.PaymentStatusApproved {
+			t.Fatalf("paid order is inconsistent: wallet=%d payments=%+v", wallet.Balance, payments)
+		}
+	case domain.OrderStatusRejected:
+		if wallet.Balance != 5000 || len(payments) != 0 {
+			t.Fatalf("rejected order retained a debit: wallet=%d payments=%+v", wallet.Balance, payments)
+		}
+	default:
+		t.Fatalf("unexpected order status: %s", stored.Status)
 	}
 }
 

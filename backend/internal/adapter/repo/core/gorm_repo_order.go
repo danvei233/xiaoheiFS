@@ -203,6 +203,17 @@ func approveOrderTx(tx *gorm.DB, order domain.Order, itemIDs []int64, tasks []*d
 		}
 		task.ID = row.ID
 	}
+	paymentUpdates := map[string]any{
+		"status":        domain.PaymentStatusApproved,
+		"review_reason": "",
+		"updated_at":    now,
+	}
+	if order.ApprovedBy != nil {
+		paymentUpdates["reviewed_by"] = *order.ApprovedBy
+	}
+	if err := tx.Model(&orderPaymentRow{}).Where("order_id = ?", order.ID).Updates(paymentUpdates).Error; err != nil {
+		return false, err
+	}
 	return true, nil
 }
 
@@ -216,8 +227,12 @@ func (r *GormRepo) RejectOrderAtomic(ctx context.Context, order domain.Order, ad
 	}
 	err = r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := time.Now()
+		approvedPayment := tx.Model(&orderPaymentRow{}).
+			Select("1").
+			Where("order_payments.order_id = orders.id AND order_payments.status = ?", string(domain.PaymentStatusApproved))
 		result := tx.Model(&orderRow{}).
 			Where("id = ? AND status IN ?", order.ID, statuses).
+			Where("NOT EXISTS (?)", approvedPayment).
 			Updates(map[string]any{
 				"status":          domain.OrderStatusRejected,
 				"pending_reason":  "",
@@ -514,9 +529,9 @@ func (r *GormRepo) UpdateOrderItemStatus(ctx context.Context, id int64, status d
 func (r *GormRepo) ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error) {
 	staleBefore := time.Now().Add(-provisionClaimTimeout)
 	result := r.gdb.WithContext(ctx).Model(&orderItemRow{}).
-		Where("id = ? AND (status IN ? OR (status = ? AND updated_at < ?))", id,
+		Where("id = ? AND (status IN ? OR (status = ? AND (updated_at < ? OR automation_instance_id LIKE ?)))", id,
 			[]string{string(domain.OrderItemStatusApproved), string(domain.OrderItemStatusFailed)},
-			string(domain.OrderItemStatusProvisioning), staleBefore).
+			string(domain.OrderItemStatusProvisioning), staleBefore, "creating:%").
 		Updates(map[string]any{
 			"status":     domain.OrderItemStatusProvisioning,
 			"updated_at": time.Now(),

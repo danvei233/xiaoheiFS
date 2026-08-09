@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -111,6 +112,30 @@ func (r *GormRepo) AdjustWalletBalance(ctx context.Context, userID int64, amount
 		return domain.Wallet{}, err
 	}
 	return wallet, nil
+}
+
+func (r *GormRepo) AdjustWalletBalanceIdempotent(ctx context.Context, userID int64, amount int64, txType, refType string, refID int64, note, idempotencyKey string) (wallet domain.Wallet, err error) {
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" {
+		return domain.Wallet{}, appshared.ErrInvalidInput
+	}
+	err = r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var adjustErr error
+		wallet, adjustErr = adjustWalletBalanceTx(tx, userID, amount, txType, refType, refID, note, idempotencyKey)
+		return adjustErr
+	})
+	if err == nil {
+		return wallet, nil
+	}
+	var existing walletTransactionRow
+	lookupErr := r.gdb.WithContext(ctx).Where("idempotency_key = ?", idempotencyKey).First(&existing).Error
+	if lookupErr != nil {
+		return domain.Wallet{}, err
+	}
+	if existing.UserID != userID || existing.Amount != amount || existing.Type != txType || existing.RefType != refType || existing.RefID != refID {
+		return domain.Wallet{}, appshared.ErrConflict
+	}
+	return r.GetWallet(ctx, userID)
 }
 
 func adjustWalletBalanceTx(tx *gorm.DB, userID int64, amount int64, txType, refType string, refID int64, note, idempotencyKey string) (domain.Wallet, error) {

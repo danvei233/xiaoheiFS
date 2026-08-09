@@ -204,7 +204,11 @@ func (s *Service) SelectPaymentByScene(ctx context.Context, scene string, userID
 	if order.UserID != userID {
 		return PaymentSelectResult{}, appshared.ErrForbidden
 	}
-	if order.Status != domain.OrderStatusPendingPayment && input.Method != "balance" {
+	if input.Method == "balance" {
+		if order.Status == domain.OrderStatusRejected || order.Status == domain.OrderStatusCanceled {
+			return PaymentSelectResult{}, appshared.ErrConflict
+		}
+	} else if order.Status != domain.OrderStatusPendingPayment {
 		return PaymentSelectResult{}, appshared.ErrConflict
 	}
 	if order.TotalAmount <= 0 {
@@ -396,6 +400,9 @@ func (s *Service) payWithBalance(ctx context.Context, order domain.Order) (Payme
 	latest, err := s.orders.GetOrder(ctx, order.ID)
 	if err != nil {
 		return PaymentSelectResult{}, err
+	}
+	if latest.Status == domain.OrderStatusRejected || latest.Status == domain.OrderStatusCanceled {
+		return PaymentSelectResult{}, appshared.ErrConflict
 	}
 	if latest.Status == domain.OrderStatusPendingReview && s.approver != nil {
 		if err := s.approver.ApproveOrder(ctx, 0, order.ID); err != nil && !errors.Is(err, appshared.ErrConflict) {

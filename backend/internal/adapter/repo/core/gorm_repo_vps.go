@@ -2,20 +2,38 @@ package repo
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	"xiaoheiplay/internal/domain"
 )
 
 func (r *GormRepo) CreateInstance(ctx context.Context, inst *domain.VPSInstance) error {
-
 	row := toVPSInstanceRow(*inst)
-	if err := r.gdb.WithContext(ctx).Create(&row).Error; err != nil {
-		return err
+	query := r.gdb.WithContext(ctx)
+	if row.OrderItemID == nil {
+		if err := query.Create(&row).Error; err != nil {
+			return err
+		}
+		*inst = fromVPSInstanceRow(row)
+		return nil
+	}
+	result := query.Clauses(clause.OnConflict{DoNothing: true}).Create(&row)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		if err := query.Where("order_item_id = ?", *row.OrderItemID).First(&row).Error; err != nil {
+			return r.ensure(err)
+		}
+	}
+	if row.ID == 0 {
+		return domain.ErrInvalidInput
 	}
 	*inst = fromVPSInstanceRow(row)
 	return nil
-
 }
 
 func (r *GormRepo) GetInstance(ctx context.Context, id int64) (domain.VPSInstance, error) {
@@ -105,8 +123,8 @@ func (r *GormRepo) UpdateInstanceStatus(ctx context.Context, id int64, status do
 		if err := tx.Where("id = ?", id).First(&inst).Error; err != nil {
 			return err
 		}
-		orderItemID := inst.OrderItemID
-		if orderItemID > 0 {
+		if inst.OrderItemID != nil && *inst.OrderItemID > 0 {
+			orderItemID := *inst.OrderItemID
 			switch {
 			case isReadyVPSStatus(status):
 				_ = tx.Model(&orderItemRow{}).
