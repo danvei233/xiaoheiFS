@@ -2,6 +2,7 @@ package payment
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -158,11 +159,12 @@ func (s *Service) ListUserMethodsByScene(ctx context.Context, userID int64, scen
 	}
 	out := make([]PaymentMethodInfo, 0, len(providers))
 	for _, provider := range providers {
+		instructions, notice := publicProviderConfig(provider.ConfigJSON)
 		info := PaymentMethodInfo{
-			Key:        provider.Key,
-			Name:       provider.Name,
-			SchemaJSON: provider.SchemaJSON,
-			ConfigJSON: provider.ConfigJSON,
+			Key:          provider.Key,
+			Name:         provider.Name,
+			Instructions: instructions,
+			Notice:       notice,
 		}
 		if provider.Key == "balance" {
 			info.Balance = balance
@@ -170,6 +172,17 @@ func (s *Service) ListUserMethodsByScene(ctx context.Context, userID int64, scen
 		out = append(out, info)
 	}
 	return out, nil
+}
+
+func publicProviderConfig(configJSON string) (string, string) {
+	var config struct {
+		Instructions string `json:"instructions"`
+		Notice       string `json:"notice"`
+	}
+	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
+		return "", ""
+	}
+	return config.Instructions, config.Notice
 }
 
 func (s *Service) SelectPayment(ctx context.Context, userID int64, orderID int64, input PaymentSelectInput) (PaymentSelectResult, error) {
@@ -256,7 +269,7 @@ func (s *Service) VerifyNotify(ctx context.Context, providerKey string, req RawH
 }
 
 func (s *Service) HandleNotify(ctx context.Context, providerKey string, req RawHTTPRequest) (PaymentNotifyResult, error) {
-	if s.registry == nil || s.payments == nil {
+	if s.registry == nil || s.payments == nil || s.orders == nil {
 		return PaymentNotifyResult{}, appshared.ErrInvalidInput
 	}
 	provider, err := s.registry.GetProvider(ctx, providerKey)
@@ -313,6 +326,16 @@ func (s *Service) HandleNotify(ctx context.Context, providerKey string, req RawH
 		}
 		return result, appshared.ErrInvalidInput
 	}
+	order, err := s.orders.GetOrder(ctx, payment.OrderID)
+	if err != nil {
+		return result, err
+	}
+	if payment.Amount != order.TotalAmount {
+		return result, appshared.ErrPaymentAmountMismatch
+	}
+	if err := s.ValidateNotifyAmount(order.TotalAmount, result.Amount); err != nil {
+		return result, err
+	}
 	if strings.TrimSpace(result.TradeNo) != "" && payment.TradeNo != result.TradeNo {
 		if uerr := s.payments.UpdatePaymentTradeNo(ctx, payment.ID, result.TradeNo); uerr == nil {
 			payment.TradeNo = result.TradeNo
@@ -336,6 +359,15 @@ func (s *Service) HandleNotify(ctx context.Context, providerKey string, req RawH
 		}
 	}
 	return result, nil
+}
+
+// ValidateNotifyAmount checks a verified callback amount against the local
+// amount, both represented in cents.
+func (s *Service) ValidateNotifyAmount(expectedAmount, actualAmount int64) error {
+	if expectedAmount <= 0 || actualAmount <= 0 || actualAmount != expectedAmount {
+		return appshared.ErrPaymentAmountMismatch
+	}
+	return nil
 }
 
 func (s *Service) payWithBalance(ctx context.Context, order domain.Order) (PaymentSelectResult, error) {

@@ -3,7 +3,6 @@ package http
 import (
 	"context"
 	"github.com/gin-gonic/gin"
-	"io"
 	"net/http"
 	"sort"
 	"strings"
@@ -651,20 +650,12 @@ func (h *Handler) PaymentNotify(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	body, _ := io.ReadAll(c.Request.Body)
-	headers := map[string][]string{}
-	for k, v := range c.Request.Header {
-		copied := make([]string, len(v))
-		copy(copied, v)
-		headers[k] = copied
+	rawRequest, err := readPaymentCallbackRequest(c)
+	if err != nil {
+		writePaymentCallbackReadError(c, err)
+		return
 	}
-	result, err := h.paymentSvc.HandleNotify(c, uri.Provider, appshared.RawHTTPRequest{
-		Method:   c.Request.Method,
-		Path:     c.Request.URL.Path,
-		RawQuery: c.Request.URL.RawQuery,
-		Headers:  headers,
-		Body:     body,
-	})
+	result, err := h.paymentSvc.HandleNotify(c, uri.Provider, rawRequest)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

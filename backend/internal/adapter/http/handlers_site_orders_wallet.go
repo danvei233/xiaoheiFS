@@ -2,7 +2,6 @@ package http
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -423,20 +422,12 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 		return
 	}
 	provider := strings.TrimSpace(uri.Provider)
-	body, _ := io.ReadAll(c.Request.Body)
-	headers := map[string][]string{}
-	for k, v := range c.Request.Header {
-		copied := make([]string, len(v))
-		copy(copied, v)
-		headers[k] = copied
+	rawRequest, err := readPaymentCallbackRequest(c)
+	if err != nil {
+		writePaymentCallbackReadError(c, err)
+		return
 	}
-	result, err := h.paymentSvc.VerifyNotify(c, provider, appshared.RawHTTPRequest{
-		Method:   c.Request.Method,
-		Path:     c.Request.URL.Path,
-		RawQuery: c.Request.URL.RawQuery,
-		Headers:  headers,
-		Body:     body,
-	})
+	result, err := h.paymentSvc.VerifyNotify(c, provider, rawRequest)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -465,6 +456,10 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 				}
 				if !walletPaymentMatched(item, provider, orderNo, tradeNo) {
 					continue
+				}
+				if amountErr := h.paymentSvc.ValidateNotifyAmount(item.Amount, result.Amount); amountErr != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": amountErr.Error()})
+					return
 				}
 				// Idempotent ack: already approved recharge should always return success.
 				if item.Status == domain.WalletOrderApproved {

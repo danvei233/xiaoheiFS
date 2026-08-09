@@ -133,11 +133,11 @@ type PaymentProviderInfo struct {
 }
 
 type PaymentMethodInfo struct {
-	Key        string
-	Name       string
-	SchemaJSON string
-	ConfigJSON string
-	Balance    int64
+	Key          string
+	Name         string
+	Instructions string
+	Notice       string
+	Balance      int64
 }
 
 type PaymentSelectResult struct {

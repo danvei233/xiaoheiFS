@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 	"time"
 	"xiaoheiplay/internal/app/shared"
@@ -296,7 +298,9 @@ func payWithProvider(t *testing.T, env *testutilhttp.Env, token string, orderID 
 			TradeNo: "TN-E2E",
 		},
 		VerifyFunc: func(req shared.RawHTTPRequest) (shared.PaymentNotifyResult, error) {
-			return shared.PaymentNotifyResult{TradeNo: "TN-E2E", Paid: true, Amount: 1000}, nil
+			values, _ := url.ParseQuery(string(req.Body))
+			amount, _ := strconv.ParseInt(values.Get("amount"), 10, 64)
+			return shared.PaymentNotifyResult{TradeNo: "TN-E2E", Paid: true, Amount: amount}, nil
 		},
 	}, true, "")
 	pay := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/orders/"+testutil.Itoa(orderID)+"/pay", map[string]any{

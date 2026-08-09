@@ -155,6 +155,94 @@ func TestPaymentService_HandleNotifyIdempotent(t *testing.T) {
 	}
 }
 
+func TestPaymentService_HandleNotifyRejectsAmountMismatchWithoutStateChanges(t *testing.T) {
+	tests := []struct {
+		name   string
+		amount int64
+	}{
+		{name: "underpayment", amount: 999},
+		{name: "zero amount", amount: 0},
+		{name: "other mismatch", amount: 1001},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, repo := testutil.NewTestDB(t, false)
+			user := testutil.CreateUser(t, repo, "amount-check", "amount-check@example.com", "pass")
+			order := domain.Order{
+				UserID:      user.ID,
+				OrderNo:     "ORD-AMOUNT-CHECK",
+				Status:      domain.OrderStatusPendingPayment,
+				TotalAmount: 1000,
+				Currency:    "CNY",
+			}
+			if err := repo.CreateOrder(context.Background(), &order); err != nil {
+				t.Fatalf("create order: %v", err)
+			}
+			if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{
+				OrderID:  order.ID,
+				Amount:   1000,
+				Status:   domain.OrderItemStatusPendingPayment,
+				Action:   "create",
+				SpecJSON: "{}",
+			}}); err != nil {
+				t.Fatalf("create items: %v", err)
+			}
+			payment := domain.OrderPayment{
+				OrderID:  order.ID,
+				UserID:   user.ID,
+				Method:   "fake",
+				Amount:   1000,
+				Currency: "CNY",
+				TradeNo:  "TN-LOCAL",
+				Status:   domain.PaymentStatusPendingPayment,
+			}
+			if err := repo.CreatePayment(context.Background(), &payment); err != nil {
+				t.Fatalf("create payment: %v", err)
+			}
+
+			reg := testutil.NewFakePaymentRegistry()
+			reg.RegisterProvider(&testutil.FakePaymentProvider{
+				KeyVal:  "fake",
+				NameVal: "Fake",
+				VerifyRes: appshared.PaymentNotifyResult{
+					OrderNo: "ORD-AMOUNT-CHECK",
+					TradeNo: "TN-PROVIDER",
+					Paid:    true,
+					Amount:  tt.amount,
+				},
+			}, true, "")
+			approver := &fakeApprover{}
+			svc := apppayment.NewService(repo, repo, repo, reg, repo, approver, nil)
+
+			if _, err := svc.HandleNotify(context.Background(), "fake", appshared.RawHTTPRequest{}); err != appshared.ErrPaymentAmountMismatch {
+				t.Fatalf("expected amount mismatch error, got %v", err)
+			}
+
+			payments, err := repo.ListPaymentsByOrder(context.Background(), order.ID)
+			if err != nil || len(payments) != 1 {
+				t.Fatalf("list payments: len=%d err=%v", len(payments), err)
+			}
+			if payments[0].Status != domain.PaymentStatusPendingPayment {
+				t.Fatalf("payment status changed: %s", payments[0].Status)
+			}
+			if payments[0].TradeNo != "TN-LOCAL" {
+				t.Fatalf("payment trade number changed: %q", payments[0].TradeNo)
+			}
+			updatedOrder, err := repo.GetOrder(context.Background(), order.ID)
+			if err != nil {
+				t.Fatalf("get order: %v", err)
+			}
+			if updatedOrder.Status != domain.OrderStatusPendingPayment {
+				t.Fatalf("order status changed: %s", updatedOrder.Status)
+			}
+			if approver.count != 0 {
+				t.Fatalf("approver called %d times", approver.count)
+			}
+		})
+	}
+}
+
 func TestPaymentService_HandleNotify_FallbackByOrderNo(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	user := testutil.CreateUser(t, repo, "notify2", "notify2@example.com", "pass")

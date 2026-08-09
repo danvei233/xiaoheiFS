@@ -195,11 +195,11 @@ type PaymentProviderDTO struct {
 }
 
 type PaymentMethodDTO struct {
-	Key        string  `json:"key"`
-	Name       string  `json:"name"`
-	SchemaJSON string  `json:"schema_json"`
-	ConfigJSON string  `json:"config_json"`
-	Balance    float64 `json:"balance"`
+	Key          string  `json:"key"`
+	Name         string  `json:"name"`
+	Instructions string  `json:"instructions"`
+	Notice       string  `json:"notice"`
+	Balance      float64 `json:"balance"`
 }
 
 type PaymentSelectDTO struct {
@@ -844,11 +844,11 @@ func toPaymentProviderDTOs(items []appshared.PaymentProviderInfo) []PaymentProvi
 
 func toPaymentMethodDTO(info appshared.PaymentMethodInfo) PaymentMethodDTO {
 	return PaymentMethodDTO{
-		Key:        info.Key,
-		Name:       info.Name,
-		SchemaJSON: info.SchemaJSON,
-		ConfigJSON: info.ConfigJSON,
-		Balance:    centsToFloat(info.Balance),
+		Key:          info.Key,
+		Name:         info.Name,
+		Instructions: info.Instructions,
+		Notice:       info.Notice,
+		Balance:      centsToFloat(info.Balance),
 	}
 }
 

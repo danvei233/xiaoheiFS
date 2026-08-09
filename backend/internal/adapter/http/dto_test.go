@@ -119,14 +119,14 @@ func TestDTO_Mappings(t *testing.T) {
 	}
 
 	methods := []shared.PaymentMethodInfo{{
-		Key:        "balance",
-		Name:       "Balance",
-		SchemaJSON: `{}`,
-		ConfigJSON: `{}`,
-		Balance:    1250,
+		Key:          "balance",
+		Name:         "Balance",
+		Instructions: "Use wallet balance",
+		Notice:       "Immediate",
+		Balance:      1250,
 	}}
 	methodDTOs := toPaymentMethodDTOs(methods)
-	if len(methodDTOs) != 1 || methodDTOs[0].Key != "balance" || methodDTOs[0].Balance != 12.5 {
+	if len(methodDTOs) != 1 || methodDTOs[0].Key != "balance" || methodDTOs[0].Balance != 12.5 || methodDTOs[0].Instructions == "" || methodDTOs[0].Notice == "" {
 		t.Fatalf("method dto list mismatch: %+v", methodDTOs)
 	}
 
