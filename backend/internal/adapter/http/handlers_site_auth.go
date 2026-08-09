@@ -403,7 +403,7 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 	}
-	user, err := h.authSvc.Login(c, payload.Username, payload.Password)
+	user, err := h.authSvc.LoginUser(c, payload.Username, payload.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidCredentials.Error()})
 		return
@@ -791,7 +791,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	claims, err := h.parseRefreshToken(payload.RefreshToken)
+	claims, err := h.parseRefreshToken(c, payload.RefreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
 		return
@@ -802,19 +802,9 @@ func (h *Handler) Refresh(c *gin.Context) {
 		return
 	}
 	role, _ := claims["role"].(string)
-	if role == "" {
-		role = "user"
-	}
-	if h.authSvc != nil {
-		user, err := h.authSvc.GetUser(c, userID)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
-			return
-		}
-		if tokenIssuedBeforePasswordChange(user, claims) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
-			return
-		}
+	if role != string(domain.UserRoleUser) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
+		return
 	}
 	accessToken, err := h.signAuthToken(userID, role, 24*time.Hour, "access")
 	if err != nil {
@@ -872,25 +862,16 @@ func (h *Handler) parseAccessToken(ctx context.Context, raw string) (jwt.MapClai
 		return nil, domain.ErrInvalidToken
 	}
 	tokenType, _ := claims["type"].(string)
-	if tokenType != "" && tokenType != "access" {
+	if tokenType != "access" {
 		return nil, domain.ErrInvalidTokenType
 	}
-	if h.authSvc != nil {
-		userID, ok := parseMapInt64(claims["user_id"])
-		if ok && userID > 0 {
-			user, userErr := h.authSvc.GetUser(ctx, userID)
-			if userErr != nil {
-				return nil, domain.ErrInvalidToken
-			}
-			if tokenIssuedBeforePasswordChange(user, claims) {
-				return nil, domain.ErrInvalidToken
-			}
-		}
+	if err := validateCurrentAuthClaims(ctx, h.authSvc, claims); err != nil {
+		return nil, err
 	}
 	return claims, nil
 }
 
-func (h *Handler) parseRefreshToken(raw string) (jwt.MapClaims, error) {
+func (h *Handler) parseRefreshToken(ctx context.Context, raw string) (jwt.MapClaims, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, domain.ErrEmptyRefreshToken
@@ -906,9 +887,11 @@ func (h *Handler) parseRefreshToken(raw string) (jwt.MapClaims, error) {
 		return nil, domain.ErrInvalidRefreshToken
 	}
 	tokenType, _ := claims["type"].(string)
-	// Backward compatible: allow legacy tokens without type.
-	if tokenType != "" && tokenType != "refresh" {
+	if tokenType != "refresh" {
 		return nil, domain.ErrInvalidTokenType
+	}
+	if err := validateCurrentAuthClaims(ctx, h.authSvc, claims); err != nil {
+		return nil, domain.ErrInvalidRefreshToken
 	}
 	return claims, nil
 }
@@ -933,9 +916,6 @@ func parseMapInt64(v any) (int64, bool) {
 }
 
 func tokenIssuedBeforePasswordChange(user domain.User, claims jwt.MapClaims) bool {
-	if user.Role == domain.UserRoleAdmin {
-		return false
-	}
 	if user.PasswordChangedAt == nil || user.PasswordChangedAt.IsZero() {
 		return false
 	}

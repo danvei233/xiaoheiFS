@@ -112,8 +112,18 @@ func (s *Service) ValidateSignature(ctx context.Context, akid, timestamp, nonce,
 	if !verifySignature(key.KeyHash, canonical, signature) {
 		return domain.UserAPIKey{}, appshared.ErrUnauthorized
 	}
-	_ = s.repo.TouchUserAPIKey(ctx, key.ID)
+	owner, err := s.repo.GetUserByID(ctx, key.UserID)
+	if err != nil || owner.Status != domain.UserStatusActive {
+		return domain.UserAPIKey{}, appshared.ErrForbidden
+	}
 	return key, nil
+}
+
+func (s *Service) RecordUse(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return appshared.ErrInvalidInput
+	}
+	return s.repo.TouchUserAPIKey(ctx, id)
 }
 
 func ParseAndCheckTimestamp(raw string, now time.Time, windowSec int) (time.Time, error) {

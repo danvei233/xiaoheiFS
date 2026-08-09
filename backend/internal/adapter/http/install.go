@@ -26,6 +26,12 @@ const installConfigPath = "app.config.yaml"
 
 var installLockPathOverride string
 
+type installDatabaseInput struct {
+	Type string `json:"type"`
+	Path string `json:"path"`
+	DSN  string `json:"dsn"`
+}
+
 func installLockPath() string {
 	if strings.TrimSpace(installLockPathOverride) != "" {
 		return strings.TrimSpace(installLockPathOverride)
@@ -62,12 +68,12 @@ func (h *Handler) ValidateAdminPathHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	
+
 	if err := ValidateAdminPath(payload.Path); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	
+
 	c.JSON(http.StatusOK, gin.H{"valid": true})
 }
 
@@ -79,32 +85,32 @@ func (h *Handler) CheckAdminPath(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	
+
 	path := strings.TrimSpace(payload.Path)
 	if path == "" {
 		c.JSON(http.StatusOK, gin.H{"is_admin": false})
 		return
 	}
-	
+
 	// 获取配置的管理端路径
 	configuredPath := GetAdminPathFromSettings(h.settingsSvc)
-	
+
 	// 如果没有配置，默认是 admin
 	if configuredPath == "" {
 		configuredPath = "admin"
 	}
-	
+
 	isAdmin := strings.EqualFold(path, configuredPath)
 	c.JSON(http.StatusOK, gin.H{"is_admin": isAdmin})
 }
 
 func (h *Handler) InstallDBCheck(c *gin.Context) {
+	if h.IsInstalled() {
+		c.JSON(http.StatusConflict, gin.H{"error": domain.ErrAlreadyInstalled.Error()})
+		return
+	}
 	var payload struct {
-		DB struct {
-			Type string `json:"type"`
-			Path string `json:"path"`
-			DSN  string `json:"dsn"`
-		} `json:"db"`
+		DB installDatabaseInput `json:"db"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -166,11 +172,7 @@ func (h *Handler) InstallRun(c *gin.Context) {
 	}
 
 	var payload struct {
-		DB struct {
-			Type string `json:"type"`
-			Path string `json:"path"`
-			DSN  string `json:"dsn"`
-		} `json:"db"`
+		DB   installDatabaseInput `json:"db"`
 		Site struct {
 			Name      string `json:"name"`
 			URL       string `json:"url"`
@@ -216,7 +218,7 @@ func (h *Handler) InstallRun(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAdminPasswordTooShort.Error()})
 		return
 	}
-	
+
 	// 校验管理端路径
 	if err := ValidateAdminPath(adminPath); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

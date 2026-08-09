@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/testutilhttp"
 )
@@ -102,6 +103,130 @@ func TestHandlers_RegisterLoginAndProfile(t *testing.T) {
 	}, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("refresh code: %d", rec.Code)
+	}
+}
+
+func TestHandlers_BearerRejectsRefreshToken(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	user := testutil.CreateUser(t, env.Repo, "refresh-as-access", "refresh-as-access@example.com", "pass123")
+
+	loginRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": user.Username,
+		"password": "pass123",
+	}, "")
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login expected 200, got %d: %s", loginRec.Code, loginRec.Body.String())
+	}
+	refreshToken, _ := parseJSONBody(t, loginRec)["refresh_token"].(string)
+	if refreshToken == "" {
+		t.Fatal("refresh token missing")
+	}
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/me", nil, refreshToken)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("refresh token used as bearer must return 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandlers_BearerUsesCurrentUserStatusAndRole(t *testing.T) {
+	t.Run("disabled account", func(t *testing.T) {
+		env := testutilhttp.NewTestEnv(t, false)
+		user := testutil.CreateUser(t, env.Repo, "disabled-token-user", "disabled-token-user@example.com", "pass")
+		token := testutil.IssueJWT(t, env.JWTSecret, user.ID, string(domain.UserRoleUser), time.Hour)
+		if err := env.Repo.UpdateUserStatus(context.Background(), user.ID, domain.UserStatusDisabled); err != nil {
+			t.Fatalf("disable user: %v", err)
+		}
+
+		rec := testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/me", nil, token)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("disabled account token must return 401, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("role changed", func(t *testing.T) {
+		env := testutilhttp.NewTestEnv(t, false)
+		user := testutil.CreateUser(t, env.Repo, "role-change-user", "role-change-user@example.com", "pass")
+		token := testutil.IssueJWT(t, env.JWTSecret, user.ID, string(domain.UserRoleUser), time.Hour)
+		user.Role = domain.UserRoleAdmin
+		if err := env.Repo.UpdateUser(context.Background(), user); err != nil {
+			t.Fatalf("change user role: %v", err)
+		}
+
+		rec := testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/me", nil, token)
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("stale-role token must return 401, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+}
+
+func TestHandlers_RefreshRejectsDisabledAccount(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	user := testutil.CreateUser(t, env.Repo, "disabled-refresh-user", "disabled-refresh-user@example.com", "pass123")
+	loginRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": user.Username,
+		"password": "pass123",
+	}, "")
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("login expected 200, got %d: %s", loginRec.Code, loginRec.Body.String())
+	}
+	refreshToken, _ := parseJSONBody(t, loginRec)["refresh_token"].(string)
+	if refreshToken == "" {
+		t.Fatal("refresh token missing")
+	}
+	if err := env.Repo.UpdateUserStatus(context.Background(), user.ID, domain.UserStatusDisabled); err != nil {
+		t.Fatalf("disable user: %v", err)
+	}
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/refresh", map[string]any{
+		"refresh_token": refreshToken,
+	}, "")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("disabled account refresh must return 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandlers_PublicAuthRejectsAdminAccounts(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	admin := testutil.CreateAdmin(t, env.Repo, "public-auth-admin", "public-auth-admin@example.com", "pass123", ensureAdminGroup(t, env))
+
+	loginRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username": admin.Username,
+		"password": "pass123",
+	}, "")
+	if loginRec.Code != http.StatusUnauthorized {
+		t.Fatalf("public login must reject admin account, got %d: %s", loginRec.Code, loginRec.Body.String())
+	}
+
+	resetRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/password-reset/options", map[string]any{
+		"account": admin.Username,
+	}, "")
+	if resetRec.Code == http.StatusOK {
+		t.Fatalf("public password reset must reject admin account: %s", resetRec.Body.String())
+	}
+
+	ticket := domain.PasswordResetTicket{
+		UserID:    admin.ID,
+		Channel:   "email",
+		Receiver:  admin.Email,
+		Token:     "legacy-admin-reset-ticket",
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+	if err := env.Repo.CreatePasswordResetTicket(context.Background(), &ticket); err != nil {
+		t.Fatalf("create legacy admin reset ticket: %v", err)
+	}
+	confirmRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/auth/password-reset/confirm", map[string]any{
+		"reset_ticket": ticket.Token,
+		"new_password": "newpass123",
+	}, "")
+	if confirmRec.Code == http.StatusOK {
+		t.Fatalf("public password reset confirm must reject admin ticket: %s", confirmRec.Body.String())
+	}
+	storedTicket, err := env.Repo.GetPasswordResetTicket(context.Background(), ticket.Token)
+	if err != nil {
+		t.Fatalf("reload admin reset ticket: %v", err)
+	}
+	if storedTicket.Used {
+		t.Fatal("rejected admin reset ticket must remain unused")
 	}
 }
 

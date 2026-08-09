@@ -163,6 +163,73 @@ func (s *Service) Login(ctx context.Context, usernameOrEmail string, password st
 	return user, nil
 }
 
+// LoginUser authenticates accounts allowed to use the public user login.
+func (s *Service) LoginUser(ctx context.Context, usernameOrEmail string, password string) (domain.User, error) {
+	user, err := s.Login(ctx, usernameOrEmail, password)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("public user login: %w", err)
+	}
+	if user.Role != domain.UserRoleUser {
+		return domain.User{}, domain.ErrAdminRoleNotAllowed
+	}
+	return user, nil
+}
+
+// GetUserForPasswordReset resolves an active public user account.
+func (s *Service) GetUserForPasswordReset(ctx context.Context, account string) (domain.User, error) {
+	account, err := trimAndValidateRequired(account, maxLenEmail)
+	if err != nil {
+		return domain.User{}, appshared.ErrInvalidInput
+	}
+	user, err := s.users.GetUserByUsernameOrEmail(ctx, account)
+	if err != nil && looksLikePhoneAccount(account) {
+		if byPhone, phoneErr := s.users.GetUserByPhone(ctx, account); phoneErr == nil {
+			user = byPhone
+			err = nil
+		}
+	}
+	if err != nil {
+		return domain.User{}, appshared.ErrNotFound
+	}
+	if user.Role != domain.UserRoleUser {
+		return domain.User{}, domain.ErrNotAUserAccount
+	}
+	if user.Status != domain.UserStatusActive {
+		return domain.User{}, appshared.ErrForbidden
+	}
+	return user, nil
+}
+
+// ResetUserPassword changes the password only for an active public user account.
+func (s *Service) ResetUserPassword(ctx context.Context, userID int64, newPassword string) (domain.User, error) {
+	newPassword, err := trimAndValidateRequired(newPassword, maxLenPassword)
+	if userID <= 0 || err != nil {
+		return domain.User{}, appshared.ErrInvalidInput
+	}
+	user, err := s.users.GetUserByID(ctx, userID)
+	if err != nil {
+		return domain.User{}, appshared.ErrNotFound
+	}
+	if user.Role != domain.UserRoleUser {
+		return domain.User{}, domain.ErrNotAUserAccount
+	}
+	if user.Status != domain.UserStatusActive {
+		return domain.User{}, appshared.ErrForbidden
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("hash reset password: %w", err)
+	}
+	if err := s.users.UpdateUserPassword(ctx, user.ID, string(hash)); err != nil {
+		return domain.User{}, fmt.Errorf("update reset password: %w", err)
+	}
+	updated, err := s.users.GetUserByID(ctx, user.ID)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("reload reset password user: %w", err)
+	}
+	return updated, nil
+}
+
 func looksLikePhoneAccount(v string) bool {
 	v = strings.TrimSpace(v)
 	if len(v) < 6 {

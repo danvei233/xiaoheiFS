@@ -56,10 +56,13 @@ type AuthService interface {
 	VerifyCaptcha(ctx context.Context, id, code string) error
 	Register(ctx context.Context, in appshared.RegisterInput) (domain.User, error)
 	Login(ctx context.Context, usernameOrEmail, password string) (domain.User, error)
+	LoginUser(ctx context.Context, usernameOrEmail, password string) (domain.User, error)
 	VerifyPassword(ctx context.Context, userID int64, password string) error
 	GetUser(ctx context.Context, userID int64) (domain.User, error)
 	GetUserByPhone(ctx context.Context, phone string) (domain.User, error)
 	GetUserByUsernameOrEmail(ctx context.Context, account string) (domain.User, error)
+	GetUserForPasswordReset(ctx context.Context, account string) (domain.User, error)
+	ResetUserPassword(ctx context.Context, userID int64, newPassword string) (domain.User, error)
 	UpdateUser(ctx context.Context, user domain.User) error
 	UpdateLoginSecurity(ctx context.Context, userID int64, ip, city, tz string, at time.Time) error
 	SetupTOTP(ctx context.Context, userID int64, password, currentCode string) (string, string, error)

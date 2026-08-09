@@ -255,7 +255,7 @@ func (h *Handler) AdminRefresh(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	claims, err := h.parseRefreshToken(payload.RefreshToken)
+	claims, err := h.parseRefreshToken(c, payload.RefreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
 		return
@@ -276,7 +276,7 @@ func (h *Handler) AdminRefresh(c *gin.Context) {
 	}
 	if h.adminSvc != nil {
 		user, err := h.adminSvc.GetUser(c, userID)
-		if err != nil || user.Role != domain.UserRoleAdmin {
+		if err != nil || user.Role != domain.UserRoleAdmin || user.Status != domain.UserStatusActive {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
 			return
 		}

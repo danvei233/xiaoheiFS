@@ -12,6 +12,48 @@ import (
 	"xiaoheiplay/internal/testutilhttp"
 )
 
+func TestHandlers_AdminPasswordChangeInvalidatesOldAccessAndRefreshTokens(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	admin := testutil.CreateAdmin(t, env.Repo, "admin-token-revoke", "admin-token-revoke@example.com", "pass123", ensureAdminGroup(t, env))
+
+	loginRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/auth/login", map[string]any{
+		"username": admin.Username,
+		"password": "pass123",
+	}, "")
+	if loginRec.Code != http.StatusOK {
+		t.Fatalf("admin login expected 200, got %d: %s", loginRec.Code, loginRec.Body.String())
+	}
+	var loginResp struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.Unmarshal(loginRec.Body.Bytes(), &loginResp); err != nil {
+		t.Fatalf("decode login response: %v", err)
+	}
+	if loginResp.AccessToken == "" || loginResp.RefreshToken == "" {
+		t.Fatal("admin login tokens missing")
+	}
+
+	changeRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/profile/change-password", map[string]any{
+		"old_password": "pass123",
+		"new_password": "newpass123",
+	}, loginResp.AccessToken)
+	if changeRec.Code != http.StatusOK {
+		t.Fatalf("admin password change expected 200, got %d: %s", changeRec.Code, changeRec.Body.String())
+	}
+
+	accessRec := testutil.DoJSON(t, env.Router, http.MethodGet, "/admin/api/v1/profile", nil, loginResp.AccessToken)
+	if accessRec.Code != http.StatusUnauthorized {
+		t.Fatalf("old admin access token must return 401, got %d: %s", accessRec.Code, accessRec.Body.String())
+	}
+	refreshRec := testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/auth/refresh", map[string]any{
+		"refresh_token": loginResp.RefreshToken,
+	}, "")
+	if refreshRec.Code != http.StatusUnauthorized {
+		t.Fatalf("old admin refresh token must return 401, got %d: %s", refreshRec.Code, refreshRec.Body.String())
+	}
+}
+
 func TestHandlers_AdminLogin_LockAfterConsecutiveFailures(t *testing.T) {
 	env := testutilhttp.NewTestEnv(t, false)
 	groupID := ensureAdminGroup(t, env)

@@ -232,7 +232,7 @@ func (h *Handler) PasswordResetConfirm(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	user, err := h.authSvc.UpdateProfile(c, ticket.UserID, appshared.UpdateProfileInput{Password: payload.NewPassword})
+	user, err := h.authSvc.ResetUserPassword(c, ticket.UserID, payload.NewPassword)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -389,29 +389,7 @@ func (h *Handler) verifyContactSecurityTicket(ctx *gin.Context, userID int64, ki
 }
 
 func (h *Handler) findUserByAccount(ctx *gin.Context, account string) (domain.User, error) {
-	account = strings.TrimSpace(account)
-	if account == "" {
-		return domain.User{}, appshared.ErrInvalidInput
-	}
-	if looksLikePhone(account) {
-		if user, err := h.authSvc.GetUserByPhone(ctx, account); err == nil {
-			return user, nil
-		}
-	}
-	return h.authSvc.GetUserByUsernameOrEmail(ctx, account)
-}
-
-func looksLikePhone(v string) bool {
-	v = strings.TrimSpace(v)
-	if len(v) < 6 {
-		return false
-	}
-	for _, r := range v {
-		if (r < '0' || r > '9') && r != '+' && r != '-' && r != ' ' {
-			return false
-		}
-	}
-	return true
+	return h.authSvc.GetUserForPasswordReset(ctx, account)
 }
 
 func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {

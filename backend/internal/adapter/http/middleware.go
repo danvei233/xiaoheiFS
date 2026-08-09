@@ -21,6 +21,8 @@ import (
 	"xiaoheiplay/internal/pkg/permissions"
 )
 
+const maxSignedRequestBodyBytes int64 = 1 << 20
+
 type Middleware struct {
 	jwtSecret     []byte
 	apiKeys       *appapikey.Service
@@ -317,12 +319,14 @@ func (m *Middleware) RequireUserAPIKeySigned() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
 			return
 		}
-		if !m.registerNonce(akid, nonce, time.Now(), appuserapikey.DefaultSignatureWindowSec) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
-			return
-		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSignedRequestBodyBytes)
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": domain.ErrRequestBodyTooLarge.Error()})
+				return
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
 			return
 		}
@@ -338,6 +342,11 @@ func (m *Middleware) RequireUserAPIKeySigned() gin.HandlerFunc {
 			c.AbortWithStatusJSON(status, gin.H{"error": domain.ErrInvalidSignature.Error()})
 			return
 		}
+		if !m.registerNonce(akid, nonce, time.Now(), appuserapikey.DefaultSignatureWindowSec) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
+		}
+		_ = m.userAPIKeys.RecordUse(c.Request.Context(), key.ID)
 		c.Set("user_id", key.UserID)
 		c.Set("role", "user")
 		c.Set("user_api_key_id", key.ID)
@@ -421,26 +430,36 @@ func (m *Middleware) parseToken(c *gin.Context) (jwt.MapClaims, error) {
 	if err != nil || !token.Valid {
 		return nil, domain.ErrInvalidToken
 	}
-	if m.authSvc != nil {
-		userID, ok := toInt64Claim(claims["user_id"])
-		if ok && userID > 0 {
-			user, userErr := m.authSvc.GetUser(c, userID)
-			if userErr != nil {
-				return nil, domain.ErrInvalidToken
-			}
-			if user.PasswordChangedAt != nil {
-				iatSeconds, hasIAT := toFloat64Claim(claims["iat"])
-				if !hasIAT || iatSeconds <= 0 {
-					return nil, domain.ErrInvalidToken
-				}
-				changedAt := float64(user.PasswordChangedAt.UnixNano()) / 1e9
-				if iatSeconds <= changedAt {
-					return nil, domain.ErrInvalidToken
-				}
-			}
-		}
+	tokenType, _ := claims["type"].(string)
+	if tokenType != "access" {
+		return nil, domain.ErrInvalidTokenType
+	}
+	if err := validateCurrentAuthClaims(c, m.authSvc, claims); err != nil {
+		return nil, err
 	}
 	return claims, nil
+}
+
+func validateCurrentAuthClaims(ctx context.Context, authSvc AuthService, claims jwt.MapClaims) error {
+	if authSvc == nil {
+		return nil
+	}
+	userID, ok := toInt64Claim(claims["user_id"])
+	if !ok || userID <= 0 {
+		return domain.ErrInvalidToken
+	}
+	role, ok := claims["role"].(string)
+	if !ok || role == "" {
+		return domain.ErrInvalidToken
+	}
+	user, err := authSvc.GetUser(ctx, userID)
+	if err != nil || user.Status != domain.UserStatusActive || role != string(user.Role) {
+		return domain.ErrInvalidToken
+	}
+	if tokenIssuedBeforePasswordChange(user, claims) {
+		return domain.ErrInvalidToken
+	}
+	return nil
 }
 
 func extractAPIKey(c *gin.Context) string {

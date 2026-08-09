@@ -3,6 +3,7 @@ package http_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -123,6 +124,30 @@ func TestInstallRun_SQLite_FullFlow(t *testing.T) {
 	}
 	if !statusResp.Installed {
 		t.Fatalf("expected installed=true")
+	}
+}
+
+func TestInstallDBCheck_RejectsAfterInstalled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tmp := chdirTemp(t)
+	lockPath := filepath.Join(tmp, "install.lock")
+	if err := os.WriteFile(lockPath, []byte("installed"), 0o600); err != nil {
+		t.Fatalf("write install lock: %v", err)
+	}
+
+	adapterhttp.SetInstallLockPathForTest(lockPath)
+	t.Cleanup(func() { adapterhttp.SetInstallLockPathForTest("") })
+
+	target := filepath.Join(tmp, "data", "must-not-exist.db")
+	server := adapterhttp.NewInstallBootstrapServer("test-secret")
+	rec := testutil.DoJSON(t, server.Engine, http.MethodPost, "/api/v1/install/db/check", map[string]any{
+		"db": map[string]any{"type": "sqlite", "path": target},
+	}, "")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected installed db check to return 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("installed db check must not create the sqlite file, stat err=%v", err)
 	}
 }
 
