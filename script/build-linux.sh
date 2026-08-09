@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,8 +17,7 @@ cp -a frontend/dist/. build/linux/static/
 
 echo "[3/3] Build backend (linux)..."
 cd backend
-go env -w CGO_ENABLED=0
-go build -o ../build/linux/server ./cmd/server
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -buildvcs=false -trimpath -o ../build/linux/server ./cmd/server
 cd ..
 
 echo "Done."

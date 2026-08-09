@@ -9,6 +9,8 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'docker/**'
+      - 'script/build-plugins.sh'
+      - 'script/plugin-sources.txt'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
@@ -73,12 +75,13 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' && github.event.pull_request.draft == false }}
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          # Bundled plugin manifests currently declare linux_amd64 only.
+          platforms: linux/amd64
 
   test:
     needs: build
@@ -108,6 +111,26 @@ jobs:
           tags: test-image:${{ matrix.image }}
 
       - name: Test image (${{ matrix.image }})
+        shell: bash
         run: |
-          docker run --rm test-image:${{ matrix.image }} ./server --version 2>&1 | head -5 || true
-          echo "Image test passed for ${{ matrix.image }}"
+          set -euo pipefail
+          image="test-image:${{ matrix.image }}"
+          container="xiaohei-image-test-${{ matrix.image }}"
+
+          docker run --rm --entrypoint sh "$image" -c '
+            test -x /app/server
+            manifest_count="$(find /app/bundled-plugins -type f -name manifest.json | wc -l)"
+            binary_count="$(find /app/bundled-plugins -type f -path "*/bin/linux_amd64/plugin" | wc -l)"
+            test "$manifest_count" -gt 0
+            test "$manifest_count" -eq "$binary_count"
+          '
+
+          docker run -d --name "$container" "$image"
+          trap 'docker logs "$container"; docker rm -f "$container"' EXIT
+          for attempt in {1..30}; do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
+            [[ "$status" == "healthy" ]] && exit 0
+            [[ "$status" == "unhealthy" ]] && exit 1
+            sleep 2
+          done
+          exit 1

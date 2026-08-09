@@ -1,19 +1,15 @@
-version: '3.8'
-
 services:
   mysql:
     image: mysql:8.4
-    container_name: xiaohei-mysql
+    restart: unless-stopped
     environment:
-      - MYSQL_ROOT_PASSWORD=Xiaohei123$%^
-      - MYSQL_DATABASE=xiaohei
-      - MYSQL_USER=xiaohei
-      - MYSQL_PASSWORD=Xiaohei123$%^
-    command: >
-      --character-set-server=utf8mb4
-      --collation-server=utf8mb4_unicode_ci
-    ports:
-      - "3306:3306"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: xiaohei
+      MYSQL_USER: xiaohei
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -23,22 +19,32 @@ services:
       retries: 10
       start_period: 30s
 
-  xiaohei-debian:
+  xiaohei:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: xiaohei-app-debian
+    restart: unless-stopped
     depends_on:
       mysql:
         condition: service_healthy
     ports:
       - "8080:8080"
     environment:
-      - LOG_LEVEL=info
-      - APP_DB_TYPE=mysql
-      - APP_DB_DSN=xiaohei:Xiaohei123$%^@tcp(mysql:3306)/xiaohei?parseTime=true&loc=Local&charset=utf8mb4
+      LOG_LEVEL: info
+      APP_DB_TYPE: mysql
+      APP_DB_DSN: "xiaohei:${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}@tcp(mysql:3306)/xiaohei?parseTime=true&loc=Local&charset=utf8mb4"
+    volumes:
+      - app-config:/app/config
+      - app-uploads:/app/uploads
+      - app-plugins:/app/plugins
+      - app-data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test:
+        - CMD-SHELL
+        - >-
+          status="$$(curl --fail --silent --show-error http://localhost:8080/api/v1/install/status)" &&
+          { ! printf '%s' "$$status" | grep -q '"installed":true' ||
+          curl --fail --silent --show-error http://localhost:8080/api/v1/site/settings >/dev/null; }
       interval: 30s
       timeout: 3s
       retries: 3
@@ -46,3 +52,7 @@ services:
 
 volumes:
   mysql-data:
+  app-config:
+  app-uploads:
+  app-plugins:
+  app-data:

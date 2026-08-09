@@ -1,58 +1,50 @@
-# Multi-stage build for Debian-based image
-# Stage 1: Build frontend
-# Vite 7 requires Node ^20.19.0 || >=22.12.0. node:20-* is a floating tag that
-# sat below 20.19 for most of its life, so pin to 22 to match CI and the
-# `engines` field in frontend/package.json.
-FROM node:22-bookworm as frontend-builder
-
-WORKDIR /app
-
-COPY frontend/package.json frontend/package-lock.json* ./frontend/
+# Multi-stage build for the Debian-based image.
+FROM node:22-bookworm AS frontend-builder
 
 WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
-COPY frontend/src ./src
-COPY frontend/public ./public
-COPY frontend/tsconfig.json frontend/index.html frontend/vite.config.ts ./
+COPY frontend/ ./
 RUN npm run build
 
-# Stage 2: Build backend
-FROM golang:1.25-bookworm as backend-builder
+FROM golang:1.25-bookworm AS backend-builder
 
-WORKDIR /app
+ARG TARGETOS=linux
+ARG TARGETARCH=amd64
 
-COPY backend/go.mod backend/go.sum* ./backend/
 WORKDIR /app/backend
+COPY backend/go.mod backend/go.sum ./
 RUN go mod download
+COPY backend/ ./
+COPY script/build-plugins.sh script/plugin-sources.txt /app/script/
 
-COPY backend/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
+RUN CGO_ENABLED=0 GOOS="$TARGETOS" GOARCH="$TARGETARCH" \
+      go build -buildvcs=false -trimpath -o /app/server ./cmd/server \
+    && /app/script/build-plugins.sh "$TARGETOS" "$TARGETARCH" /app/runtime-plugins \
+    && test "$(find /app/runtime-plugins -type f -name manifest.json | wc -l)" -gt 0
 
-# Stage 3: Create runtime image
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
+      ca-certificates \
+      curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-
-# Copy frontend dist
 COPY --from=frontend-builder /app/frontend/dist ./static
+COPY --from=backend-builder /app/server ./server
+COPY --from=backend-builder /app/runtime-plugins ./bundled-plugins
+COPY docker/entrypoint.sh /usr/local/bin/xiaohei-entrypoint
 
-# Copy backend binary
-COPY --from=backend-builder /app/backend/server .
-
-# Copy runtime plugin directory from backend
-COPY --chown=nobody:nogroup backend/plugin ./plugin
-
-# Create necessary directories
-RUN mkdir -p uploads config data plugin && chmod 755 uploads config data plugin
+RUN mkdir -p config data uploads plugins \
+    && chmod 0755 /usr/local/bin/xiaohei-entrypoint
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+  CMD status="$(curl --fail --silent --show-error http://localhost:8080/api/v1/install/status)" \
+    && { ! printf '%s' "$status" | grep -q '"installed":true' \
+      || curl --fail --silent --show-error http://localhost:8080/api/v1/site/settings >/dev/null; }
 
+ENTRYPOINT ["/usr/local/bin/xiaohei-entrypoint"]
 CMD ["./server"]

@@ -1,113 +1,45 @@
 # Docker Build
 
-本目录包含用于构建和运行 xiaoheiFS 应用的 Docker 配置。
-
-## Dockerfile 说明
-
-### `Dockerfile` (Debian - 默认)
-基于 Debian bookworm-slim，提供全面的系统支持。
-
-**优点：**
-- 更广泛的工具和库支持
-- 更好的兼容性
-- 适合生产环境
-
-**镜像大小：** ~400-500MB
-
-### `Dockerfile.alpine`
-基于 Alpine Linux，极小化镜像大小。
-
-**优点：**
-- 更小的镜像尺寸 (~150-200MB)
-- 快速启动时间
-- 适合云环境和边缘计算
-
-**缺点：**
-- 某些库可能不可用
+本目录提供 Debian、Alpine 两种镜像，以及 Debian + MySQL 的 Compose 部署配置。两个镜像都会从源码构建后端、前端静态资源和 manifest 明确支持当前平台的内置插件。
 
 ## 本地构建
 
-### 构建 Debian 版本
 ```bash
-docker build -f docker/Dockerfile -t xiaohei:debian .
+docker build --platform linux/amd64 -f docker/Dockerfile -t xiaohei:debian .
+docker build --platform linux/amd64 -f docker/Dockerfile.alpine -t xiaohei:alpine .
 ```
 
-### 构建 Alpine 版本
-```bash
-docker build -f docker/Dockerfile.alpine -t xiaohei:alpine .
-```
-
-## 使用 Docker Compose 本地测试
+## Compose 启动
 
 ```bash
-docker-compose -f docker/docker-compose.yml up
+cat > .env <<'EOF'
+MYSQL_ROOT_PASSWORD=replace-with-a-strong-root-password
+MYSQL_PASSWORD=replace-with-a-strong-app-password
+EOF
+docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml logs -f xiaohei
 ```
 
-这将同时运行两个版本的应用：
-- Debian 版本：http://localhost:8080
-- Alpine 版本：http://localhost:8081
+应用默认监听 `http://localhost:8080`。MySQL 只在 Compose 内部网络提供服务，不发布到宿主机；两个数据库密码必须通过 `.env` 显式设置。
 
-## 运行容器
+首次安装写入 MySQL 后，后端会正常退出一次以重新加载安装配置。`restart: unless-stopped` 会自动启动新进程，无需手工重启容器。
 
-### Debian 版本
-```bash
-docker run -d -p 8080:8080 --name xiaohei-debian xiaohei:debian
-```
+## 持久化
 
-### Alpine 版本
-```bash
-docker run -d -p 8080:8080 --name xiaohei-alpine xiaohei:alpine
-```
+Compose 使用以下命名卷：
 
-## GitHub Actions 自动构建
+- `app-config`：`app.config.yaml` 与 `install.lock`
+- `app-uploads`：上传文件
+- `app-plugins`：内置及后续安装的插件
+- `app-data`：应用数据目录与 `init.lock`
+- `mysql-data`：MySQL 数据
 
-提交代码到 `main` 或 `develop` 分支时，GitHub Actions 会自动：
-1. 构建两个版本的镜像（Debian 和 Alpine）
-2. 推送到 GitHub Container Registry (GHCR)
-
-### 镜像标签
-
-pushed 到 GHCR 的镜像将包含以下标签：
-
-- `ghcr.io/username/xiaoheiFS:latest` (Debian)
-- `ghcr.io/username/xiaoheiFS:latest-alpine` (Alpine)
-- `ghcr.io/username/xiaoheiFS:v1.0.0` (基于 git 标签)
-- `ghcr.io/username/xiaoheiFS:sha-abc123def456` (基于提交 SHA)
-
-### 拉取镜像
-
-```bash
-# 拉取 Debian 版本
-docker pull ghcr.io/username/xiaoheiFS:latest
-
-# 拉取 Alpine 版本
-docker pull ghcr.io/username/xiaoheiFS:latest-alpine
-```
-
-## 环境变量
-
-应用支持以下环境变量：
-
-- `LOG_LEVEL`: 日志级别 (默认: info)
-- 其他应用级别的环境变量可根据需要添加
+入口脚本把 `/app/app.config.yaml`、`/app/install.lock` 和 `/app/init.lock` 链接到对应持久卷，并在每次启动时把当前镜像的内置插件同步进插件卷。第三方插件目录不会被删除。
 
 ## 健康检查
 
-两个镜像都配置了健康检查，会定期检查 `/health` 端点：
+镜像与 Compose 会先请求 `GET /api/v1/install/status`。安装前该接口可直接证明安装器存活；安装后还会请求读取数据库的 `GET /api/v1/site/settings`，数据库不可用时容器会进入 unhealthy。
 
-- 间隔：30 秒
-- 超时：3 秒
-- 启动延迟：40 秒
-- 失败阈值：3 次
+## CI 发布范围
 
-## 多平台支持
-
-GitHub Actions 工作流配置为支持多个平台：
-- `linux/amd64` (x86-64)
-- `linux/arm64` (ARM64/Apple Silicon)
-
-注意：本地构建默认为当前平台。若要跨平台构建，使用：
-
-```bash
-docker buildx build --platform linux/amd64,linux/arm64 -f docker/Dockerfile -t xiaohei:debian .
-```
+`.github/workflows/docker-build.yml` 构建 Debian 与 Alpine 镜像并推送到 Docker Hub。当前只发布 `linux/amd64`：内置插件 manifest 尚未声明 `linux/arm64`，在完成真实的平台验证前不会发布缺少可运行插件的 ARM64 镜像。

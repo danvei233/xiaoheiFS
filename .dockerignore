@@ -14,6 +14,7 @@
 
 # Node
 node_modules
+.vite-cache
 npm-debug.log
 yarn-error.log
 .npm

@@ -125,23 +125,19 @@ script\build-win.bat
 ### Docker 快速启动（后端）
 
 ```bash
-# 构建后端镜像（含前端静态资源）
-./docker/build/build-docker-image.sh
+cat > .env <<'EOF'
+MYSQL_ROOT_PASSWORD=replace-with-a-strong-root-password
+MYSQL_PASSWORD=replace-with-a-strong-app-password
+EOF
 
-# 使用 MySQL 启动（默认）⭐⭐⭐⭐⭐
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml up -d --build
-
-# 使用 PostgreSQL 启动 ⭐⭐⭐
-docker compose -f docker/docker-compose/docker-compose.postgres.yaml up -d --build
-
-# 使用 SQLite 启动（仅开发/测试）⭐
-docker compose -f docker/docker-compose/docker-compose.sqlite.yaml up -d --build
+# 构建并启动后端、前端静态资源、内置插件和 MySQL
+docker compose -f docker/docker-compose.yml up -d --build
 
 # 查看服务日志
-docker compose -f docker/docker-compose/docker-compose.mysql.yaml logs -f xiaoheifs
+docker compose -f docker/docker-compose.yml logs -f xiaohei
 ```
 
-说明：SQLite 不建议用于生产环境。
+首次安装完成后服务会退出一次以加载新配置，Compose 的重启策略会自动恢复服务。
 
 更多说明见：`docker/README.md`
 
@@ -149,6 +145,7 @@ docker compose -f docker/docker-compose/docker-compose.mysql.yaml logs -f xiaohe
 
 - `release-build.yml`：主系统构建与发布
 - `release-pingbot-probe.yml`：探针发布
+- `docker-build.yml`：Debian/Alpine 容器镜像构建与发布
 - `release-xiaoheifs-app.yml`：管理端 App 发布
 - `release-xiaoheifs-userapp.yml`：用户端 App 发布
 
