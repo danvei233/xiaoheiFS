@@ -1048,6 +1048,8 @@
     trafficOut: createSeries()
   })
   const monitorLoading = ref(false)
+  let monitorRequest: Promise<void> | null = null
+  let disposed = false
   const pushPoint = (series: Series, value: unknown) => {
     series.labels.push(new Date().toLocaleTimeString('zh-CN', { hour12: false }))
     series.values.push(Number(value || 0))
@@ -1082,10 +1084,14 @@
       series: monitor.trafficOut
     }
   ])
-  const fetchMonitor = async () => {
+  const fetchMonitor = (): Promise<void> => {
+    if (monitorRequest) return monitorRequest
+
+    const targetId = id.value
     monitorLoading.value = true
-    try {
-      const response = await getVpsMonitor(id.value)
+    monitorRequest = (async () => {
+      const response = await getVpsMonitor(targetId)
+      if (disposed || id.value !== targetId) return
       const value = (response.data || {}) as MonitorPayload
       if (
         store.current &&
@@ -1121,9 +1127,12 @@
           Number(value.bytes_out ?? value.out_bytes ?? value.tx_bytes ?? value.out ?? 0) / 1024
         )
       )
-    } finally {
+    })().finally(() => {
+      monitorRequest = null
       monitorLoading.value = false
-    }
+    })
+
+    return monitorRequest
   }
 
   const errorResponse = (error: unknown) => {
@@ -2139,19 +2148,34 @@
     }
   )
 
-  let monitorTimer: ReturnType<typeof setInterval> | null = null
+  let monitorTimer: ReturnType<typeof setTimeout> | null = null
+
+  const scheduleMonitor = () => {
+    if (disposed) return
+    monitorTimer = setTimeout(() => {
+      void fetchMonitor()
+        .catch(() => undefined)
+        .finally(scheduleMonitor)
+    }, 10000)
+  }
+
   onMounted(async () => {
     loading.value = true
+    void catalog.fetchCatalog().catch(() => undefined)
+    void site.fetchSettings().catch(() => undefined)
     try {
-      await Promise.all([catalog.fetchCatalog(), site.fetchSettings(), store.fetchDetail(id.value)])
-      await fetchMonitor()
-      monitorTimer = setInterval(fetchMonitor, 10000)
+      await store.fetchDetail(id.value)
     } finally {
       loading.value = false
     }
+    if (disposed) return
+    void fetchMonitor()
+      .catch(() => undefined)
+      .finally(scheduleMonitor)
   })
   onBeforeUnmount(() => {
-    if (monitorTimer) clearInterval(monitorTimer)
+    disposed = true
+    if (monitorTimer) clearTimeout(monitorTimer)
     if (resizeQuoteTimer) clearTimeout(resizeQuoteTimer)
     if (portCandidateTimer) clearTimeout(portCandidateTimer)
   })

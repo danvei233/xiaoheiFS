@@ -29,7 +29,6 @@ export const useVpsStore = defineStore('vps', {
     async refresh(id) {
       await refreshVps(id)
       await this.fetchDetail(id)
-      await this.fetchVps()
     }
   }
 })

@@ -411,8 +411,8 @@ export const exportRevenueAnalyticsAudit = (payload: RevenueAnalyticsQuery) =>
   http.post('/admin/api/v1/dashboard/revenue-analytics/export', payload, { responseType: 'blob' })
 
 // Probes
-export const listAdminProbes = (params?: Record<string, unknown>) =>
-  http.get<ApiList<ProbeNode>>('/admin/api/v1/probes', { params })
+export const listAdminProbes = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<ProbeNode>>('/admin/api/v1/probes', { params, signal })
 export const createAdminProbe = (payload: Record<string, unknown>) =>
   http.post<{ probe?: ProbeNode; enroll_token?: string }>('/admin/api/v1/probes', payload)
 export const getAdminProbeDetail = (id: number | string, params?: Record<string, unknown>) =>
@@ -422,8 +422,11 @@ export const updateAdminProbe = (id: number | string, payload: Record<string, un
 export const deleteAdminProbe = (id: number | string) => http.delete(`/admin/api/v1/probes/${id}`)
 export const resetAdminProbeEnrollToken = (id: number | string) =>
   http.post<{ enroll_token?: string }>(`/admin/api/v1/probes/${id}/enroll-token/reset`)
-export const getAdminProbeSla = (id: number | string, params?: Record<string, unknown>) =>
-  http.get<{ sla?: ProbeSLA }>(`/admin/api/v1/probes/${id}/sla`, { params })
+export const getAdminProbeSla = (
+  id: number | string,
+  params?: Record<string, unknown>,
+  signal?: AbortSignal
+) => http.get<{ sla?: ProbeSLA }>(`/admin/api/v1/probes/${id}/sla`, { params, signal })
 export const adminProbePortCheck = (id: number | string, payload?: Record<string, unknown>) =>
   http.post<{ ok?: boolean; request_id?: string }>(
     `/admin/api/v1/probes/${id}/port-check`,

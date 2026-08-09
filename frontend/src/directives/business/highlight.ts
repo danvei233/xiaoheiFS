@@ -50,7 +50,10 @@ const importHighlighter = () => import('highlight.js').then((module) => module.d
 let highlighterRequest: ReturnType<typeof importHighlighter> | null = null
 
 const loadHighlighter = () => {
-  highlighterRequest ??= importHighlighter()
+  highlighterRequest ??= importHighlighter().catch((error) => {
+    highlighterRequest = null
+    throw error
+  })
   return highlighterRequest
 }
 

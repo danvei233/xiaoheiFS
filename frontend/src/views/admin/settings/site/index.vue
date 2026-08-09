@@ -431,7 +431,7 @@
       })
 
       await updateSetting({ items })
-      await siteStore.fetchSettings()
+      await siteStore.fetchSettings(true)
 
       if (nextAdminPath !== originalAdminPath.value) {
         clearAdminPathCache()

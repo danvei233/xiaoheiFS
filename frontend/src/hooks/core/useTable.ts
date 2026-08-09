@@ -37,13 +37,15 @@ import {
 import { tableConfig } from '../../utils/table/tableConfig'
 
 // 类型推导工具类型
-type InferApiParams<T> = T extends (params: infer P) => any ? P : never
-type InferApiResponse<T> = T extends (params: any) => Promise<infer R> ? R : never
+type InferApiParams<T> = T extends (params: infer P, ...args: any[]) => any ? P : never
+type InferApiResponse<T> = T extends (params: any, ...args: any[]) => Promise<infer R> ? R : never
 type InferRecordType<T> = T extends Api.Common.PaginatedResponse<infer U> ? U : never
+
+type TableApiFunction = (params: any, signal?: AbortSignal) => Promise<any>
 
 // 优化的配置接口 - 支持自动类型推导
 export interface UseTableConfig<
-  TApiFn extends (params: any) => Promise<any> = (params: any) => Promise<any>,
+  TApiFn extends TableApiFunction = TableApiFunction,
   TRecord = InferRecordType<InferApiResponse<TApiFn>>,
   TParams = InferApiParams<TApiFn>,
   TResponse = InferApiResponse<TApiFn>
@@ -112,9 +114,7 @@ export interface UseTableConfig<
   }
 }
 
-export function useTable<TApiFn extends (params: any) => Promise<any>>(
-  config: UseTableConfig<TApiFn>
-) {
+export function useTable<TApiFn extends TableApiFunction>(config: UseTableConfig<TApiFn>) {
   return useTableImpl(config)
 }
 
@@ -129,9 +129,7 @@ export function useTable<TApiFn extends (params: any) => Promise<any>>(
  * - 错误处理
  * - 列配置管理
  */
-function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
-  config: UseTableConfig<TApiFn>
-) {
+function useTableImpl<TApiFn extends TableApiFunction>(config: UseTableConfig<TApiFn>) {
   type TRecord = InferRecordType<InferApiResponse<TApiFn>>
   type TParams = InferApiParams<TApiFn>
   const {
@@ -150,7 +148,7 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
       debounceTime = 300,
       maxCacheSize = 50
     } = {},
-    hooks: { onSuccess, onError, onCacheHit, resetFormCallback } = {},
+    hooks: { onSuccess, onError, onCacheHit, onLoading, resetFormCallback } = {},
     debug: { enableLog = false } = {}
   } = config
 
@@ -187,6 +185,12 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
   type LoadingState = 'idle' | 'loading' | 'success' | 'error'
   const loadingState = ref<LoadingState>('idle')
   const loading = computed(() => loadingState.value === 'loading')
+  const setLoadingState = (state: LoadingState): void => {
+    const wasLoading = loadingState.value === 'loading'
+    loadingState.value = state
+    const isLoading = state === 'loading'
+    if (wasLoading !== isLoading) onLoading?.(isLoading)
+  }
 
   // 错误状态
   const error = ref<TableError | null>(null)
@@ -196,6 +200,7 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
 
   // 请求取消控制器
   let abortController: AbortController | null = null
+  let requestSequence = 0
 
   // 缓存清理定时器
   let cacheCleanupTimer: NodeJS.Timeout | null = null
@@ -278,7 +283,8 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
   // 获取数据的核心方法
   const fetchData = async (
     params?: Partial<TParams>,
-    useCache = enableCache
+    useCache = enableCache,
+    silent = false
   ): Promise<ApiResponse<TRecord>> => {
     // 取消上一个请求
     if (abortController) {
@@ -288,10 +294,13 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
     // 创建新的取消控制器
     const currentController = new AbortController()
     abortController = currentController
+    const requestID = ++requestSequence
+    const isCurrentRequest = (): boolean =>
+      requestID === requestSequence && abortController === currentController
 
     // 状态机：进入 loading 状态
-    loadingState.value = 'loading'
-    error.value = null
+    if (!silent) setLoadingState('loading')
+    if (isCurrentRequest()) error.value = null
 
     try {
       let requestParams = Object.assign(
@@ -330,7 +339,7 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
           }
 
           // 状态机：缓存命中，进入 success 状态
-          loadingState.value = 'success'
+          setLoadingState('success')
 
           // 缓存命中时触发专门的回调，而不是 onSuccess
           if (onCacheHit) {
@@ -342,11 +351,10 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
         }
       }
 
-      const response = await apiFn(requestParams)
+      const response = await apiFn(requestParams, currentController.signal)
 
-      // 检查请求是否被取消
-      if (currentController.signal.aborted) {
-        throw new Error('请求已取消')
+      if (currentController.signal.aborted || !isCurrentRequest()) {
+        return { records: [], total: 0, current: 1, size: 10 }
       }
 
       // 使用响应适配器转换为标准格式
@@ -382,7 +390,7 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
       }
 
       // 状态机：请求成功，进入 success 状态
-      loadingState.value = 'success'
+      setLoadingState('success')
 
       // 成功回调
       if (onSuccess) {
@@ -391,16 +399,22 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
 
       return standardResponse
     } catch (err) {
-      if (err instanceof Error && err.message === '请求已取消') {
-        // 请求被取消，回到 idle 状态
-        loadingState.value = 'idle'
+      const requestError = err as { code?: unknown; name?: unknown }
+      const isCanceled =
+        currentController.signal.aborted ||
+        requestError?.name === 'AbortError' ||
+        requestError?.code === 'ERR_CANCELED'
+      if (isCanceled || !isCurrentRequest()) {
+        if (isCurrentRequest()) setLoadingState('idle')
         return { records: [], total: 0, current: 1, size: 10 }
       }
 
-      // 状态机：请求失败，进入 error 状态
-      loadingState.value = 'error'
-      data.value = []
       const tableError = handleError(err, '获取表格数据失败')
+      error.value = tableError
+      if (!silent) {
+        setLoadingState('error')
+        data.value = []
+      }
       throw tableError
     } finally {
       // 只有当前控制器是活跃的才清空
@@ -574,13 +588,20 @@ function useTableImpl<TApiFn extends (params: any) => Promise<any>>(
   // 轻量刷新：仅清空当前搜索条件的缓存，保持分页状态（适用于定时刷新）
   const refreshSoft = async (): Promise<void> => {
     clearCache(CacheInvalidationStrategy.CLEAR_CURRENT, '软刷新')
-    await getData()
+    try {
+      await fetchData(undefined, false, true)
+    } catch {
+      // 定时刷新失败时保留当前数据与加载状态。
+    }
   }
 
   // 取消当前请求
   const cancelRequest = (): void => {
     if (abortController) {
       abortController.abort()
+      abortController = null
+      requestSequence++
+      setLoadingState('idle')
     }
     debouncedGetDataByPage.cancel()
   }

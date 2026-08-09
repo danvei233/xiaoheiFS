@@ -5,7 +5,7 @@
         <h2>API 密钥管理</h2>
         <p>管理用于开放接口鉴权的 AKID/Key 凭证</p>
       </div>
-      <ElButton type="primary" v-ripple @click="openCreateDialog">
+      <ElButton type="primary" v-ripple :disabled="loading" @click="openCreateDialog">
         <ArtSvgIcon icon="ri:add-line" class="button-icon" />
         创建新密钥
       </ElButton>
@@ -94,7 +94,9 @@
         </template>
       </ArtTable>
       <ElEmpty v-else description="暂无 API 密钥" :image-size="120" class="empty-state">
-        <ElButton link type="primary" @click="openCreateDialog">创建第一个密钥</ElButton>
+        <ElButton link type="primary" :disabled="loading" @click="openCreateDialog">
+          创建第一个密钥
+        </ElButton>
       </ElEmpty>
     </ElCard>
 
@@ -133,7 +135,9 @@
       </ElForm>
       <template #footer>
         <ElButton @click="createDialogVisible = false">取消</ElButton>
-        <ElButton type="primary" :loading="creating" @click="createKey">创建密钥</ElButton>
+        <ElButton type="primary" :loading="creating" :disabled="loading" @click="createKey">
+          创建密钥
+        </ElButton>
       </template>
     </ElDialog>
 
@@ -288,6 +292,7 @@ const sig = crypto.createHmac("sha256", process.env.OPEN_KEY)
   }
 
   const openCreateDialog = (): void => {
+    if (loading.value) return
     createDialogVisible.value = true
   }
 
@@ -297,7 +302,7 @@ const sig = crypto.createHmac("sha256", process.env.OPEN_KEY)
   }
 
   const createKey = async (): Promise<void> => {
-    if (!createFormRef.value) return
+    if (!createFormRef.value || loading.value || creating.value) return
     const valid = await createFormRef.value.validate().catch(() => false)
     if (!valid) return
 

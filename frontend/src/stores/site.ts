@@ -11,6 +11,7 @@ interface SiteState {
   blocks: Record<string, any[]>
   posts: Record<string, any[]>
   settings: Record<string, any>
+  settingsLoaded: boolean
 }
 
 export interface SiteNavItem {
@@ -33,7 +34,8 @@ export const useSiteStore = defineStore('site', {
     maintenanceMessage: '',
     blocks: {},
     posts: {},
-    settings: {}
+    settings: {},
+    settingsLoaded: false
   }),
 
   getters: {
@@ -84,8 +86,11 @@ export const useSiteStore = defineStore('site', {
       this.language = lang || navigator.language || 'zh-CN'
     },
 
-    fetchSettings(): Promise<void> {
-      if (settingsRequest) return settingsRequest
+    fetchSettings(force = false): Promise<void> {
+      if (!force && this.settingsLoaded) return Promise.resolve()
+      if (settingsRequest) {
+        return force ? settingsRequest.then(() => this.fetchSettings(true)) : settingsRequest
+      }
 
       settingsRequest = (async () => {
         try {
@@ -105,6 +110,7 @@ export const useSiteStore = defineStore('site', {
           this.maintenanceMessage =
             resolveValue('maintenance_message', 'site_maintenance_message') ||
             '系统维护中，请稍后再试'
+          this.settingsLoaded = true
         } catch (error) {
           console.error('Failed to fetch site settings:', error)
         } finally {
