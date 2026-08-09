@@ -79,6 +79,12 @@ func (f *FakeAutomationClient) CreateHost(ctx context.Context, req appshared.Aut
 	return f.CreateHostResult, nil
 }
 
+func (f *FakeAutomationClient) CreateHostRequestCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.CreateHostRequests)
+}
+
 func (f *FakeAutomationClient) GetHostInfo(ctx context.Context, hostID int64) (appshared.AutomationHostInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

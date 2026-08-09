@@ -86,6 +86,9 @@ type OrderRepository interface {
 	GetOrderByIdempotencyKey(ctx context.Context, userID int64, key string) (domain.Order, error)
 	UpdateOrderStatus(ctx context.Context, id int64, status domain.OrderStatus) error
 	UpdateOrderMeta(ctx context.Context, order domain.Order) error
+	ApproveOrderAtomic(ctx context.Context, order domain.Order, itemIDs []int64, tasks []*domain.ResizeTask, currentStatuses []domain.OrderStatus) (bool, error)
+	RejectOrderAtomic(ctx context.Context, order domain.Order, adminID int64, currentStatuses []domain.OrderStatus) (bool, error)
+	UpdateOrderStatusIfCurrent(ctx context.Context, id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error)
 	ListOrders(ctx context.Context, filter appshared.OrderFilter, limit, offset int) ([]domain.Order, int, error)
 	DeleteOrder(ctx context.Context, id int64) error
 }
@@ -95,6 +98,7 @@ type OrderItemRepository interface {
 	ListOrderItems(ctx context.Context, orderID int64) ([]domain.OrderItem, error)
 	GetOrderItem(ctx context.Context, id int64) (domain.OrderItem, error)
 	UpdateOrderItemStatus(ctx context.Context, id int64, status domain.OrderItemStatus) error
+	ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error)
 	UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error
 	HasPendingRenewOrder(ctx context.Context, userID, vpsID int64) (bool, error)
 	HasPendingResizeOrder(ctx context.Context, userID, vpsID int64) (bool, error)
@@ -103,6 +107,7 @@ type OrderItemRepository interface {
 
 type PaymentRepository interface {
 	CreatePayment(ctx context.Context, payment *domain.OrderPayment) error
+	PayOrderWithBalanceAtomic(ctx context.Context, order domain.Order, payment *domain.OrderPayment) (domain.Wallet, bool, error)
 	ListPaymentsByOrder(ctx context.Context, orderID int64) ([]domain.OrderPayment, error)
 	GetPaymentByTradeNo(ctx context.Context, tradeNo string) (domain.OrderPayment, error)
 	GetPaymentByIdempotencyKey(ctx context.Context, orderID int64, key string) (domain.OrderPayment, error)
@@ -399,6 +404,7 @@ type WalletOrderRepository interface {
 	ListAllWalletOrders(ctx context.Context, status string, limit, offset int) ([]domain.WalletOrder, int, error)
 	UpdateWalletOrderStatus(ctx context.Context, id int64, status domain.WalletOrderStatus, reviewedBy *int64, reason string) error
 	UpdateWalletOrderStatusIfCurrent(ctx context.Context, id int64, currentStatus, targetStatus domain.WalletOrderStatus, reviewedBy *int64, reason string) (bool, error)
+	ApproveWalletOrderAtomic(ctx context.Context, order domain.WalletOrder, adminID int64, amount int64, txType string) (domain.Wallet, bool, error)
 	UpdateWalletOrderMeta(ctx context.Context, id int64, metaJSON string) error
 }
 

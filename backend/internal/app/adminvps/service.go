@@ -326,7 +326,9 @@ func (s *Service) EmergencyRenew(ctx context.Context, adminID int64, vpsID int64
 	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, expire); err != nil {
 		return domain.VPSInstance{}, err
 	}
-	_ = s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now)
+	if err := s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now); err != nil {
+		return domain.VPSInstance{}, err
+	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "vps.emergency_renew", TargetType: "vps", TargetID: fmt.Sprintf("%d", inst.ID), DetailJSON: mustJSON(map[string]any{"days": policy.RenewDays})})
 	}

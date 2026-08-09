@@ -14,14 +14,15 @@ type walletRow struct {
 func (walletRow) TableName() string { return "user_wallets" }
 
 type walletTransactionRow struct {
-	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	UserID    int64     `gorm:"column:user_id;not null;index"`
-	Amount    int64     `gorm:"column:amount;not null"`
-	Type      string    `gorm:"column:type;not null"`
-	RefType   string    `gorm:"column:ref_type;not null"`
-	RefID     int64     `gorm:"column:ref_id;not null;default:0"`
-	Note      string    `gorm:"column:note;not null;default:''"`
-	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+	ID             int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	UserID         int64     `gorm:"column:user_id;not null;index"`
+	Amount         int64     `gorm:"column:amount;not null"`
+	Type           string    `gorm:"column:type;not null"`
+	RefType        string    `gorm:"column:ref_type;not null"`
+	RefID          int64     `gorm:"column:ref_id;not null;default:0"`
+	IdempotencyKey *string   `gorm:"size:191;column:idempotency_key;uniqueIndex:idx_wallet_transactions_idempotency_key"`
+	Note           string    `gorm:"column:note;not null;default:''"`
+	CreatedAt      time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 }
 
 func (walletTransactionRow) TableName() string { return "wallet_transactions" }

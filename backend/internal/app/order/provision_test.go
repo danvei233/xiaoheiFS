@@ -2,13 +2,139 @@ package order_test
 
 import (
 	"context"
+	"errors"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	repo "xiaoheiplay/internal/adapter/repo/core"
 	apporder "xiaoheiplay/internal/app/order"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 )
+
+type failOnceVPSRepo struct {
+	*repo.GormRepo
+	failed atomic.Bool
+}
+
+func (r *failOnceVPSRepo) CreateInstance(ctx context.Context, instance *domain.VPSInstance) error {
+	if r.failed.CompareAndSwap(false, true) {
+		return errors.New("injected local persistence failure")
+	}
+	return r.GormRepo.CreateInstance(ctx, instance)
+}
+
+func TestOrderService_ConcurrentApproveProvisionsEachItemOnce(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "prov-cas", "prov-cas@example.com", "pass")
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-CAS", Status: domain.OrderStatusPendingPayment, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{
+		OrderID: order.ID, PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Amount: 1000,
+		Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}",
+	}}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+
+	fakeAuto := &testutil.FakeAutomationClient{
+		CreateHostResult: appshared.AutomationCreateHostResult{HostID: 1001},
+		HostInfo: map[int64]appshared.AutomationHostInfo{
+			1001: {HostID: 1001, HostName: "host", State: 2, RemoteIP: "1.1.1.1"},
+		},
+	}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, &testutil.FakeAutomationResolver{Client: fakeAuto}, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for adminID := int64(1); adminID <= 2; adminID++ {
+		wg.Add(1)
+		go func(adminID int64) {
+			defer wg.Done()
+			<-start
+			_ = svc.ApproveOrder(context.Background(), adminID, order.ID)
+		}(adminID)
+	}
+	close(start)
+	wg.Wait()
+
+	deadline := time.Now().Add(2 * time.Second)
+	completed := false
+	for time.Now().Before(deadline) {
+		items, err := repo.ListOrderItems(context.Background(), order.ID)
+		storedOrder, orderErr := repo.GetOrder(context.Background(), order.ID)
+		if err == nil && orderErr == nil && len(items) == 1 &&
+			items[0].Status == domain.OrderItemStatusActive && storedOrder.Status == domain.OrderStatusActive {
+			completed = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !completed {
+		storedOrder, _ := repo.GetOrder(context.Background(), order.ID)
+		items, _ := repo.ListOrderItems(context.Background(), order.ID)
+		t.Fatalf("order did not settle active: order=%s items=%+v", storedOrder.Status, items)
+	}
+	if got := fakeAuto.CreateHostRequestCount(); got != 1 {
+		t.Fatalf("expected one CreateHost call, got %d", got)
+	}
+}
+
+func TestOrderService_RetryAfterLocalFailureReusesCreatedHost(t *testing.T) {
+	_, baseRepo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, baseRepo)
+	user := testutil.CreateUser(t, baseRepo, "prov-recover", "prov-recover@example.com", "pass")
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-RECOVER", Status: domain.OrderStatusPendingPayment, TotalAmount: 1000, Currency: "CNY"}
+	if err := baseRepo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := baseRepo.CreateOrderItems(context.Background(), []domain.OrderItem{{
+		OrderID: order.ID, PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Amount: 1000,
+		Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}",
+	}}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+
+	fakeAuto := &testutil.FakeAutomationClient{
+		CreateHostResult: appshared.AutomationCreateHostResult{HostID: 2001},
+		HostInfo: map[int64]appshared.AutomationHostInfo{
+			2001: {HostID: 2001, HostName: "recovered-host", State: 2, RemoteIP: "1.1.1.2"},
+		},
+	}
+	flakyVPS := &failOnceVPSRepo{GormRepo: baseRepo}
+	svc := apporder.NewService(baseRepo, baseRepo, baseRepo, baseRepo, baseRepo, baseRepo, flakyVPS, baseRepo, baseRepo, nil, &testutil.FakeAutomationResolver{Client: fakeAuto}, nil, baseRepo, baseRepo, nil, baseRepo, baseRepo, baseRepo, nil, nil, nil)
+	if err := svc.ApproveOrder(context.Background(), 1, order.ID); err != nil {
+		t.Fatalf("approve order: %v", err)
+	}
+	waitForProvisionOrderStatus(t, baseRepo, order.ID, domain.OrderStatusFailed)
+
+	if err := svc.RetryProvision(order.ID); err != nil {
+		t.Fatalf("retry provision: %v", err)
+	}
+	waitForProvisionOrderStatus(t, baseRepo, order.ID, domain.OrderStatusActive)
+	if got := fakeAuto.CreateHostRequestCount(); got != 1 {
+		t.Fatalf("retry created a duplicate host: calls=%d", got)
+	}
+}
+
+func waitForProvisionOrderStatus(t *testing.T, repo *repo.GormRepo, orderID int64, want domain.OrderStatus) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		order, err := repo.GetOrder(context.Background(), orderID)
+		if err == nil && order.Status == want {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	order, err := repo.GetOrder(context.Background(), orderID)
+	t.Fatalf("order status did not become %s: order=%+v err=%v", want, order, err)
+}
 
 func TestOrderService_ApproveProvisionCreatesVPS(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)

@@ -2,11 +2,13 @@ package order
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -914,6 +916,7 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 		order.Status != domain.OrderStatusRejected {
 		return ErrConflict
 	}
+	expectedStatus := order.Status
 	now := time.Now()
 	order.Status = domain.OrderStatusApproved
 	order.ApprovedAt = &now
@@ -921,7 +924,10 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 		order.ApprovedBy = &adminID
 	}
 	order.RejectedReason = ""
-	items, _ := s.items.ListOrderItems(ctx, order.ID)
+	items, err := s.items.ListOrderItems(ctx, order.ID)
+	if err != nil {
+		return err
+	}
 	hasResize := false
 	hasNonResize := false
 	var resizeTasks []*domain.ResizeTask
@@ -962,31 +968,16 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 		}
 	}
 
-	if hasResize && s.resizeTasks != nil {
-		if approver, ok := s.orders.(resizeOrderAtomicApprover); ok {
-			if err := approver.ApproveResizeOrderWithTasks(ctx, order, items, resizeTasks); err != nil {
-				return err
-			}
-		} else {
-			if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
-				return err
-			}
-			for _, item := range items {
-				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusApproved)
-			}
-			for _, task := range resizeTasks {
-				if err := s.resizeTasks.CreateResizeTask(ctx, task); err != nil {
-					return err
-				}
-			}
-		}
-	} else {
-		if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
-			return err
-		}
-		for _, item := range items {
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusApproved)
-		}
+	itemIDs := make([]int64, 0, len(items))
+	for _, item := range items {
+		itemIDs = append(itemIDs, item.ID)
+	}
+	claimed, err := s.orders.ApproveOrderAtomic(ctx, order, itemIDs, resizeTasks, []domain.OrderStatus{expectedStatus})
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return ErrConflict
 	}
 	for _, item := range items {
 		if item.Action != "resize" {
@@ -1029,10 +1020,6 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 	}
 	go s.provisionOrder(order.ID)
 	return nil
-}
-
-type resizeOrderAtomicApprover interface {
-	ApproveResizeOrderWithTasks(ctx context.Context, order domain.Order, items []domain.OrderItem, tasks []*domain.ResizeTask) error
 }
 
 func (s *OrderService) RetryProvision(orderID int64) error {
@@ -1086,21 +1073,16 @@ func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID i
 		order.Status != domain.OrderStatusRejected {
 		return ErrConflict
 	}
+	expectedStatus := order.Status
 	order.Status = domain.OrderStatusRejected
 	order.RejectedReason = normalizedReason
 	order.PendingReason = ""
-	if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
+	claimed, err := s.orders.RejectOrderAtomic(ctx, order, adminID, []domain.OrderStatus{expectedStatus})
+	if err != nil {
 		return err
 	}
-	items, _ := s.items.ListOrderItems(ctx, order.ID)
-	for _, item := range items {
-		_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusRejected)
-	}
-	if s.payments != nil {
-		pays, _ := s.payments.ListPaymentsByOrder(ctx, order.ID)
-		for _, pay := range pays {
-			_ = s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusRejected, &adminID, normalizedReason)
-		}
+	if !claimed {
+		return ErrConflict
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "order.reject", TargetType: "order", TargetID: fmt.Sprintf("%d", order.ID), DetailJSON: mustJSON(map[string]any{"reason": normalizedReason})})
@@ -1130,15 +1112,18 @@ func (s *OrderService) provisionOrder(orderID int64) {
 	if err != nil {
 		return
 	}
-	order.Status = domain.OrderStatusProvisioning
-	_ = s.orders.UpdateOrderMeta(ctx, order)
+	transitioned, err := s.orders.UpdateOrderStatusIfCurrent(ctx, order.ID, domain.OrderStatusProvisioning, []domain.OrderStatus{
+		domain.OrderStatusApproved,
+		domain.OrderStatusProvisioning,
+		domain.OrderStatusFailed,
+	})
+	if err != nil || !transitioned {
+		return
+	}
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.provisioning", map[string]any{"status": domain.OrderStatusProvisioning})
 	}
 
-	allActive := true
-	anyProvisioning := false
-	anyFailed := false
 	shouldProcess := func(status domain.OrderItemStatus) bool {
 		switch status {
 		case domain.OrderItemStatusActive, domain.OrderItemStatusRejected, domain.OrderItemStatusCanceled:
@@ -1149,22 +1134,28 @@ func (s *OrderService) provisionOrder(orderID int64) {
 	}
 	for _, item := range items {
 		if !shouldProcess(item.Status) {
-			if item.Status != domain.OrderItemStatusActive {
-				allActive = false
-			}
+			continue
+		}
+		switch item.Action {
+		case "create", "renew", "emergency_renew", "resize", "refund":
+		default:
+			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
+			continue
+		}
+		claimed, claimErr := s.items.ClaimOrderItemForProvision(ctx, item.ID)
+		if claimErr != nil {
+			continue
+		}
+		if !claimed {
 			continue
 		}
 		switch item.Action {
 		case "create":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			inst, err := s.provisionItem(ctx, order, item)
 			if err != nil {
-				allActive = false
 				if errors.Is(err, ErrProvisioning) {
-					anyProvisioning = true
 					continue
 				}
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1177,10 +1168,7 @@ func (s *OrderService) provisionOrder(orderID int64) {
 				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID, "instance_id": inst.ID})
 			}
 		case "renew":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleRenew(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1192,10 +1180,7 @@ func (s *OrderService) provisionOrder(orderID int64) {
 				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID})
 			}
 		case "emergency_renew":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleEmergencyRenew(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1207,10 +1192,7 @@ func (s *OrderService) provisionOrder(orderID int64) {
 				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID})
 			}
 		case "resize":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleResize(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1222,10 +1204,7 @@ func (s *OrderService) provisionOrder(orderID int64) {
 				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID})
 			}
 		case "refund":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleRefund(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1241,14 +1220,19 @@ func (s *OrderService) provisionOrder(orderID int64) {
 		}
 	}
 
-	finalStatus := domain.OrderStatusActive
-	if anyFailed {
-		finalStatus = domain.OrderStatusFailed
-	} else if !allActive || anyProvisioning {
-		finalStatus = domain.OrderStatusProvisioning
+	refreshedItems, err := s.items.ListOrderItems(ctx, orderID)
+	if err != nil {
+		return
 	}
-	order.Status = finalStatus
-	_ = s.orders.UpdateOrderMeta(ctx, order)
+	finalStatus := orderStatusFromProvisionedItems(refreshedItems)
+	updated, err := s.orders.UpdateOrderStatusIfCurrent(ctx, order.ID, finalStatus, []domain.OrderStatus{
+		domain.OrderStatusApproved,
+		domain.OrderStatusProvisioning,
+		domain.OrderStatusFailed,
+	})
+	if err != nil || !updated {
+		return
+	}
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.completed", map[string]any{"status": finalStatus})
 	}
@@ -1260,6 +1244,26 @@ func (s *OrderService) provisionOrder(orderID int64) {
 	} else if finalStatus == domain.OrderStatusFailed && s.messages != nil {
 		_ = s.messages.NotifyUser(ctx, order.UserID, "provision_failed", "Provision Failed", "Order "+order.OrderNo+" failed to provision.")
 	}
+}
+
+func orderStatusFromProvisionedItems(items []domain.OrderItem) domain.OrderStatus {
+	if len(items) == 0 {
+		return domain.OrderStatusFailed
+	}
+	allActive := true
+	for _, item := range items {
+		switch item.Status {
+		case domain.OrderItemStatusFailed, domain.OrderItemStatusRejected, domain.OrderItemStatusCanceled:
+			return domain.OrderStatusFailed
+		case domain.OrderItemStatusActive:
+		default:
+			allActive = false
+		}
+	}
+	if allActive {
+		return domain.OrderStatusActive
+	}
+	return domain.OrderStatusProvisioning
 }
 
 func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, item domain.OrderItem) (domain.VPSInstance, error) {
@@ -1292,9 +1296,15 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 		portNum = defaultPortNum
 	}
 
-	hostName := fmt.Sprintf("ecs-%d-%d", order.UserID, time.Now().UnixNano())
-	sysPwd := randomPass(systemPasswordLength)
-	vncPwd := randomPass(vncPasswordLength)
+	hostName := fmt.Sprintf("ecs-%d-%d-%d", order.UserID, order.ID, item.ID)
+	sysPwd, err := randomPass(systemPasswordLength)
+	if err != nil {
+		return domain.VPSInstance{}, fmt.Errorf("generate system password: %w", err)
+	}
+	vncPwd, err := randomPass(vncPasswordLength)
+	if err != nil {
+		return domain.VPSInstance{}, fmt.Errorf("generate VNC password: %w", err)
+	}
 	months := item.DurationMonths
 	if months <= 0 {
 		months = 1
@@ -1313,20 +1323,42 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 		SysPwd:     sysPwd,
 		VNCPwd:     vncPwd,
 	}
-	res, err := cli.CreateHost(ctx, req)
-	if err != nil {
-		s.logAutomation(ctx, order.ID, item.ID, "create_host", req, map[string]any{"error": err.Error()}, false, err.Error())
-		return domain.VPSInstance{}, err
-	}
-	var hostID int64
-	if res.HostID > 0 {
-		hostID = res.HostID
-	} else {
-		hosts, _ := cli.ListHostSimple(ctx, hostName)
-		for _, h := range hosts {
-			if h.HostName == hostName {
-				hostID = h.ID
+	res := AutomationCreateHostResult{}
+	hostID, _ := strconv.ParseInt(strings.TrimSpace(item.AutomationInstanceID), 10, 64)
+	createdThisAttempt := false
+	if hostID == 0 && strings.HasPrefix(strings.TrimSpace(item.AutomationInstanceID), "creating:") {
+		hosts, listErr := cli.ListHostSimple(ctx, hostName)
+		if listErr != nil {
+			return domain.VPSInstance{}, listErr
+		}
+		for _, host := range hosts {
+			if strings.EqualFold(strings.TrimSpace(host.HostName), hostName) {
+				hostID = host.ID
 				break
+			}
+		}
+	}
+	if hostID == 0 {
+		if err := s.items.UpdateOrderItemAutomation(ctx, item.ID, "creating:"+hostName); err != nil {
+			return domain.VPSInstance{}, err
+		}
+		res, err = cli.CreateHost(ctx, req)
+		if err != nil {
+			s.logAutomation(ctx, order.ID, item.ID, "create_host", req, map[string]any{"error": err.Error()}, false, err.Error())
+			return domain.VPSInstance{}, err
+		}
+		createdThisAttempt = true
+		hostID = res.HostID
+		if hostID == 0 {
+			hosts, listErr := cli.ListHostSimple(ctx, hostName)
+			if listErr != nil {
+				return domain.VPSInstance{}, listErr
+			}
+			for _, host := range hosts {
+				if strings.EqualFold(strings.TrimSpace(host.HostName), hostName) {
+					hostID = host.ID
+					break
+				}
 			}
 		}
 	}
@@ -1334,10 +1366,17 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 		s.logAutomation(ctx, order.ID, item.ID, "create_host", req, res.Raw, false, "host id not found")
 		return domain.VPSInstance{}, domain.ErrHostIDNotFound
 	}
+	if err := s.items.UpdateOrderItemAutomation(ctx, item.ID, strconv.FormatInt(hostID, 10)); err != nil {
+		return domain.VPSInstance{}, err
+	}
 	info, err := s.waitHostActive(ctx, cli, hostID, 5, 6*time.Second)
 	if err != nil {
 		if errors.Is(err, ErrProvisioning) {
-			if err := s.ensureProvisioningInstance(ctx, order, item, hostID, hostName, sysPwd, vncPwd, expireAt); err != nil {
+			provisioningSysPwd, provisioningVNCPwd := "", ""
+			if createdThisAttempt {
+				provisioningSysPwd, provisioningVNCPwd = sysPwd, vncPwd
+			}
+			if err := s.ensureProvisioningInstance(ctx, order, item, hostID, hostName, provisioningSysPwd, provisioningVNCPwd, expireAt); err != nil {
 				return domain.VPSInstance{}, err
 			}
 			_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", hostID))
@@ -1348,11 +1387,15 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 		return domain.VPSInstance{}, err
 	}
 	status := MapAutomationState(info.State)
+	osPassword := strings.TrimSpace(info.OSPassword)
+	if osPassword == "" && createdThisAttempt {
+		osPassword = sysPwd
+	}
 	accessInfo := mustJSON(map[string]any{
 		"remote_ip":      info.RemoteIP,
 		"panel_password": info.PanelPassword,
 		"vnc_password":   info.VNCPassword,
-		"os_password":    sysPwd,
+		"os_password":    osPassword,
 	})
 	exp := info.ExpireAt
 	if exp == nil {
@@ -1437,8 +1480,14 @@ func (s *OrderService) handleRenew(ctx context.Context, item domain.OrderItem) e
 	if inst.AdminStatus != domain.VPSAdminStatusNormal || inst.Status == domain.VPSStatusExpiredLocked {
 		_ = cli.UnlockHost(ctx, hostID)
 	}
-	_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next)
-	_ = s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next))
+	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
+	if err := s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next)); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
 	s.logAutomation(ctx, item.OrderID, item.ID, "renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"status": "ok"}, true, "ok")
 	return nil
 }
@@ -1500,9 +1549,18 @@ func (s *OrderService) handleEmergencyRenew(ctx context.Context, item domain.Ord
 	if inst.AdminStatus != domain.VPSAdminStatusNormal || inst.Status == domain.VPSStatusExpiredLocked {
 		_ = cli.UnlockHost(ctx, hostID)
 	}
-	_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next)
-	_ = s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next))
-	_ = s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, time.Now())
+	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
+	if err := s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next)); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
+	if err := s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, time.Now()); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
 	s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"status": "ok"}, true, "ok")
 	return nil
 }
@@ -2223,6 +2281,8 @@ func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID i
 			}
 			if strings.TrimSpace(traceMsg) != "" {
 				message = traceMsg
+			} else {
+				message = messageWithoutHTTPTrace(message)
 			}
 		}
 	}
@@ -2230,7 +2290,7 @@ func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID i
 		"method":  "RPC",
 		"url":     strings.TrimSpace(action),
 		"headers": map[string]string{},
-		"body":    req,
+		"body":    redactAutomationPayload(req),
 	}
 	status := 500
 	if success {
@@ -2242,9 +2302,10 @@ func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID i
 		"duration_ms": 0,
 	}
 	if resp != nil {
-		responsePayload["body"] = resp
+		redactedResponse := redactAutomationPayload(resp)
+		responsePayload["body"] = redactedResponse
 		responsePayload["format"] = "json"
-		responsePayload["body_json"] = resp
+		responsePayload["body_json"] = redactedResponse
 	} else if strings.TrimSpace(message) != "" {
 		responsePayload["body"] = message
 		responsePayload["format"] = "text"
@@ -2286,6 +2347,17 @@ func extractHTTPTraceFromMessage(message string) (map[string]any, map[string]any
 	return trace.Request, trace.Response, trace.Action, trace.Message, true
 }
 
+func messageWithoutHTTPTrace(message string) string {
+	const marker = "http_trace="
+	if index := strings.LastIndex(message, marker); index >= 0 {
+		message = strings.TrimSpace(message[:index])
+	}
+	if message == "" {
+		return "upstream request failed"
+	}
+	return message
+}
+
 func parseOrderItemVPSID(specJSON string) int64 {
 	if strings.TrimSpace(specJSON) == "" {
 		return 0
@@ -2299,13 +2371,18 @@ func parseOrderItemVPSID(specJSON string) int64 {
 	return payload.VPSID
 }
 
-func randomPass(n int) string {
-	letters := []rune("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%")
-	out := make([]rune, n)
+func randomPass(n int) (string, error) {
+	letters := []byte("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%")
+	out := make([]byte, n)
+	max := big.NewInt(int64(len(letters)))
 	for i := range out {
-		out[i] = letters[rand.Intn(len(letters))]
+		index, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		out[i] = letters[index.Int64()]
 	}
-	return string(out)
+	return string(out), nil
 }
 
 func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID int64, renewDays int, durationMonths int) (domain.Order, error) {

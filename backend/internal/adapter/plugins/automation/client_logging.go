@@ -79,6 +79,8 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 			}
 			if strings.TrimSpace(traceMsg) != "" {
 				err = fmt.Errorf("%s", traceMsg)
+			} else {
+				err = fmt.Errorf("%s", messageWithoutHTTPTrace(err.Error()))
 			}
 		}
 	} else {
@@ -87,6 +89,8 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 		respPayload["format"] = "json"
 		respPayload["body_json"] = body
 	}
+	reqPayload = sanitizePayload(reqPayload).(map[string]any)
+	respPayload = sanitizePayload(respPayload).(map[string]any)
 	logEntry := domain.AutomationLog{
 		OrderID:      trace.OrderID,
 		OrderItemID:  trace.OrderItemID,
@@ -199,6 +203,17 @@ func messageFromErr(err error) string {
 	return err.Error()
 }
 
+func messageWithoutHTTPTrace(message string) string {
+	const marker = "http_trace="
+	if index := strings.LastIndex(message, marker); index >= 0 {
+		message = strings.TrimSpace(message[:index])
+	}
+	if message == "" {
+		return "upstream request failed"
+	}
+	return message
+}
+
 func mustJSON(payload any) string {
 	if payload == nil {
 		return ""
@@ -246,6 +261,16 @@ func sanitizePayload(payload any) any {
 			out = append(out, sanitizePayload(item))
 		}
 		return out
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
+			(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
+			var nested any
+			if json.Unmarshal([]byte(trimmed), &nested) == nil {
+				return sanitizePayload(nested)
+			}
+		}
+		return payload
 	default:
 		return payload
 	}
@@ -257,6 +282,6 @@ func isSensitiveKey(key string) bool {
 	case "api_key", "apikey", "secret", "token", "access_key", "access_key_id", "access_key_secret":
 		return true
 	default:
-		return strings.Contains(normalized, "secret")
+		return strings.Contains(normalized, "secret") || strings.Contains(normalized, "password") || strings.Contains(normalized, "pwd")
 	}
 }

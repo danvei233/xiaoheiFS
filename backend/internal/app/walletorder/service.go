@@ -206,19 +206,17 @@ func (s *Service) RequestRefund(ctx context.Context, userID int64, vpsID int64, 
 		return domain.WalletOrder{}, nil, appshared.ErrForbidden
 	}
 	meta := map[string]any{"vps_id": inst.ID, "order_item_id": item.ID, "refund_policy": policy, "reason": reason, "delete_on_approve": true}
-	status := domain.WalletOrderPendingReview
-	if !policy.RequireApproval {
-		status = domain.WalletOrderApproved
-	}
-	order := domain.WalletOrder{UserID: userID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: status, Note: reason, MetaJSON: toJSON(meta)}
+	autoApprove := !policy.RequireApproval
+	order := domain.WalletOrder{UserID: userID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: domain.WalletOrderPendingReview, Note: reason, MetaJSON: toJSON(meta)}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
 		return domain.WalletOrder{}, nil, err
 	}
-	if status == domain.WalletOrderApproved {
+	if autoApprove {
 		wallet, err := s.approveOrder(ctx, 0, order, true)
 		if err != nil {
 			return domain.WalletOrder{}, nil, err
 		}
+		order.Status = domain.WalletOrderApproved
 		return order, &wallet, nil
 	}
 	return order, nil, nil
@@ -252,19 +250,17 @@ func (s *Service) AutoRefundOnAdminDelete(ctx context.Context, adminID int64, vp
 		return domain.WalletOrder{}, nil, nil
 	}
 	meta := map[string]any{"vps_id": inst.ID, "order_item_id": item.ID, "refund_policy": policy, "reason": reason, "delete_on_approve": false, "trigger": "admin_delete"}
-	status := domain.WalletOrderPendingReview
-	if !policy.RequireApproval {
-		status = domain.WalletOrderApproved
-	}
-	order := domain.WalletOrder{UserID: inst.UserID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: status, Note: reason, MetaJSON: toJSON(meta)}
+	autoApprove := !policy.RequireApproval
+	order := domain.WalletOrder{UserID: inst.UserID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: domain.WalletOrderPendingReview, Note: reason, MetaJSON: toJSON(meta)}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
 		return domain.WalletOrder{}, nil, err
 	}
-	if status == domain.WalletOrderApproved {
+	if autoApprove {
 		wallet, err := s.approveOrder(ctx, adminID, order, false)
 		if err != nil {
 			return domain.WalletOrder{}, nil, err
 		}
+		order.Status = domain.WalletOrderApproved
 		return order, &wallet, nil
 	}
 	return order, nil, nil
@@ -299,8 +295,12 @@ func (s *Service) Reject(ctx context.Context, adminID int64, orderID int64, reas
 	if order.Status != domain.WalletOrderPendingReview {
 		return appshared.ErrConflict
 	}
-	if err := s.orders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderRejected, &adminID, reason); err != nil {
+	updated, err := s.orders.UpdateWalletOrderStatusIfCurrent(ctx, order.ID, domain.WalletOrderPendingReview, domain.WalletOrderRejected, &adminID, reason)
+	if err != nil {
 		return err
+	}
+	if !updated {
+		return appshared.ErrConflict
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "wallet_order.reject", TargetType: "wallet_order", TargetID: strconv.FormatInt(order.ID, 10), DetailJSON: mustJSON(map[string]any{"type": order.Type, "amount": order.Amount, "reason": reason})})
@@ -311,13 +311,6 @@ func (s *Service) Reject(ctx context.Context, adminID int64, orderID int64, reas
 func (s *Service) approveOrder(ctx context.Context, adminID int64, order domain.WalletOrder, allowDelete bool) (domain.Wallet, error) {
 	if s.wallets == nil {
 		return domain.Wallet{}, appshared.ErrInvalidInput
-	}
-	if allowDelete && order.Type == domain.WalletOrderRefund {
-		if deleteOnApprove(order.MetaJSON) {
-			if err := s.deleteVPS(ctx, order.MetaJSON); err != nil {
-				return domain.Wallet{}, err
-			}
-		}
 	}
 	var amount int64
 	var txType string
@@ -334,33 +327,23 @@ func (s *Service) approveOrder(ctx context.Context, adminID int64, order domain.
 	default:
 		return domain.Wallet{}, appshared.ErrInvalidInput
 	}
-	refType := "wallet_order"
-	exists, err := s.wallets.HasWalletTransaction(ctx, order.UserID, refType, order.ID)
+	wallet, claimed, err := s.orders.ApproveWalletOrderAtomic(ctx, order, adminID, amount, txType)
 	if err != nil {
 		return domain.Wallet{}, err
 	}
-	var wallet domain.Wallet
-	if exists {
-		wallet, err = s.wallets.GetWallet(ctx, order.UserID)
-		if err != nil {
-			return domain.Wallet{}, err
-		}
-	} else {
-		wallet, err = s.wallets.AdjustWalletBalance(ctx, order.UserID, amount, txType, refType, order.ID, string(order.Type))
-		if err != nil {
-			ok, checkErr := s.wallets.HasWalletTransaction(ctx, order.UserID, refType, order.ID)
-			if checkErr == nil && ok {
-				wallet, checkErr = s.wallets.GetWallet(ctx, order.UserID)
-				if checkErr != nil {
-					return domain.Wallet{}, checkErr
-				}
-			} else {
-				return domain.Wallet{}, err
+	if !claimed {
+		return domain.Wallet{}, appshared.ErrConflict
+	}
+	if allowDelete && order.Type == domain.WalletOrderRefund && deleteOnApprove(order.MetaJSON) {
+		if deleteErr := s.deleteVPS(ctx, order.MetaJSON); deleteErr != nil {
+			meta := parseJSON(order.MetaJSON)
+			meta["delete_pending"] = true
+			meta["delete_error"] = deleteErr.Error()
+			_ = s.orders.UpdateWalletOrderMeta(ctx, order.ID, toJSON(meta))
+			if s.audit != nil {
+				_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "wallet_order.refund_cleanup_failed", TargetType: "wallet_order", TargetID: strconv.FormatInt(order.ID, 10), DetailJSON: mustJSON(map[string]any{"error": deleteErr.Error()})})
 			}
 		}
-	}
-	if err := s.orders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderApproved, &adminID, ""); err != nil {
-		return domain.Wallet{}, err
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "wallet_order.approve", TargetType: "wallet_order", TargetID: strconv.FormatInt(order.ID, 10), DetailJSON: mustJSON(map[string]any{"type": order.Type, "amount": order.Amount})})
@@ -395,8 +378,7 @@ func (s *Service) deleteVPS(ctx context.Context, metaJSON string) error {
 	if err := cli.DeleteHost(ctx, hostID); err != nil {
 		return err
 	}
-	_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, inst.AutomationState)
-	return nil
+	return s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, inst.AutomationState)
 }
 
 func (s *Service) refundPolicy(ctx context.Context) RefundPolicy {

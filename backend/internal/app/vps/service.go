@@ -562,8 +562,12 @@ func (s *Service) EmergencyRenew(ctx context.Context, inst domain.VPSInstance) (
 		_ = cli.UnlockHost(ctx, hostID)
 	}
 	now := time.Now()
-	_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next)
-	_ = s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now)
+	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next); err != nil {
+		return domain.VPSInstance{}, err
+	}
+	if err := s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now); err != nil {
+		return domain.VPSInstance{}, err
+	}
 	return s.vps.GetInstance(ctx, inst.ID)
 }
 

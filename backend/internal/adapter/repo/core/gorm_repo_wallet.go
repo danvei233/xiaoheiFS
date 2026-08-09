@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -102,52 +103,46 @@ func (r *GormRepo) ListWalletTransactions(ctx context.Context, userID int64, lim
 
 func (r *GormRepo) AdjustWalletBalance(ctx context.Context, userID int64, amount int64, txType, refType string, refID int64, note string) (wallet domain.Wallet, err error) {
 	err = r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var w walletRow
-		lock := clause.Locking{Strength: "UPDATE"}
-		if e := tx.Clauses(lock).Where("user_id = ?", userID).First(&w).Error; e != nil {
-			if errors.Is(e, gorm.ErrRecordNotFound) {
-				w = walletRow{UserID: userID, Balance: 0, UpdatedAt: time.Now()}
-				if e = tx.Create(&w).Error; e != nil {
-					return e
-				}
-			} else {
-				return e
-			}
-		}
-		newBalance := w.Balance + amount
-		if newBalance < 0 {
-			return appshared.ErrInsufficientBalance
-		}
-		now := time.Now()
-		if e := tx.Model(&walletRow{}).Where("user_id = ?", userID).Updates(map[string]any{
-			"balance":    newBalance,
-			"updated_at": now,
-		}).Error; e != nil {
-			return e
-		}
-		txRow := walletTransactionRow{
-			UserID:  userID,
-			Amount:  amount,
-			Type:    txType,
-			RefType: refType,
-			RefID:   refID,
-			Note:    note,
-		}
-		if e := tx.Create(&txRow).Error; e != nil {
-			return e
-		}
-		wallet = domain.Wallet{
-			ID:        w.ID,
-			UserID:    userID,
-			Balance:   newBalance,
-			UpdatedAt: now,
-		}
-		return nil
+		var adjustErr error
+		wallet, adjustErr = adjustWalletBalanceTx(tx, userID, amount, txType, refType, refID, note, "")
+		return adjustErr
 	})
 	if err != nil {
 		return domain.Wallet{}, err
 	}
 	return wallet, nil
+}
+
+func adjustWalletBalanceTx(tx *gorm.DB, userID int64, amount int64, txType, refType string, refID int64, note, idempotencyKey string) (domain.Wallet, error) {
+	now := time.Now()
+	seed := walletRow{UserID: userID, Balance: 0, UpdatedAt: now}
+	if err := tx.Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "user_id"}}, DoNothing: true}).Create(&seed).Error; err != nil {
+		return domain.Wallet{}, err
+	}
+	result := tx.Model(&walletRow{}).
+		Where("user_id = ? AND balance + ? >= 0", userID, amount).
+		Updates(map[string]any{
+			"balance":    gorm.Expr("balance + ?", amount),
+			"updated_at": now,
+		})
+	if result.Error != nil {
+		return domain.Wallet{}, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return domain.Wallet{}, appshared.ErrInsufficientBalance
+	}
+	txRow := walletTransactionRow{UserID: userID, Amount: amount, Type: txType, RefType: refType, RefID: refID, Note: note}
+	if idempotencyKey != "" {
+		txRow.IdempotencyKey = &idempotencyKey
+	}
+	if err := tx.Create(&txRow).Error; err != nil {
+		return domain.Wallet{}, err
+	}
+	var row walletRow
+	if err := tx.Where("user_id = ?", userID).First(&row).Error; err != nil {
+		return domain.Wallet{}, err
+	}
+	return domain.Wallet{ID: row.ID, UserID: row.UserID, Balance: row.Balance, UpdatedAt: row.UpdatedAt}, nil
 }
 
 func (r *GormRepo) HasWalletTransaction(ctx context.Context, userID int64, refType string, refID int64) (bool, error) {
@@ -291,6 +286,38 @@ func (r *GormRepo) UpdateWalletOrderStatusIfCurrent(ctx context.Context, id int6
 		return false, res.Error
 	}
 	return res.RowsAffected > 0, nil
+}
+
+// ApproveWalletOrderAtomic claims a pending wallet order and applies its ledger entry in one transaction.
+func (r *GormRepo) ApproveWalletOrderAtomic(ctx context.Context, order domain.WalletOrder, adminID int64, amount int64, txType string) (wallet domain.Wallet, claimed bool, err error) {
+	err = r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		result := tx.Model(&walletOrderRow{}).
+			Where("id = ? AND status = ?", order.ID, string(domain.WalletOrderPendingReview)).
+			Updates(map[string]any{
+				"status":        string(domain.WalletOrderApproved),
+				"reviewed_by":   adminID,
+				"review_reason": "",
+				"updated_at":    now,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return nil
+		}
+		var adjustErr error
+		wallet, adjustErr = adjustWalletBalanceTx(tx, order.UserID, amount, txType, "wallet_order", order.ID, string(order.Type), fmt.Sprintf("wallet_order:%d", order.ID))
+		if adjustErr != nil {
+			return adjustErr
+		}
+		claimed = true
+		return nil
+	})
+	if err != nil {
+		return domain.Wallet{}, false, err
+	}
+	return wallet, claimed, nil
 }
 
 func (r *GormRepo) UpdateWalletOrderMeta(ctx context.Context, id int64, metaJSON string) error {

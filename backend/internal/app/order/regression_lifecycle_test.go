@@ -59,11 +59,12 @@ func (f *fakeLifecycleSettingsRepo) DeleteEmailTemplate(ctx context.Context, id 
 }
 
 type fakeLifecycleVPSRepo struct {
-	inst          domain.VPSInstance
-	updates       []time.Time
-	deletes       []int64
-	expiring      []domain.VPSInstance
-	statusUpdates []struct {
+	inst            domain.VPSInstance
+	updates         []time.Time
+	updateExpireErr error
+	deletes         []int64
+	expiring        []domain.VPSInstance
+	statusUpdates   []struct {
 		ID              int64
 		Status          domain.VPSStatus
 		AutomationState int
@@ -116,7 +117,7 @@ func (f *fakeLifecycleVPSRepo) UpdateInstanceAdminStatus(ctx context.Context, id
 }
 func (f *fakeLifecycleVPSRepo) UpdateInstanceExpireAt(ctx context.Context, id int64, expireAt time.Time) error {
 	f.updates = append(f.updates, expireAt)
-	return nil
+	return f.updateExpireErr
 }
 func (f *fakeLifecycleVPSRepo) UpdateInstancePanelCache(ctx context.Context, id int64, panelURL string) error {
 	return nil
@@ -176,6 +177,39 @@ func (f *fakeLifecycleOrderRepo) UpdateOrderMeta(ctx context.Context, order doma
 	f.orders[order.ID] = order
 	return nil
 }
+func (f *fakeLifecycleOrderRepo) ApproveOrderAtomic(ctx context.Context, order domain.Order, itemIDs []int64, tasks []*domain.ResizeTask, currentStatuses []domain.OrderStatus) (bool, error) {
+	current, ok := f.orders[order.ID]
+	if !ok {
+		return false, ErrNotFound
+	}
+	for _, status := range currentStatuses {
+		if current.Status == status {
+			f.orders[order.ID] = order
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (f *fakeLifecycleOrderRepo) RejectOrderAtomic(ctx context.Context, order domain.Order, adminID int64, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(order.ID, order.Status, currentStatuses)
+}
+func (f *fakeLifecycleOrderRepo) UpdateOrderStatusIfCurrent(ctx context.Context, id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(id, status, currentStatuses)
+}
+func (f *fakeLifecycleOrderRepo) updateOrderIfCurrent(id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	order, ok := f.orders[id]
+	if !ok {
+		return false, ErrNotFound
+	}
+	for _, current := range currentStatuses {
+		if order.Status == current {
+			order.Status = status
+			f.orders[id] = order
+			return true, nil
+		}
+	}
+	return false, nil
+}
 func (f *fakeLifecycleOrderRepo) ListOrders(ctx context.Context, filter OrderFilter, limit, offset int) ([]domain.Order, int, error) {
 	return nil, 0, nil
 }
@@ -222,6 +256,19 @@ func (f *fakeLifecycleOrderItemRepo) UpdateOrderItemStatus(ctx context.Context, 
 		}
 	}
 	return ErrNotFound
+}
+func (f *fakeLifecycleOrderItemRepo) ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error) {
+	for i := range f.items {
+		if f.items[i].ID != id {
+			continue
+		}
+		if f.items[i].Status != domain.OrderItemStatusApproved && f.items[i].Status != domain.OrderItemStatusFailed {
+			return false, nil
+		}
+		f.items[i].Status = domain.OrderItemStatusProvisioning
+		return true, nil
+	}
+	return false, ErrNotFound
 }
 func (f *fakeLifecycleOrderItemRepo) UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error {
 	return nil
@@ -478,6 +525,24 @@ func TestHandleEmergencyRenew_RespectsWindowAndUpdatesExpire(t *testing.T) {
 	}
 	if len(vpsRepo.updates) != 1 {
 		t.Fatalf("expected expire update")
+	}
+}
+
+func TestHandleRenew_ReturnsLocalUpdateFailureAfterRemoteSuccess(t *testing.T) {
+	expire := time.Now().Add(24 * time.Hour)
+	vpsRepo := &fakeLifecycleVPSRepo{
+		inst:            domain.VPSInstance{ID: 7, UserID: 9, GoodsTypeID: 1, AutomationInstanceID: "1007", ExpireAt: &expire, AdminStatus: domain.VPSAdminStatusNormal, Status: domain.VPSStatusRunning},
+		updateExpireErr: context.Canceled,
+	}
+	automation := &fakeLifecycleAutomationClient{}
+	svc := NewOrderService(&fakeLifecycleOrderRepo{}, &fakeLifecycleOrderItemRepo{}, nil, nil, nil, nil, vpsRepo, nil, nil, nil, automation, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	item := domain.OrderItem{OrderID: 20, ID: 21, Action: "renew", SpecJSON: `{"vps_id":7,"renew_days":30}`}
+
+	if err := svc.handleRenew(context.Background(), item); err != context.Canceled {
+		t.Fatalf("expected local update error, got %v", err)
+	}
+	if len(automation.RenewCalls) != 1 {
+		t.Fatalf("expected remote renew before local failure, got %d calls", len(automation.RenewCalls))
 	}
 }
 

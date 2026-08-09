@@ -205,3 +205,52 @@ func TestPluginInstanceClient_LogRPC_PreservesHTTPTraceAndGRPCMeta(t *testing.T)
 		t.Fatalf("http trace headers should be preserved: %#v", headers)
 	}
 }
+
+func TestPluginInstanceClient_LogRPC_RedactsProvisioningPasswords(t *testing.T) {
+	logs := &captureAutomationLogs{}
+	settings := &fakeSettings{values: map[string]string{"debug_enabled": "true"}}
+	client := NewPluginInstanceClient(nil, "demo_plugin", "line-a", settings, logs)
+
+	client.logRPC(
+		context.Background(),
+		"automation.CreateInstance",
+		map[string]any{
+			"password":     "system-secret",
+			"vnc_password": "vnc-secret",
+			"nested_json":  `{"os_password":"nested-system-secret","vnc_pwd":"nested-vnc-secret"}`,
+		},
+		map[string]any{"password": "response-secret"},
+		time.Millisecond,
+		nil,
+	)
+
+	if logs.last == nil {
+		t.Fatalf("expected log entry")
+	}
+	serialized := logs.last.RequestJSON + logs.last.ResponseJSON
+	for _, secret := range []string{"system-secret", "vnc-secret", "nested-system-secret", "nested-vnc-secret", "response-secret"} {
+		if strings.Contains(serialized, secret) {
+			t.Fatalf("automation log contains secret %q: %s", secret, serialized)
+		}
+	}
+}
+
+func TestPluginInstanceClient_LogRPC_RemovesSecretsFromHTTPTraceMessage(t *testing.T) {
+	logs := &captureAutomationLogs{}
+	settings := &fakeSettings{values: map[string]string{"debug_enabled": "true"}}
+	client := NewPluginInstanceClient(nil, "demo_plugin", "line-a", settings, logs)
+	traceRaw, _ := json.Marshal(map[string]any{
+		"request": map[string]any{"body": map[string]any{"password": "trace-system-secret", "vnc_password": "trace-vnc-secret"}},
+	})
+	err := fmt.Errorf("%s", "rpc failed http_trace="+base64.StdEncoding.EncodeToString(traceRaw))
+
+	client.logRPC(context.Background(), "automation.CreateInstance", nil, nil, time.Millisecond, err)
+
+	if logs.last == nil {
+		t.Fatalf("expected log entry")
+	}
+	serialized := logs.last.RequestJSON + logs.last.ResponseJSON + logs.last.Message
+	if strings.Contains(serialized, "trace-system-secret") || strings.Contains(serialized, "trace-vnc-secret") {
+		t.Fatalf("automation log contains HTTP trace secret: %s", serialized)
+	}
+}

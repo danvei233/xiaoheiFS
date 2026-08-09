@@ -89,6 +89,9 @@ func migrateGorm(db *gorm.DB) error {
 			return err
 		}
 	}
+	if err := ensureWalletTransactionIdempotencyIndex(db); err != nil {
+		return err
+	}
 	if db.Dialector != nil && db.Dialector.Name() == "mysql" {
 		if err := fixMySQLPartialUniqueIndexes(db); err != nil {
 			return err
@@ -101,6 +104,19 @@ func migrateGorm(db *gorm.DB) error {
 		return err
 	}
 	return nil
+}
+
+func ensureWalletTransactionIdempotencyIndex(db *gorm.DB) error {
+	const indexName = "idx_wallet_transactions_idempotency_key"
+	if !db.Migrator().HasColumn(&walletTransactionRow{}, "idempotency_key") {
+		if err := db.Migrator().AddColumn(&walletTransactionRow{}, "IdempotencyKey"); err != nil {
+			return err
+		}
+	}
+	if db.Migrator().HasIndex(&walletTransactionRow{}, indexName) {
+		return nil
+	}
+	return db.Migrator().CreateIndex(&walletTransactionRow{}, indexName)
 }
 
 func isLegacySQLiteFromMySQLDump(db *gorm.DB) bool {

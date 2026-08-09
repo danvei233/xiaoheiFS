@@ -178,6 +178,8 @@ func (f *fakeResizeVPSRepo) UpdateInstanceLocal(ctx context.Context, inst domain
 type fakeResizeOrderRepo struct {
 	nextID int64
 	orders map[int64]domain.Order
+	items  *fakeResizeOrderItemRepo
+	tasks  *fakeResizeTaskRepo
 }
 
 func (f *fakeResizeOrderRepo) CreateOrder(ctx context.Context, order *domain.Order) error {
@@ -216,6 +218,53 @@ func (f *fakeResizeOrderRepo) UpdateOrderMeta(ctx context.Context, order domain.
 	}
 	f.orders[order.ID] = order
 	return nil
+}
+func (f *fakeResizeOrderRepo) ApproveOrderAtomic(ctx context.Context, order domain.Order, itemIDs []int64, tasks []*domain.ResizeTask, currentStatuses []domain.OrderStatus) (bool, error) {
+	current, ok := f.orders[order.ID]
+	if !ok {
+		return false, appshared.ErrNotFound
+	}
+	allowed := false
+	for _, status := range currentStatuses {
+		allowed = allowed || current.Status == status
+	}
+	if !allowed {
+		return false, nil
+	}
+	f.orders[order.ID] = order
+	if f.items != nil {
+		for _, id := range itemIDs {
+			_ = f.items.UpdateOrderItemStatus(ctx, id, domain.OrderItemStatusApproved)
+		}
+	}
+	if f.tasks != nil {
+		for _, task := range tasks {
+			if task != nil {
+				_ = f.tasks.CreateResizeTask(ctx, task)
+			}
+		}
+	}
+	return true, nil
+}
+func (f *fakeResizeOrderRepo) RejectOrderAtomic(ctx context.Context, order domain.Order, adminID int64, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(order.ID, order.Status, currentStatuses)
+}
+func (f *fakeResizeOrderRepo) UpdateOrderStatusIfCurrent(ctx context.Context, id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(id, status, currentStatuses)
+}
+func (f *fakeResizeOrderRepo) updateOrderIfCurrent(id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	order, ok := f.orders[id]
+	if !ok {
+		return false, appshared.ErrNotFound
+	}
+	for _, current := range currentStatuses {
+		if order.Status == current {
+			order.Status = status
+			f.orders[id] = order
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (f *fakeResizeOrderRepo) ListOrders(ctx context.Context, filter appshared.OrderFilter, limit, offset int) ([]domain.Order, int, error) {
 	return nil, 0, nil
@@ -264,6 +313,19 @@ func (f *fakeResizeOrderItemRepo) UpdateOrderItemStatus(ctx context.Context, id 
 		}
 	}
 	return nil
+}
+func (f *fakeResizeOrderItemRepo) ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error) {
+	for i := range f.items {
+		if f.items[i].ID != id {
+			continue
+		}
+		if f.items[i].Status != domain.OrderItemStatusApproved && f.items[i].Status != domain.OrderItemStatusFailed {
+			return false, nil
+		}
+		f.items[i].Status = domain.OrderItemStatusProvisioning
+		return true, nil
+	}
+	return false, appshared.ErrNotFound
 }
 func (f *fakeResizeOrderItemRepo) UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error {
 	return nil
@@ -364,6 +426,20 @@ func (f *fakeWalletOrderRepo) UpdateWalletOrderStatusIfCurrent(ctx context.Conte
 	return true, nil
 }
 
+func (f *fakeWalletOrderRepo) ApproveWalletOrderAtomic(ctx context.Context, order domain.WalletOrder, adminID int64, amount int64, txType string) (domain.Wallet, bool, error) {
+	stored, ok := f.orders[order.ID]
+	if !ok {
+		return domain.Wallet{}, false, appshared.ErrNotFound
+	}
+	if stored.Status != domain.WalletOrderPendingReview {
+		return domain.Wallet{}, false, nil
+	}
+	stored.Status = domain.WalletOrderApproved
+	stored.ReviewedBy = &adminID
+	f.orders[order.ID] = stored
+	return domain.Wallet{UserID: order.UserID, Balance: amount}, true, nil
+}
+
 func (f *fakeWalletOrderRepo) UpdateWalletOrderMeta(ctx context.Context, id int64, metaJSON string) error {
 	order, ok := f.orders[id]
 	if !ok {
@@ -384,6 +460,8 @@ func (f *fakeResizeTaskRepo) HasPendingResizeTask(ctx context.Context, vpsID int
 
 func newResizeOrderService(inst domain.VPSInstance, catalog *fakeResizeCatalogRepo, settings *fakeResizeSettingsRepo, orders *fakeResizeOrderRepo, items *fakeResizeOrderItemRepo, tasks *fakeResizeTaskRepo) *apporder.Service {
 	vps := &fakeResizeVPSRepo{inst: inst}
+	orders.items = items
+	orders.tasks = tasks
 	return apporder.NewService(
 		orders,
 		items,

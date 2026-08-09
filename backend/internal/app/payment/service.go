@@ -3,6 +3,7 @@ package payment
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -203,7 +204,7 @@ func (s *Service) SelectPaymentByScene(ctx context.Context, scene string, userID
 	if order.UserID != userID {
 		return PaymentSelectResult{}, appshared.ErrForbidden
 	}
-	if order.Status != domain.OrderStatusPendingPayment {
+	if order.Status != domain.OrderStatusPendingPayment && input.Method != "balance" {
 		return PaymentSelectResult{}, appshared.ErrConflict
 	}
 	if order.TotalAmount <= 0 {
@@ -371,33 +372,37 @@ func (s *Service) ValidateNotifyAmount(expectedAmount, actualAmount int64) error
 }
 
 func (s *Service) payWithBalance(ctx context.Context, order domain.Order) (PaymentSelectResult, error) {
-	if s.wallets == nil || s.payments == nil {
+	if s.payments == nil {
 		return PaymentSelectResult{}, appshared.ErrInvalidInput
 	}
-	wallet, err := s.wallets.AdjustWalletBalance(ctx, order.UserID, -order.TotalAmount, "debit", "order", order.ID, "balance payment")
+	tradeNo := fmt.Sprintf("BAL-%d", order.ID)
+	payment := domain.OrderPayment{
+		OrderID:        order.ID,
+		UserID:         order.UserID,
+		Method:         "balance",
+		Amount:         order.TotalAmount,
+		Currency:       order.Currency,
+		TradeNo:        tradeNo,
+		Status:         domain.PaymentStatusApproved,
+		IdempotencyKey: fmt.Sprintf("balance:%d", order.ID),
+	}
+	wallet, claimed, err := s.payments.PayOrderWithBalanceAtomic(ctx, order, &payment)
 	if err != nil {
 		return PaymentSelectResult{}, err
 	}
-	tradeNo := fmt.Sprintf("BAL-%d-%d", order.ID, time.Now().Unix())
-	payment := domain.OrderPayment{
-		OrderID:  order.ID,
-		UserID:   order.UserID,
-		Method:   "balance",
-		Amount:   order.TotalAmount,
-		Currency: order.Currency,
-		TradeNo:  tradeNo,
-		Status:   domain.PaymentStatusApproved,
+	if payment.ID == 0 {
+		return PaymentSelectResult{}, appshared.ErrConflict
 	}
-	if err := s.payments.CreatePayment(ctx, &payment); err != nil {
+	latest, err := s.orders.GetOrder(ctx, order.ID)
+	if err != nil {
 		return PaymentSelectResult{}, err
 	}
-	if err := s.ensurePendingReview(ctx, order.ID); err != nil && err != appshared.ErrConflict {
-		return PaymentSelectResult{}, err
+	if latest.Status == domain.OrderStatusPendingReview && s.approver != nil {
+		if err := s.approver.ApproveOrder(ctx, 0, order.ID); err != nil && !errors.Is(err, appshared.ErrConflict) {
+			return PaymentSelectResult{}, err
+		}
 	}
-	if s.approver != nil {
-		_ = s.approver.ApproveOrder(ctx, 0, order.ID)
-	}
-	if s.events != nil {
+	if claimed && s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "payment.approved", map[string]any{
 			"method":   "balance",
 			"trade_no": tradeNo,

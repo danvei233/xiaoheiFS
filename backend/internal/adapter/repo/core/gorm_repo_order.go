@@ -3,11 +3,16 @@ package repo
 import (
 	"context"
 	"encoding/json"
-	"gorm.io/gorm"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
+
+const provisionClaimTimeout = 30 * time.Minute
 
 func (r *GormRepo) CreateOrder(ctx context.Context, order *domain.Order) error {
 
@@ -113,6 +118,154 @@ func (r *GormRepo) UpdateOrderMeta(ctx context.Context, order domain.Order) erro
 		"updated_at":      time.Now(),
 	}).Error
 
+}
+
+// ApproveOrderAtomic claims an approvable order and updates its items and resize tasks in one transaction.
+func (r *GormRepo) ApproveOrderAtomic(ctx context.Context, order domain.Order, itemIDs []int64, tasks []*domain.ResizeTask, currentStatuses []domain.OrderStatus) (claimed bool, err error) {
+	err = r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var approveErr error
+		claimed, approveErr = approveOrderTx(tx, order, itemIDs, tasks, currentStatuses)
+		return approveErr
+	})
+	if err != nil {
+		return false, err
+	}
+	return claimed, nil
+}
+
+func approveOrderTx(tx *gorm.DB, order domain.Order, itemIDs []int64, tasks []*domain.ResizeTask, currentStatuses []domain.OrderStatus) (bool, error) {
+	statuses := make([]string, 0, len(currentStatuses))
+	for _, status := range currentStatuses {
+		statuses = append(statuses, string(status))
+	}
+	if len(statuses) == 0 {
+		return false, nil
+	}
+	now := time.Now()
+	result := tx.Model(&orderRow{}).
+		Where("id = ? AND status IN ?", order.ID, statuses).
+		Updates(map[string]any{
+			"status":          order.Status,
+			"pending_reason":  order.PendingReason,
+			"approved_by":     order.ApprovedBy,
+			"approved_at":     order.ApprovedAt,
+			"rejected_reason": order.RejectedReason,
+			"updated_at":      now,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return false, nil
+	}
+
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		var instance vpsInstanceRow
+		if err := tx.Select("id").Clauses(clause.Locking{Strength: "UPDATE"}).First(&instance, task.VPSID).Error; err != nil {
+			return false, err
+		}
+		var total int64
+		if err := tx.Model(&resizeTaskRow{}).
+			Where("vps_id = ? AND status IN ?", task.VPSID, []string{string(domain.ResizeTaskStatusPending), string(domain.ResizeTaskStatusRunning)}).
+			Count(&total).Error; err != nil {
+			return false, err
+		}
+		if total > 0 {
+			return false, appshared.ErrResizeInProgress
+		}
+	}
+
+	if len(itemIDs) > 0 {
+		if err := tx.Model(&orderItemRow{}).
+			Where("order_id = ? AND id IN ?", order.ID, itemIDs).
+			Updates(map[string]any{"status": domain.OrderItemStatusApproved, "updated_at": now}).Error; err != nil {
+			return false, err
+		}
+	}
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		row := resizeTaskRow{
+			VPSID:       task.VPSID,
+			OrderID:     task.OrderID,
+			OrderItemID: task.OrderItemID,
+			Status:      string(task.Status),
+			ScheduledAt: task.ScheduledAt,
+			StartedAt:   task.StartedAt,
+			FinishedAt:  task.FinishedAt,
+		}
+		if err := tx.Create(&row).Error; err != nil {
+			return false, err
+		}
+		task.ID = row.ID
+	}
+	return true, nil
+}
+
+func (r *GormRepo) RejectOrderAtomic(ctx context.Context, order domain.Order, adminID int64, currentStatuses []domain.OrderStatus) (claimed bool, err error) {
+	statuses := make([]string, 0, len(currentStatuses))
+	for _, status := range currentStatuses {
+		statuses = append(statuses, string(status))
+	}
+	if len(statuses) == 0 {
+		return false, nil
+	}
+	err = r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		result := tx.Model(&orderRow{}).
+			Where("id = ? AND status IN ?", order.ID, statuses).
+			Updates(map[string]any{
+				"status":          domain.OrderStatusRejected,
+				"pending_reason":  "",
+				"rejected_reason": order.RejectedReason,
+				"updated_at":      now,
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return nil
+		}
+		if err := tx.Model(&orderItemRow{}).
+			Where("order_id = ?", order.ID).
+			Updates(map[string]any{"status": domain.OrderItemStatusRejected, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&orderPaymentRow{}).
+			Where("order_id = ?", order.ID).
+			Updates(map[string]any{
+				"status":        domain.PaymentStatusRejected,
+				"reviewed_by":   adminID,
+				"review_reason": order.RejectedReason,
+				"updated_at":    now,
+			}).Error; err != nil {
+			return err
+		}
+		claimed = true
+		return nil
+	})
+	return claimed, err
+}
+
+func (r *GormRepo) UpdateOrderStatusIfCurrent(ctx context.Context, id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	statuses := make([]string, 0, len(currentStatuses))
+	for _, current := range currentStatuses {
+		statuses = append(statuses, string(current))
+	}
+	if len(statuses) == 0 {
+		return false, nil
+	}
+	result := r.gdb.WithContext(ctx).Model(&orderRow{}).
+		Where("id = ? AND status IN ?", id, statuses).
+		Updates(map[string]any{"status": status, "updated_at": time.Now()})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 func (r *GormRepo) ApproveResizeOrderWithTasks(ctx context.Context, order domain.Order, items []domain.OrderItem, tasks []*domain.ResizeTask) error {
@@ -355,6 +508,23 @@ func (r *GormRepo) UpdateOrderItemStatus(ctx context.Context, id int64, status d
 		"updated_at": time.Now(),
 	}).Error
 
+}
+
+// ClaimOrderItemForProvision atomically moves an approved or failed item into provisioning.
+func (r *GormRepo) ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error) {
+	staleBefore := time.Now().Add(-provisionClaimTimeout)
+	result := r.gdb.WithContext(ctx).Model(&orderItemRow{}).
+		Where("id = ? AND (status IN ? OR (status = ? AND updated_at < ?))", id,
+			[]string{string(domain.OrderItemStatusApproved), string(domain.OrderItemStatusFailed)},
+			string(domain.OrderItemStatusProvisioning), staleBefore).
+		Updates(map[string]any{
+			"status":     domain.OrderItemStatusProvisioning,
+			"updated_at": time.Now(),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 func (r *GormRepo) UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error {

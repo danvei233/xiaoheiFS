@@ -47,8 +47,9 @@ func (f *fakeWalletRepo) HasWalletTransaction(ctx context.Context, userID int64,
 }
 
 type fakeWalletOrderRepo struct {
-	nextID int64
-	orders map[int64]domain.WalletOrder
+	nextID  int64
+	orders  map[int64]domain.WalletOrder
+	wallets *fakeWalletRepo
 }
 
 func (f *fakeWalletOrderRepo) CreateWalletOrder(ctx context.Context, order *domain.WalletOrder) error {
@@ -97,6 +98,24 @@ func (f *fakeWalletOrderRepo) UpdateWalletOrderStatusIfCurrent(ctx context.Conte
 	order.Status = targetStatus
 	f.orders[id] = order
 	return true, nil
+}
+
+func (f *fakeWalletOrderRepo) ApproveWalletOrderAtomic(ctx context.Context, order domain.WalletOrder, adminID int64, amount int64, txType string) (domain.Wallet, bool, error) {
+	stored, ok := f.orders[order.ID]
+	if !ok {
+		return domain.Wallet{}, false, appshared.ErrNotFound
+	}
+	if stored.Status != domain.WalletOrderPendingReview {
+		return domain.Wallet{}, false, nil
+	}
+	stored.Status = domain.WalletOrderApproved
+	stored.ReviewedBy = &adminID
+	f.orders[order.ID] = stored
+	if f.wallets == nil {
+		return domain.Wallet{UserID: order.UserID, Balance: amount}, true, nil
+	}
+	wallet, err := f.wallets.AdjustWalletBalance(ctx, order.UserID, amount, txType, "wallet_order", order.ID, string(order.Type))
+	return wallet, true, err
 }
 
 func (f *fakeWalletOrderRepo) UpdateWalletOrderMeta(ctx context.Context, id int64, metaJSON string) error {
@@ -219,6 +238,16 @@ func (f *fakeOrderItemRepo) GetOrderItem(ctx context.Context, id int64) (domain.
 func (f *fakeOrderItemRepo) UpdateOrderItemStatus(ctx context.Context, id int64, status domain.OrderItemStatus) error {
 	return nil
 }
+func (f *fakeOrderItemRepo) ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error) {
+	if f.item.ID != id {
+		return false, appshared.ErrNotFound
+	}
+	if f.item.Status != domain.OrderItemStatusApproved && f.item.Status != domain.OrderItemStatusFailed {
+		return false, nil
+	}
+	f.item.Status = domain.OrderItemStatusProvisioning
+	return true, nil
+}
 func (f *fakeOrderItemRepo) UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error {
 	return nil
 }
@@ -235,7 +264,7 @@ func (f *fakeOrderItemRepo) HasPendingRefundOrder(ctx context.Context, userID, v
 func TestWalletOrderService_RequestRefund(t *testing.T) {
 	settings := &fakeSettingsRepo{values: map[string]string{"refund_requires_approval": "false"}}
 	wallets := &fakeWalletRepo{}
-	orders := &fakeWalletOrderRepo{}
+	orders := &fakeWalletOrderRepo{wallets: wallets}
 	item := domain.OrderItem{ID: 10, Amount: 200000, Status: domain.OrderItemStatusActive, Action: "create", SpecJSON: "{}"}
 	inst := domain.VPSInstance{
 		ID:                   1,
@@ -268,7 +297,7 @@ func TestWalletOrderService_RequestRefund(t *testing.T) {
 func TestWalletOrderService_RequestRefund_UsesInstanceMonthlyPrice(t *testing.T) {
 	settings := &fakeSettingsRepo{values: map[string]string{"refund_requires_approval": "false"}}
 	wallets := &fakeWalletRepo{}
-	orders := &fakeWalletOrderRepo{}
+	orders := &fakeWalletOrderRepo{wallets: wallets}
 	item := domain.OrderItem{ID: 20, Amount: 200000, Status: domain.OrderItemStatusActive, Action: "create", SpecJSON: "{}"}
 	inst := domain.VPSInstance{
 		ID:                   2,
