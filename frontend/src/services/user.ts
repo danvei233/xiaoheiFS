@@ -162,10 +162,12 @@ export const markAllNotificationsRead = () => http.post('/api/v1/notifications/r
 export const listVps = () => http.get<ApiList<VPSInstance>>('/api/v1/vps')
 export const getVpsDetail = (id: number | string) => http.get<VPSInstance>(`/api/v1/vps/${id}`)
 export const refreshVps = (id: number | string) => http.post(`/api/v1/vps/${id}/refresh`)
-export const getVpsPanel = (id: number | string) => http.get(`/api/v1/vps/${id}/panel`)
+export const getVpsPanelUrl = (id: number | string) =>
+  http.get<{ url?: string }>(`/api/v1/vps/${id}/panel-url`)
 export const getVpsMonitor = (id: number | string) =>
   http.get<MonitorResponse>(`/api/v1/vps/${id}/monitor`)
-export const getVpsVnc = (id: number | string) => http.get(`/api/v1/vps/${id}/vnc`)
+export const getVpsVncUrl = (id: number | string) =>
+  http.get<{ url?: string }>(`/api/v1/vps/${id}/vnc-url`)
 export const startVps = (id: number | string) => http.post(`/api/v1/vps/${id}/start`)
 export const shutdownVps = (id: number | string) => http.post(`/api/v1/vps/${id}/shutdown`)
 export const rebootVps = (id: number | string) => http.post(`/api/v1/vps/${id}/reboot`)

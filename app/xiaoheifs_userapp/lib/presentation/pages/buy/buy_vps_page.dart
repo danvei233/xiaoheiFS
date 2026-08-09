@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/idempotent_request.dart';
 import '../../../core/utils/money_formatter.dart';
 import '../../providers/catalog_provider.dart';
 import '../../providers/cart_provider.dart';
@@ -34,6 +35,8 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
   bool _couponPreviewLoading = false;
   Map<String, dynamic>? _couponPreview;
   String? _couponPreviewFingerprint;
+  final IdempotentRequest<Map<String, dynamic>> _orderRequest =
+      IdempotentRequest<Map<String, dynamic>>('order');
 
   List<Map<String, dynamic>> _systemImages = [];
   bool _loadingImages = false;
@@ -1877,28 +1880,36 @@ class _BuyVpsPageState extends ConsumerState<BuyVpsPage> {
     );
     final months = int.tryParse('${cycle['months'] ?? 1}') ?? 1;
 
-    final payload = {
-      'coupon_code': _couponController.text.trim().isEmpty
-          ? null
-          : _couponController.text.trim(),
-      'items': _buildOrderItems(months),
-    }..removeWhere((key, value) => value == null);
+    final request = _orderRequest.prepare(() {
+      return <String, dynamic>{
+        'coupon_code': _couponController.text.trim().isEmpty
+            ? null
+            : _couponController.text.trim(),
+        'items': _buildOrderItems(months),
+      }..removeWhere((key, value) => value == null);
+    });
 
-    final res = await ref
-        .read(orderRepositoryProvider)
-        .createOrderItems(
-          payload,
-          idempotencyKey: 'order-${DateTime.now().millisecondsSinceEpoch}',
-        );
+    try {
+      final res = await ref
+          .read(orderRepositoryProvider)
+          .createOrderItems(
+            request.payload,
+            idempotencyKey: request.key,
+          );
+      _orderRequest.resolve();
 
-    final orderId = res['order']?['id'] ?? res['id'] ?? res['order_id'];
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('订单创建成功')));
-      if (orderId != null) {
-        context.go('/console/orders/$orderId');
+      final orderId = res['order']?['id'] ?? res['id'] ?? res['order_id'];
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('订单创建成功')));
+        if (orderId != null) {
+          context.go('/console/orders/$orderId');
+        }
       }
+    } catch (error) {
+      _orderRequest.reject(error);
+      rethrow;
     }
   }
 

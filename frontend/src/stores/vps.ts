@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { listVps, getVpsDetail, refreshVps } from '@/services/user'
+import { listVps, getVpsDetail, getVpsPanelUrl, refreshVps } from '@/services/user'
 
 export const useVpsStore = defineStore('vps', {
   state: () => ({
@@ -23,8 +23,8 @@ export const useVpsStore = defineStore('vps', {
       this.current = res.data || null
     },
     async fetchPanel(id) {
-      const base = import.meta.env.VITE_API_BASE || ''
-      this.panelUrl = `${base}/api/v1/vps/${id}/panel`
+      const res = await getVpsPanelUrl(id)
+      this.panelUrl = String(res.data?.url || '')
     },
     async refresh(id) {
       await refreshVps(id)

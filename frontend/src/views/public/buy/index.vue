@@ -269,12 +269,14 @@
   import { useCartStore } from '@/stores/cart'
   import { useCatalogStore } from '@/stores/catalog'
   import { createOrder, listSystemImages, previewCoupon } from '@/services/user'
+  import { IdempotentRequest } from '@/utils/idempotentRequest'
   import type {
     BillingCycle,
     CartSpec,
     CouponPreviewResponse,
     GoodsType,
     Line,
+    OrderCreateRequest,
     Package,
     Region,
     SystemImage
@@ -331,6 +333,7 @@
   const couponPreview = ref<CouponPreviewResponse | null>(null)
   const systemImages = ref<SystemImage[]>([])
   const systemImagesLoading = ref(false)
+  const orderRequest = new IdempotentRequest<OrderCreateRequest>('order')
   let systemImageRequestId = 0
 
   const form = reactive<BuyForm>({
@@ -627,18 +630,19 @@
     }
 
     creating.value = true
+    const request = orderRequest.prepare(() => ({
+      coupon_code: form.couponCode.trim() || undefined,
+      items: [cartPayload()]
+    }))
     try {
-      const response = await createOrder(
-        {
-          coupon_code: form.couponCode.trim() || undefined,
-          items: [cartPayload()]
-        },
-        `order-${Date.now()}`
-      )
+      const response = await createOrder(request.payload, request.key)
+      orderRequest.resolve()
       const payload = response.data as Record<string, any>
       const orderId = payload.order?.id ?? payload.order?.ID ?? payload.id ?? payload.ID
       ElMessage.success('订单已创建')
       if (orderId) await router.push({ name: 'ConsoleOrderDetail', params: { id: orderId } })
+    } catch (error) {
+      orderRequest.reject(error)
     } finally {
       creating.value = false
     }

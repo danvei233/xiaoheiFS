@@ -375,13 +375,14 @@
     Warning
   } from '@element-plus/icons-vue'
   import { useTable } from '@/hooks/core/useTable'
-  import { useAuthStore } from '@/stores/auth'
   import { useCatalogStore } from '@/stores/catalog'
   import { useSiteStore } from '@/stores/site'
   import {
     createVpsRenewOrder,
     createVpsResizeOrder,
     emergencyRenewVps,
+    getVpsPanelUrl,
+    getVpsVncUrl,
     listVps,
     quoteVpsResizeOrder,
     rebootVps,
@@ -518,7 +519,6 @@
   }
 
   const router = useRouter()
-  const auth = useAuthStore()
   const catalog = useCatalogStore()
   const site = useSiteStore()
   const allVps = ref<VpsRecord[]>([])
@@ -852,12 +852,27 @@
   }
   const goDetail = (record: VpsRecord) => router.push(`/console/vps/${record.id}`)
   const goBuy = () => router.push({ name: 'PublicBuy' })
-  const base = import.meta.env.VITE_API_BASE || ''
+  const openExternal = async (record: VpsRecord, type: 'panel' | 'vnc') => {
+    const targetWindow = window.open('about:blank', '_blank')
+    if (!targetWindow) {
+      ElMessage.error('浏览器阻止了新窗口，请允许本站打开弹窗后重试')
+      return
+    }
+    targetWindow.opener = null
 
-  const openExternal = (record: VpsRecord, path: string) => {
-    const token = auth.token
-    const query = token ? `?token=${encodeURIComponent(token)}` : ''
-    window.open(`${base}/api/v1/vps/${record.id}/${path}${query}`, '_blank', 'noopener')
+    try {
+      const response =
+        type === 'panel' ? await getVpsPanelUrl(record.id) : await getVpsVncUrl(record.id)
+      const targetUrl = String(response.data?.url || '').trim()
+      if (!targetUrl) {
+        targetWindow.close()
+        ElMessage.error(type === 'panel' ? '面板地址为空' : 'VNC 地址为空')
+        return
+      }
+      targetWindow.location.replace(targetUrl)
+    } catch {
+      targetWindow.close()
+    }
   }
   const openPanel = (record: VpsRecord) => openExternal(record, 'panel')
   const openVnc = (record: VpsRecord) => openExternal(record, 'vnc')

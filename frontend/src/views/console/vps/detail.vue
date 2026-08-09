@@ -660,7 +660,6 @@
     VideoCamera,
     View
   } from '@element-plus/icons-vue'
-  import { useAuthStore } from '@/stores/auth'
   import { useCatalogStore } from '@/stores/catalog'
   import { useSiteStore } from '@/stores/site'
   import { useVpsStore } from '@/stores/vps'
@@ -680,9 +679,11 @@
     getVpsBackups,
     getVpsFirewallRules,
     getVpsMonitor,
+    getVpsPanelUrl,
     getVpsPortCandidates,
     getVpsPortMappings,
     getVpsSnapshots,
+    getVpsVncUrl,
     listSystemImages,
     quoteVpsResizeOrder,
     requestVpsRefund,
@@ -838,7 +839,6 @@
   const router = useRouter()
   const store = useVpsStore() as unknown as VpsStoreView
   const catalog = useCatalogStore()
-  const auth = useAuthStore()
   const site = useSiteStore()
   const id = computed(() => String(route.params.id || ''))
   const loading = ref(true)
@@ -1319,10 +1319,27 @@
     }
   }
 
-  const base = import.meta.env.VITE_API_BASE || ''
-  const openExternal = (path: string) => {
-    const query = auth.token ? `?token=${encodeURIComponent(auth.token)}` : ''
-    window.open(`${base}/api/v1/vps/${id.value}/${path}${query}`, '_blank', 'noopener')
+  const openExternal = async (type: 'panel' | 'vnc') => {
+    const targetWindow = window.open('about:blank', '_blank')
+    if (!targetWindow) {
+      ElMessage.error('浏览器阻止了新窗口，请允许本站打开弹窗后重试')
+      return
+    }
+    targetWindow.opener = null
+
+    try {
+      const response =
+        type === 'panel' ? await getVpsPanelUrl(id.value) : await getVpsVncUrl(id.value)
+      const targetUrl = String(response.data?.url || '').trim()
+      if (!targetUrl) {
+        targetWindow.close()
+        ElMessage.error(type === 'panel' ? '面板地址为空' : 'VNC 地址为空')
+        return
+      }
+      targetWindow.location.replace(targetUrl)
+    } catch {
+      targetWindow.close()
+    }
   }
   const openPanel = () => openExternal('panel')
   const openVnc = () => openExternal('vnc')

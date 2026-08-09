@@ -9,6 +9,7 @@ import '../../../core/constants/app_strings.dart';
 import '../../../core/constants/input_limits.dart';
 import '../../../core/config/api_config.dart';
 import '../../../core/utils/date_formatter.dart';
+import '../../../core/utils/idempotent_request.dart';
 import '../../../core/utils/money_formatter.dart';
 import '../../providers/catalog_provider.dart';
 import '../../providers/order_provider.dart';
@@ -29,6 +30,8 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
   Timer? _pollingTimer;
   bool _autoNavigated = false;
   ProviderSubscription<OrderDetailState>? _detailSub;
+  final IdempotentRequest<Map<String, dynamic>> _approvalPaymentRequest =
+      IdempotentRequest<Map<String, dynamic>>('pay');
 
   String _resolveBackendOrigin() {
     final configured = Uri.tryParse(ApiConfig.baseUrl.trim());
@@ -1034,16 +1037,19 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                 }
                 try {
                   if (method == 'approval') {
-                    await ref.read(orderRepositoryProvider).submitOrderPayment(
-                      widget.id,
-                      {
+                    final request = _approvalPaymentRequest.prepare(
+                      () => <String, dynamic>{
                         'method': method,
                         'amount': amount,
                         if (note.isNotEmpty) 'note': note,
                       },
-                      idempotencyKey:
-                          'pay-${DateTime.now().millisecondsSinceEpoch}',
                     );
+                    await ref.read(orderRepositoryProvider).submitOrderPayment(
+                      widget.id,
+                      request.payload,
+                      idempotencyKey: request.key,
+                    );
+                    _approvalPaymentRequest.resolve();
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -1088,6 +1094,9 @@ class _OrderDetailPageState extends ConsumerState<OrderDetailPage> {
                         .fetchDetail(widget.id);
                   }
                 } catch (e) {
+                  if (method == 'approval') {
+                    _approvalPaymentRequest.reject(e);
+                  }
                   if (context.mounted) {
                     ScaffoldMessenger.of(
                       context,

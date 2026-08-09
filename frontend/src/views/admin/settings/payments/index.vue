@@ -55,6 +55,7 @@
 
   const { hasPermission } = useAdminPermissions()
   const canUpdate = hasPermission('payment.update')
+  const canListPlugins = hasPermission('plugin.list')
 
   const fetchPaymentRows = async () => {
     const rows = await buildRows()
@@ -80,13 +81,31 @@
     )
   }
 
+  function responseStatus(error: unknown): number | undefined {
+    if (!error || typeof error !== 'object' || !('response' in error)) return undefined
+    const response = error.response
+    if (!response || typeof response !== 'object' || !('status' in response)) return undefined
+    const status = Number(response.status)
+    return Number.isFinite(status) ? status : undefined
+  }
+
+  async function loadPlugins(): Promise<PluginListItem[]> {
+    if (!canListPlugins.value) return []
+    try {
+      const response = await listAdminPlugins()
+      return response.data?.items ?? []
+    } catch (error) {
+      if (responseStatus(error) === 403) return []
+      throw error
+    }
+  }
+
   async function buildRows(): Promise<PaymentRow[]> {
-    const [providerResponse, pluginResponse] = await Promise.all([
+    const [providerResponse, plugins] = await Promise.all([
       listAdminPaymentProviders({ include_disabled: true, include_legacy: false }),
-      listAdminPlugins()
+      loadPlugins()
     ])
     const providers = providerResponse.data?.items ?? []
-    const plugins = pluginResponse.data?.items ?? []
     const stateMap = new Map<string, PaymentProvider>()
     providers.forEach((provider) => {
       const key = String(provider.key ?? '')

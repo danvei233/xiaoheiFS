@@ -337,9 +337,17 @@
     submitOrderPayment
   } from '@/services/user'
   import { createSseConnection } from '@/services/sse'
-  import type { Order, OrderItem, OrderPayment, Package, PaymentProvider } from '@/services/types'
+  import type {
+    Order,
+    OrderItem,
+    OrderPayment,
+    Package,
+    PaymentProvider,
+    PaymentRequest
+  } from '@/services/types'
   import { useAuthStore } from '@/stores/auth'
   import { useCatalogStore } from '@/stores/catalog'
+  import { IdempotentRequest } from '@/utils/idempotentRequest'
 
   defineOptions({ name: 'ConsoleOrderDetail' })
 
@@ -421,6 +429,7 @@
     note: '',
     screenshot_url: ''
   })
+  const approvalPaymentRequest = new IdempotentRequest<PaymentRequest>('pay')
   const wechatQrOpen = ref(false)
   const wechatQrLoading = ref(false)
   const wechatQrUrl = ref('')
@@ -715,17 +724,15 @@
     paying.value = true
     try {
       if (method === 'approval') {
-        await submitOrderPayment(
-          orderId.value,
-          {
-            method,
-            amount: Number(paymentForm.amount || 0),
-            trade_no: String(paymentForm.trade_no || ''),
-            note: String(paymentForm.note || ''),
-            screenshot_url: String(paymentForm.screenshot_url || '')
-          },
-          `pay-${Date.now()}`
-        )
+        const request = approvalPaymentRequest.prepare(() => ({
+          method,
+          amount: Number(paymentForm.amount || 0),
+          trade_no: String(paymentForm.trade_no || ''),
+          note: String(paymentForm.note || ''),
+          screenshot_url: String(paymentForm.screenshot_url || '')
+        }))
+        await submitOrderPayment(orderId.value, request.payload, request.key)
+        approvalPaymentRequest.resolve()
         ElMessage.success('已提交付款信息')
         paymentDialogVisible.value = false
         await fetchDetail()
@@ -770,6 +777,8 @@
         ElMessage.success('支付请求已提交')
       }
       paymentDialogVisible.value = false
+    } catch (error) {
+      if (method === 'approval') approvalPaymentRequest.reject(error)
     } finally {
       paying.value = false
     }
