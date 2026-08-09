@@ -229,60 +229,13 @@
           </ElFormItem>
         </template>
 
-        <template v-else>
-          <ElFormItem
-            v-for="field in schemaFields"
-            :key="field.key"
-            :label="field.label"
-            :prop="field.key"
-            :rules="
-              field.required
-                ? [{ required: true, message: `请输入${field.label}`, trigger: 'blur' }]
-                : []
-            "
-          >
-            <ElInputNumber
-              v-if="field.type === 'number'"
-              v-model="paymentForm[field.key]"
-              class="full-width"
-            />
-            <ElSwitch v-else-if="field.type === 'boolean'" v-model="paymentForm[field.key]" />
-            <ElSelect
-              v-else-if="field.type === 'select'"
-              v-model="paymentForm[field.key]"
-              class="full-width"
-              :placeholder="field.placeholder"
-            >
-              <ElOption
-                v-for="option in field.options"
-                :key="String(option.value)"
-                :label="option.label"
-                :value="option.value"
-              />
-            </ElSelect>
-            <ElInput
-              v-else
-              v-model="paymentForm[field.key]"
-              :type="
-                field.type === 'textarea'
-                  ? 'textarea'
-                  : field.type === 'password'
-                    ? 'password'
-                    : 'text'
-              "
-              :rows="field.type === 'textarea' ? 3 : undefined"
-              :placeholder="field.placeholder"
-              show-password
-            />
-          </ElFormItem>
-        </template>
-
         <ElAlert
           v-if="paymentForm.method === 'balance' && selectedProvider?.balance != null"
           :title="`钱包余额：${formatMoney(Number(selectedProvider.balance), order?.currency)}`"
           type="info"
           :closable="false"
         />
+        <ElAlert v-if="selectedNotice" :title="selectedNotice" type="warning" :closable="false" />
 
         <ElAlert
           v-if="selectedInstructions"
@@ -395,16 +348,6 @@
     tradeNo: string
     status: string
     createdAt: string
-  }
-
-  interface SchemaField {
-    key: string
-    label: string
-    type: 'text' | 'password' | 'textarea' | 'number' | 'boolean' | 'select'
-    required: boolean
-    placeholder: string
-    default?: unknown
-    options: Array<{ label: string; value: unknown }>
   }
 
   const route = useRoute()
@@ -599,77 +542,18 @@
     paymentDialogVisible.value = true
   }
 
-  const normalizeSchemaFields = (schemaJson?: string): SchemaField[] => {
-    if (!schemaJson) return []
-    try {
-      const parsed = JSON.parse(schemaJson) as CompatibleRecord
-      if (Array.isArray(parsed)) return parsed as SchemaField[]
-      if (Array.isArray(parsed.fields)) return parsed.fields as SchemaField[]
-      const properties = (parsed.properties ?? {}) as CompatibleRecord
-      const required = new Set<string>(Array.isArray(parsed.required) ? parsed.required : [])
-      return Object.keys(properties).map((key) => {
-        const property = properties[key] as CompatibleRecord
-        const enumValues = Array.isArray(property.enum) ? property.enum : null
-        const type: SchemaField['type'] = enumValues
-          ? 'select'
-          : property.format === 'password'
-            ? 'password'
-            : property.format === 'textarea'
-              ? 'textarea'
-              : ['number', 'integer'].includes(property.type)
-                ? 'number'
-                : property.type === 'boolean'
-                  ? 'boolean'
-                  : 'text'
-        return {
-          key,
-          label: String(property.title ?? property.label ?? key),
-          type,
-          required: required.has(key),
-          placeholder: String(property.description ?? property.placeholder ?? ''),
-          default: property.default,
-          options: enumValues?.map((value) => ({ label: String(value), value })) ?? []
-        }
-      })
-    } catch {
-      return []
-    }
-  }
-
   const selectedProvider = computed(() =>
     providers.value.find((item) => item.key === paymentForm.method)
   )
-  const schemaFields = computed(() => {
-    const provider = selectedProvider.value
-    if (
-      !provider?.schema_json ||
-      ['approval', 'balance', 'custom', 'yipay'].includes(provider.key || '')
-    )
-      return []
-    return normalizeSchemaFields(provider.schema_json)
-  })
-  const selectedInstructions = computed(() => {
-    const config = parseJson(selectedProvider.value?.config_json)
-    return String(config.instructions ?? config.notice ?? '')
-  })
+  const selectedInstructions = computed(() => String(selectedProvider.value?.instructions ?? ''))
+  const selectedNotice = computed(() => String(selectedProvider.value?.notice ?? ''))
   const wechatJsapiParamsJson = computed(() =>
     wechatJsapiParams.value ? JSON.stringify(wechatJsapiParams.value, null, 2) : ''
   )
 
   watch(
     () => paymentForm.method,
-    (_value, previous) => {
-      if (previous) {
-        const oldProvider = providers.value.find((item) => item.key === previous)
-        normalizeSchemaFields(oldProvider?.schema_json).forEach(
-          (field) => delete paymentForm[field.key]
-        )
-      }
-      schemaFields.value.forEach((field) => {
-        if (paymentForm[field.key] === undefined) {
-          paymentForm[field.key] = field.default ?? (field.type === 'boolean' ? false : '')
-        }
-      })
+    () => {
       paymentHint.value = ''
     }
   )
@@ -739,11 +623,7 @@
         return
       }
 
-      const extra = schemaFields.value.reduce<Record<string, unknown>>((result, field) => {
-        result[field.key] = paymentForm[field.key]
-        return result
-      }, {})
-      const response = await createOrderPayment(orderId.value, { method, extra })
+      const response = await createOrderPayment(orderId.value, { method })
       const result = response.data ?? {}
       const resultExtra = (result.extra ?? {}) as Record<string, unknown>
       paymentHint.value = String(resultExtra.instructions ?? '')

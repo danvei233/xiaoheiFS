@@ -423,9 +423,12 @@ export interface PaymentProvider {
   enabled?: boolean
   order_enabled?: boolean
   wallet_enabled?: boolean
+  instructions?: string
+  notice?: string
+  balance?: number
+  // Present only on the administrator endpoint.
   schema_json?: string
   config_json?: string
-  balance?: number
 }
 
 export interface PaymentCreateResult {
