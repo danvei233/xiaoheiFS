@@ -35,6 +35,7 @@ import { buildConsoleMenus } from '../menus/console'
 import { asyncRoutes } from '../routes/asyncRoutes'
 import { RouteRegistry, IframeRouteManager, RoutePermissionValidator } from '../core'
 import { useCommon } from '@/hooks/core/useCommon'
+import { resolveAdminRedirect } from '@/utils/auth'
 
 let routeRegistry: RouteRegistry | null = null
 
@@ -267,6 +268,16 @@ async function handleAdminRealm(
     return
   }
 
+  // 登录 token 在 MFA 完成前只能调用 setup/confirm/unlock，不能先请求 profile。
+  if (adminAuth.requiresMfa) {
+    next({
+      path: `/${adminPath}/login`,
+      query: { redirect: resolveAdminRedirect(to.fullPath, adminPath) },
+      replace: true
+    })
+    return
+  }
+
   if (adminRoutesFailed) {
     // 已经失败过就不再重试，避免死循环
     if (to.matched.length > 0) {
@@ -359,6 +370,17 @@ async function registerAdminRoutes(
     // 路由表变了，重新走一遍导航让新路由生效
     next({ path: to.path, query: to.query, hash: to.hash, replace: true })
   } catch (error) {
+    const adminAuth = useAdminAuthStore()
+    if (adminAuth.requiresMfa) {
+      adminRoutesRegistering = false
+      closeLoading()
+      next({
+        path: `/${cachedAdminPath}/login`,
+        query: { redirect: resolveAdminRedirect(to.fullPath, cachedAdminPath) },
+        replace: true
+      })
+      return
+    }
     console.error('[RouteGuard] 管理后台动态路由注册失败:', error)
     adminRoutesRegistering = false
     adminRoutesFailed = true

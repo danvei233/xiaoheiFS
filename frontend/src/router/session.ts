@@ -54,6 +54,8 @@ export function loginRouteFor(realm: SessionRealm, redirect?: string): RouteLoca
  *                 这里只需要拆掉路由与权限状态，避免重复触发。
  */
 export function clearSession(realm: SessionRealm, options: { keepStores?: boolean } = {}): void {
+  const userStore = useUserStore()
+
   if (!options.keepStores) {
     if (realm === 'admin') {
       useAdminAuthStore().logout()
@@ -62,9 +64,12 @@ export function clearSession(realm: SessionRealm, options: { keepStores?: boolea
     }
   }
 
+  userStore.setLockStatus(false)
+  userStore.setLockPassword('')
+
   if (realm === 'admin') {
     // 按钮权限来源，必须清掉，否则下一个管理员会继承上一个人的按钮
-    useUserStore().setUserInfo({
+    userStore.setUserInfo({
       buttons: [],
       roles: [],
       userId: 0,

@@ -948,6 +948,30 @@ export interface AdminProfile {
   created_at?: string
 }
 
+export interface AdminLoginResponse {
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  totp_enabled?: boolean
+  mfa_required?: boolean
+  mfa_bind_required?: boolean
+  mfa_unlocked?: boolean
+  user?: AdminProfile
+  admin?: AdminProfile
+}
+
+export interface AdminTwoFactorSetupResponse {
+  secret?: string
+  otpauth_url?: string
+}
+
+export interface AdminTwoFactorUnlockResponse {
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  mfa_unlocked?: boolean
+}
+
 export interface SiteSetting {
   key?: string
   value?: string

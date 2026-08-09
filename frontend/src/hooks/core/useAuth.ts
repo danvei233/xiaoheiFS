@@ -35,18 +35,15 @@ import { storeToRefs } from 'pinia'
 import { useUserStore } from '@/store/modules/user'
 import { useAppMode } from '@/hooks/core/useAppMode'
 import type { AppRouteRecord } from '@/types/router'
+import { hasButtonPermission } from '@/utils/auth'
 
 type AuthItem = NonNullable<AppRouteRecord['meta']['authList']>[number]
 
-const userStore = useUserStore()
-
 export const useAuth = () => {
   const route = useRoute()
+  const userStore = useUserStore()
   const { isFrontendMode } = useAppMode()
   const { info } = storeToRefs(userStore)
-
-  // 前端按钮权限（例如：['add', 'edit']）
-  const frontendAuthList = info.value?.buttons ?? []
 
   // 后端路由 meta 配置的权限列表（例如：[{ authMark: 'add' }]）
   const backendAuthList: AuthItem[] = Array.isArray(route.meta.authList)
@@ -61,12 +58,7 @@ export const useAuth = () => {
   const hasAuth = (auth: string): boolean => {
     // 前端模式
     if (isFrontendMode.value) {
-      // 后端用 '*' 表示超级管理员（handlers_admin_accounts.go），它是通配而不是
-      // 一个叫 "*" 的权限码。不在这里短路的话，超管反而会看不到任何按钮。
-      if (frontendAuthList.includes('*')) {
-        return true
-      }
-      return frontendAuthList.includes(auth)
+      return hasButtonPermission(info.value?.buttons, auth)
     }
 
     // 后端模式

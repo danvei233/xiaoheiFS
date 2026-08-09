@@ -1,12 +1,12 @@
 /**
  * v-auth 权限指令
  *
- * 适用于后端权限控制模式，基于权限标识控制 DOM 元素的显示和隐藏。
+ * 基于当前登录身份的按钮权限控制 DOM 元素的显示和隐藏。
  * 如果用户没有对应权限，元素将从 DOM 中移除。
  *
  * ## 主要功能
  *
- * - 权限验证 - 根据路由 meta 中的权限列表验证用户权限
+ * - 权限验证 - 根据当前用户 buttons 权限列表验证用户权限
  * - DOM 控制 - 无权限时自动移除元素，而非隐藏
  * - 响应式更新 - 权限变化时自动更新元素状态
  *
@@ -26,23 +26,21 @@
  * ## 注意事项
  *
  * - 该指令会直接移除 DOM 元素，而不是使用 v-if 隐藏
- * - 权限列表从当前路由的 meta.authList 中获取
+ * - 权限列表从当前用户信息的 buttons 中获取
  *
  * @module directives/auth
  * @author Art Design Pro Team
  */
 
-import { router } from '@/router'
-import { App, Directive, DirectiveBinding } from 'vue'
+import type { App, Directive, DirectiveBinding } from 'vue'
+import { useUserStore } from '@/store/modules/user'
+import { hasButtonPermission } from '@/utils/auth'
 
 export type AuthDirective = Directive<HTMLElement, string>
 
 function checkAuthPermission(el: HTMLElement, binding: DirectiveBinding<string>): void {
-  // 获取当前路由的权限列表
-  const authList = (router.currentRoute.value.meta.authList as Array<{ authMark: string }>) || []
-
-  // 检查是否有对应的权限标识
-  const hasPermission = authList.some((item) => item.authMark === binding.value)
+  const buttons = useUserStore().getUserInfo.buttons
+  const hasPermission = hasButtonPermission(buttons, binding.value)
 
   // 如果没有权限，移除元素
   if (!hasPermission) {
