@@ -143,10 +143,10 @@ func validateAndNormalizeSettingValue(key, value string) (string, error) {
 	switch key {
 	case "copyright_text":
 		if strings.TrimSpace(value) == "" {
-			return "", fmt.Errorf("版权信息不能为空")
+			return "", domain.ErrCopyrightTextRequired
 		}
 		if len([]rune(value)) > 200 {
-			return "", fmt.Errorf("版权信息不能超过200字")
+			return "", domain.ErrCopyrightTextTooLong
 		}
 		return value, nil
 	case "beian_info_list":
@@ -171,24 +171,24 @@ func validateBeianInfoList(value string) error {
 	if value == "" || value == "[]" {
 		return nil
 	}
-	
+
 	var beianList []struct {
 		Number  string `json:"number"`
 		IconURL string `json:"icon_url"`
 		LinkURL string `json:"link_url"`
 	}
-	
+
 	if err := json.Unmarshal([]byte(value), &beianList); err != nil {
-		return fmt.Errorf("备案信息格式错误: %v", err)
+		return fmt.Errorf("%w: %v", domain.ErrInvalidBeianInfoFormat, err)
 	}
-	
+
 	for i, beian := range beianList {
 		// 如果填写了任何字段，备案号必填
 		if (beian.IconURL != "" || beian.LinkURL != "") && strings.TrimSpace(beian.Number) == "" {
-			return fmt.Errorf("备案信息 %d 的备案号不能为空", i+1)
+			return fmt.Errorf("备案信息 %d: %w", i+1, domain.ErrBeianNumberRequired)
 		}
 	}
-	
+
 	return nil
 }
 
