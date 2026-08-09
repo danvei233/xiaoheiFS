@@ -21,6 +21,8 @@ export interface SiteNavItem {
   enabled?: boolean
 }
 
+let settingsRequest: Promise<void> | null = null
+
 export const useSiteStore = defineStore('site', {
   state: (): SiteState => ({
     siteName: '小黑云控制台',
@@ -82,27 +84,35 @@ export const useSiteStore = defineStore('site', {
       this.language = lang || navigator.language || 'zh-CN'
     },
 
-    async fetchSettings() {
-      try {
-        const res = await getSiteSettings()
-        const items = (res.data as any)?.items || []
-        this.settings = {}
-        items.forEach((item: any) => {
-          this.settings[item.key] = item.value
-        })
-        const resolveValue = (key: string, legacyKey?: string) =>
-          this.settings[key] || (legacyKey ? this.settings[legacyKey] : '')
-        this.siteName = resolveValue('site_name') || '小黑云控制台'
-        this.logoUrl = resolveValue('logo_url', 'site_logo')
-        this.faviconUrl = resolveValue('favicon_url', 'site_favicon')
-        const maintenanceRaw = resolveValue('maintenance_mode', 'site_maintenance_mode')
-        this.maintenanceMode = maintenanceRaw === 'true' || maintenanceRaw === true
-        this.maintenanceMessage =
-          resolveValue('maintenance_message', 'site_maintenance_message') ||
-          '系统维护中，请稍后再试'
-      } catch (error) {
-        console.error('Failed to fetch site settings:', error)
-      }
+    fetchSettings(): Promise<void> {
+      if (settingsRequest) return settingsRequest
+
+      settingsRequest = (async () => {
+        try {
+          const res = await getSiteSettings()
+          const items = (res.data as any)?.items || []
+          this.settings = {}
+          items.forEach((item: any) => {
+            this.settings[item.key] = item.value
+          })
+          const resolveValue = (key: string, legacyKey?: string) =>
+            this.settings[key] || (legacyKey ? this.settings[legacyKey] : '')
+          this.siteName = resolveValue('site_name') || '小黑云控制台'
+          this.logoUrl = resolveValue('logo_url', 'site_logo')
+          this.faviconUrl = resolveValue('favicon_url', 'site_favicon')
+          const maintenanceRaw = resolveValue('maintenance_mode', 'site_maintenance_mode')
+          this.maintenanceMode = maintenanceRaw === 'true' || maintenanceRaw === true
+          this.maintenanceMessage =
+            resolveValue('maintenance_message', 'site_maintenance_message') ||
+            '系统维护中，请稍后再试'
+        } catch (error) {
+          console.error('Failed to fetch site settings:', error)
+        } finally {
+          settingsRequest = null
+        }
+      })()
+
+      return settingsRequest
     },
 
     async fetchBlocks(page?: string) {

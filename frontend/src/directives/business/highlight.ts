@@ -42,12 +42,20 @@
  */
 
 import { App, Directive } from 'vue'
-import hljs from 'highlight.js'
 
 export type HighlightDirective = Directive<HTMLElement>
 
-// 高亮代码
-function highlightCode(block: HTMLElement) {
+const processingBlocks = new WeakSet<HTMLElement>()
+const importHighlighter = () => import('highlight.js').then((module) => module.default)
+let highlighterRequest: ReturnType<typeof importHighlighter> | null = null
+
+const loadHighlighter = () => {
+  highlighterRequest ??= importHighlighter()
+  return highlighterRequest
+}
+
+async function highlightCode(block: HTMLElement) {
+  const hljs = await loadHighlighter()
   hljs.highlightElement(block)
 }
 
@@ -108,18 +116,22 @@ function markBlockAsProcessed(block: HTMLElement) {
 }
 
 // 处理单个代码块
-function processBlock(block: HTMLElement) {
-  if (isBlockProcessed(block)) {
+async function processBlock(block: HTMLElement) {
+  if (isBlockProcessed(block) || processingBlocks.has(block)) {
     return
   }
 
+  processingBlocks.add(block)
   try {
-    highlightCode(block)
+    await highlightCode(block)
+    if (!block.isConnected || isBlockProcessed(block)) return
     insertLineNumbers(block)
     addCopyButton(block)
     markBlockAsProcessed(block)
   } catch (error) {
     console.warn('处理代码块时出错:', error)
+  } finally {
+    processingBlocks.delete(block)
   }
 }
 
@@ -134,7 +146,7 @@ function processAllCodeBlocks(el: HTMLElement) {
 
   if (unprocessedBlocks.length <= 10) {
     // 如果代码块数量少于等于10，直接处理所有代码块
-    unprocessedBlocks.forEach((block) => processBlock(block))
+    unprocessedBlocks.forEach((block) => void processBlock(block))
   } else {
     // 定义每次处理的代码块数
     const batchSize = 10
@@ -144,7 +156,7 @@ function processAllCodeBlocks(el: HTMLElement) {
       const batch = unprocessedBlocks.slice(currentIndex, currentIndex + batchSize)
 
       batch.forEach((block) => {
-        processBlock(block)
+        void processBlock(block)
       })
 
       // 更新索引并继续处理下一批

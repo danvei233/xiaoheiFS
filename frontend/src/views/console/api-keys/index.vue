@@ -242,21 +242,20 @@
     return { records, current: 1, size: records.length || 1, total: records.length }
   }
 
-  const { columns, columnChecks, data, loading, refreshCreate, refreshUpdate, refreshRemove } =
-    useTable({
-      core: {
-        apiFn: fetchApiKeys,
-        apiParams: { current: 1, size: 100 },
-        columnsFactory: () => [
-          { prop: 'id', label: 'ID', width: 70, useSlot: true },
-          { prop: 'name', label: '名称', minWidth: 190, useSlot: true },
-          { prop: 'akid', label: 'AKID', minWidth: 260, useSlot: true },
-          { prop: 'status', label: '状态', width: 110, useSlot: true },
-          { prop: 'lastUsedAt', label: '最近使用', width: 180, useSlot: true },
-          { prop: 'operation', label: '操作', width: 110, fixed: 'right', useSlot: true }
-        ]
-      }
-    })
+  const { columns, columnChecks, data, loading, refreshCreate } = useTable({
+    core: {
+      apiFn: fetchApiKeys,
+      apiParams: { current: 1, size: 100 },
+      columnsFactory: () => [
+        { prop: 'id', label: 'ID', width: 70, useSlot: true },
+        { prop: 'name', label: '名称', minWidth: 190, useSlot: true },
+        { prop: 'akid', label: 'AKID', minWidth: 260, useSlot: true },
+        { prop: 'status', label: '状态', width: 110, useSlot: true },
+        { prop: 'lastUsedAt', label: '最近使用', width: 180, useSlot: true },
+        { prop: 'operation', label: '操作', width: 110, fixed: 'right', useSlot: true }
+      ]
+    }
+  })
 
   const signSnippet = `import crypto from "crypto";
 
@@ -320,7 +319,11 @@ const sig = crypto.createHmac("sha256", process.env.OPEN_KEY)
       createdSecret.key = payload?.key ?? payload?.Key ?? payload?.secret ?? payload?.Secret ?? ''
       createDialogVisible.value = false
       secretDialogVisible.value = true
-      await refreshCreate()
+      if (item) {
+        data.value = [item, ...data.value].slice(0, 100)
+      } else {
+        await refreshCreate()
+      }
     } finally {
       creating.value = false
     }
@@ -336,8 +339,8 @@ const sig = crypto.createHmac("sha256", process.env.OPEN_KEY)
     if (id === '-') return
     const nextStatus = isKeyActive(record) ? 'disabled' : 'active'
     await updateUserApiKeyStatus(id, { status: nextStatus })
+    record.status = nextStatus
     ElMessage.success(nextStatus === 'active' ? '密钥已启用' : '密钥已停用')
-    await refreshUpdate()
   }
 
   const removeKey = async (record: ApiKeyRecord): Promise<void> => {
@@ -350,8 +353,8 @@ const sig = crypto.createHmac("sha256", process.env.OPEN_KEY)
     }).catch(() => false)
     if (!confirmed) return
     await deleteUserApiKey(id)
+    data.value = data.value.filter((item) => String(getKeyId(item)) !== String(id))
     ElMessage.success('密钥已删除')
-    await refreshRemove()
   }
 
   const copyText = async (text: string, successMessage: string): Promise<void> => {

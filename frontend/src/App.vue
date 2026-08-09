@@ -11,13 +11,13 @@
 </template>
 
 <script setup lang="ts">
-  import MaintenancePage from '@/views/public/maintenance/index.vue'
   import ErrorBoundary from '@/components/business/error-boundary/index.vue'
   import { useSiteStore } from '@/stores/site'
   import defaultFaviconUrl from '@/assets/brand/default-favicon.svg'
 
   defineOptions({ name: 'App' })
 
+  const MaintenancePage = defineAsyncComponent(() => import('@/views/public/maintenance/index.vue'))
   const site = useSiteStore()
 
   onMounted(async () => {

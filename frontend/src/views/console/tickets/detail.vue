@@ -329,7 +329,8 @@
   const fetchTicket = async (): Promise<void> => {
     const id = String(route.params.id ?? '')
     if (!id) return
-    loading.value = true
+    const showPageLoading = !ticket.value
+    if (showPageLoading) loading.value = true
     try {
       const response = await getTicketDetail(id)
       const payload = unwrapPayload(response.data)
@@ -337,7 +338,7 @@
       messages.value = payload.messages ?? payload.Messages ?? []
       resources.value = payload.resources ?? payload.Resources ?? []
     } finally {
-      loading.value = false
+      if (showPageLoading) loading.value = false
     }
   }
 
