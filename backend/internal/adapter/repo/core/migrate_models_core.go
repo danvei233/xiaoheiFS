@@ -216,7 +216,7 @@ func (orderItemRow) TableName() string { return "order_items" }
 type vpsInstanceRow struct {
 	ID                   int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID               int64      `gorm:"column:user_id;not null;index"`
-	OrderItemID          *int64     `gorm:"column:order_item_id;index;uniqueIndex:uniq_vps_instances_order_item_id"`
+	OrderItemID          *int64     `gorm:"column:order_item_id;index"`
 	AutomationInstanceID string     `gorm:"column:automation_instance_id;not null"`
 	GoodsTypeID          int64      `gorm:"column:goods_type_id;not null;default:0;index"`
 	Name                 string     `gorm:"size:128;column:name;not null"`

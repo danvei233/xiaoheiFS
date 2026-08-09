@@ -3,8 +3,10 @@ package order_test
 import (
 	"context"
 	"errors"
+	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -27,6 +29,19 @@ type delayedCreateVisibilityAutomation struct {
 	hostID      int64
 	mu          sync.Mutex
 	hostName    string
+}
+
+type definitiveFirstFailureAutomation struct {
+	*testutil.FakeAutomationClient
+	createCalls atomic.Int32
+	hostID      int64
+}
+
+func (f *definitiveFirstFailureAutomation) CreateHost(context.Context, appshared.AutomationCreateHostRequest) (appshared.AutomationCreateHostResult, error) {
+	if f.createCalls.Add(1) == 1 {
+		return appshared.AutomationCreateHostResult{}, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+	}
+	return appshared.AutomationCreateHostResult{HostID: f.hostID}, nil
 }
 
 func (f *delayedCreateVisibilityAutomation) CreateHost(_ context.Context, req appshared.AutomationCreateHostRequest) (appshared.AutomationCreateHostResult, error) {
@@ -187,6 +202,50 @@ func TestOrderService_UncertainRemoteCreateReconcilesWithoutSecondCreate(t *test
 	waitForProvisionOrderStatus(t, repo, order.ID, domain.OrderStatusActive)
 	if got := fakeAuto.createCalls.Load(); got != 1 {
 		t.Fatalf("uncertain create was repeated: calls=%d", got)
+	}
+}
+
+func TestOrderService_DefinitiveRemoteFailureClearsMarkerForRetry(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "prov-definitive", "prov-definitive@example.com", "pass")
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-DEFINITIVE", Status: domain.OrderStatusPendingPayment, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{{
+		OrderID: order.ID, PackageID: seed.Package.ID, SystemID: seed.SystemImage.ID, Amount: 1000,
+		Status: domain.OrderItemStatusPendingPayment, Action: "create", SpecJSON: "{}",
+	}}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+
+	const hostID = int64(4001)
+	fakeAuto := &definitiveFirstFailureAutomation{
+		FakeAutomationClient: &testutil.FakeAutomationClient{HostInfo: map[int64]appshared.AutomationHostInfo{
+			hostID: {HostID: hostID, HostName: "retried-host", State: 2, RemoteIP: "1.1.1.4"},
+		}},
+		hostID: hostID,
+	}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, &testutil.FakeAutomationResolver{Client: fakeAuto}, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	if err := svc.ApproveOrder(context.Background(), 1, order.ID); err != nil {
+		t.Fatalf("approve order: %v", err)
+	}
+	waitForProvisionOrderStatus(t, repo, order.ID, domain.OrderStatusFailed)
+	items, err := repo.ListOrderItems(context.Background(), order.ID)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("list failed item: len=%d err=%v", len(items), err)
+	}
+	if items[0].AutomationInstanceID != "" {
+		t.Fatalf("definitive failure retained uncertain marker: %q", items[0].AutomationInstanceID)
+	}
+
+	if err := svc.RetryProvision(order.ID); err != nil {
+		t.Fatalf("retry provision: %v", err)
+	}
+	waitForProvisionOrderStatus(t, repo, order.ID, domain.OrderStatusActive)
+	if got := fakeAuto.createCalls.Load(); got != 2 {
+		t.Fatalf("definitive failure was not retried exactly once: calls=%d", got)
 	}
 }
 

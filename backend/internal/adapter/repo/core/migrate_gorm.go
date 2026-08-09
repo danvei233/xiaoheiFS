@@ -90,6 +90,9 @@ func migrateGorm(db *gorm.DB) error {
 			return err
 		}
 	}
+	if err := normalizeVPSOrderItemLinks(db); err != nil {
+		return err
+	}
 	if err := ensureWalletTransactionIdempotencyIndex(db); err != nil {
 		return err
 	}
@@ -118,7 +121,37 @@ func ensureVPSOrderItemUniqueIndex(db *gorm.DB, legacySQLite bool) error {
 	if legacySQLite {
 		return db.Exec("CREATE UNIQUE INDEX " + indexName + " ON vps_instances(order_item_id) WHERE order_item_id > 0").Error
 	}
-	return db.Migrator().CreateIndex(&vpsInstanceRow{}, indexName)
+	return db.Exec("CREATE UNIQUE INDEX " + indexName + " ON vps_instances(order_item_id)").Error
+}
+
+func normalizeVPSOrderItemLinks(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&vpsInstanceRow{}) || !db.Migrator().HasColumn(&vpsInstanceRow{}, "order_item_id") {
+		return nil
+	}
+	if err := db.Model(&vpsInstanceRow{}).Where("order_item_id = 0").UpdateColumn("order_item_id", nil).Error; err != nil {
+		return err
+	}
+	type duplicateLink struct {
+		OrderItemID int64 `gorm:"column:order_item_id"`
+		KeepID      int64 `gorm:"column:keep_id"`
+	}
+	var duplicates []duplicateLink
+	if err := db.Model(&vpsInstanceRow{}).
+		Select("order_item_id, MIN(id) AS keep_id").
+		Where("order_item_id IS NOT NULL AND order_item_id > 0").
+		Group("order_item_id").
+		Having("COUNT(*) > 1").
+		Scan(&duplicates).Error; err != nil {
+		return err
+	}
+	for _, duplicate := range duplicates {
+		if err := db.Model(&vpsInstanceRow{}).
+			Where("order_item_id = ? AND id <> ?", duplicate.OrderItemID, duplicate.KeepID).
+			UpdateColumn("order_item_id", nil).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func ensureWalletTransactionIdempotencyIndex(db *gorm.DB) error {
@@ -166,6 +199,10 @@ func normalizeSQLiteBigIntPrimaryKeys(db *gorm.DB) error {
 		newDDL = strings.Replace(newDDL, `"id" bigint(20) NOT NULL,`, `"id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`, 1)
 		newDDL = pkLineRE.ReplaceAllString(newDDL, "")
 		newDDL = trailingCommaRE.ReplaceAllString(newDDL, "\n)")
+		if t.Name == "vps_instances" {
+			orderItemNotNullRE := regexp.MustCompile(`(?i)("order_item_id"\s+[^,\n]+)\s+NOT\s+NULL`)
+			newDDL = orderItemNotNullRE.ReplaceAllString(newDDL, "$1")
+		}
 
 		type colRow struct {
 			Name string `gorm:"column:name"`

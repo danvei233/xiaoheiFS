@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -1383,6 +1384,11 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 		}
 		res, err = cli.CreateHost(ctx, req)
 		if err != nil {
+			if createHostFailureIsDefinitive(err) {
+				if clearErr := s.items.UpdateOrderItemAutomation(ctx, item.ID, ""); clearErr != nil {
+					return domain.VPSInstance{}, clearErr
+				}
+			}
 			s.logAutomation(ctx, order.ID, item.ID, "create_host", req, map[string]any{"error": err.Error()}, false, err.Error())
 			return domain.VPSInstance{}, err
 		}
@@ -1472,6 +1478,18 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 	}
 	s.logAutomation(ctx, order.ID, item.ID, "create_host", req, res.Raw, true, "ok")
 	return inst, nil
+}
+
+func createHostFailureIsDefinitive(err error) bool {
+	if errors.Is(err, ErrInvalidInput) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && strings.EqualFold(strings.TrimSpace(opErr.Op), "dial")
 }
 
 func (s *OrderService) handleRenew(ctx context.Context, item domain.OrderItem) error {
