@@ -171,7 +171,7 @@
                   <ElSwitch
                     :model-value="Boolean(row.active)"
                     :loading="Boolean(regionActiveBusy[row.id])"
-                    :disabled="!row.id || !hasPermission('region.set_active')"
+                    :disabled="!row.id || !hasPermission('region.active')"
                     :width="54"
                     inline-prompt
                     active-text="启用"
