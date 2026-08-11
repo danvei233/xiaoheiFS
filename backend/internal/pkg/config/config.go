@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -95,11 +96,18 @@ func Load() Config {
 
 	if strings.TrimSpace(cfg.JWTSecret) == "" {
 		cfg.JWTSecret = generateSecret()
-		_ = persistJWTSecret(cfg.JWTSecret)
+		// Persist to the same config file that was loaded (configPath may live
+		// outside the process CWD). Writing to a CWD shadow file would rotate
+		// the secret on every restart.
+		if err := persistJWTSecret(cfg.JWTSecret, configPath); err != nil {
+			log.Printf("config: failed to persist jwt_secret: %v", err)
+		}
 	}
 	if strings.TrimSpace(cfg.PluginMasterKey) == "" {
 		cfg.PluginMasterKey = generateSecret()
-		_ = persistPluginMasterKey(cfg.PluginMasterKey)
+		if err := persistPluginMasterKey(cfg.PluginMasterKey, configPath); err != nil {
+			log.Printf("config: failed to persist plugin_master_key: %v", err)
+		}
 	}
 
 	return cfg
@@ -148,7 +156,7 @@ func readLocalConfig() (*fileConfig, string) {
 		var fc fileConfig
 		switch {
 		case strings.HasSuffix(strings.ToLower(p), ".yaml") || strings.HasSuffix(strings.ToLower(p), ".yml"):
-			if yaml.Unmarshal(b, &fc) == nil {
+			if err := yaml.Unmarshal(b, &fc); err == nil {
 				hasDB := strings.TrimSpace(fc.DB.Type) != "" || strings.TrimSpace(fc.DB.Path) != "" || strings.TrimSpace(fc.DB.DSN) != ""
 				if abs, err := filepath.Abs(p); err == nil {
 					if hasDB {
@@ -170,10 +178,12 @@ func readLocalConfig() (*fileConfig, string) {
 					fallbackPath = p
 				}
 				continue
+			} else {
+				log.Printf("config: ignoring unparseable config file %s: %v", p, err)
 			}
 		case strings.HasSuffix(strings.ToLower(p), ".json"):
 			// Support both new nested JSON and the legacy flat JSON produced by older installers.
-			if json.Unmarshal(b, &fc) == nil {
+			if err := json.Unmarshal(b, &fc); err == nil {
 				hasDB := strings.TrimSpace(fc.DB.Type) != "" || strings.TrimSpace(fc.DB.Path) != "" || strings.TrimSpace(fc.DB.DSN) != ""
 				if abs, err := filepath.Abs(p); err == nil {
 					if hasDB {
@@ -195,13 +205,15 @@ func readLocalConfig() (*fileConfig, string) {
 					fallbackPath = p
 				}
 				continue
+			} else {
+				log.Printf("config: ignoring unparseable config file %s: %v", p, err)
 			}
 			var legacy struct {
 				DBType string `json:"db_type"`
 				DBPath string `json:"db_path"`
 				DBDSN  string `json:"db_dsn"`
 			}
-			if json.Unmarshal(b, &legacy) == nil {
+			if err := json.Unmarshal(b, &legacy); err == nil {
 				fc.DB.Type = legacy.DBType
 				fc.DB.Path = legacy.DBPath
 				fc.DB.DSN = legacy.DBDSN
@@ -226,10 +238,12 @@ func readLocalConfig() (*fileConfig, string) {
 					fallbackPath = p
 				}
 				continue
+			} else {
+				log.Printf("config: ignoring unparseable config file %s: %v", p, err)
 			}
 		default:
 			// If extension is unknown, try YAML then JSON.
-			if yaml.Unmarshal(b, &fc) == nil {
+			if err := yaml.Unmarshal(b, &fc); err == nil {
 				hasDB := strings.TrimSpace(fc.DB.Type) != "" || strings.TrimSpace(fc.DB.Path) != "" || strings.TrimSpace(fc.DB.DSN) != ""
 				if abs, err := filepath.Abs(p); err == nil {
 					if hasDB {
@@ -251,8 +265,10 @@ func readLocalConfig() (*fileConfig, string) {
 					fallbackPath = p
 				}
 				continue
+			} else {
+				log.Printf("config: ignoring unparseable config file %s: %v", p, err)
 			}
-			if json.Unmarshal(b, &fc) == nil {
+			if err := json.Unmarshal(b, &fc); err == nil {
 				hasDB := strings.TrimSpace(fc.DB.Type) != "" || strings.TrimSpace(fc.DB.Path) != "" || strings.TrimSpace(fc.DB.DSN) != ""
 				if abs, err := filepath.Abs(p); err == nil {
 					if hasDB {
@@ -273,6 +289,8 @@ func readLocalConfig() (*fileConfig, string) {
 					fallbackFC = &cp
 					fallbackPath = p
 				}
+			} else {
+				log.Printf("config: ignoring unparseable config file %s: %v", p, err)
 			}
 		}
 	}
@@ -359,22 +377,19 @@ func getEnvTrimmed(key string) (string, bool) {
 
 func generateSecret() string {
 	b := make([]byte, 32)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// crypto/rand is guaranteed to fill b on Go 1.24+; a failure here is
+		// unrecoverable and must not silently yield an all-zero key.
+		panic("config: crypto/rand unavailable: " + err.Error())
+	}
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func persistJWTSecret(secret string) error {
-	path := localConfigYAML
-	switch {
-	case fileExists(localConfigYAML):
-		path = localConfigYAML
-	case fileExists(localConfigYML):
-		path = localConfigYML
-	case fileExists(localConfigJSON):
-		path = localConfigJSON
-	default:
-		path = localConfigYAML
-	}
+// persistJWTSecret writes the secret into the given config file (the one the
+// loader actually resolved). When configPath is empty it falls back to a CWD
+// app.config.* file for first-run installs.
+func persistJWTSecret(secret, configPath string) error {
+	path := resolvePersistPath(configPath)
 
 	if strings.HasSuffix(strings.ToLower(path), ".json") {
 		out := map[string]any{}
@@ -386,7 +401,7 @@ func persistJWTSecret(secret string) error {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(path, b, 0o600)
+		return writeConfigFile(path, b)
 	}
 
 	out := map[string]any{}
@@ -398,21 +413,11 @@ func persistJWTSecret(secret string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o600)
+	return writeConfigFile(path, b)
 }
 
-func persistPluginMasterKey(key string) error {
-	path := localConfigYAML
-	switch {
-	case fileExists(localConfigYAML):
-		path = localConfigYAML
-	case fileExists(localConfigYML):
-		path = localConfigYML
-	case fileExists(localConfigJSON):
-		path = localConfigJSON
-	default:
-		path = localConfigYAML
-	}
+func persistPluginMasterKey(key, configPath string) error {
+	path := resolvePersistPath(configPath)
 
 	if strings.HasSuffix(strings.ToLower(path), ".json") {
 		out := map[string]any{}
@@ -424,7 +429,7 @@ func persistPluginMasterKey(key string) error {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(path, b, 0o600)
+		return writeConfigFile(path, b)
 	}
 
 	out := map[string]any{}
@@ -436,7 +441,38 @@ func persistPluginMasterKey(key string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o600)
+	return writeConfigFile(path, b)
+}
+
+// resolvePersistPath returns the config file to persist secrets into: the
+// loaded config path when known, otherwise the first CWD app.config.* that
+// exists, defaulting to app.config.yaml.
+func resolvePersistPath(configPath string) string {
+	if strings.TrimSpace(configPath) != "" {
+		return configPath
+	}
+	switch {
+	case fileExists(localConfigYAML):
+		return localConfigYAML
+	case fileExists(localConfigYML):
+		return localConfigYML
+	case fileExists(localConfigJSON):
+		return localConfigJSON
+	default:
+		return localConfigYAML
+	}
+}
+
+// writeConfigFile writes data with 0o600 and tightens permissions on a
+// pre-existing file that may have been created with a looser mode.
+func writeConfigFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return err
+	}
+	return nil
 }
 
 func fileExists(path string) bool {

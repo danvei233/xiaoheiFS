@@ -224,6 +224,8 @@ func moduleFromSegments(segments []string) string {
 		return "admin"
 	case "orders":
 		return "order"
+	case "regions":
+		return "region"
 	case "cms":
 		if len(segments) > 1 {
 			switch segments[1] {

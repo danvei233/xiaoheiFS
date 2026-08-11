@@ -19,6 +19,11 @@ func NewAESGCM(base64Key string) (*AESGCM, error) {
 	}
 	key, err := base64.RawURLEncoding.DecodeString(base64Key)
 	if err != nil {
+		// Accept padded standard base64 too (e.g. `openssl rand -base64 32`),
+		// which the raw URL alphabet rejects because of `+ / =`.
+		key, err = base64.StdEncoding.DecodeString(base64Key)
+	}
+	if err != nil {
 		return nil, err
 	}
 	if len(key) != 32 {
@@ -44,6 +49,10 @@ func (c *AESGCM) EncryptToString(plaintext []byte) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(out), nil
 }
 
+// DecryptString decrypts a base64.RawURLEncoding ciphertext produced by
+// EncryptToString. An empty ciphertext means "no data stored" and returns
+// (nil, nil) — consumers rely on this to distinguish an empty plugin config
+// from a decrypt failure.
 func (c *AESGCM) DecryptString(ciphertext string) ([]byte, error) {
 	if ciphertext == "" {
 		return nil, nil
