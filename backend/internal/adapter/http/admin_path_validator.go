@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/rand"
 	"regexp"
 	"strings"
@@ -131,7 +132,7 @@ func GetAdminPathFromSettings(settingsSvc SettingsService) string {
 		return ""
 	}
 	
-	setting, err := settingsSvc.Get(nil, "admin_path")
+	setting, err := settingsSvc.Get(context.Background(), "admin_path")
 	if err != nil {
 		return ""
 	}

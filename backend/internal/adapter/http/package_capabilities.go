@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"xiaoheiplay/internal/domain"
@@ -12,6 +13,12 @@ import (
 
 const packageCapabilitiesSettingKey = "package_capabilities_json"
 const goodsTypeCapabilitiesSettingKey = "goods_type_capabilities_json"
+
+// capabilityPolicySaveMu serialises the read-modify-write of capability policy
+// settings. saveCapabilityPolicy reads the whole JSON document, mutates one
+// key and writes it back; two concurrent saves of different items would
+// otherwise last-write-wins on the entire document and silently drop one item.
+var capabilityPolicySaveMu sync.Mutex
 
 type packageCapabilityPolicy struct {
 	ResizeEnabled *bool `json:"resize_enabled,omitempty"`
@@ -70,6 +77,8 @@ func (h *Handler) saveCapabilityPolicy(c *gin.Context, settingKey string, itemID
 	if h.adminSvc == nil || itemID <= 0 {
 		return domain.ErrNotSupported
 	}
+	capabilityPolicySaveMu.Lock()
+	defer capabilityPolicySaveMu.Unlock()
 	all := h.loadAllCapabilityPolicies(c, settingKey)
 	key := strconv.FormatInt(itemID, 10)
 	if policy.ResizeEnabled == nil && policy.RefundEnabled == nil {

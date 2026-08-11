@@ -6,18 +6,30 @@ import (
 	"time"
 )
 
+// defaultSecurityGuardMaxKeys bounds how many distinct keys the login and 2FA
+// guards track. Without a bound an attacker rotating keys (spoofed IPs, random
+// usernames) could grow the state maps until the process runs out of memory.
+const defaultSecurityGuardMaxKeys = 100000
+
+// emptyAdminSecurityKeyBucket is the bucket used for empty/whitespace keys.
+// The guards used to silently ignore such keys, so a caller that produced an
+// empty key (e.g. a trimmed username) never had its failures counted. Routing
+// them to a fixed bucket keeps the guards fail-closed.
+const emptyAdminSecurityKeyBucket = "<empty>"
+
 type loginCooldownState struct {
 	failures    int
 	lockedUntil time.Time
 }
 
 type loginCooldownGuard struct {
-	mu     sync.Mutex
-	states map[string]loginCooldownState
+	mu      sync.Mutex
+	states  map[string]loginCooldownState
+	maxKeys int
 }
 
 func newLoginCooldownGuard() *loginCooldownGuard {
-	return &loginCooldownGuard{states: map[string]loginCooldownState{}}
+	return &loginCooldownGuard{states: map[string]loginCooldownState{}, maxKeys: defaultSecurityGuardMaxKeys}
 }
 
 func (g *loginCooldownGuard) IsCoolingDown(key string, now time.Time) (bool, time.Time) {
@@ -71,6 +83,7 @@ func (g *loginCooldownGuard) RegisterFailure(key string, threshold int, cooldown
 		return true, state.lockedUntil, threshold
 	}
 	g.states[key] = state
+	g.evictOverflow()
 	return false, time.Time{}, state.failures
 }
 
@@ -84,13 +97,25 @@ func (g *loginCooldownGuard) Reset(key string) {
 	delete(g.states, key)
 }
 
+// evictOverflow keeps the state map bounded. Entries are only ever removed
+// under memory pressure; the evicted key simply restarts its failure count.
+func (g *loginCooldownGuard) evictOverflow() {
+	for len(g.states) > g.maxKeys {
+		for k := range g.states {
+			delete(g.states, k)
+			break
+		}
+	}
+}
+
 type consecutiveFailureGuard struct {
-	mu     sync.Mutex
-	counts map[string]int
+	mu      sync.Mutex
+	counts  map[string]int
+	maxKeys int
 }
 
 func newConsecutiveFailureGuard() *consecutiveFailureGuard {
-	return &consecutiveFailureGuard{counts: map[string]int{}}
+	return &consecutiveFailureGuard{counts: map[string]int{}, maxKeys: defaultSecurityGuardMaxKeys}
 }
 
 func (g *consecutiveFailureGuard) RegisterFailure(key string) int {
@@ -101,6 +126,7 @@ func (g *consecutiveFailureGuard) RegisterFailure(key string) int {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.counts[key]++
+	g.evictOverflow()
 	return g.counts[key]
 }
 
@@ -114,6 +140,20 @@ func (g *consecutiveFailureGuard) Reset(key string) {
 	delete(g.counts, key)
 }
 
+// evictOverflow keeps the count map bounded under key rotation.
+func (g *consecutiveFailureGuard) evictOverflow() {
+	for len(g.counts) > g.maxKeys {
+		for k := range g.counts {
+			delete(g.counts, k)
+			break
+		}
+	}
+}
+
 func normalizeAdminSecurityKey(v string) string {
-	return strings.ToLower(strings.TrimSpace(v))
+	key := strings.ToLower(strings.TrimSpace(v))
+	if key == "" {
+		return emptyAdminSecurityKeyBucket
+	}
+	return key
 }
