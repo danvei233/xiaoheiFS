@@ -31,6 +31,7 @@ import { checkAdminPath, fetchAdminPath, getCachedAdminPath } from '@/services/a
 
 import { RoutesAlias } from '../routesAlias'
 import { resolveRealm, prefixRoutePaths, type Realm } from '../realm'
+import { parseImpersonation } from './impersonation'
 import { buildConsoleMenus } from '../menus/console'
 import { asyncRoutes } from '../routes/asyncRoutes'
 import { RouteRegistry, IframeRouteManager, RoutePermissionValidator } from '../core'
@@ -158,27 +159,28 @@ async function isRealAdminPath(to: RouteLocationNormalized): Promise<boolean> {
 
 /**
  * 模拟登录：`/console#impersonate_token=xxx`
- * 取出 token 写入用户 store，并把它从 hash 里抹掉再重新导航，
- * 避免 token 留在地址栏和历史记录里。
+ *
+ * 取出 token 写入用户 store，并把它从 hash 里抹掉再重新导航，避免 token
+ * 留在地址栏和历史记录里。受理条件与解析逻辑见 `./impersonation` 的
+ * `parseImpersonation`：hash 里的 token 没有签名，任何链接都能带任意 token，
+ * 因此只允许在浏览器已存在管理会话（模拟登录由管理员发起）时写入，防止
+ * 任意链接把用户会话切换进攻击者账号（会话固定 / 登录 CSRF）。
  */
 function handleImpersonation(to: RouteLocationNormalized, next: NavigationGuardNext): boolean {
   const hash = typeof to.hash === 'string' ? to.hash : ''
-  if (!to.path.startsWith(RoutesAlias.Console) || !hash.includes('impersonate_token=')) {
-    return false
-  }
+  if (!to.path.startsWith(RoutesAlias.Console)) return false
 
-  const params = new URLSearchParams(hash.replace(/^#/, ''))
-  const token = params.get('impersonate_token') || ''
-  if (token) {
+  const parsed = parseImpersonation(hash, Boolean(useAdminAuthStore().token))
+  if (!parsed) return false
+
+  if (parsed.shouldWrite) {
     const auth = useAuthStore()
-    auth.token = token
+    auth.token = parsed.token
     auth.profile = null
-    localStorage.setItem('user_token', token)
+    localStorage.setItem('user_token', parsed.token)
   }
 
-  params.delete('impersonate_token')
-  const rest = params.toString()
-  next({ path: to.path, query: to.query, hash: rest ? `#${rest}` : '', replace: true })
+  next({ path: to.path, query: to.query, hash: parsed.restHash, replace: true })
   return true
 }
 

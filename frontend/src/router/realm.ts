@@ -58,20 +58,32 @@ export function prefixRoutePaths<
   const clean = `/${prefix.replace(/^\/+|\/+$/g, '')}`
   const withPrefix = (p: string) => (p.startsWith('/') ? `${clean}${p}` : p)
 
-  const walk = (list: T[]): T[] =>
+  /** 把相对子路径按父级目录拼成完整路径；绝对路径原样返回 */
+  const resolvePath = (p: string, parentPath: string): string => {
+    if (p.startsWith('/')) return p
+    return parentPath ? `${parentPath}/${p}` : `/${p}`
+  }
+
+  const walk = (list: T[], parentPath = ''): T[] =>
     list.map((route) => {
       const next = { ...route } as T
 
       if (typeof route.path === 'string') {
-        next.path = withPrefix(route.path)
+        // 子级相对路径（如 'console'）按父目录拼成完整路径再统一加前缀。
+        // 否则写进菜单树的子路径是相对路径，getFirstMenuPath 推导首页路径
+        // 会得到 /console 这类错误结果，侧边栏跳转也解析不到正确地址。
+        next.path = withPrefix(resolvePath(route.path, parentPath))
       }
 
       if (typeof route.meta?.activePath === 'string') {
-        next.meta = { ...route.meta, activePath: withPrefix(route.meta.activePath) }
+        next.meta = {
+          ...route.meta,
+          activePath: withPrefix(resolvePath(route.meta.activePath, parentPath))
+        }
       }
 
       if (route.children?.length) {
-        next.children = walk(route.children)
+        next.children = walk(route.children, resolvePath(route.path, parentPath))
       }
 
       return next
