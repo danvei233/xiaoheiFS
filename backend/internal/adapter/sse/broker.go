@@ -53,9 +53,20 @@ func (b *Broker) Subscribe(orderID int64) chan domain.OrderEvent {
 func (b *Broker) Unsubscribe(orderID int64, ch chan domain.OrderEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.subs[orderID] != nil {
-		delete(b.subs[orderID], ch)
-		close(ch)
+	subs, ok := b.subs[orderID]
+	if !ok {
+		return
+	}
+	if _, ok := subs[ch]; !ok {
+		// Already unsubscribed; never close the channel twice.
+		return
+	}
+	delete(subs, ch)
+	close(ch)
+	if len(subs) == 0 {
+		// Reclaim the per-order map so long-running servers do not accumulate
+		// empty maps for every order ever subscribed.
+		delete(b.subs, orderID)
 	}
 }
 

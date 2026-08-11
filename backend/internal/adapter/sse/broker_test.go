@@ -63,6 +63,41 @@ func TestBroker_StreamHeaders(t *testing.T) {
 	}
 }
 
+// TestBroker_UnsubscribeRemovesEmptyMap guards F17: once the last subscriber of
+// an order goes away, its empty map must be removed from the broker instead of
+// leaking for the lifetime of the process.
+func TestBroker_UnsubscribeRemovesEmptyMap(t *testing.T) {
+	broker := NewBroker(fakeEventRepo{})
+	ch := broker.Subscribe(1)
+	broker.Unsubscribe(1, ch)
+	broker.mu.RLock()
+	_, exists := broker.subs[1]
+	broker.mu.RUnlock()
+	if exists {
+		t.Fatalf("expected empty order map to be removed from subs")
+	}
+}
+
+// TestBroker_UnsubscribeWithOtherSubsNoPanic guards F21: a repeated
+// Unsubscribe for the same channel must not panic (close of closed channel)
+// even when other subscribers remain on the same order.
+func TestBroker_UnsubscribeWithOtherSubsNoPanic(t *testing.T) {
+	broker := NewBroker(fakeEventRepo{})
+	ch1 := broker.Subscribe(1)
+	ch2 := broker.Subscribe(1)
+	broker.Unsubscribe(1, ch1)
+	broker.Unsubscribe(1, ch1) // must not panic
+	broker.Unsubscribe(1, ch2)
+}
+
+// TestBroker_UnsubscribeIdempotent guards F21 for the single-subscriber case.
+func TestBroker_UnsubscribeIdempotent(t *testing.T) {
+	broker := NewBroker(fakeEventRepo{})
+	ch := broker.Subscribe(1)
+	broker.Unsubscribe(1, ch)
+	broker.Unsubscribe(1, ch) // must not panic
+}
+
 func TestBroker_PublishAndWriteEvent(t *testing.T) {
 	broker := NewBroker(fakeEventRepo{})
 	ch := broker.Subscribe(1)
