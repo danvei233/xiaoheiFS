@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -13,23 +12,34 @@ import (
 const packageCapabilitiesSettingKey = "package_capabilities_json"
 const goodsTypeCapabilitiesSettingKey = "goods_type_capabilities_json"
 
-type packageCapabilityPolicy struct {
-	ResizeEnabled *bool `json:"resize_enabled,omitempty"`
-	RefundEnabled *bool `json:"refund_enabled,omitempty"`
+type packageCapabilityPolicy = domain.CapabilityPolicy
+
+func capabilityPolicyScope(key string) (domain.CapabilityPolicyScope, bool) {
+	switch strings.TrimSpace(key) {
+	case packageCapabilitiesSettingKey:
+		return domain.CapabilityPolicyScopePackage, true
+	case goodsTypeCapabilitiesSettingKey:
+		return domain.CapabilityPolicyScopeGoodsType, true
+	default:
+		return "", false
+	}
 }
 
 func (h *Handler) loadAllCapabilityPolicies(ctx context.Context, key string) map[string]packageCapabilityPolicy {
-	setting, err := h.getSettingByContext(ctx, key)
+	if h.adminSvc == nil {
+		return map[string]packageCapabilityPolicy{}
+	}
+	scope, ok := capabilityPolicyScope(key)
+	if !ok {
+		return map[string]packageCapabilityPolicy{}
+	}
+	items, err := h.adminSvc.ListCapabilityPolicies(ctx, scope)
 	if err != nil {
 		return map[string]packageCapabilityPolicy{}
 	}
-	raw := strings.TrimSpace(setting.ValueJSON)
-	if raw == "" || raw == "{}" {
-		return map[string]packageCapabilityPolicy{}
-	}
-	var out map[string]packageCapabilityPolicy
-	if err := json.Unmarshal([]byte(raw), &out); err != nil || out == nil {
-		return map[string]packageCapabilityPolicy{}
+	out := make(map[string]packageCapabilityPolicy, len(items))
+	for id, policy := range items {
+		out[strconv.FormatInt(id, 10)] = policy
 	}
 	return out
 }
@@ -43,12 +53,15 @@ func (h *Handler) loadAllGoodsTypeCapabilityPolicies(ctx context.Context) map[st
 }
 
 func (h *Handler) getPackageCapabilityPolicy(ctx context.Context, packageID int64) packageCapabilityPolicy {
-	if packageID <= 0 {
+	return h.getCapabilityPolicy(ctx, domain.CapabilityPolicyScopePackage, packageID)
+}
+
+func (h *Handler) getCapabilityPolicy(ctx context.Context, scope domain.CapabilityPolicyScope, itemID int64) packageCapabilityPolicy {
+	if h.adminSvc == nil || itemID <= 0 {
 		return packageCapabilityPolicy{}
 	}
-	all := h.loadAllPackageCapabilityPolicies(ctx)
-	item, ok := all[strconv.FormatInt(packageID, 10)]
-	if !ok {
+	item, err := h.adminSvc.GetCapabilityPolicy(ctx, scope, itemID)
+	if err != nil {
 		return packageCapabilityPolicy{}
 	}
 	return item
@@ -58,30 +71,18 @@ func (h *Handler) getGoodsTypeCapabilityPolicy(ctx context.Context, goodsTypeID 
 	if goodsTypeID <= 0 {
 		return packageCapabilityPolicy{}
 	}
-	all := h.loadAllGoodsTypeCapabilityPolicies(ctx)
-	item, ok := all[strconv.FormatInt(goodsTypeID, 10)]
-	if !ok {
-		return packageCapabilityPolicy{}
-	}
-	return item
+	return h.getCapabilityPolicy(ctx, domain.CapabilityPolicyScopeGoodsType, goodsTypeID)
 }
 
 func (h *Handler) saveCapabilityPolicy(c *gin.Context, settingKey string, itemID int64, policy packageCapabilityPolicy) error {
 	if h.adminSvc == nil || itemID <= 0 {
 		return domain.ErrNotSupported
 	}
-	all := h.loadAllCapabilityPolicies(c, settingKey)
-	key := strconv.FormatInt(itemID, 10)
-	if policy.ResizeEnabled == nil && policy.RefundEnabled == nil {
-		delete(all, key)
-	} else {
-		all[key] = policy
+	scope, ok := capabilityPolicyScope(settingKey)
+	if !ok {
+		return domain.ErrInvalidInput
 	}
-	raw, err := json.Marshal(all)
-	if err != nil {
-		return err
-	}
-	return h.adminSvc.UpdateSetting(c, getUserID(c), settingKey, string(raw))
+	return h.adminSvc.UpsertCapabilityPolicy(c.Request.Context(), scope, itemID, policy)
 }
 
 func (h *Handler) savePackageCapabilityPolicy(c *gin.Context, packageID int64, policy packageCapabilityPolicy) error {
@@ -108,15 +109,15 @@ func (h *Handler) capabilityPolicyGoodsTypeID(ctx context.Context, inst domain.V
 
 func (h *Handler) packageFeatureAllowed(c *gin.Context, inst domain.VPSInstance, feature string, fallback bool) bool {
 	allowed := fallback
-	goodsTypePolicy := h.getGoodsTypeCapabilityPolicy(c, h.capabilityPolicyGoodsTypeID(c, inst))
+	policy := h.effectiveCapabilityPolicy(c.Request.Context(), inst)
 	switch feature {
 	case "resize":
-		if goodsTypePolicy.ResizeEnabled != nil {
-			allowed = *goodsTypePolicy.ResizeEnabled
+		if policy.ResizeEnabled != nil {
+			allowed = *policy.ResizeEnabled
 		}
 	case "refund":
-		if goodsTypePolicy.RefundEnabled != nil {
-			allowed = *goodsTypePolicy.RefundEnabled
+		if policy.RefundEnabled != nil {
+			allowed = *policy.RefundEnabled
 		}
 	}
 	if !allowed {
@@ -125,7 +126,7 @@ func (h *Handler) packageFeatureAllowed(c *gin.Context, inst domain.VPSInstance,
 	auto := h.resolveVPSAutomationCapability(c, inst)
 	if feature == "resize" || feature == "refund" {
 		// Strict AND semantics for resize/refund:
-		// 1) goods-type/global switch must allow (checked above)
+		// 1) package/goods-type/site policy must allow (checked above)
 		// 2) plugin capability features must explicitly contain the feature
 		return featureAllowedByCapability(auto, feature, false)
 	}
@@ -133,6 +134,23 @@ func (h *Handler) packageFeatureAllowed(c *gin.Context, inst domain.VPSInstance,
 		allowed = featureAllowedByCapability(auto, feature, allowed)
 	}
 	return allowed
+}
+
+func (h *Handler) effectiveCapabilityPolicy(ctx context.Context, inst domain.VPSInstance) packageCapabilityPolicy {
+	goodsType := h.getGoodsTypeCapabilityPolicy(ctx, h.capabilityPolicyGoodsTypeID(ctx, inst))
+	pkg := h.getPackageCapabilityPolicy(ctx, inst.PackageID)
+	return mergeHTTPPolicies(pkg, goodsType)
+}
+
+func mergeHTTPPolicies(specific, fallback packageCapabilityPolicy) packageCapabilityPolicy {
+	merged := fallback
+	if specific.ResizeEnabled != nil {
+		merged.ResizeEnabled = specific.ResizeEnabled
+	}
+	if specific.RefundEnabled != nil {
+		merged.RefundEnabled = specific.RefundEnabled
+	}
+	return merged
 }
 
 func featureAllowedByCapability(cap *VPSAutomationCapabilityDTO, feature string, fallback bool) bool {
@@ -154,15 +172,28 @@ func featureAllowedByCapability(cap *VPSAutomationCapabilityDTO, feature string,
 }
 
 func (h *Handler) packageCapabilityResolvedValue(c *gin.Context, packageID int64, key string, globalKey string, defaultVal bool) (bool, string) {
-	policy := h.getPackageCapabilityPolicy(c, packageID)
+	ctx := c.Request.Context()
+	pkgPolicy := h.getPackageCapabilityPolicy(ctx, packageID)
+	goodsTypePolicy := packageCapabilityPolicy{}
+	if h.catalogSvc != nil {
+		if pkg, err := h.catalogSvc.GetPackage(ctx, packageID); err == nil {
+			goodsTypePolicy = h.getGoodsTypeCapabilityPolicy(ctx, pkg.GoodsTypeID)
+		}
+	}
 	switch key {
 	case "resize":
-		if policy.ResizeEnabled != nil {
-			return *policy.ResizeEnabled, "package"
+		if pkgPolicy.ResizeEnabled != nil {
+			return *pkgPolicy.ResizeEnabled, "package"
+		}
+		if goodsTypePolicy.ResizeEnabled != nil {
+			return *goodsTypePolicy.ResizeEnabled, "goods_type"
 		}
 	case "refund":
-		if policy.RefundEnabled != nil {
-			return *policy.RefundEnabled, "package"
+		if pkgPolicy.RefundEnabled != nil {
+			return *pkgPolicy.RefundEnabled, "package"
+		}
+		if goodsTypePolicy.RefundEnabled != nil {
+			return *goodsTypePolicy.RefundEnabled, "goods_type"
 		}
 	}
 	if v, ok := h.getSettingBool(c, globalKey); ok {
@@ -172,7 +203,7 @@ func (h *Handler) packageCapabilityResolvedValue(c *gin.Context, packageID int64
 }
 
 func (h *Handler) goodsTypeCapabilityResolvedValue(c *gin.Context, goodsTypeID int64, key string, globalKey string, defaultVal bool) (bool, string) {
-	policy := h.getGoodsTypeCapabilityPolicy(c, goodsTypeID)
+	policy := h.getGoodsTypeCapabilityPolicy(c.Request.Context(), goodsTypeID)
 	switch key {
 	case "resize":
 		if policy.ResizeEnabled != nil {

@@ -3,11 +3,13 @@ package logreader
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -29,7 +31,7 @@ var (
 	eventLogDeniedUntil     = map[string]time.Time{}
 )
 
-func Stream(source, keyword string, lines int, follow bool, emit func(string) bool) error {
+func Stream(ctx context.Context, source, keyword string, lines int, follow bool, emit func(string) bool) error {
 	if lines <= 0 {
 		lines = 300
 	}
@@ -40,28 +42,51 @@ func Stream(source, keyword string, lines int, follow bool, emit func(string) bo
 		if strings.TrimSpace(path) == "" {
 			path = "logs"
 		}
-		return streamFile(path, keyword, lines, follow, emit)
+		return streamFile(ctx, path, keyword, lines, follow, emit)
 	case strings.HasPrefix(source, "journal:"):
 		unit := strings.TrimSpace(strings.TrimPrefix(source, "journal:"))
-		return streamJournal(unit, keyword, lines, follow, emit)
+		return streamJournal(ctx, unit, keyword, lines, follow, emit)
 	case strings.HasPrefix(source, "eventlog:"):
 		name := strings.TrimSpace(strings.TrimPrefix(source, "eventlog:"))
-		return streamEventLog(name, keyword, lines, follow, emit)
+		return streamEventLog(ctx, name, keyword, lines, follow, emit)
 	default:
 		return fmt.Errorf("unsupported source: %s", source)
 	}
 }
 
-func streamFile(path, keyword string, lines int, follow bool, emit func(string) bool) error {
+// maxLogFileTailBytes bounds how much of a log file is read into memory for the
+// initial "last N lines" scan. It is far larger than the maximum requested line
+// count (maxLogLines × typical line length), so the last N lines are almost
+// always fully contained in the tail, while a huge log file is never loaded
+// whole.
+var maxLogFileTailBytes int64 = 64 << 20
+
+func streamFile(ctx context.Context, path, keyword string, lines int, follow bool, emit func(string) bool) error {
 	target, err := resolveLogFile(path)
 	if err != nil {
 		return fmt.Errorf("resolve file log source failed: %w", err)
 	}
-	b, err := os.ReadFile(target)
+	fi, err := os.Stat(target)
 	if err != nil {
 		return fmt.Errorf("read file log failed: %w", err)
 	}
-	text := decodeLogBytes(b)
+	f, err := os.Open(target)
+	if err != nil {
+		return fmt.Errorf("read file log failed: %w", err)
+	}
+	defer f.Close()
+	// Read only the tail of the file instead of the whole file: a very large log
+	// must not be loaded into memory (which would OOM the agent) just to emit the
+	// last N lines.
+	tailStart := fi.Size() - maxLogFileTailBytes
+	if tailStart < 0 {
+		tailStart = 0
+	}
+	tail := make([]byte, fi.Size()-tailStart)
+	if _, err := f.ReadAt(tail, tailStart); err != nil && err != io.EOF {
+		return fmt.Errorf("read file log tail failed: %w", err)
+	}
+	text := decodeLogBytes(tail)
 	text = filterLines(lastLines(text, lines), keyword)
 	initialEmitted := 0
 	for _, line := range strings.Split(text, "\n") {
@@ -82,14 +107,13 @@ func streamFile(path, keyword string, lines int, follow bool, emit func(string) 
 			return nil
 		}
 	}
-	f, err := os.Open(target)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 	offset, _ := f.Seek(0, os.SEEK_END)
 	for i := 0; i < 600; i++ { // follow at most 10m
-		time.Sleep(time.Second)
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(time.Second):
+		}
 		info, err := f.Stat()
 		if err != nil {
 			continue
@@ -97,9 +121,17 @@ func streamFile(path, keyword string, lines int, follow bool, emit func(string) 
 		if info.Size() <= offset {
 			continue
 		}
-		delta := info.Size() - offset
-		buf := make([]byte, delta)
-		_, _ = f.ReadAt(buf, offset)
+		// Bound the per-poll delta read too: a file that grows by more than the
+		// tail cap between polls must not allocate an unbounded buffer. The
+		// skipped middle is dropped (as it would be by the line cap anyway).
+		readStart := offset
+		readLen := info.Size() - offset
+		if readLen > maxLogFileTailBytes {
+			readStart = info.Size() - maxLogFileTailBytes
+			readLen = maxLogFileTailBytes
+		}
+		buf := make([]byte, readLen)
+		_, _ = f.ReadAt(buf, readStart)
 		offset = info.Size()
 		chunkText := decodeLogBytes(buf)
 		for _, line := range strings.Split(chunkText, "\n") {
@@ -115,7 +147,7 @@ func streamFile(path, keyword string, lines int, follow bool, emit func(string) 
 	return nil
 }
 
-func streamJournal(unit, keyword string, lines int, follow bool, emit func(string) bool) error {
+func streamJournal(ctx context.Context, unit, keyword string, lines int, follow bool, emit func(string) bool) error {
 	if runtime.GOOS == "windows" {
 		return errors.New("journal not supported on windows")
 	}
@@ -137,6 +169,11 @@ func streamJournal(unit, keyword string, lines int, follow bool, emit func(strin
 	defer cmd.Process.Kill()
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
 		line := scanner.Text()
 		if keyword != "" && !strings.Contains(strings.ToLower(line), strings.ToLower(keyword)) {
 			continue
@@ -148,7 +185,7 @@ func streamJournal(unit, keyword string, lines int, follow bool, emit func(strin
 	return nil
 }
 
-func streamEventLog(name, keyword string, lines int, follow bool, emit func(string) bool) error {
+func streamEventLog(ctx context.Context, name, keyword string, lines int, follow bool, emit func(string) bool) error {
 	if runtime.GOOS != "windows" {
 		return errors.New("eventlog only supported on windows")
 	}
@@ -247,7 +284,11 @@ func streamEventLog(name, keyword string, lines int, follow bool, emit func(stri
 		log.Printf("eventlog fetched candidate=%s raw=%d kept=%d emitted=%d", candidate, len(events), keptCount, emittedCount)
 		if follow {
 			for {
-				time.Sleep(2 * time.Second)
+				select {
+				case <-ctx.Done():
+					return nil
+				case <-time.After(2 * time.Second):
+				}
 				incr, incrErr := fetchWinEvents(candidate, 64, latest)
 				if incrErr != nil {
 					msg := strings.TrimSpace(incrErr.Error())

@@ -200,15 +200,18 @@
     return map
   })
 
-  const fetchApiKeys = async (params: TableParams) => {
+  const fetchApiKeys = async (params: TableParams, signal?: AbortSignal) => {
     const keyword = String(params.keyword ?? '')
       .trim()
       .toLowerCase()
     if (!keyword && !params.status) {
-      const response = await listApiKeys({
-        limit: params.size,
-        offset: (params.current - 1) * params.size
-      })
+      const response = await listApiKeys(
+        {
+          limit: params.size,
+          offset: (params.current - 1) * params.size
+        },
+        signal
+      )
       const items = (response.data?.items ?? []).map(normalizeRow)
       return { records: items, total: response.data?.total ?? items.length }
     }

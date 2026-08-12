@@ -111,7 +111,7 @@ func TestAdminService_UserOrderAndSettingsOps(t *testing.T) {
 	if err := repo.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: admin.ID, Action: "user.create", TargetType: "user", TargetID: "1", DetailJSON: "{}"}); err != nil {
 		t.Fatalf("add audit log: %v", err)
 	}
-	if _, total, err := svc.ListAuditLogs(ctx, 10, 0); err != nil || total == 0 {
+	if _, total, err := svc.ListAuditLogs(ctx, appshared.AuditLogFilter{}, 10, 0); err != nil || total == 0 {
 		t.Fatalf("list audit logs: %v", err)
 	}
 }

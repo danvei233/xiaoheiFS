@@ -28,14 +28,19 @@
 </template>
 
 <script setup lang="ts">
+  import { priceBreakdownToCents } from '@/utils/pricing'
+
   defineOptions({ name: 'PriceCalculator' })
 
   const props = withDefaults(
     defineProps<{
       basePrice?: number
+      /** 附加项总价（元/月，展示用） */
       addonPrice?: number
       cycleMultiplier?: number
       qty?: number
+      /** 附加项明细（逐项单价），用于与后端一致的逐项整数舍入 */
+      addons?: Array<{ value: number; unitPrice: number }>
       currency?: string
     }>(),
     {
@@ -43,13 +48,22 @@
       addonPrice: 0,
       cycleMultiplier: 1,
       qty: 1,
+      addons: () => [],
       currency: '¥'
     }
   )
 
-  const total = computed(
-    () => (props.basePrice + props.addonPrice) * props.cycleMultiplier * props.qty
-  )
+  // 合计必须与后端逐项整数舍入一致（cross-module "订单价格预览"）：
+  // `round(baseMonthly*mult)` + 每个 addon `round(monthly*mult)`，再乘 qty。
+  // 不能再用 `(base+addon)*mult*qty` 的浮点聚合，否则多 addon 时差 1 分。
+  const total = computed(() => {
+    const cents = priceBreakdownToCents({
+      baseMonthly: props.basePrice,
+      addons: props.addons,
+      multiplier: props.cycleMultiplier
+    })
+    return (cents.totalCents * Math.max(1, Math.round(props.qty || 1))) / 100
+  })
 
   const format = (value: number) => `${props.currency} ${Number(value || 0).toFixed(2)}`
 </script>

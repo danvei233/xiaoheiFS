@@ -122,6 +122,45 @@ func TestHandlers_AdminCatalogOps(t *testing.T) {
 	}
 }
 
+func TestHandlers_AdminRegionBulkDeleteRollsBackOnConflict(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	groupID := ensureAdminGroup(t, env)
+	admin := testutil.CreateAdmin(t, env.Repo, "admincatrollback", "admincatrollback@example.com", "pass", groupID)
+	token := testutil.IssueJWT(t, env.JWTSecret, admin.ID, "admin", time.Hour)
+
+	createUniqueRegion := func(code, name string) int64 {
+		rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/regions", map[string]any{
+			"code": code, "name": name, "active": true,
+		}, token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("create region %s: %d %s", code, rec.Code, rec.Body.String())
+		}
+		var result struct {
+			ID int64 `json:"id"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("decode region %s: %v", code, err)
+		}
+		return result.ID
+	}
+	deletableID := createUniqueRegion("rollback-a", "Rollback A")
+	referencedID := createUniqueRegion("rollback-b", "Rollback B")
+	_ = createPlanGroup(t, env, token, referencedID)
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/regions/bulk-delete", map[string]any{
+		"ids": []int64{deletableID, referencedID},
+	}, token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected conflict, got %d %s", rec.Code, rec.Body.String())
+	}
+	if _, err := env.Repo.GetRegion(context.Background(), deletableID); err != nil {
+		t.Fatalf("first region was partially deleted instead of rolled back: %v", err)
+	}
+	if _, err := env.Repo.GetRegion(context.Background(), referencedID); err != nil {
+		t.Fatalf("referenced region must remain: %v", err)
+	}
+}
+
 func TestHandlers_AdminSystemImageSync_PlanGroupWithoutLineID(t *testing.T) {
 	env := testutilhttp.NewTestEnv(t, false)
 	groupID := ensureAdminGroup(t, env)

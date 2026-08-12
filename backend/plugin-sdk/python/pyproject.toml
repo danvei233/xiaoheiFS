@@ -4,15 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "xiaohei-plugin-sdk"
-version = "0.1.0"
-description = "Scaffold SDK for xiaohei automation plugins (Python)"
+version = "0.2.0"
+description = "Runnable go-plugin (gRPC) transport SDK for xiaohei automation plugins (Python)"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "cryptography>=42",
+    "grpcio>=1.60",
+    "protobuf>=4.21",
+]
+
+[project.optional-dependencies]
+dev = [
+    "grpcio-tools>=1.60",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["xiaohei_plugin_sdk*", "plugin*"]
 
+[project.scripts]
+xiaohei-plugin = "xiaohei_plugin_sdk.server:_main"

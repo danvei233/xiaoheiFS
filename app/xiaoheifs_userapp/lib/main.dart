@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/navigation/app_navigator.dart';
 import 'core/network/api_client.dart';
+import 'core/network/api_interceptors.dart';
 import 'core/storage/storage_service.dart';
+import 'presentation/providers/auth_provider.dart';
 import 'presentation/providers/theme_provider.dart';
 import 'presentation/routes/app_routes.dart';
 
@@ -18,7 +20,13 @@ void main() async {
     client.updateBaseUrl(savedBaseUrl);
   }
 
-  runApp(const ProviderScope(child: MyApp()));
+  // 401 强制登出时清空业务 provider，防止跨账号数据串台。
+  final container = ProviderContainer();
+  AuthInterceptor.onSessionExpired = () async {
+    await container.read(authProvider.notifier).handleSessionExpired();
+  };
+
+  runApp(UncontrolledProviderScope(container: container, child: const MyApp()));
 }
 
 class MyApp extends ConsumerWidget {

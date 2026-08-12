@@ -33,6 +33,13 @@ func NewService(tokens appports.PushTokenRepository, users appports.UserReposito
 	}
 }
 
+const (
+	maxPushTokenRunes  = 192
+	maxPushDeviceRunes = 192
+)
+
+var validPushPlatforms = map[string]bool{"android": true, "ios": true, "web": true, "harmony": true}
+
 func (s *Service) RegisterToken(ctx context.Context, userID int64, platform, token, deviceID string) error {
 	if s.tokens == nil {
 		return appshared.ErrInvalidInput
@@ -41,19 +48,26 @@ func (s *Service) RegisterToken(ctx context.Context, userID int64, platform, tok
 		return appshared.ErrInvalidInput
 	}
 	token = strings.TrimSpace(token)
-	if token == "" {
+	if token == "" || len([]rune(token)) > maxPushTokenRunes {
 		return appshared.ErrInvalidInput
 	}
 	platform = strings.TrimSpace(platform)
 	if platform == "" {
 		platform = "android"
 	}
+	if !validPushPlatforms[strings.ToLower(platform)] {
+		return appshared.ErrInvalidInput
+	}
+	deviceID = strings.TrimSpace(deviceID)
+	if len([]rune(deviceID)) > maxPushDeviceRunes {
+		return appshared.ErrInvalidInput
+	}
 	now := time.Now()
 	return s.tokens.UpsertPushToken(ctx, &domain.PushToken{
 		UserID:    userID,
-		Platform:  platform,
+		Platform:  strings.ToLower(platform),
 		Token:     token,
-		DeviceID:  strings.TrimSpace(deviceID),
+		DeviceID:  deviceID,
 		CreatedAt: now,
 		UpdatedAt: now,
 	})

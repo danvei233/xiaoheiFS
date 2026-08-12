@@ -11,7 +11,7 @@ func TestWeChatTradeStateToStatus(t *testing.T) {
 		"SUCCESS":    pluginv1.PaymentStatus_PAYMENT_STATUS_PAID,
 		"NOTPAY":     pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING,
 		"USERPAYING": pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING,
-		"REFUND":     pluginv1.PaymentStatus_PAYMENT_STATUS_REFUNDING,
+		"REFUND":     pluginv1.PaymentStatus_PAYMENT_STATUS_REFUNDED,
 		"CLOSED":     pluginv1.PaymentStatus_PAYMENT_STATUS_CLOSED,
 		"REVOKED":    pluginv1.PaymentStatus_PAYMENT_STATUS_CLOSED,
 		"PAYERROR":   pluginv1.PaymentStatus_PAYMENT_STATUS_FAILED,
@@ -40,22 +40,9 @@ func TestAlipayTradeStatusToStatus(t *testing.T) {
 	}
 }
 
-func TestEZPayStatusToStatus(t *testing.T) {
-	cases := map[string]pluginv1.PaymentStatus{
-		"trade_success": pluginv1.PaymentStatus_PAYMENT_STATUS_PAID,
-		"success":       pluginv1.PaymentStatus_PAYMENT_STATUS_PAID,
-		"notpay":        pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING,
-		"wait":          pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING,
-		"pending":       pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING,
-		"userpaying":    pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING,
-		"closed":        pluginv1.PaymentStatus_PAYMENT_STATUS_CLOSED,
-		"fail":          pluginv1.PaymentStatus_PAYMENT_STATUS_FAILED,
-		"failed":        pluginv1.PaymentStatus_PAYMENT_STATUS_FAILED,
-		"":              pluginv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED,
-	}
-	for in, want := range cases {
-		if got := EZPayStatusToStatus(in); got != want {
-			t.Fatalf("EZPayStatusToStatus(%q)=%v want %v", in, got, want)
-		}
+func TestWeChatTradeStateToStatus_RefundMapsToRefunded(t *testing.T) {
+	got := WeChatTradeStateToStatus("REFUND")
+	if got != pluginv1.PaymentStatus_PAYMENT_STATUS_REFUNDED {
+		t.Fatalf("expected REFUNDED for trade state REFUND, got %v", got)
 	}
 }

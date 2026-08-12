@@ -7,6 +7,8 @@ export const INPUT_LIMITS = {
   INTRO: 1024,
   PASSWORD: 128,
   URL: 1024,
+  /** 人工审核支付截图 URL：后端 handler binding 为 `omitempty,max=500`（P3-50） */
+  PAYMENT_SCREENSHOT_URL: 500,
   TICKET_SUBJECT: 240,
   TICKET_CONTENT: 10000,
   PAYMENT_METHOD: 64,

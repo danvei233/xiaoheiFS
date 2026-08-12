@@ -47,14 +47,31 @@ type PasswordResetTicketRepository interface {
 	CreatePasswordResetTicket(ctx context.Context, ticket *domain.PasswordResetTicket) error
 	GetPasswordResetTicket(ctx context.Context, token string) (domain.PasswordResetTicket, error)
 	MarkPasswordResetTicketUsed(ctx context.Context, ticketID int64) error
+	MarkPasswordResetTicketUsedIfUnused(ctx context.Context, ticketID int64) (bool, error)
+	// ConsumePasswordResetTicketAndUpdatePassword atomically claims the ticket
+	// and updates the owner's password in one transaction, so a failed update
+	// cannot burn a usable ticket.
+	ConsumePasswordResetTicketAndUpdatePassword(ctx context.Context, ticketID, userID int64, passwordHash string, now time.Time) (bool, error)
+	// ConsumeContactChangeTicketAndUpdateContact atomically claims the ticket,
+	// re-checks contact uniqueness and applies the new email/phone.
+	ConsumeContactChangeTicketAndUpdateContact(ctx context.Context, ticketID, userID int64, kind, value string, now time.Time) (bool, error)
 	DeleteExpiredPasswordResetTickets(ctx context.Context) error
 }
 
 type OrderFilter struct {
-	Status string
-	UserID int64
-	From   *time.Time
-	To     *time.Time
+	Status  string
+	UserID  int64
+	OrderNo string
+	From    *time.Time
+	To      *time.Time
+}
+
+// AuditLogFilter 审计日志列表过滤条件（m059 F6：前端发送 keyword/action/user，
+// 后端此前静默忽略，搜索是纯 no-op）。
+type AuditLogFilter struct {
+	Keyword string // 匹配 target_id / target_type / detail_json
+	Action  string // 动作子串匹配
+	User    string // 操作者：审计 DTO 只存 admin_id，数字按 admin_id 等值匹配
 }
 
 type PaymentFilter struct {
@@ -133,11 +150,11 @@ type PaymentProviderInfo struct {
 }
 
 type PaymentMethodInfo struct {
-	Key        string
-	Name       string
-	SchemaJSON string
-	ConfigJSON string
-	Balance    int64
+	Key          string
+	Name         string
+	Instructions string
+	Notice       string
+	Balance      int64
 }
 
 type PaymentSelectResult struct {

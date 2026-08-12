@@ -21,7 +21,7 @@ func TestHandlers_AdminOpsMore(t *testing.T) {
 	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/users", map[string]any{
 		"username": "newuser",
 		"email":    "newuser@example.com",
-		"password": "pass",
+		"password": "pass123",
 		"role":     "user",
 		"status":   "active",
 	}, adminToken)
@@ -58,7 +58,13 @@ func TestHandlers_AdminOpsMore(t *testing.T) {
 		t.Fatalf("admin wallet tx: %d", rec.Code)
 	}
 
-	userToken := testutil.IssueJWT(t, env.JWTSecret, created.ID, "user", time.Hour)
+	// The admin reset-password above bumped the user's password version, so the
+	// issued token must carry the current version to remain valid.
+	reloaded, err := env.Repo.GetUserByID(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("reload user: %v", err)
+	}
+	userToken := testutil.IssueJWTWithPVV(t, env.JWTSecret, created.ID, "user", reloaded.PasswordVersion, time.Hour)
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/wallet/recharge", map[string]any{
 		"amount":   10,
 		"currency": "CNY",

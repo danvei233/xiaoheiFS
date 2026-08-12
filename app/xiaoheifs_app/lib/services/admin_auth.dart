@@ -5,6 +5,10 @@ import 'package:http/http.dart' as http;
 import '../models/auth_tokens.dart';
 
 class AdminAuthService {
+  AdminAuthService({http.Client? client}) : _client = client ?? http.Client();
+
+  final http.Client _client;
+
   Future<AdminLoginResult> login({
     required String apiUrl,
     required String username,
@@ -12,7 +16,7 @@ class AdminAuthService {
   }) async {
     final base = _normalizeBase(apiUrl);
     final uri = Uri.parse('$base/admin/api/v1/auth/login');
-    final resp = await http.post(
+    final resp = await _client.post(
       uri,
       headers: const {
         'Content-Type': 'application/json',
@@ -29,7 +33,7 @@ class AdminAuthService {
   }) async {
     final base = _normalizeBase(apiUrl);
     final uri = Uri.parse('$base/admin/api/v1/auth/refresh');
-    final resp = await http.post(
+    final resp = await _client.post(
       uri,
       headers: const {
         'Content-Type': 'application/json',
@@ -55,7 +59,7 @@ class AdminAuthService {
     if (currentCode != null && currentCode.trim().isNotEmpty) {
       body['current_code'] = currentCode.trim();
     }
-    final resp = await http.post(
+    final resp = await _client.post(
       uri,
       headers: {
         'Content-Type': 'application/json',
@@ -83,7 +87,7 @@ class AdminAuthService {
   }) async {
     final base = _normalizeBase(apiUrl);
     final uri = Uri.parse('$base/admin/api/v1/auth/2fa/confirm');
-    final resp = await http.post(
+    final resp = await _client.post(
       uri,
       headers: {
         'Content-Type': 'application/json',
@@ -102,7 +106,7 @@ class AdminAuthService {
   }) async {
     final base = _normalizeBase(apiUrl);
     final uri = Uri.parse('$base/admin/api/v1/auth/2fa/unlock');
-    final resp = await http.post(
+    final resp = await _client.post(
       uri,
       headers: {
         'Content-Type': 'application/json',
@@ -160,7 +164,14 @@ class AdminAuthService {
 
   Map<String, dynamic> _decodeJson(http.Response resp, String fallback) {
     final body = resp.body.isEmpty ? '{}' : resp.body;
-    final decoded = jsonDecode(body);
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException {
+      // Non-JSON gateway/proxy bodies must surface as AuthException, not an
+      // uncaught FormatException.
+      throw AuthException(fallback);
+    }
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
       if (decoded is Map<String, dynamic>) {
         return decoded;

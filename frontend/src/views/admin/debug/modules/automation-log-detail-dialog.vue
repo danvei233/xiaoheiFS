@@ -70,8 +70,11 @@
               </ElTabPane>
               <ElTabPane label="Body" name="body">
                 <template v-if="responsePreview.type === 'html'">
+                  <!-- P2-78 / m064 F9：自动化日志的响应体可能来自任意上游，不能以完整
+                       权限渲染。sandbox="" 无 allow-scripts/allow-same-origin/allow-top-navigation，
+                       后台同源 XSS 注入面被关闭。 -->
                   <div class="html-preview">
-                    <iframe :srcdoc="responsePreview.content" title="response-preview" />
+                    <iframe :srcdoc="responsePreview.content" title="response-preview" sandbox="" />
                   </div>
                 </template>
                 <template v-else>

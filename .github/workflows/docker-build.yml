@@ -9,11 +9,24 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'docker/**'
+      - 'app/**'
+      - 'qz-override/**'
+      - 'docs/**'
+      - 'script/**'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches:
       - main
       - develop
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker/**'
+      - 'app/**'
+      - 'qz-override/**'
+      - 'docs/**'
+      - 'script/**'
+      - '.github/workflows/docker-build.yml'
   release:
     types: [published]
   workflow_dispatch:
@@ -27,6 +40,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # Draft PRs must not trigger the build; skip them.
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
 
     strategy:
       matrix:
@@ -40,24 +55,29 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Log in to Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |
@@ -69,20 +89,204 @@ jobs:
             type=sha
 
       - name: Build and push ${{ matrix.dockerfile.name }} image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
         with:
           context: .
           file: ${{ matrix.dockerfile.dockerfile }}
-          push: ${{ github.event_name != 'pull_request' && github.event.pull_request.draft == false }}
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/amd64,linux/arm64
+          # Bundled plugin manifests currently declare linux_amd64 only.
+          platforms: linux/amd64
+          # P2-65: release/push builds sign the bundled plugins with the private
+          # key injected as a BuildKit secret; PR builds must never receive the
+          # secret, so they build unsigned via the script's --allow-unsigned
+          # escape hatch (PLUGIN_ALLOW_UNSIGNED=1).
+          build-args: ${{ github.event_name == 'pull_request' && 'PLUGIN_ALLOW_UNSIGNED=1' || '' }}
+          secrets: ${{ github.event_name != 'pull_request' && format('plugin_sign_key={0}', secrets.PLUGIN_SIGN_PRIVATE_KEY) || '' }}
+
+  # Security/regression gate for the client, qz-override, docker plugin-sync
+  # and crypto paths that need no docker image. Runs on every push/PR touching
+  # the relevant trees so a broken Ed25519 manifest verifier, qz policy or
+  # plugin-sync atomicity can never reach a release silently.
+  test-clients:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@6f3e6a7e0c35bd3c8b2a549687d7e79f7f1e4a2b
+        with:
+          sdk: stable
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@d4d6f8cf5d6dbd6b4640f741d1008c2ef5e71b8b
+        with:
+          php-version: "8.2"
+
+      - name: Go signer tests (canonical + golden vector)
+        working-directory: script/update-sign
+        run: |
+          GOWORK=off go test ./...
+
+      - name: Dart verifier tests (pure Dart, both apps + golden vector)
+        working-directory: script/manifest-verifier-test
+        run: |
+          dart pub get
+          dart test
+
+      - name: qz-override PHP policy tests
+        run: php qz-override/tests/CloudPolicyTest.php
+
+      - name: qz static contracts
+        run: python3 script/check-qz-contracts.py
+
+      - name: .dockerignore build-context contract (P0-24)
+        run: python3 script/check-dockerignore-contract.py
+
+      - name: Flutter static contracts
+        run: python3 script/check-flutter-contracts.py
+
+      - name: Python SDK transport + contract tests (P2-83)
+        run: |
+          cd backend/plugin-sdk/python
+          pip install --quiet .
+          PYTHONPATH=src python3 -m unittest discover -s tests -p 'test_*.py' -v
+          cd ../..
+          XIAOHEI_PYTHON_HOST_E2E=required GOWORK=off go test ./pkg/pluginsdk -run PythonHost -v
+
+      - name: plugin sync regression
+        run: bash script/test-sync-plugins.sh
+
+      - name: release smoke
+        run: node script/release-smoke.mjs
+
+      - name: backend plugins core tests (test_only runtime enforcement + bootstrap upgrade contract)
+        working-directory: backend
+        run: |
+          GOWORK=off go test ./internal/adapter/plugins/core/...
+
+      - name: release plugin-signing E2E contract (P2-65)
+        run: bash script/test-release-plugin-signing.sh
+
+  # P2-84: real backend gate — go test ./... (whole backend, not just the
+  # clients/core smoke packages), go vet, and the architecture tests. Fails the
+  # PR on any compile/test/vet/archtest regression.
+  backend-go:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: go test ./...
+        working-directory: backend
+        run: |
+          GOWORK=off go test ./...
+
+      - name: go vet ./...
+        working-directory: backend
+        run: |
+          GOWORK=off go vet ./...
+
+      - name: archtest
+        working-directory: backend
+        run: |
+          GOWORK=off go test ./internal/archtest/...
+
+  # P2-84: real frontend gate — typecheck, lint and build must pass on PRs.
+  frontend-web:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+
+      - name: typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: build
+        working-directory: frontend
+        run: npm run build
+
+  # Real Flutter app tests (update_service, replay-guard wiring, storage,
+  # desktop launcher, widget tests, ...). The pure-Dart verifier runs in
+  # test-clients above; this job additionally runs the flutter_test suites of
+  # both apps so regressions in the Flutter integration layer gate the pipeline.
+  flutter-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter tests (user app)
+        working-directory: app/xiaoheifs_userapp
+        run: |
+          flutter pub get
+          flutter test
+
+      - name: Flutter tests (admin app)
+        working-directory: app/xiaoheifs_app
+        run: |
+          flutter pub get
+          flutter test
 
   test:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
 
     strategy:
@@ -93,21 +297,54 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
 
       - name: Build test image (${{ matrix.image }})
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25
         with:
           context: .
           file: ${{ matrix.image == 'alpine' && 'docker/Dockerfile.alpine' || 'docker/Dockerfile' }}
           push: false
           load: true
           tags: test-image:${{ matrix.image }}
+          # P2-65: PR test images are built unsigned (no signing key is ever
+          # passed to an untrusted PR build).
+          build-args: PLUGIN_ALLOW_UNSIGNED=1
 
       - name: Test image (${{ matrix.image }})
+        shell: bash
         run: |
-          docker run --rm test-image:${{ matrix.image }} ./server --version 2>&1 | head -5 || true
-          echo "Image test passed for ${{ matrix.image }}"
+          set -euo pipefail
+          image="test-image:${{ matrix.image }}"
+          container="xiaohei-image-test-${{ matrix.image }}"
+
+          docker run --rm --entrypoint sh "$image" -c '
+            test -x /app/server
+            manifest_count="$(find /app/bundled-plugins -type f -name manifest.json | wc -l)"
+            binary_count="$(find /app/bundled-plugins -type f -path "*/bin/linux_amd64/plugin" | wc -l)"
+            test "$manifest_count" -gt 0
+            test "$manifest_count" -eq "$binary_count"
+          '
+
+          docker run -d --name "$container" "$image"
+          trap 'docker logs "$container"; docker rm -f "$container"' EXIT
+
+          # Non-root assertion: the web server must NOT run as root inside the
+          # container (entrypoint drops privileges via su-exec/setpriv). A
+          # regression that silently runs as root fails the gate.
+          server_uid="$(docker exec "$container" stat -c %u /proc/1 2>/dev/null || true)"
+          if [ -n "$server_uid" ] && [ "$server_uid" -eq 0 ]; then
+            echo "::error::entrypoint is running the server as root (non-root control broken)"
+            exit 1
+          fi
+
+          for attempt in {1..30}; do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
+            [[ "$status" == "healthy" ]] && exit 0
+            [[ "$status" == "unhealthy" ]] && exit 1
+            sleep 2
+          done
+          exit 1

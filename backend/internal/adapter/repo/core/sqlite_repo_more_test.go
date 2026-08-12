@@ -208,3 +208,31 @@ func TestSQLiteRepo_RenewOrderAndInstances(t *testing.T) {
 func timePtr(t time.Time) *time.Time {
 	return &t
 }
+
+// TestSQLiteRepo_GetUserByUsernameOrEmailIsDeterministic verifies P2-27: when
+// one user owns a username and a different user owns the same value as an
+// email, the lookup must deterministically prefer the username owner rather
+// than silently picking an arbitrary row.
+func TestSQLiteRepo_GetUserByUsernameOrEmailIsDeterministic(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+	userA := testutil.CreateUser(t, repo, "shared", "shared@example.com", "pass")
+	userB := testutil.CreateUser(t, repo, "other", "shared", "pass")
+
+	got, err := repo.GetUserByUsernameOrEmail(ctx, "shared")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if got.ID != userA.ID {
+		t.Fatalf("username owner must win, got user %d want %d", got.ID, userA.ID)
+	}
+
+	byEmail, err := repo.GetUserByUsernameOrEmail(ctx, "shared@example.com")
+	if err != nil {
+		t.Fatalf("email lookup: %v", err)
+	}
+	if byEmail.ID != userA.ID {
+		t.Fatalf("expected user A by email, got %d", byEmail.ID)
+	}
+	_ = userB
+}

@@ -2,11 +2,18 @@ package event
 
 import (
 	"context"
+	"log"
 	"time"
 
 	appports "xiaoheiplay/internal/app/ports"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/pkg/safego"
 )
+
+// fanoutMaxConcurrent bounds how many sink goroutines may run at once. Sinks
+// are external best-effort delivery (webhook/push) with a 3s deadline; without
+// a cap a burst of order events could spawn unbounded goroutines.
+const fanoutMaxConcurrent = 16
 
 type EventSink interface {
 	NotifyOrderEvent(ctx context.Context, ev domain.OrderEvent) error
@@ -15,10 +22,15 @@ type EventSink interface {
 type FanoutPublisher struct {
 	primary appports.EventPublisher
 	sinks   []EventSink
+	sem     chan struct{}
 }
 
 func NewFanoutPublisher(primary appports.EventPublisher, sinks ...EventSink) *FanoutPublisher {
-	return &FanoutPublisher{primary: primary, sinks: sinks}
+	return &FanoutPublisher{
+		primary: primary,
+		sinks:   sinks,
+		sem:     make(chan struct{}, fanoutMaxConcurrent),
+	}
 }
 
 func (p *FanoutPublisher) Publish(ctx context.Context, orderID int64, eventType string, payload any) (domain.OrderEvent, error) {
@@ -30,11 +42,22 @@ func (p *FanoutPublisher) Publish(ctx context.Context, orderID int64, eventType 
 		if sink == nil {
 			continue
 		}
-		// Do not block request path on external sinks (webhook/push); keep best-effort delivery.
+		// Do not block the request path on external sinks; keep best-effort
+		// delivery. If the concurrency budget is exhausted, drop rather than
+		// pile up goroutines.
+		select {
+		case p.sem <- struct{}{}:
+		default:
+			log.Printf("fanout: sink busy, dropping notification order_id=%d event=%s", orderID, eventType)
+			continue
+		}
 		go func(s EventSink, event domain.OrderEvent) {
-			sinkCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			_ = s.NotifyOrderEvent(sinkCtx, event)
+			defer func() { <-p.sem }()
+			safego.Run("order event fanout", func() {
+				sinkCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				_ = s.NotifyOrderEvent(sinkCtx, event)
+			})
 		}(sink, ev)
 	}
 	return ev, nil

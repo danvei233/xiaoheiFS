@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/image/font"
@@ -33,7 +34,7 @@ func (h *Handler) AdminGoodsTypes(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	items, err := h.goodsTypes.List(c)
+	items, err := h.goodsTypes.List(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -46,7 +47,7 @@ func (h *Handler) AdminGoodsTypes(c *gin.Context) {
 	for _, gt := range items {
 		it := goodsTypeItem{GoodsType: gt}
 		if gt.AutomationPluginID != "" && gt.AutomationInstanceID != "" {
-			if cfgJSON, err := h.pluginAdmin.GetConfigInstance(c, "automation", gt.AutomationPluginID, gt.AutomationInstanceID); err == nil {
+			if cfgJSON, err := h.pluginAdmin.GetConfigInstance(c.Request.Context(), "automation", gt.AutomationPluginID, gt.AutomationInstanceID); err == nil {
 				var cfg struct {
 					BaseURL string `json:"base_url"`
 				}
@@ -74,7 +75,7 @@ func (h *Handler) AdminGoodsTypeCreate(c *gin.Context) {
 		AutomationInstance string `json:"automation_instance_id"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	gt := &domain.GoodsType{
@@ -86,7 +87,7 @@ func (h *Handler) AdminGoodsTypeCreate(c *gin.Context) {
 		AutomationPluginID:   strings.TrimSpace(payload.AutomationPluginID),
 		AutomationInstanceID: strings.TrimSpace(payload.AutomationInstance),
 	}
-	if err := h.goodsTypes.Create(c, gt); err != nil {
+	if err := h.goodsTypes.Create(c.Request.Context(), gt); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -112,7 +113,7 @@ func (h *Handler) AdminGoodsTypeUpdate(c *gin.Context) {
 		AutomationInstance string `json:"automation_instance_id"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	gt := domain.GoodsType{
@@ -125,7 +126,7 @@ func (h *Handler) AdminGoodsTypeUpdate(c *gin.Context) {
 		AutomationPluginID:   strings.TrimSpace(payload.AutomationPluginID),
 		AutomationInstanceID: strings.TrimSpace(payload.AutomationInstance),
 	}
-	if err := h.goodsTypes.Update(c, gt); err != nil {
+	if err := h.goodsTypes.Update(c.Request.Context(), gt); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -142,7 +143,7 @@ func (h *Handler) AdminGoodsTypeDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.goodsTypes.Delete(c, uri.ID); err != nil {
+	if err := h.goodsTypes.Delete(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -166,7 +167,7 @@ func (h *Handler) AdminGoodsTypeSyncAutomation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	result, err := h.integration.SyncAutomationForGoodsType(c, uri.ID, query.Mode)
+	result, err := h.integration.SyncAutomationForGoodsType(c.Request.Context(), uri.ID, query.Mode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -191,7 +192,7 @@ func (h *Handler) AdminGoodsTypeAutomationOptions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	options, err := provider.ListAutomationCatalogOptions(c, uri.ID)
+	options, err := provider.ListAutomationCatalogOptions(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -209,13 +210,13 @@ func (h *Handler) AdminGoodsTypeCapabilitiesGet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if _, err := h.goodsTypes.Get(c, uri.ID); err != nil {
+	if _, err := h.goodsTypes.Get(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
 	resizeEnabled, resizeSource := h.goodsTypeCapabilityResolvedValue(c, uri.ID, "resize", "resize_enabled", true)
 	refundEnabled, refundSource := h.goodsTypeCapabilityResolvedValue(c, uri.ID, "refund", "refund_enabled", true)
-	raw := h.getGoodsTypeCapabilityPolicy(c, uri.ID)
+	raw := h.getGoodsTypeCapabilityPolicy(c.Request.Context(), uri.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"goods_type_id":             uri.ID,
 		"resize_enabled":            resizeEnabled,
@@ -237,7 +238,7 @@ func (h *Handler) AdminGoodsTypeCapabilitiesUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if _, err := h.goodsTypes.Get(c, uri.ID); err != nil {
+	if _, err := h.goodsTypes.Get(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
@@ -246,7 +247,7 @@ func (h *Handler) AdminGoodsTypeCapabilitiesUpdate(c *gin.Context) {
 		RefundEnabled *bool `json:"refund_enabled"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if err := h.saveGoodsTypeCapabilityPolicy(c, uri.ID, packageCapabilityPolicy{
@@ -264,35 +265,59 @@ func (h *Handler) AdminUploadCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
+	const maxUploadSize = 20 << 20
+	// Bound the multipart body BEFORE it is parsed, so an oversized request is
+	// rejected instead of being fully buffered and only then checked.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize+1<<20)
 	file, err := c.FormFile("file")
 	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrFileTooLarge.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrFileRequired.Error()})
 		return
 	}
-	const maxUploadSize = 20 << 20
 	if file.Size > maxUploadSize {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrFileTooLarge.Error()})
 		return
 	}
+	// Read the full file (bounded by the request cap) so the image can be fully
+	// decoded, re-encoded canonically and checked for a trailing payload before
+	// any bytes are written to disk.
 	opened, err := file.Open()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrFileOpenFailed.Error()})
 		return
 	}
-	head := make([]byte, 512)
-	n, _ := io.ReadFull(opened, head)
+	raw, err := io.ReadAll(opened)
 	_ = opened.Close()
-	detected := http.DetectContentType(head[:n])
-	allowed := map[string]bool{
-		"image/png":  true,
-		"image/jpeg": true,
-		"image/gif":  true,
-		"image/webp": true,
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrFileOpenFailed.Error()})
+		return
 	}
-	if !allowed[detected] {
+	head := raw
+	if len(head) > 512 {
+		head = head[:512]
+	}
+	detected := http.DetectContentType(head)
+	if !supportedImageMime(detected) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrUnsupportedFileType.Error()})
 		return
 	}
+	// Canonical re-encode: drops metadata and any trailing payload, so a
+	// valid-image-plus-script polyglot can never be stored as-is.
+	clean, canonicalMime, err := sanitizeImage(raw)
+	if err != nil {
+		if errors.Is(err, domain.ErrImageTooLarge) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrImageTooLarge.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrUnsupportedFileType.Error()})
+		return
+	}
+	detected = canonicalMime
 	dateDir := time.Now().Format("20060102")
 	if err := os.MkdirAll(filepath.Join("uploads", dateDir), 0o755); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrUploadDirError.Error()})
@@ -300,13 +325,13 @@ func (h *Handler) AdminUploadCreate(c *gin.Context) {
 	}
 	name := buildUploadName(detected)
 	localPath := filepath.Join("uploads", dateDir, name)
-	if err := c.SaveUploadedFile(file, localPath); err != nil {
+	if err := os.WriteFile(localPath, clean, 0o644); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSaveFailed.Error()})
 		return
 	}
 	url := "/uploads/" + dateDir + "/" + name
-	item := domain.Upload{Name: file.Filename, Path: localPath, URL: url, Mime: detected, Size: file.Size, UploaderID: getUserID(c)}
-	if err := h.uploadSvc.Create(c, &item); err != nil {
+	item := domain.Upload{Name: file.Filename, Path: localPath, URL: url, Mime: detected, Size: int64(len(clean)), UploaderID: getUserID(c)}
+	if err := h.uploadSvc.Create(c.Request.Context(), &item); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -319,7 +344,7 @@ func (h *Handler) AdminUploads(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	items, total, err := h.uploadSvc.List(c, limit, offset)
+	items, total, err := h.uploadSvc.List(c.Request.Context(), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -370,7 +395,7 @@ func (h *Handler) AdminPermissions(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	perms, err := h.permissionSvc.ListPermissions(c)
+	perms, err := h.permissionSvc.ListPermissions(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -385,7 +410,7 @@ func (h *Handler) AdminPermissionsList(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	perms, err := h.permissionSvc.ListPermissions(c)
+	perms, err := h.permissionSvc.ListPermissions(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -409,7 +434,7 @@ func (h *Handler) AdminPermissionDetail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	perm, err := h.permissionSvc.GetPermissionByCode(c, uri.Code)
+	perm, err := h.permissionSvc.GetPermissionByCode(c.Request.Context(), uri.Code)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPermissionNotFound.Error()})
 		return
@@ -437,10 +462,10 @@ func (h *Handler) AdminPermissionsUpdate(c *gin.Context) {
 		SortOrder    *int    `json:"sort_order"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	perm, err := h.permissionSvc.GetPermissionByCode(c, uri.Code)
+	perm, err := h.permissionSvc.GetPermissionByCode(c.Request.Context(), uri.Code)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPermissionNotFound.Error()})
 		return
@@ -468,7 +493,7 @@ func (h *Handler) AdminPermissionsUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrCategoryRequired.Error()})
 		return
 	}
-	if err := h.permissionSvc.UpsertPermission(c, &perm); err != nil {
+	if err := h.permissionSvc.UpsertPermission(c.Request.Context(), &perm); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -481,7 +506,7 @@ func (h *Handler) AdminPermissionsSync(c *gin.Context) {
 		return
 	}
 	perms := permissions.GetDefinitions()
-	if err := h.permissionSvc.RegisterPermissions(c, perms); err != nil {
+	if err := h.permissionSvc.RegisterPermissions(c.Request.Context(), perms); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -622,7 +647,7 @@ func paging(c *gin.Context) (int, int) {
 	return limit, offset
 }
 
-func listVisiblePlanGroups(catalog *appcatalog.Service, ctx *gin.Context) []domain.PlanGroup {
+func listVisiblePlanGroups(catalog *appcatalog.Service, ctx context.Context) []domain.PlanGroup {
 	items, err := catalog.ListPlanGroups(ctx)
 	if err != nil {
 		return nil

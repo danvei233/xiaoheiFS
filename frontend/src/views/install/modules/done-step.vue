@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
   import { Grid, HomeFilled } from '@element-plus/icons-vue'
+  import { resolveInstallAdminPath } from '@/utils/navigation/adminPath'
 
   defineOptions({ name: 'InstallDoneStep' })
 
@@ -56,8 +57,17 @@
 
   const goHome = () => window.location.replace('/')
   const goAdmin = () => {
-    const cachedPath = localStorage.getItem('admin_path_cache') || props.adminPath || 'admin'
-    window.location.replace(`/${cachedPath}/login`)
+    // admin_path_cache 是同源可写的 localStorage，直接拼真实浏览器导航可被
+    // `//evil.com` 写成外部 origin（F3）。只接受 [a-zA-Z0-9]+ 单段路径，
+    // 优先安装流程受控的 props.adminPath，非法一律回退 'admin'。
+    let cachedHint = ''
+    try {
+      cachedHint = localStorage.getItem('admin_path_cache') || ''
+    } catch {
+      // storage 不可用时按无提示处理
+    }
+    const target = resolveInstallAdminPath(props.adminPath || '', cachedHint)
+    window.location.replace(`/${target}/login`)
   }
 </script>
 

@@ -2,6 +2,7 @@ package order_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 	apporder "xiaoheiplay/internal/app/order"
@@ -219,5 +220,129 @@ func TestProvisionWorker_UpdatesInstanceAutomationIDOnRetryHostSwitch(t *testing
 	}
 	if updatedInst.AutomationInstanceID != "6001" {
 		t.Fatalf("expected instance automation id 6001, got %q", updatedInst.AutomationInstanceID)
+	}
+}
+
+// TestProvisionWorker_TimeoutFailsHostStuckOnAPIFailure guards the regression
+// where a persistently failing GetHostInfo (e.g. the automation plugin is
+// down) retried forever because the timeout check moved behind the API call.
+// A host that never reports ready and whose watchdog budget has elapsed must
+// reach a terminal failed state, not spin forever.
+func TestProvisionWorker_TimeoutFailsHostStuckOnAPIFailure(t *testing.T) {
+	rawDB, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "provapierr", "provapierr@example.com", "pass")
+
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-API-ERR", Status: domain.OrderStatusProvisioning, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	item := domain.OrderItem{
+		OrderID:   order.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    1000,
+		Status:    domain.OrderItemStatusProvisioning,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{item}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+	items, _ := repo.ListOrderItems(context.Background(), order.ID)
+	if len(items) == 0 {
+		t.Fatalf("expected order item")
+	}
+
+	job := domain.ProvisionJob{
+		OrderID:     order.ID,
+		OrderItemID: items[0].ID,
+		HostID:      7001,
+		HostName:    "vm-api-err",
+		Status:      "pending",
+		Attempts:    0,
+		NextRunAt:   time.Now().UTC().Add(-time.Minute),
+	}
+	if err := repo.CreateOrUpdateProvisionJob(context.Background(), &job); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	// The watchdog budget is 20 minutes by default; age the job past it so the
+	// timeout path is exercised without waiting.
+	if _, err := rawDB.Exec("UPDATE provision_jobs SET created_at = datetime('now', '-21 minutes') WHERE id = ?", job.ID); err != nil {
+		t.Fatalf("age job: %v", err)
+	}
+
+	fakeAuto := &testutil.FakeAutomationClient{HostInfoErr: fmt.Errorf("automation api down")}
+	autoResolver := &testutil.FakeAutomationResolver{Client: fakeAuto}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, autoResolver, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+
+	if err := svc.ProcessProvisionJobs(context.Background(), 10); err != nil {
+		t.Fatalf("process jobs: %v", err)
+	}
+	updatedItems, _ := repo.ListOrderItems(context.Background(), order.ID)
+	if len(updatedItems) == 0 || updatedItems[0].Status != domain.OrderItemStatusFailed {
+		t.Fatalf("expected item failed after watchdog timeout on API error, got %+v", updatedItems)
+	}
+	updatedOrder, _ := repo.GetOrder(context.Background(), order.ID)
+	if updatedOrder.Status != domain.OrderStatusFailed {
+		t.Fatalf("expected order failed, got %v", updatedOrder.Status)
+	}
+	if jobs, err := repo.ListDueProvisionJobs(context.Background(), 10); err != nil || len(jobs) != 0 {
+		t.Fatalf("expected no due jobs after terminal failure, got %v %v", len(jobs), err)
+	}
+}
+
+// TestProvisionWorker_Reconcile_RecoversStrandedCreatingItem locks the
+// recovery path for a `creating:<host>` order item stranded with no durable
+// provision job and no local instance (a crash in a version before the durable
+// intent was persisted). ReconcileProvisioningOrders must enqueue a
+// create_host_sent-stage job so the watchdog reconciles by hostname instead of
+// leaving the order stuck in provisioning forever.
+func TestProvisionWorker_Reconcile_RecoversStrandedCreatingItem(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "provrecover", "provrecover@example.com", "pass")
+
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-PROV-STRANDED", Status: domain.OrderStatusProvisioning, TotalAmount: 1000, Currency: "CNY"}
+	if err := repo.CreateOrder(context.Background(), &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	item := domain.OrderItem{
+		OrderID:              order.ID,
+		PackageID:            seed.Package.ID,
+		SystemID:             seed.SystemImage.ID,
+		Amount:               1000,
+		Status:               domain.OrderItemStatusProvisioning,
+		Action:               "create",
+		SpecJSON:             "{}",
+		AutomationInstanceID: "creating:ecs-42-43-44",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{item}); err != nil {
+		t.Fatalf("create item: %v", err)
+	}
+	items, _ := repo.ListOrderItems(context.Background(), order.ID)
+	if len(items) == 0 {
+		t.Fatalf("expected order item")
+	}
+	// No provision job and no local instance exist: the stranded state.
+	if _, err := repo.GetProvisionJobByOrderItem(context.Background(), items[0].ID); err == nil {
+		t.Fatalf("expected no provision job for the stranded item")
+	}
+
+	autoResolver := &testutil.FakeAutomationResolver{Client: &testutil.FakeAutomationClient{}}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, autoResolver, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+
+	if _, err := svc.ReconcileProvisioningOrders(context.Background(), 20); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	job, err := repo.GetProvisionJobByOrderItem(context.Background(), items[0].ID)
+	if err != nil {
+		t.Fatalf("expected a recovery job to be enqueued for the stranded item, got %v", err)
+	}
+	if job.HostName != "ecs-42-43-44" {
+		t.Fatalf("recovery job must reconcile by the deterministic hostname from the marker, got %q", job.HostName)
+	}
+	if job.Stage != domain.ProvisionStageCreateHostSent {
+		t.Fatalf("recovery job must be create_host_sent (reconcile-only, never re-issues CreateHost), got %q", job.Stage)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,7 +35,7 @@ func (h *Handler) verifyHumanCaptcha(c *gin.Context, settings authSettings, capt
 	if normalizeCaptchaProvider(settings.CaptchaProvider) == "geetest" {
 		return h.verifyGeeTestCaptcha(settings, gt)
 	}
-	return h.authSvc.VerifyCaptcha(c, captchaID, captchaCode)
+	return h.authSvc.VerifyCaptcha(c.Request.Context(), captchaID, captchaCode)
 }
 
 func (h *Handler) verifyGeeTestCaptcha(settings authSettings, payload geeTestValidatePayload) error {
@@ -50,6 +51,15 @@ func (h *Handler) verifyGeeTestCaptcha(settings authSettings, payload geeTestVal
 	genTime := strings.TrimSpace(payload.GenTime)
 	if lotNumber == "" || captchaOutput == "" || passToken == "" || genTime == "" {
 		return domain.ErrCaptchaFailed
+	}
+
+	// Strict freshness gate (P3-20): gen_time must be a legal Unix-seconds
+	// number. Missing, non-numeric, zero, negative, too-far-in-the-future or
+	// too-old values are all rejected — a captured success payload must not be
+	// replayable long after issuance and a malformed value must not skip the
+	// check entirely.
+	if err := validateGeeTestGenTime(genTime, time.Now()); err != nil {
+		return err
 	}
 
 	signToken := hmacEncodeSHA256Hex(captchaKey, lotNumber)
@@ -76,6 +86,28 @@ func (h *Handler) verifyGeeTestCaptcha(settings authSettings, payload geeTestVal
 		return domain.ErrCaptchaFailed
 	}
 	if strings.TrimSpace(strings.ToLower(toString(resMap["result"]))) != "success" {
+		return domain.ErrCaptchaFailed
+	}
+	return nil
+}
+
+// captchaFreshness limits bound how old (or how far in the future) a GeeTest
+// gen_time may be. gen_time is a Unix-seconds timestamp.
+var (
+	maxCaptchaAgeSec     = int64((10 * time.Minute).Seconds())
+	maxCaptchaFutureSkew = int64((2 * time.Minute).Seconds())
+)
+
+// validateGeeTestGenTime requires gen_time to be a legal Unix-seconds number
+// within the allowed age and clock-skew window. It is extracted as a pure
+// function so every malformed/edge case is directly unit-testable.
+func validateGeeTestGenTime(genTime string, now time.Time) error {
+	gen, err := strconv.ParseInt(strings.TrimSpace(genTime), 10, 64)
+	if err != nil || gen <= 0 {
+		return domain.ErrCaptchaFailed
+	}
+	nowSec := now.Unix()
+	if gen > nowSec+maxCaptchaFutureSkew || nowSec-gen > maxCaptchaAgeSec {
 		return domain.ErrCaptchaFailed
 	}
 	return nil

@@ -194,6 +194,7 @@
   import QrcodeVue from 'qrcode.vue'
   import { getRealNameStatus, submitRealNameVerification } from '@/services/user'
   import type { RealNameStatusResponse, RealNameVerification } from '@/services/types'
+  import { classifyExternalUrl, openExternalUrl } from '@/utils/urlPolicy'
 
   defineOptions({ name: 'ConsoleRealname' })
 
@@ -403,6 +404,15 @@
       resetForm()
 
       if (redirectUrl) {
+        // H9：redirect_url 是后端/支付插件可控数据。桌面端会把它渲染进
+        // 二维码 / 复制链接（手机扫码被引导），与移动端整页跳转同级，必须
+        // 校验为可安全导航的 web URL，拒绝 javascript/data/userinfo/控制字符
+        // （web_url_content F5）。非法值显示错误，不打开二维码。
+        const redirectDecision = classifyExternalUrl(redirectUrl)
+        if (!redirectDecision.ok || redirectDecision.kind !== 'web') {
+          ElMessage.error('人脸认证跳转地址无效，请稍后重试')
+          return
+        }
         if (isMobileUserAgent()) {
           ElMessage.success('正在跳转到人脸认证页面')
           window.location.href = redirectUrl
@@ -460,7 +470,12 @@
 
   const openFaceUrl = (): void => {
     if (!faceRedirectUrl.value) return
-    window.open(faceRedirectUrl.value, '_blank', 'noopener,noreferrer')
+    // H9：faceRedirectUrl 是后端返回的外部地址，统一过 URL 安全策略
+    // （https 校验 + 拒绝 javascript/data/userinfo/控制字符），
+    // 新窗口强制 noopener,noreferrer。
+    openExternalUrl(faceRedirectUrl.value, {
+      onInvalid: () => ElMessage.error('人脸认证地址无效，请重试')
+    })
   }
 
   onMounted(() => {

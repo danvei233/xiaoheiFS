@@ -14,14 +14,22 @@ import (
 )
 
 type GormRepo struct {
-	db      *sql.DB
-	gdb     *gorm.DB
-	dialect string
+	db  *sql.DB
+	gdb *gorm.DB
 }
 
 func NewGormRepo(gdb *gorm.DB) *GormRepo {
-	sqlDB, _ := gdb.DB()
-	return &GormRepo{db: sqlDB, gdb: gdb, dialect: gdb.Dialector.Name()}
+	if gdb == nil {
+		return &GormRepo{}
+	}
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		// A broken *gorm.DB (e.g. already-closed pool) has no usable *sql.DB.
+		// Keep the handle so raw SQL paths fail with a typed error instead of
+		// dereferencing a nil r.db.
+		return &GormRepo{gdb: gdb}
+	}
+	return &GormRepo{db: sqlDB, gdb: gdb}
 }
 
 func nullIfEmpty(value string) any {
@@ -29,6 +37,25 @@ func nullIfEmpty(value string) any {
 		return nil
 	}
 	return value
+}
+
+// escapeLikePattern escapes LIKE wildcards so user-supplied search keywords are
+// matched literally. Callers wrap the result with '%' on both sides and must
+// pair the query with likeEscapeClause.
+func escapeLikePattern(keyword string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(keyword)
+}
+
+// likeEscapeClause returns a dialect-correct ESCAPE clause for LIKE queries.
+// MySQL string literals treat a backslash as an escape character, so the clause
+// must double it (`ESCAPE '\\'` in SQL source) to denote a single backslash;
+// SQLite and PostgreSQL accept a single backslash. Using the wrong form is a
+// syntax error on MySQL.
+func likeEscapeClause(db *gorm.DB) string {
+	if db != nil && db.Dialector != nil && db.Dialector.Name() == "mysql" {
+		return " ESCAPE '\\\\'"
+	}
+	return " ESCAPE '\\'"
 }
 
 func isReadyVPSStatus(status domain.VPSStatus) bool {

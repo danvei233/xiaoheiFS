@@ -143,12 +143,18 @@
     { label: '已完成', value: 'active' }
   ]
 
-  const fetchOrderPage = async ({ current, size, status }: OrderSearchParams) => {
-    const response = await listOrders({
-      limit: size,
-      offset: (current - 1) * size,
-      ...(status ? { status } : {})
-    })
+  const fetchOrderPage = async (
+    { current, size, status }: OrderSearchParams,
+    signal?: AbortSignal
+  ) => {
+    const response = await listOrders(
+      {
+        limit: size,
+        offset: (current - 1) * size,
+        ...(status ? { status } : {})
+      },
+      signal
+    )
     const items = response.data?.items ?? []
     return {
       records: items.map((row) => normalizeOrder(row as Order & Record<string, unknown>)),

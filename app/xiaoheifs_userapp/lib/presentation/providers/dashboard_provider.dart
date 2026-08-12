@@ -132,16 +132,19 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       final realnameStatus = _resolveRealnameStatus(realnamePayload);
 
       final metrics = DashboardMetrics(
-        vpsTotal: (dash['vps'] ?? vpsList.length ?? 0) as int,
-        expiring: (dash['expiring'] ?? _countExpiring(vpsList, 7)) as int,
-        ordersTotal: (dash['orders'] ?? orders.length ?? 0) as int,
-        pendingOrders: (dash['pending_review'] ?? _countStatus(orders, 'pending_review')) as int,
-        spend30d: (dash['spend_30d'] ?? spend30).toDouble(),
+        vpsTotal: _toInt(dash['vps'], vpsList.length),
+        expiring: _toInt(dash['expiring'], _countExpiring(vpsList, 7)),
+        ordersTotal: _toInt(dash['orders'], orders.length),
+        pendingOrders: _toInt(
+          dash['pending_review'],
+          _countStatus(orders, 'pending_review'),
+        ),
+        spend30d: _toDouble(dash['spend_30d'], spend30),
         balance: _normalizeWalletBalance(walletPayload),
         currency: _normalizeWalletCurrency(walletPayload),
         realnameStatus: realnameStatus,
-        cartItems: (dash['cart_items'] ?? 0) as int,
-        pendingPayment: (dash['pending_payment'] ?? 0) as int,
+        cartItems: _toInt(dash['cart_items']),
+        pendingPayment: _toInt(dash['pending_payment']),
       );
 
       final charts = DashboardCharts(
@@ -166,6 +169,12 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
 
   Future<void> refresh() async {
     await loadDashboard(force: true);
+  }
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    _lastFetchedAt = null;
+    state = const DashboardState();
   }
 
   double _calcSpend30(List<Map<String, dynamic>> orders) {
@@ -251,6 +260,18 @@ class DashboardNotifier extends StateNotifier<DashboardState> {
       return DateTime.fromMillisecondsSinceEpoch(ms);
     }
     return DateTime.tryParse(text);
+  }
+
+  int _toInt(dynamic value, [int fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString()) ?? fallback;
+  }
+
+  double _toDouble(dynamic value, [double fallback = 0]) {
+    if (value == null) return fallback;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? fallback;
   }
 
   double _normalizeWalletBalance(Map<String, dynamic> walletPayload) {

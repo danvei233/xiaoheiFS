@@ -104,20 +104,28 @@ type PushToken struct {
 	ID        int64
 	UserID    int64
 	Platform  string
-	Token     string
+	Token     string `json:"-"`
 	DeviceID  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
 type RealNameVerification struct {
-	ID         int64
-	UserID     int64
-	RealName   string
-	IDNumber   string
-	Status     string
-	Provider   string
-	Reason     string
-	CreatedAt  time.Time
-	VerifiedAt *time.Time
+	ID       int64
+	UserID   int64
+	RealName string
+	IDNumber string
+	Status   string
+	Provider string
+	Reason   string
+	// ProviderState holds the versioned encrypted provider continuation state
+	// (pending KYC token / redirect URL). It is internal and never returned by
+	// the API; only the realname service can decrypt it.
+	ProviderState string
+	// LastPolledAt and PollCount bound how often a pending record is re-queried
+	// against the paid provider, and when a record gives up (PollCount cap).
+	LastPolledAt *time.Time
+	PollCount    int
+	CreatedAt    time.Time
+	VerifiedAt   *time.Time
 }

@@ -42,7 +42,9 @@ type HTTPLogEntry struct {
 
 func NewClient(baseURL, openAKID, openSecret, adminAPIKey string, priceRate float64, goodsTypeID int64, timeout time.Duration) *Client {
 	if timeout <= 0 {
-		timeout = 12 * time.Second
+		// At least the host long-op RPC budget (120s): a shorter client timeout
+		// would abort a long create/provision call the host is still waiting on.
+		timeout = 120 * time.Second
 	}
 	if priceRate <= 0 {
 		priceRate = 1.0
@@ -616,6 +618,19 @@ func (c *Client) findNewestVPS(ctx context.Context, packageID, systemID int64, p
 		return vpsDTO{}, err
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
+	return pickNewestVPS(items, packageID, systemID, preferredName)
+}
+
+// pickNewestVPS selects the upstream VPS that this order most likely created:
+// it prefers an exact hostname match when preferredName is given, otherwise it
+// falls back to the newest VPS matching the package+system. This removes the
+// dead-code branch where preferredName could never actually select its target
+// (M9). Attribution remains heuristic because the instant-create response does
+// not return the created VPS id.
+func pickNewestVPS(items []vpsDTO, packageID, systemID int64, preferredName string) (vpsDTO, error) {
+	preferredName = strings.TrimSpace(preferredName)
+	var fallback vpsDTO
+	haveFallback := false
 	for _, it := range items {
 		if packageID > 0 && it.PackageID != packageID {
 			continue
@@ -623,10 +638,16 @@ func (c *Client) findNewestVPS(ctx context.Context, packageID, systemID int64, p
 		if systemID > 0 && it.SystemID != systemID {
 			continue
 		}
-		if preferredName != "" && strings.EqualFold(it.Name, preferredName) {
+		if preferredName != "" && strings.EqualFold(strings.TrimSpace(it.Name), preferredName) {
 			return it, nil
 		}
-		return it, nil
+		if !haveFallback {
+			fallback = it
+			haveFallback = true
+		}
+	}
+	if haveFallback {
+		return fallback, nil
 	}
 	return vpsDTO{}, fmt.Errorf("no upstream vps found after order")
 }
@@ -987,16 +1008,51 @@ func maxInt(a, b int) int {
 	return b
 }
 
+// sensitiveHeaders lists request header names whose values must be masked in
+// the http_trace (H5). The admin API key (X-API-Key) is a static management
+// credential; X-AKID/X-Signature/X-Timestamp/X-Nonce together would allow a
+// request to be replayed.
+var sensitiveHeaders = map[string]bool{
+	"x-api-key":     true,
+	"x-akid":        true,
+	"x-signature":   true,
+	"x-timestamp":   true,
+	"x-nonce":       true,
+	"authorization": true,
+	"apikey":        true,
+	"set-cookie":    true,
+}
+
+// sanitizeHeaders returns a copy of headers with sensitive values masked.
+func sanitizeHeaders(headers map[string]string) map[string]string {
+	if len(headers) == 0 {
+		return headers
+	}
+	out := make(map[string]string, len(headers))
+	for k, v := range headers {
+		if sensitiveHeaders[strings.ToLower(strings.TrimSpace(k))] {
+			out[k] = "***"
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
 func (c *Client) emitLog(ctx context.Context, action string, req *http.Request, resp *http.Response, body []byte, duration time.Duration, err error) {
 	if c.logFn == nil {
 		return
 	}
-	headers := map[string]string{}
-	if req != nil {
-		for k, v := range req.Header {
-			headers[k] = strings.Join(v, ",")
+	headers := sanitizeHeaders(func() map[string]string {
+		if req == nil {
+			return nil
 		}
-	}
+		out := make(map[string]string, len(req.Header))
+		for k, v := range req.Header {
+			out[k] = strings.Join(v, ",")
+		}
+		return out
+	}())
 	respHeaders := map[string]string{}
 	status := 0
 	if resp != nil {

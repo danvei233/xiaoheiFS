@@ -44,7 +44,7 @@ func Open(cfg config.Config) (*Conn, error) {
 				return nil, mkErr
 			}
 		}
-		gdb, err = gorm.Open(sqlite.Open(cfg.DBPath), &gorm.Config{
+		gdb, err = gorm.Open(sqlite.Open(sqliteDSN(cfg.DBPath)), &gorm.Config{
 			DisableForeignKeyConstraintWhenMigrating: true,
 			Logger:                                   logger.Default.LogMode(logger.Silent),
 		})
@@ -74,6 +74,19 @@ func Open(cfg config.Config) (*Conn, error) {
 		return nil, err
 	}
 
+	if dbType == "sqlite" {
+		// The driver creates the DB file with the process umask (usually 0644);
+		// tighten it to protect password hashes, wallet balances and plugin
+		// ciphertext on multi-user hosts.
+		if strings.TrimSpace(cfg.DBPath) != "" && cfg.DBPath != ":memory:" {
+			if fi, statErr := os.Stat(cfg.DBPath); statErr == nil {
+				if fi.Mode().Perm() != 0o600 {
+					_ = os.Chmod(cfg.DBPath, 0o600)
+				}
+			}
+		}
+	}
+
 	sqlDB, err := gdb.DB()
 	if err != nil {
 		return nil, err
@@ -88,6 +101,19 @@ func Open(cfg config.Config) (*Conn, error) {
 		SQL:     sqlDB,
 		Dialect: gdb.Dialector.Name(),
 	}, nil
+}
+
+// sqliteDSN appends journal_mode(WAL) so concurrent readers/writers do not hit
+// "database is locked". The glebarez driver already applies a default
+// busy_timeout(5000) on every connection.
+func sqliteDSN(path string) string {
+	if strings.TrimSpace(path) == "" || path == ":memory:" {
+		return path
+	}
+	if strings.Contains(path, "?") {
+		return path + "&_pragma=journal_mode(WAL)"
+	}
+	return path + "?_pragma=journal_mode(WAL)"
 }
 
 func normalizeMySQLDSN(raw string) string {

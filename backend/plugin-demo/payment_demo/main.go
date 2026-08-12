@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/url"
+	"strings"
 
 	"github.com/hashicorp/go-plugin"
 
@@ -61,6 +63,24 @@ func (p *DemoPaymentProvider) CreatePayment(req shared.PaymentCreateRequest) (sh
 	}, nil
 }
 
+// VerifyNotifyV2 implements the versioned net/rpc notify contract: it signs
+// against the raw query/body so a callback with JSON/multipart signature
+// material is verifiable.
+func (p *DemoPaymentProvider) VerifyNotifyV2(req shared.RawHTTPRequest) (shared.PaymentNotifyResult, error) {
+	params := rawToParams(req)
+	tradeNo := params["trade_no"]
+	paid := params["status"] == "paid"
+	return shared.PaymentNotifyResult{
+		TradeNo: tradeNo,
+		Paid:    paid,
+		Amount:  0,
+		Raw:     params,
+	}, nil
+}
+
+// VerifyNotify is the retired v1 callback. The host no longer calls it; it
+// exists so a legacy host binary can still load the plugin, but new callbacks go
+// through VerifyNotifyV2.
 func (p *DemoPaymentProvider) VerifyNotify(params map[string]string) (shared.PaymentNotifyResult, error) {
 	tradeNo := params["trade_no"]
 	paid := params["status"] == "paid"
@@ -70,6 +90,55 @@ func (p *DemoPaymentProvider) VerifyNotify(params map[string]string) (shared.Pay
 		Amount:  0,
 		Raw:     params,
 	}, nil
+}
+
+// rawToParams is demo-provider compatibility logic. The host delivers the full
+// RawHTTPRequest unchanged; each provider decides how its gateway defines
+// parameters and signature precedence. This demo keeps headers over query over
+// form body (the first non-empty value wins).
+func rawToParams(req shared.RawHTTPRequest) map[string]string {
+	out := map[string]string{}
+	for k, vs := range req.Headers {
+		if len(vs) > 0 {
+			out[strings.ToLower(k)] = vs[0]
+		}
+	}
+	if req.RawQuery != "" {
+		if q, err := url.ParseQuery(req.RawQuery); err == nil {
+			for k, v := range q {
+				if len(v) > 0 && out[k] == "" {
+					out[k] = v[0]
+				}
+			}
+		}
+	}
+	if len(req.Body) == 0 {
+		return out
+	}
+	ct := ""
+	if values := req.Headers["Content-Type"]; len(values) > 0 {
+		ct = strings.ToLower(strings.TrimSpace(values[0]))
+	}
+	// Only form-urlencoded bodies are query-syntax; multipart bodies are not
+	// (url.ParseQuery would produce garbage) and JSON bodies must not be
+	// heuristically treated as form just because they contain "=".
+	isForm := strings.Contains(ct, "application/x-www-form-urlencoded")
+	if !isForm && ct == "" {
+		trimmed := strings.TrimSpace(string(req.Body))
+		if !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "[") && strings.Contains(string(req.Body), "=") {
+			isForm = true
+		}
+	}
+	if isForm {
+		if q, err := url.ParseQuery(string(req.Body)); err == nil {
+			for k, v := range q {
+				if len(v) > 0 && out[k] == "" {
+					out[k] = v[0]
+				}
+			}
+		}
+	}
+	return out
 }
 
 func main() {

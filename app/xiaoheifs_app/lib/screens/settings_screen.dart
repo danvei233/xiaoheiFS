@@ -399,7 +399,6 @@ class _ProfileCard extends StatefulWidget {
 class _ProfileCardState extends State<_ProfileCard> {
   Future<Map<String, dynamic>>? _future;
   String _baseUrl = '';
-  Map<String, String> _headers = const {};
 
   @override
   void didChangeDependencies() {
@@ -408,10 +407,6 @@ class _ProfileCardState extends State<_ProfileCard> {
     final client = app.apiClient;
     if (client != null) {
       _baseUrl = client.baseUrl;
-      _headers = avatarHeaders(
-        token: app.session?.token,
-        apiKey: app.session?.apiKey,
-      );
       _future ??= client.getJson('/admin/api/v1/profile');
     }
   }
@@ -428,6 +423,13 @@ class _ProfileCardState extends State<_ProfileCard> {
           baseUrl: _baseUrl,
           qq: data['qq']?.toString(),
           avatarUrl: data['avatar_url']?.toString(),
+        );
+        final session = context.read<AppState>().session;
+        final headers = avatarHeaders(
+          token: session?.token,
+          apiKey: session?.apiKey,
+          baseUrl: _baseUrl,
+          url: avatarUrl,
         );
         return Container(
           padding: const EdgeInsets.all(12),
@@ -451,7 +453,7 @@ class _ProfileCardState extends State<_ProfileCard> {
                           width: 48,
                           height: 48,
                           fit: BoxFit.cover,
-                          headers: _headers.isEmpty ? null : _headers,
+                          headers: headers.isEmpty ? null : headers,
                           errorBuilder: (_, __, ___) => const Icon(Icons.person, color: Colors.white),
                         ),
                       )

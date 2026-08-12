@@ -375,13 +375,17 @@
     Warning
   } from '@element-plus/icons-vue'
   import { useTable } from '@/hooks/core/useTable'
-  import { useAuthStore } from '@/stores/auth'
   import { useCatalogStore } from '@/stores/catalog'
   import { useSiteStore } from '@/stores/site'
+  import { classifyExternalUrl } from '@/utils/urlPolicy'
+  import { toCsvLine } from '@/utils/csv'
+  import { resolveVpsIp } from '@/utils/vpsAccess'
   import {
     createVpsRenewOrder,
     createVpsResizeOrder,
     emergencyRenewVps,
+    getVpsPanelUrl,
+    getVpsVncUrl,
     listVps,
     quoteVpsResizeOrder,
     rebootVps,
@@ -430,6 +434,8 @@
     AccessInfo?: unknown
     access_info_json?: unknown
     AccessInfoJSON?: unknown
+    ip?: unknown
+    IP?: unknown
     monthly_price?: number
     MonthlyPrice?: number
   }
@@ -518,7 +524,6 @@
   }
 
   const router = useRouter()
-  const auth = useAuthStore()
   const catalog = useCatalogStore()
   const site = useSiteStore()
   const allVps = ref<VpsRecord[]>([])
@@ -533,7 +538,7 @@
       key: 'keyword',
       label: '关键词',
       type: 'input',
-      placeholder: '名称、ID 或 IP',
+      placeholder: '名称、ID、地区或套餐',
       clearable: true
     },
     {
@@ -548,9 +553,9 @@
     },
     {
       key: 'region',
-      label: '地区/线路',
+      label: '地区',
       type: 'input',
-      placeholder: '输入地区或线路',
+      placeholder: '输入地区',
       clearable: true
     },
     {
@@ -569,8 +574,11 @@
     { label: '开通中', value: 'provisioning' },
     { label: '重装系统中', value: 'reinstalling' },
     { label: '重装系统失败', value: 'reinstall_failed' },
+    { label: '救援模式', value: 'rescue' },
+    { label: '破解密码中', value: 'cracking_password' },
     { label: '创建失败', value: 'failed' },
-    { label: '删除中', value: 'deleting' }
+    { label: '删除中', value: 'deleting' },
+    { label: '未知', value: 'unknown' }
   ]
   const statusTabs = [
     { label: '全部', value: '' },
@@ -621,21 +629,6 @@
     return result.join(' / ')
   }
 
-  const statusFromAutomation = (state: unknown) => {
-    const map: Record<number, string> = {
-      1: 'provisioning',
-      13: 'provisioning',
-      2: 'running',
-      3: 'stopped',
-      4: 'reinstalling',
-      5: 'reinstall_failed',
-      10: 'locked',
-      11: 'failed',
-      12: 'deleting'
-    }
-    return map[Number(state)] || ''
-  }
-
   const normalizeRecord = (record: VPSInstance): VpsRecord => {
     const row = record as unknown as VpsApiRecord
     const access = parseJson(
@@ -643,15 +636,13 @@
     )
     const expireValue = row.expire_at ?? row.ExpireAt
     const expireAt = expireValue == null ? undefined : String(expireValue)
-    const automationState = row.automation_state ?? row.AutomationState
-    const rawStatus =
-      automationState == null
-        ? String(row.status ?? row.Status ?? '')
-        : statusFromAutomation(automationState)
+    // `status` is the canonical user-visible value returned by the server.
+    // Do not reinterpret automation_state here or a filtered page can display
+    // a different status from the one requested.
     const status =
-      isExpired({ expire_at: expireAt }) && ['locked', 'expired_locked'].includes(rawStatus)
-        ? 'expired_locked'
-        : rawStatus
+      String(row.status ?? row.Status ?? 'unknown')
+        .trim()
+        .toLowerCase() || 'unknown'
     const region = String(row.region ?? row.Region ?? '-')
     const line = String(row.line ?? row.Line ?? row.line_name ?? row.LineName ?? access.line ?? '')
     return {
@@ -669,9 +660,8 @@
       package_name: row.package_name,
       spec_raw: row.spec ?? row.Spec ?? row.spec_json ?? row.SpecJSON,
       specText: normalizeSpec(row.spec ?? row.Spec ?? row.spec_json ?? row.SpecJSON, row),
-      ip: String(
-        access.remote_ip ?? access.ip ?? access.public_ip ?? access.ipv4 ?? access.Ip ?? '-'
-      ),
+      // P2-4 跨层：access_info 已被后端移除（恒为 null），优先读顶层 row.ip。
+      ip: resolveVpsIp(row),
       monthly_price: Number(row.monthly_price ?? row.MonthlyPrice ?? 0),
       cpu: row.cpu,
       CPU: row.CPU,
@@ -689,51 +679,34 @@
     }
   }
 
-  const filterRows = (rows: VpsRecord[], params: VpsTableParams) => {
-    let filtered = rows
-    const keyword = String(params.keyword || '')
-      .trim()
-      .toLowerCase()
-    if (keyword) {
-      filtered = filtered.filter((item) =>
-        [item.id, item.name, item.ip].some((value) =>
-          String(value || '')
-            .toLowerCase()
-            .includes(keyword)
-        )
-      )
-    }
-    if (params.status) filtered = filtered.filter((item) => item.status === params.status)
-    if (params.region)
-      filtered = filtered.filter((item) =>
-        String(item.regionLine || '').includes(String(params.region))
-      )
-    if (params.expire_days) {
-      const days = Number(params.expire_days)
-      filtered = filtered.filter((item) => {
-        const expire = new Date(item.expire_at).getTime()
-        const diff = Math.ceil((expire - Date.now()) / (24 * 3600 * 1000))
-        return !Number.isNaN(expire) && diff <= days
-      })
-    }
-    return filtered
-  }
-
-  // The current endpoint returns the complete user list. useTable still owns all request,
-  // search, refresh, and pagination state; this adapter only normalizes and slices that response.
+  // P3-43：过滤条件和分页完全由后端执行；rows 是当前过滤页，total 是
+  // 过滤后的总数。这样页面不会把整张 VPS 表拉回浏览器再做本地分页。
   const fetchVpsTable = async (
-    params: VpsTableParams
+    params: VpsTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<VpsRecord>> => {
-    const response = await listVps()
+    const response = await listVps(
+      {
+        status: params.status || undefined,
+        keyword: params.keyword || undefined,
+        region: params.region || undefined,
+        expire_days: params.expire_days ? Number(params.expire_days) : undefined,
+        limit: params.size,
+        offset: (params.current - 1) * params.size
+      },
+      signal
+    )
     const rows = (response.data?.items || []).map(normalizeRecord)
     allVps.value = rows
-    const filtered = filterRows(rows, params)
-    const start = (params.current - 1) * params.size
+    const serverTotal = Number(response.data?.total)
+    if (!Number.isFinite(serverTotal) || serverTotal < 0) {
+      throw new Error('VPS 列表响应缺少有效 total')
+    }
     return {
-      records: filtered.slice(start, start + params.size),
+      records: rows,
       current: params.current,
       size: params.size,
-      total: filtered.length
+      total: serverTotal
     }
   }
 
@@ -852,25 +825,48 @@
   }
   const goDetail = (record: VpsRecord) => router.push(`/console/vps/${record.id}`)
   const goBuy = () => router.push({ name: 'PublicBuy' })
-  const base = import.meta.env.VITE_API_BASE || ''
+  const openExternal = async (record: VpsRecord, type: 'panel' | 'vnc') => {
+    const targetWindow = window.open('about:blank', '_blank')
+    if (!targetWindow) {
+      ElMessage.error('浏览器阻止了新窗口，请允许本站打开弹窗后重试')
+      return
+    }
+    targetWindow.opener = null
 
-  const openExternal = (record: VpsRecord, path: string) => {
-    const token = auth.token
-    const query = token ? `?token=${encodeURIComponent(token)}` : ''
-    window.open(`${base}/api/v1/vps/${record.id}/${path}${query}`, '_blank', 'noopener')
+    try {
+      const response =
+        type === 'panel' ? await getVpsPanelUrl(record.id) : await getVpsVncUrl(record.id)
+      const targetUrl = String(response.data?.url || '').trim()
+      if (!targetUrl) {
+        targetWindow.close()
+        ElMessage.error(type === 'panel' ? '面板地址为空' : 'VNC 地址为空')
+        return
+      }
+      // H9：面板/VNC 地址是后端返回的数据，打开前必须校验为可安全导航的
+      // web URL，拒绝 javascript:/data:/userinfo/控制字符。面板/VNC 常见于
+      // 运营方配置的 LAN/内网地址，允许 http（allowHttp），普通外链仍只允许 https。
+      const decision = classifyExternalUrl(targetUrl, { allowHttp: true })
+      if (!decision.ok || decision.kind !== 'web') {
+        targetWindow.close()
+        ElMessage.error(type === 'panel' ? '面板地址无效，无法打开' : 'VNC 地址无效，无法打开')
+        return
+      }
+      targetWindow.location.replace(targetUrl)
+    } catch {
+      targetWindow.close()
+    }
   }
   const openPanel = (record: VpsRecord) => openExternal(record, 'panel')
   const openVnc = (record: VpsRecord) => openExternal(record, 'vnc')
 
   const exportCsv = () => {
-    const rows = filterRows(allVps.value, searchParams)
+    const rows = allVps.value
+    // 复用共享 toCsvLine 中和公式注入（`= + - @` 前缀单元格前置单引号），
+    // 与后台订单/用户导出一致（web_url_content F2）。VPS name 来自自动化
+    // 插件返回的 hostname，第三方插件可构造恶意主机名触发 Excel 公式执行。
     const lines = [
-      'id,name,status,expire_at',
-      ...rows.map((item) =>
-        [item.id, item.name, item.status, item.expire_at]
-          .map((value) => JSON.stringify(value ?? ''))
-          .join(',')
-      )
+      toCsvLine(['id', 'name', 'status', 'expire_at']),
+      ...rows.map((item) => toCsvLine([item.id, item.name, item.status, item.expire_at]))
     ]
     const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)

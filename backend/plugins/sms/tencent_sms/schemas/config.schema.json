@@ -5,7 +5,9 @@
     "secret_id": { "type": "string", "title": "SecretId" },
     "secret_key": { "type": "string", "title": "SecretKey", "format": "password" },
     "sdk_app_id": { "type": "string", "title": "SdkAppId" },
-    "sign_name": { "type": "string", "title": "SignName" }
+    "sign_name": { "type": "string", "title": "SignName" },
+    "region": { "type": "string", "title": "Region", "default": "ap-guangzhou" },
+    "timeout_sec": { "type": "integer", "title": "Request Timeout (sec)", "default": 10, "minimum": 1, "maximum": 60 }
   },
   "required": ["secret_id", "secret_key", "sdk_app_id", "sign_name"]
 }

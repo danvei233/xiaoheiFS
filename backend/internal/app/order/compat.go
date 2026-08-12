@@ -177,6 +177,10 @@ func MapAutomationState(state int) domain.VPSStatus {
 		return domain.VPSStatusReinstallFailed
 	case 10:
 		return domain.VPSStatusLocked
+	case 11:
+		return domain.VPSStatusFailed
+	case 12:
+		return domain.VPSStatusDeleting
 	default:
 		return domain.VPSStatusUnknown
 	}

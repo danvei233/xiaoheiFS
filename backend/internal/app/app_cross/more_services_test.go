@@ -128,7 +128,7 @@ func TestAuthCartVPSAndStatus(t *testing.T) {
 	if err := repo.CreateUser(ctx, &user); err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	authSvc := appauth.NewService(repo, repo, repo)
+	authSvc := appauth.NewService(repo, repo, repo, repo, "test-totp-key")
 	updated, err := authSvc.UpdateProfile(ctx, user.ID, appshared.UpdateProfileInput{Username: "profileu2", Email: "profileu2@example.com", QQ: "123"})
 	if err != nil {
 		t.Fatalf("update profile: %v", err)

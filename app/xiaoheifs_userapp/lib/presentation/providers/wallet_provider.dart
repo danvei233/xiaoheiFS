@@ -94,4 +94,9 @@ class WalletNotifier extends StateNotifier<WalletState> {
   Future<void> withdraw(Map<String, dynamic> payload) async {
     await _repo.createWithdraw(payload);
   }
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    state = const WalletState();
+  }
 }

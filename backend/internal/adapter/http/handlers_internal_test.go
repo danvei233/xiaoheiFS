@@ -3,6 +3,7 @@ package http
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -45,6 +46,26 @@ func TestBuildPermissionTree(t *testing.T) {
 	}
 	if tree[1].Children[0].Code != "child-b" {
 		t.Fatalf("expected sorted children")
+	}
+}
+
+func TestClientErrMessage_MasksInternalErrors(t *testing.T) {
+	// Known domain sentinels keep their canonical text.
+	if got := clientErrMessage(domain.ErrInvalidInput); got != domain.ErrInvalidInput.Error() {
+		t.Fatalf("sentinel must keep its text, got %q", got)
+	}
+	// Wrapped sentinels are still recognized and keep their (safe) full text.
+	wrapped := fmt.Errorf("create group: %w", domain.ErrNotFound)
+	if got := clientErrMessage(wrapped); got != wrapped.Error() {
+		t.Fatalf("wrapped sentinel must keep its safe text, got %q", got)
+	}
+	// Raw repository/driver errors must not leak internal details (P2-11).
+	raw := errors.New("SQLITE_BUSY: database is locked (file=/var/lib/mysql/users.db)")
+	if got := clientErrMessage(raw); got == raw.Error() {
+		t.Fatalf("internal error must be masked, got %q", got)
+	}
+	if got := clientErrMessage(raw); got != domain.ErrRequestFailed.Error() {
+		t.Fatalf("internal error must map to the generic message, got %q", got)
 	}
 }
 

@@ -5,10 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
-	"github.com/gin-gonic/gin"
+	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/money"
@@ -76,7 +79,7 @@ func (h *Handler) saveSMSTemplates(ctx *gin.Context, adminID int64, items []smsT
 	if h.adminSvc == nil {
 		return domain.ErrAdminServiceUnavailable
 	}
-	return h.adminSvc.UpdateSetting(ctx, adminID, "sms_templates_json", string(raw))
+	return h.adminSvc.UpdateSetting(ctx.Request.Context(), adminID, "sms_templates_json", string(raw))
 }
 
 func (h *Handler) renderSMSTemplateByID(ctx *gin.Context, id int64, vars map[string]any) (string, bool) {
@@ -141,15 +144,16 @@ func normalizeSimpleTemplateVars(content string) string {
 }
 
 func (h *Handler) getSetting(ctx *gin.Context, key string) (domain.Setting, error) {
+	rc := ctx.Request.Context()
 	if h.adminSvc != nil {
-		if item, err := h.adminSvc.GetSetting(ctx, key); err == nil {
+		if item, err := h.adminSvc.GetSetting(rc, key); err == nil {
 			return item, nil
 		}
 	}
 	if h.settingsSvc == nil {
 		return domain.Setting{}, appshared.ErrNotFound
 	}
-	return h.settingsSvc.Get(ctx, key)
+	return h.settingsSvc.Get(rc, key)
 }
 
 func (h *Handler) getSettingByContext(ctx context.Context, key string) (domain.Setting, error) {
@@ -173,27 +177,29 @@ func (h *Handler) getSettingValueByKey(ctx *gin.Context, key string) string {
 }
 
 func (h *Handler) listSettings(ctx *gin.Context) ([]domain.Setting, error) {
+	rc := ctx.Request.Context()
 	if h.adminSvc != nil {
-		if items, err := h.adminSvc.ListSettings(ctx); err == nil {
+		if items, err := h.adminSvc.ListSettings(rc); err == nil {
 			return items, nil
 		}
 	}
 	if h.settingsSvc == nil {
 		return nil, appshared.ErrNotFound
 	}
-	return h.settingsSvc.List(ctx)
+	return h.settingsSvc.List(rc)
 }
 
 func (h *Handler) listEmailTemplates(ctx *gin.Context) ([]domain.EmailTemplate, error) {
+	rc := ctx.Request.Context()
 	if h.adminSvc != nil {
-		if items, err := h.adminSvc.ListEmailTemplates(ctx); err == nil {
+		if items, err := h.adminSvc.ListEmailTemplates(rc); err == nil {
 			return items, nil
 		}
 	}
 	if h.settingsSvc == nil {
 		return nil, appshared.ErrNotFound
 	}
-	return h.settingsSvc.ListEmailTemplates(ctx)
+	return h.settingsSvc.ListEmailTemplates(rc)
 }
 
 func boolToString(v bool) string {
@@ -232,17 +238,30 @@ func hasChannel(channels []string, target string) bool {
 
 func maskPhone(phone string) string {
 	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return ""
+	}
+	// Never leak a short or low-entropy value verbatim: a 6-digit number would
+	// otherwise reveal the full phone to an unauthenticated enumerator.
 	if len(phone) < 7 {
-		return phone
+		return "******"
 	}
 	return phone[:2] + "*****" + phone[len(phone)-2:]
 }
 
 func maskEmail(email string) string {
 	email = strings.TrimSpace(email)
+	if email == "" {
+		return ""
+	}
 	i := strings.Index(email, "@")
 	if i <= 1 {
-		return email
+		// Short local part: still mask the local part so `a@b.com` does not
+		// reveal the address. Keep the domain so the mask stays recognizable.
+		if i < 0 {
+			return "*****"
+		}
+		return "*****" + email[i:]
 	}
 	return email[:1] + "*****" + email[i-1:]
 }
@@ -274,14 +293,28 @@ func parseAmountCents(value any) (int64, error) {
 	case json.Number:
 		return money.ParseNumberStringToCents(v.String())
 	case float64:
-		return floatToCents(v), nil
+		return floatToCentsChecked(v)
 	case float32:
-		return floatToCents(float64(v)), nil
+		return floatToCentsChecked(float64(v))
 	case int:
-		return int64(v) * 100, nil
+		return money.ParseNumberStringToCents(strconv.FormatInt(int64(v), 10))
 	case int64:
-		return v * 100, nil
+		return money.ParseNumberStringToCents(strconv.FormatInt(v, 10))
 	default:
 		return 0, money.ErrInvalidAmount
 	}
+}
+
+// floatToCentsChecked converts a float amount to integer cents, rejecting
+// values whose x100 representation overflows int64 instead of wrapping (the
+// raw floatToCents path would silently produce a bogus positive cents value).
+func floatToCentsChecked(amount float64) (int64, error) {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) {
+		return 0, money.ErrInvalidAmount
+	}
+	cents := math.Round(amount * 100)
+	if cents > math.MaxInt64 || cents < math.MinInt64 {
+		return 0, money.ErrInvalidAmount
+	}
+	return int64(cents), nil
 }

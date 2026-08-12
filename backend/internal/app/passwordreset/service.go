@@ -3,8 +3,10 @@ package passwordreset
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -13,6 +15,14 @@ import (
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
+
+// hashToken derives the value persisted for a reset token. The raw token is
+// only ever emailed to the account owner, so a database leak does not yield
+// usable tokens (Issue #51 P1-2 / P3-35).
+func hashToken(v string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(v)))
+	return hex.EncodeToString(sum[:])
+}
 
 type Service struct {
 	users     appports.UserRepository
@@ -52,7 +62,7 @@ func (s *Service) RequestReset(ctx context.Context, email string) error {
 
 	resetToken := &domain.PasswordResetToken{
 		UserID:    user.ID,
-		Token:     token,
+		Token:     hashToken(token),
 		ExpiresAt: time.Now().Add(24 * time.Hour),
 		Used:      false,
 	}
@@ -73,7 +83,7 @@ func (s *Service) ResetPassword(ctx context.Context, token string, newPassword s
 	if err != nil {
 		return appshared.ErrInvalidInput
 	}
-	resetToken, err := s.tokens.GetPasswordResetToken(ctx, token)
+	resetToken, err := s.tokens.GetPasswordResetToken(ctx, hashToken(token))
 	if err != nil {
 		return appshared.ErrNotFound
 	}
@@ -86,16 +96,22 @@ func (s *Service) ResetPassword(ctx context.Context, token string, newPassword s
 		return domain.ErrTokenExpired
 	}
 
+	// Hash before entering the transaction so a bcrypt failure is not mistaken
+	// for a consumed token, then claim + update the password atomically. A
+	// failed password update rolls back the claim, so a usable token is never
+	// burned (Issue #51 P2-8).
 	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
-	if err := s.users.UpdateUserPassword(ctx, resetToken.UserID, string(hash)); err != nil {
+	claimed, err := s.tokens.ConsumePasswordResetTokenAndUpdatePassword(ctx, resetToken.ID, resetToken.UserID, string(hash), time.Now())
+	if err != nil {
 		return err
 	}
-
-	_ = s.tokens.MarkPasswordResetTokenUsed(ctx, resetToken.ID)
+	if !claimed {
+		return domain.ErrTokenUsed
+	}
 
 	return nil
 }

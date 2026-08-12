@@ -5,8 +5,8 @@ info:
     提供 VPS 产品、线路、实例与安全相关能力的 OpenAPI 文档。
   version: '1.0.0'
 servers:
-  - url: http://lab.netmc.icu:30080
-    description: Lab 环境
+  - url: https://cloud.example.com
+    description: 示例地址，请替换为实际环境
 tags:
   - name: Test
     description: 测试与连通性
@@ -228,10 +228,6 @@ components:
             type: string
             description: 线路 API 地址(无用)
             example: ""
-          line_apikey:
-            type: string
-            description: API Key
-            example: ""
           area_id:
             type: integer
             description: 区域 ID
@@ -352,7 +348,9 @@ components:
           description: VNC 端口
         vnc_password:
           type: string
-          description: VNC 密码
+          description: >-
+            【已脱敏】VNC 密码。普通 hostinfo 不再返回节点秘密，请改用
+            hostinfo_credentials（需 credentials 作用域）。
         virtual_type:
           type: string
           description: 虚拟化类型
@@ -384,10 +382,14 @@ components:
           description: 操作系统名称
         os_password:
           type: string
-          description: 操作系统密码
+          description: >-
+            【已脱敏】操作系统密码。普通 hostinfo 不再返回节点秘密，请改用
+            hostinfo_credentials（需 credentials 作用域）。
         panel_password:
           type: string
-          description: 面板密码
+          description: >-
+            【已脱敏】面板密码。普通 hostinfo 不再返回节点秘密，请改用
+            hostinfo_credentials（需 credentials 作用域）。
         cpu_limit:
           type: integer
           description: CPU 限制 (%)
@@ -745,6 +747,9 @@ components:
           name:
             type: string
             description: 备份名称
+          state:
+            type: integer
+            description: 备份状态
           created_at:
             type: string
             format: date-time
@@ -764,6 +769,9 @@ components:
           name:
             type: string
             description: 快照名称
+          state:
+            type: integer
+            description: 快照状态
           created_at:
             type: string
             format: date-time
@@ -821,7 +829,7 @@ components:
         expire_time:
           type: string
           format: date-time
-          description: 到期时间 (YYYY-MM-DD HH:mm:ss)
+          description: '到期时间 (YYYY-MM-DD HH:mm:ss)。F2：必须为未来且不晚于 now + web.cloud_max_extend_days（默认 730 天）。'
         ipnum:
           type: integer
           description: 分配的额外 IP 数量（可选）
@@ -842,6 +850,9 @@ components:
         host_id:
           type: integer
           description: VPS 的 ID
+        order_id:
+          type: string
+          description: 已支付订单授权号（P2-11 必填；单次消费、绑定主机与租户）
         cpu:
           type: integer
           description: CPU 核数（可选）
@@ -869,21 +880,39 @@ components:
         hostid:
           type: integer
           description: 所属 VPS 的 ID
+        host_id:
+          type: integer
+          description: hostid 的别名（控制器自动归一化为 hostid）
         direction:
           type: string
-          description: 流量方向（In 或 Out）
+          description: 流量方向（in/out，兼容 1/2/ingress/egress）
         protocol:
           type: string
-          description: 协议类型（tcp、udp 等）
+          description: 协议类型（TCP、UDP、ICMP、ANY 等）
         method:
           type: string
-          description: 处理方式（allowed、denied 等）
+          description: 处理方式（accept、drop，兼容 allow/deny/reject）
         port:
           type: string
-          description: 端口号
+          description: 端口号（可为空，默认 -1 表示任意）
         ip:
           type: string
-          description: 源/目标 IP 地址
+          description: 源/目标 IP 地址（可为空，默认 0.0.0.0）
+        start_port:
+          type: string
+          description: port 的别名（控制器自动归一化为 port）
+        start_ip:
+          type: string
+          description: ip 的别名（控制器自动归一化为 ip）
+        orientation:
+          type: string
+          description: direction 的别名（控制器自动归一化为 direction）
+        tactics:
+          type: string
+          description: method 的别名（'1' 表示 drop，其余表示 accept）
+        priority:
+          type: integer
+          description: 规则优先级（可选，默认 100）
     OpenHostQuery:
       type: object
       properties:
@@ -901,7 +930,8 @@ components:
           description: VNC 密码
         expire_time:
           type: string
-          description: 到期时间
+          format: date-time
+          description: '到期时间。F2：必须为未来且不晚于 now + web.cloud_max_extend_days（默认 730 天）。'
         line_id:
           type: integer
           description: 线路 ID
@@ -926,7 +956,12 @@ components:
       type: apiKey
       name: apikey
       in: header
-      description: 请求头中携带的 API Key
+      description: >-
+        请求头中携带的 API Key。凭据在 config/web.php 的 `cloud_credentials`
+        中按租户/调用方配置（只存 `hash_hmac('sha256', key, id)` 散列，不存明文），
+        每个凭据可单独撤销并限定作用域（read / host_control / order /
+        credentials / all，或显式 action 列表）。未配置 `cloud_credentials`
+        时兼容旧的单一 `web.apikey`（无作用域，不能访问 hostinfo_credentials）。
 security:
   - ApiKeyAuth: []
 paths:
@@ -1042,17 +1077,17 @@ paths:
                 msg: "succ"
                 data:
                   - id: 68
-                    host_name: "79ak47"
-                    ip: "192.168.9.7"
-                    remark: "后台创建"
+                    host_name: "vps-001"
+                    ip: "192.0.2.10"
+                    remark: "示例"
                   - id: 111
-                    host_name: "luochen570"
-                    ip: "192.168.9.2"
-                    remark: "后台创建"
+                    host_name: "vps-002"
+                    ip: "192.0.2.11"
+                    remark: "示例"
                   - id: 119
-                    host_name: "flydie"
-                    ip: "192.168.9.6"
-                    remark: "后台创建"
+                    host_name: "vps-003"
+                    ip: "192.0.2.12"
+                    remark: "示例"
 
 
   /hostinfo:
@@ -1060,7 +1095,11 @@ paths:
       tags:
         - Host
       summary: 获取 VPS 详情
-      description: '获取vps详细'
+      description: >-
+        获取 VPS 详情（公开视图）。A3：节点秘密（os_password/panel_password/
+        vnc_password）不在此返回；自动化集成需要取回密码时改用
+        /hostinfo_credentials（需 credentials 作用域）。凭据绑定 user_id 时
+        只能读取自己的主机（A6 所有权）。
       operationId: hostInfo
       parameters: []
       requestBody:
@@ -1087,6 +1126,44 @@ paths:
                     properties:
                       data:
                         $ref: '#/components/schemas/HostInfoData'
+  /hostinfo_credentials:
+    post:
+      tags:
+        - Host
+      summary: 获取 VPS 完整详情（含节点秘密）
+      description: >-
+        A3 迁移兼容端点：返回含 os_password/panel_password/vnc_password 的
+        完整主机信息。仅拥有 `credentials` 作用域（或显式 action）的凭据可调用；
+        legacy 单 key 与无凭据作用域均会被拒绝。凭据绑定 user_id 时只能读取
+        自己的主机。
+      operationId: hostInfoCredentials
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        type: object
+                        description: 完整主机属性（含凭据字段），结构同 HostInfoData 加上密码列
+                        additionalProperties: true
               example:
                 code: 1
                 msg: "succ"
@@ -1097,18 +1174,17 @@ paths:
                   product_name: ""
                   product_id: 0
                   area_id: 1
-                  area_name: "晋中"
-                  line_name: "RH2288-V3"
+                  area_name: "示例区"
+                  line_name: "示例线路"
                   line_id: 3
-                  node_name: "RH2288-V3"
+                  node_name: "示例节点"
                   node_id: 4
-                  host_name: "dify"
+                  host_name: "vps-001"
                   cpu: 8
                   cpu_model: ""
-                  ip: "192.168.9.9"
-                  local_ip: "172.26.0.3"
+                  ip: "192.0.2.10"
+                  local_ip: "10.0.0.3"
                   vnc_port: ""
-                  vnc_password: "j3WPmS5p"
                   virtual_type: "kvm"
                   from_type: "1"
                   plug_name: ""
@@ -1118,8 +1194,6 @@ paths:
                   hard_disks: 30
                   bandwidth: 2
                   os_name: "ubuntu22.04"
-                  os_password: "o67Ybc916P"
-                  panel_password: "zY68Owpw"
                   cpu_limit: 100
                   ram_start: 0
                   memory_dynamic: 0
@@ -1166,32 +1240,32 @@ paths:
                   network:
                     eth1:
                       - id: 9
-                        ip: "192.168.9.9"
+                        ip: "192.0.2.10"
                         netmask: "255.255.255.0"
-                        gateway: "192.168.9.1"
-                        mac: "00:50:56:8E:5D:9A"
-                        v_name: "dify"
+                        gateway: "192.0.2.1"
+                        mac: "00:50:56:00:00:01"
+                        v_name: "vps-001"
                         remark: ""
                         state: 2
                         v_name_type: ""
                         create_time: "2024-05-24 23:35:52"
                         update_time: "2024-05-24 23:35:52"
-                        public_ip: "lab.netmc.icu"
+                        public_ip: "cloud.example.com"
                     eth2:
                       - id: 778
-                        ip: "172.26.0.3"
+                        ip: "10.0.0.3"
                         netmask: "255.255.0.0"
                         gateway: ""
-                        mac: "00:0C:29:BE:BD:C6"
-                        ip_pool_name: "UnifiedIPPool"
+                        mac: "00:0C:29:00:00:02"
+                        ip_pool_name: "示例IP池"
                         ip_pool_id: 5
-                        v_name: "dify"
+                        v_name: "vps-001"
                         state: 2
                         v_name_type: ""
                         remark: ""
                         create_time: "2025-07-29 21:13:03"
                         update_time: "2025-07-29 21:13:03"
-                  remote_ip: "lab.netmc.icu:10008"
+                  remote_ip: "cloud.example.com:10008"
   /start:
     post:
       tags:
@@ -1371,7 +1445,12 @@ paths:
       tags:
         - Order
       summary: 升级 VPS（按产品类型）
-      description: '升级vps（根据产品类型）'
+      description: >-
+        升级 VPS（根据产品类型）。A6：只能变更到可售套餐，且不允许跨 NAT 类型
+        转换；变更前执行套餐/全局资源上限校验。P2-11：必须携带一条与该主机和
+        当前租户绑定的「已支付订单」授权 `order_id`（见 /renew），授权被原子
+        单次消费后才会变更套餐；无授权/越权/过期/重放一律拒绝，失败不改变
+        resources/product。
       operationId: hostUpgrade
       parameters: []
       requestBody:
@@ -1387,6 +1466,9 @@ paths:
                 product_id:
                   type: integer
                   description: 产品 ID 不同nat型不能转换
+                order_id:
+                  type: string
+                  description: 已支付订单授权号（P2-11 必填；单次消费、绑定主机与租户）
       responses:
         '200':
           description: OK
@@ -1464,24 +1546,24 @@ paths:
                 data:
                   - id: 598
                     host_id: 145
-                    host_name: "Daimaxue"
-                    name: "frp"
+                    host_name: "vps-004"
+                    name: "示例映射"
                     port_type: "all"
                     sport: "20002"
                     dport: "20002"
-                    api_url: "netmc.icu"
+                    api_url: "cloud.example.com"
                     sys: 1
-                    dip: "192.168.9.14"
+                    dip: "192.0.2.14"
                   - id: 596
                     host_id: 145
-                    host_name: "Daimaxue"
-                    name: "mc-be"
+                    host_name: "vps-004"
+                    name: "示例映射2"
                     port_type: "all"
                     sport: "20032"
                     dport: "20032"
-                    api_url: "netmc.icu"
+                    api_url: "cloud.example.com"
                     sys: 1
-                    dip: "192.168.9.14"
+                    dip: "192.0.2.14"
 
   /security_acl_list:
     get:
@@ -1656,7 +1738,15 @@ paths:
       tags:
         - Console
       summary: 跳转到 VPS 面板
-      description: '通过面板密码登录并跳转到 VPS 面板'
+      description: |-
+        校验面板密码后签发短时单次 ticket，302 重定向到
+        `control/ecs/login?ticket=<ticket>`。重定向 Location **绝不含**
+        panel_password/host_name（防长期密码进入浏览器历史/Referer/代理日志）。
+        该端点与其它端点一样要求 apikey（A1 作用域，`panel`/`read`/`all`），
+        面板密码只是第二重凭据。
+        目标登录端点 `control/ecs/login` 必须在另一请求用
+        `TicketService::consumeTicket(ticket, 'panel')` 换取会话并服务端注入
+        凭据（见 `/control/ecs/login` 契约；表结构见 `qz-override/db/panel_ticket.sql`）。
       operationId: panelRedirect
       parameters: []
       requestBody:
@@ -1674,12 +1764,14 @@ paths:
                   description: 面板密码
       responses:
         '302':
-          description: 重定向到 VPS 管理面板
+          description: 重定向到 VPS 管理面板（仅携带 ticket）
           headers:
             Location:
-              description: 跳转目标 URL
+              description: '跳转目标 URL：`<control/ecs/login>?ticket=<ticket>`'
               schema:
                 type: string
+        '200':
+          description: 校验失败（JSON 错误）
   /backups_add:
     post:
       tags:
@@ -2076,12 +2168,56 @@ paths:
                 code: 1
                 msg: "操作成功"
                 data: ""
+  /reset_os:
+    post:
+      tags:
+        - HostAction
+      summary: 重装 VPS 系统
+      description: |-
+        重装 VPS 系统。F5：新系统密码**只从 POST body 接收**，绝不出现在 URL
+        路径/query（防长期密码进入访问日志）。要求 apikey（`host_control`/
+        `all` 作用域）与主机所有权。
+      operationId: resetOs
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                host_id:
+                  type: integer
+                  description: VPS 的 ID
+                template_id:
+                  type: integer
+                  description: 系统模板 ID
+                password:
+                  type: string
+                  description: 新系统密码（POST body；为空则沿用原密码）
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseString'
+              example:
+                code: 1
+                msg: "已放入重装列队中"
+                data: ""
   /vnc_view:
     post:
       tags:
         - Console
       summary: 获取 VNC 访问地址
-      description: '跳转到 VNC 访问地址'
+      description: |-
+        签发短时单次 VNC ticket，返回 JSON `{ticket, consume_url}`。**不再**返回
+        302 且绝不把 vnc_password 放进重定向 URL/query。客户端打开同源
+        `consume_url`（`control/ecs/vnc?ticket=<ticket>`，见 `/control/ecs/vnc`
+        契约），由服务端在另一请求用 `TicketService::consumeTicket(ticket,
+        'vnc')` 换取 VNC 会话并注入密码。要求 apikey（`host_control`/`read`/
+        `all` 作用域）。
       operationId: vncView
       parameters: []
       requestBody:
@@ -2095,13 +2231,80 @@ paths:
                   type: integer
                   description: VPS 的 ID
       responses:
-        '302':
-          description: 重定向到 VNC 访问地址
-          headers:
-            Location:
-              description: VNC 客户端跳转 URL
+        '200':
+          description: 返回单次 ticket 与同源 consume_url
+          content:
+            application/json:
               schema:
-                type: string
+                allOf:
+                  - $ref: '#/components/schemas/ApiResponseBase'
+                  - type: object
+                    required:
+                      - data
+                    properties:
+                      data:
+                        type: object
+                        required:
+                          - ticket
+                          - consume_url
+                        properties:
+                          ticket:
+                            type: string
+                            description: 短时单次 VNC ticket
+                          consume_url:
+                            type: string
+                            description: 同源 ticket 消费端点（HTTPS/本机）
+  /control/ecs/login:
+    get:
+      tags:
+        - Console
+      summary: 消费面板 ticket 并建立面板会话
+      description: |-
+        **生产 consume 路由**（浏览器随 `/panel` 302 到达）。消费短时单次 panel
+        ticket（`TicketService::consumeTicket(ticket, 'panel')`：kind/expiry/单次/
+        绑定全部校验，`used 0→1` 原子、并发单赢家），然后服务端用宿主
+        `panel_password` 渲染**自动提交登录表单**——密码只出现在 POST body，
+        绝不进入 URL/query/日志/Referer/浏览器历史。ticket 无效/已用/过期/
+        绑定不符一律 fail-closed。不要求 apikey：ticket 即携带者凭据。
+      operationId: panelLoginConsume
+      security: []
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+            description: /panel 签发的单次 ticket
+      responses:
+        '200':
+          description: 自动提交登录表单（no-store；表单载荷含一次性面板密码）或 JSON 错误
+        '400':
+          description: 缺少/无效/已用/过期 ticket（JSON {code:0, msg}）
+  /control/ecs/vnc:
+    get:
+      tags:
+        - Console
+      summary: 消费 VNC ticket 并建立 VNC 会话
+      description: |-
+        **生产 consume 路由**（客户端打开 `/vnc_view` 返回的同源 consume_url）。
+        消费短时单次 vnc ticket（`TicketService::consumeTicket(ticket, 'vnc')`），
+        然后服务端用宿主 `vnc_password` 渲染**自动提交登录表单**——密码只出现在
+        POST body，绝不进入 URL/query/日志。ticket 无效/已用/过期/绑定不符一律
+        fail-closed。不要求 apikey：ticket 即携带者凭据。
+      operationId: vncLoginConsume
+      security: []
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+            description: /vnc_view 签发的单次 ticket
+      responses:
+        '200':
+          description: 自动提交登录表单（no-store）或 JSON 错误
+        '400':
+          description: 缺少/无效/已用/过期 ticket（JSON {code:0, msg}）
   /openhost:
     post:
       tags:
@@ -2133,7 +2336,11 @@ paths:
       tags:
         - Order
       summary: 自由选配升级
-      description: '自由选配升级'
+      description: >-
+        自由选配升级。A6：变更资源不超出宿主套餐/全局上限。P2-11：仅凭
+        `order` 作用域不能免费加配——必须携带与该主机和当前租户绑定的「已支付
+        订单」授权 `order_id`（单次消费；无授权/越权/过期/重放一律拒绝，
+        失败不改变 resources）。
       operationId: elasticUpdate
       parameters:
         - in: query
@@ -2159,7 +2366,15 @@ paths:
       tags:
         - Order
       summary: 续订 VPS 服务
-      description: '续订 VPS 服务'
+      description: |-
+        续订 VPS 服务。F2：`nextduedate` 必须是未来且不晚于
+        now + `web.cloud_max_extend_days`（默认 730 天）的合法日期，否则拒绝
+        （防止免续费无限延长）。P2-11：仅凭 `order` 作用域 + 未来时间窗不能
+        免费续期——必须携带与该主机和当前租户绑定的「已支付订单」授权
+        `order_id`（order_auth 表，支付集成在支付成功后写入）；授权被原子
+        单次消费（重放/越权/过期/并发竞争失败一律拒绝）后才会写入新
+        end_time，且消费与 end_time 变更在同一事务内（失败不改 end_time）。
+        要求 apikey（`order`/`all` 作用域）与主机所有权。
       operationId: renewHost
       parameters: []
       requestBody:
@@ -2175,7 +2390,10 @@ paths:
                 nextduedate:
                   type: string
                   format: date-time
-                  description: 下次到期时间
+                  description: 下次到期时间（必须为未来且不超过最大可续窗口）
+                order_id:
+                  type: string
+                  description: 已支付订单授权号（P2-11 必填；单次消费、绑定主机与租户）
       responses:
         '200':
           description: OK

@@ -264,10 +264,16 @@
 
   defineOptions({ name: 'ProbeDetail' })
 
-  const fetchAdminProbeDetail = async (id: number | string, params: Record<string, unknown> = {}) =>
-    (await getAdminProbeDetail(id, params)).data
-  const fetchAdminProbeSla = async (id: number | string, params: Record<string, unknown> = {}) =>
-    (await getAdminProbeSla(id, params)).data
+  const fetchAdminProbeDetail = async (
+    id: number | string,
+    params: Record<string, unknown> = {},
+    signal?: AbortSignal
+  ) => (await getAdminProbeDetail(id, params, signal)).data
+  const fetchAdminProbeSla = async (
+    id: number | string,
+    params: Record<string, unknown> = {},
+    signal?: AbortSignal
+  ) => (await getAdminProbeSla(id, params, signal)).data
   const startAdminProbeLogSession = async (id: number | string, payload: Record<string, unknown>) =>
     (await createAdminProbeLogSession(id, payload)).data
 
@@ -318,8 +324,12 @@
   )
 
   let poller: number | null = null
+  let slaPoller: number | null = null
   let logConnection: ReturnType<typeof createSseConnection> | null = null
   let requestInFlight = false
+  let inFlightProbeId: number | string | null = null
+  let detailController: AbortController | null = null
+  let slaController: AbortController | null = null
 
   watch(
     probeId,
@@ -334,7 +344,9 @@
       }
 
       await fetchData()
+      await fetchSla()
       startPolling()
+      startSlaPolling()
     },
     { immediate: true }
   )
@@ -353,13 +365,16 @@
 
   onBeforeUnmount(() => {
     stopPolling()
+    stopSlaPolling()
+    detailController?.abort()
+    slaController?.abort()
     stopLog()
   })
 
   function startPolling() {
     stopPolling()
     poller = window.setInterval(() => {
-      fetchData(true)
+      void fetchData(true)
     }, 5000)
   }
 
@@ -370,6 +385,21 @@
 
     window.clearInterval(poller)
     poller = null
+  }
+
+  /** SLA 慢速独立轮询：7 天窗口在秒级几乎不变，30s 足够，避免每 5s 全窗口重算（F3）。 */
+  function startSlaPolling() {
+    if (slaPoller) window.clearInterval(slaPoller)
+    slaPoller = window.setInterval(() => {
+      void fetchSla().catch(() => {})
+    }, 30000)
+  }
+
+  function stopSlaPolling() {
+    if (slaPoller) {
+      window.clearInterval(slaPoller)
+      slaPoller = null
+    }
   }
 
   function normalizeFields(
@@ -477,10 +507,17 @@
   }
 
   async function fetchData(silent = false, forceSnapshot = false) {
-    if (!probeId.value || requestInFlight) {
-      return
+    const targetId = probeId.value
+    if (!targetId) return
+    // 同一探针不重叠轮询；切换探针时中止旧请求，避免 requestInFlight 吞掉
+    // 新探针的首次拉取并继续展示旧探针数据（F2）。
+    if (requestInFlight && inFlightProbeId === targetId) return
+    if (inFlightProbeId && inFlightProbeId !== targetId) {
+      detailController?.abort()
     }
-
+    detailController = new AbortController()
+    const controller = detailController
+    inFlightProbeId = targetId
     requestInFlight = true
 
     if (!silent) {
@@ -492,13 +529,15 @@
     }
 
     try {
-      const [detailPayload, slaPayload] = await Promise.all([
-        fetchAdminProbeDetail(probeId.value, { refresh: forceSnapshot ? 1 : 0 }),
-        fetchAdminProbeSla(probeId.value, { days: 7 })
-      ])
+      const detailPayload = await fetchAdminProbeDetail(
+        targetId,
+        { refresh: forceSnapshot ? 1 : 0 },
+        controller.signal
+      )
+      // 切换探针后旧响应不得写回状态（F2）。
+      if (controller.signal.aborted || probeId.value !== targetId) return
 
       probe.value = detailPayload.probe ? normalizeProbe(detailPayload.probe) : null
-      sla.value = slaPayload.sla ? normalizeSla(slaPayload.sla) : null
       lastRefreshAt.value = new Date().toISOString()
       refreshError.value = ''
 
@@ -506,6 +545,7 @@
         ElMessage.warning('探针离线，手动刷新无法触发新快照')
       }
     } catch (error: any) {
+      if (controller.signal.aborted || probeId.value !== targetId) return
       refreshError.value = String(error?.message || '请求失败')
       if (error?.code === 404 || error?.response?.status === 404) {
         ElMessage.error('探针不存在或已被删除')
@@ -514,9 +554,28 @@
         ElMessage.error(`刷新失败: ${refreshError.value}`)
       }
     } finally {
-      loading.value = false
-      refreshing.value = false
-      requestInFlight = false
+      if (probeId.value === targetId) {
+        loading.value = false
+        refreshing.value = false
+        requestInFlight = false
+        inFlightProbeId = null
+      }
+    }
+  }
+
+  /** SLA 独立拉取：慢速轮询用，失败不打断快照轮询（F3）。 */
+  async function fetchSla() {
+    const targetId = probeId.value
+    if (!targetId) return
+    slaController?.abort()
+    slaController = new AbortController()
+    const controller = slaController
+    try {
+      const slaPayload = await fetchAdminProbeSla(targetId, { days: 7 }, controller.signal)
+      if (controller.signal.aborted || probeId.value !== targetId) return
+      sla.value = slaPayload.sla ? normalizeSla(slaPayload.sla) : null
+    } catch {
+      // SLA 失败静默，下次慢轮询再试；不污染 refreshError（快照轮询拥有它）。
     }
   }
 

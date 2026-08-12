@@ -3286,6 +3286,158 @@ func (x *DeleteFirewallRuleRequest) GetRuleId() int64 {
 	return 0
 }
 
+type UpsertPackageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LineId        int64                  `protobuf:"varint,1,opt,name=line_id,json=lineId,proto3" json:"line_id,omitempty"`
+	PackageName   string                 `protobuf:"bytes,2,opt,name=package_name,json=packageName,proto3" json:"package_name,omitempty"`
+	Cpu           int32                  `protobuf:"varint,3,opt,name=cpu,proto3" json:"cpu,omitempty"`
+	MemoryGb      int32                  `protobuf:"varint,4,opt,name=memory_gb,json=memoryGb,proto3" json:"memory_gb,omitempty"`
+	DiskGb        int32                  `protobuf:"varint,5,opt,name=disk_gb,json=diskGb,proto3" json:"disk_gb,omitempty"`
+	BandwidthMbps int32                  `protobuf:"varint,6,opt,name=bandwidth_mbps,json=bandwidthMbps,proto3" json:"bandwidth_mbps,omitempty"`
+	TrafficGb     int32                  `protobuf:"varint,7,opt,name=traffic_gb,json=trafficGb,proto3" json:"traffic_gb,omitempty"`
+	GpuMemGb      int32                  `protobuf:"varint,8,opt,name=gpu_mem_gb,json=gpuMemGb,proto3" json:"gpu_mem_gb,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpsertPackageRequest) Reset() {
+	*x = UpsertPackageRequest{}
+	mi := &file_plugin_v1_automation_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertPackageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertPackageRequest) ProtoMessage() {}
+
+func (x *UpsertPackageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_automation_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertPackageRequest.ProtoReflect.Descriptor instead.
+func (*UpsertPackageRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *UpsertPackageRequest) GetLineId() int64 {
+	if x != nil {
+		return x.LineId
+	}
+	return 0
+}
+
+func (x *UpsertPackageRequest) GetPackageName() string {
+	if x != nil {
+		return x.PackageName
+	}
+	return ""
+}
+
+func (x *UpsertPackageRequest) GetCpu() int32 {
+	if x != nil {
+		return x.Cpu
+	}
+	return 0
+}
+
+func (x *UpsertPackageRequest) GetMemoryGb() int32 {
+	if x != nil {
+		return x.MemoryGb
+	}
+	return 0
+}
+
+func (x *UpsertPackageRequest) GetDiskGb() int32 {
+	if x != nil {
+		return x.DiskGb
+	}
+	return 0
+}
+
+func (x *UpsertPackageRequest) GetBandwidthMbps() int32 {
+	if x != nil {
+		return x.BandwidthMbps
+	}
+	return 0
+}
+
+func (x *UpsertPackageRequest) GetTrafficGb() int32 {
+	if x != nil {
+		return x.TrafficGb
+	}
+	return 0
+}
+
+func (x *UpsertPackageRequest) GetGpuMemGb() int32 {
+	if x != nil {
+		return x.GpuMemGb
+	}
+	return 0
+}
+
+type DeletePackageRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	LineId        int64                  `protobuf:"varint,1,opt,name=line_id,json=lineId,proto3" json:"line_id,omitempty"`
+	PackageName   string                 `protobuf:"bytes,2,opt,name=package_name,json=packageName,proto3" json:"package_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeletePackageRequest) Reset() {
+	*x = DeletePackageRequest{}
+	mi := &file_plugin_v1_automation_proto_msgTypes[60]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeletePackageRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeletePackageRequest) ProtoMessage() {}
+
+func (x *DeletePackageRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_plugin_v1_automation_proto_msgTypes[60]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeletePackageRequest.ProtoReflect.Descriptor instead.
+func (*DeletePackageRequest) Descriptor() ([]byte, []int) {
+	return file_plugin_v1_automation_proto_rawDescGZIP(), []int{60}
+}
+
+func (x *DeletePackageRequest) GetLineId() int64 {
+	if x != nil {
+		return x.LineId
+	}
+	return 0
+}
+
+func (x *DeletePackageRequest) GetPackageName() string {
+	if x != nil {
+		return x.PackageName
+	}
+	return ""
+}
+
 var File_plugin_v1_automation_proto protoreflect.FileDescriptor
 
 const file_plugin_v1_automation_proto_rawDesc = "" +
@@ -3537,7 +3689,21 @@ const file_plugin_v1_automation_proto_rawDesc = "" +
 	"\x19DeleteFirewallRuleRequest\x12\x1f\n" +
 	"\vinstance_id\x18\x01 \x01(\x03R\n" +
 	"instanceId\x12\x17\n" +
-	"\arule_id\x18\x02 \x01(\x03R\x06ruleId2\x9b\x15\n" +
+	"\arule_id\x18\x02 \x01(\x03R\x06ruleId\"\xfe\x01\n" +
+	"\x14UpsertPackageRequest\x12\x17\n" +
+	"\aline_id\x18\x01 \x01(\x03R\x06lineId\x12!\n" +
+	"\fpackage_name\x18\x02 \x01(\tR\vpackageName\x12\x10\n" +
+	"\x03cpu\x18\x03 \x01(\x05R\x03cpu\x12\x1b\n" +
+	"\tmemory_gb\x18\x04 \x01(\x05R\bmemoryGb\x12\x17\n" +
+	"\adisk_gb\x18\x05 \x01(\x05R\x06diskGb\x12%\n" +
+	"\x0ebandwidth_mbps\x18\x06 \x01(\x05R\rbandwidthMbps\x12\x1d\n" +
+	"\n" +
+	"traffic_gb\x18\a \x01(\x05R\ttrafficGb\x12\x1c\n" +
+	"\n" +
+	"gpu_mem_gb\x18\b \x01(\x05R\bgpuMemGb\"R\n" +
+	"\x14DeletePackageRequest\x12\x17\n" +
+	"\aline_id\x18\x01 \x01(\x03R\x06lineId\x12!\n" +
+	"\fpackage_name\x18\x02 \x01(\tR\vpackageName2\xb7\x16\n" +
 	"\x11AutomationService\x12;\n" +
 	"\tListAreas\x12\x10.plugin.v1.Empty\x1a\x1c.plugin.v1.ListAreasResponse\x12;\n" +
 	"\tListLines\x12\x10.plugin.v1.Empty\x1a\x1c.plugin.v1.ListLinesResponse\x12O\n" +
@@ -3575,7 +3741,9 @@ const file_plugin_v1_automation_proto_rawDesc = "" +
 	"\x0fRestoreSnapshot\x12!.plugin.v1.RestoreSnapshotRequest\x1a\x1a.plugin.v1.OperationResult\x12^\n" +
 	"\x11ListFirewallRules\x12#.plugin.v1.ListFirewallRulesRequest\x1a$.plugin.v1.ListFirewallRulesResponse\x12P\n" +
 	"\x0fAddFirewallRule\x12!.plugin.v1.AddFirewallRuleRequest\x1a\x1a.plugin.v1.OperationResult\x12V\n" +
-	"\x12DeleteFirewallRule\x12$.plugin.v1.DeleteFirewallRuleRequest\x1a\x1a.plugin.v1.OperationResultB Z\x1exiaoheiplay/plugin/v1;pluginv1b\x06proto3"
+	"\x12DeleteFirewallRule\x12$.plugin.v1.DeleteFirewallRuleRequest\x1a\x1a.plugin.v1.OperationResult\x12L\n" +
+	"\rUpsertPackage\x12\x1f.plugin.v1.UpsertPackageRequest\x1a\x1a.plugin.v1.OperationResult\x12L\n" +
+	"\rDeletePackage\x12\x1f.plugin.v1.DeletePackageRequest\x1a\x1a.plugin.v1.OperationResultB Z\x1exiaoheiplay/plugin/v1;pluginv1b\x06proto3"
 
 var (
 	file_plugin_v1_automation_proto_rawDescOnce sync.Once
@@ -3589,7 +3757,7 @@ func file_plugin_v1_automation_proto_rawDescGZIP() []byte {
 	return file_plugin_v1_automation_proto_rawDescData
 }
 
-var file_plugin_v1_automation_proto_msgTypes = make([]protoimpl.MessageInfo, 59)
+var file_plugin_v1_automation_proto_msgTypes = make([]protoimpl.MessageInfo, 61)
 var file_plugin_v1_automation_proto_goTypes = []any{
 	(*OperationResult)(nil),             // 0: plugin.v1.OperationResult
 	(*AutomationArea)(nil),              // 1: plugin.v1.AutomationArea
@@ -3650,7 +3818,9 @@ var file_plugin_v1_automation_proto_goTypes = []any{
 	(*ListFirewallRulesResponse)(nil),   // 56: plugin.v1.ListFirewallRulesResponse
 	(*AddFirewallRuleRequest)(nil),      // 57: plugin.v1.AddFirewallRuleRequest
 	(*DeleteFirewallRuleRequest)(nil),   // 58: plugin.v1.DeleteFirewallRuleRequest
-	(*Empty)(nil),                       // 59: plugin.v1.Empty
+	(*UpsertPackageRequest)(nil),        // 59: plugin.v1.UpsertPackageRequest
+	(*DeletePackageRequest)(nil),        // 60: plugin.v1.DeletePackageRequest
+	(*Empty)(nil),                       // 61: plugin.v1.Empty
 }
 var file_plugin_v1_automation_proto_depIdxs = []int32{
 	1,  // 0: plugin.v1.ListAreasResponse.items:type_name -> plugin.v1.AutomationArea
@@ -3663,8 +3833,8 @@ var file_plugin_v1_automation_proto_depIdxs = []int32{
 	42, // 7: plugin.v1.ListBackupsResponse.items:type_name -> plugin.v1.AutomationBackup
 	48, // 8: plugin.v1.ListSnapshotsResponse.items:type_name -> plugin.v1.AutomationSnapshot
 	54, // 9: plugin.v1.ListFirewallRulesResponse.items:type_name -> plugin.v1.AutomationFirewallRule
-	59, // 10: plugin.v1.AutomationService.ListAreas:input_type -> plugin.v1.Empty
-	59, // 11: plugin.v1.AutomationService.ListLines:input_type -> plugin.v1.Empty
+	61, // 10: plugin.v1.AutomationService.ListAreas:input_type -> plugin.v1.Empty
+	61, // 11: plugin.v1.AutomationService.ListLines:input_type -> plugin.v1.Empty
 	8,  // 12: plugin.v1.AutomationService.ListPackages:input_type -> plugin.v1.ListPackagesRequest
 	10, // 13: plugin.v1.AutomationService.ListImages:input_type -> plugin.v1.ListImagesRequest
 	12, // 14: plugin.v1.AutomationService.CreateInstance:input_type -> plugin.v1.CreateInstanceRequest
@@ -3698,43 +3868,47 @@ var file_plugin_v1_automation_proto_depIdxs = []int32{
 	55, // 42: plugin.v1.AutomationService.ListFirewallRules:input_type -> plugin.v1.ListFirewallRulesRequest
 	57, // 43: plugin.v1.AutomationService.AddFirewallRule:input_type -> plugin.v1.AddFirewallRuleRequest
 	58, // 44: plugin.v1.AutomationService.DeleteFirewallRule:input_type -> plugin.v1.DeleteFirewallRuleRequest
-	6,  // 45: plugin.v1.AutomationService.ListAreas:output_type -> plugin.v1.ListAreasResponse
-	7,  // 46: plugin.v1.AutomationService.ListLines:output_type -> plugin.v1.ListLinesResponse
-	9,  // 47: plugin.v1.AutomationService.ListPackages:output_type -> plugin.v1.ListPackagesResponse
-	11, // 48: plugin.v1.AutomationService.ListImages:output_type -> plugin.v1.ListImagesResponse
-	13, // 49: plugin.v1.AutomationService.CreateInstance:output_type -> plugin.v1.CreateInstanceResponse
-	15, // 50: plugin.v1.AutomationService.GetInstance:output_type -> plugin.v1.GetInstanceResponse
-	18, // 51: plugin.v1.AutomationService.ListInstancesSimple:output_type -> plugin.v1.ListInstancesSimpleResponse
-	0,  // 52: plugin.v1.AutomationService.Start:output_type -> plugin.v1.OperationResult
-	0,  // 53: plugin.v1.AutomationService.Shutdown:output_type -> plugin.v1.OperationResult
-	0,  // 54: plugin.v1.AutomationService.Reboot:output_type -> plugin.v1.OperationResult
-	0,  // 55: plugin.v1.AutomationService.Rebuild:output_type -> plugin.v1.OperationResult
-	0,  // 56: plugin.v1.AutomationService.ResetPassword:output_type -> plugin.v1.OperationResult
-	0,  // 57: plugin.v1.AutomationService.ElasticUpdate:output_type -> plugin.v1.OperationResult
-	0,  // 58: plugin.v1.AutomationService.Lock:output_type -> plugin.v1.OperationResult
-	0,  // 59: plugin.v1.AutomationService.Unlock:output_type -> plugin.v1.OperationResult
-	0,  // 60: plugin.v1.AutomationService.Renew:output_type -> plugin.v1.OperationResult
-	0,  // 61: plugin.v1.AutomationService.Destroy:output_type -> plugin.v1.OperationResult
-	30, // 62: plugin.v1.AutomationService.GetPanelURL:output_type -> plugin.v1.GetPanelURLResponse
-	32, // 63: plugin.v1.AutomationService.GetVNCURL:output_type -> plugin.v1.GetVNCURLResponse
-	34, // 64: plugin.v1.AutomationService.GetMonitor:output_type -> plugin.v1.GetMonitorResponse
-	37, // 65: plugin.v1.AutomationService.ListPortMappings:output_type -> plugin.v1.ListPortMappingsResponse
-	0,  // 66: plugin.v1.AutomationService.AddPortMapping:output_type -> plugin.v1.OperationResult
-	0,  // 67: plugin.v1.AutomationService.DeletePortMapping:output_type -> plugin.v1.OperationResult
-	41, // 68: plugin.v1.AutomationService.FindPortCandidates:output_type -> plugin.v1.FindPortCandidatesResponse
-	44, // 69: plugin.v1.AutomationService.ListBackups:output_type -> plugin.v1.ListBackupsResponse
-	0,  // 70: plugin.v1.AutomationService.CreateBackup:output_type -> plugin.v1.OperationResult
-	0,  // 71: plugin.v1.AutomationService.DeleteBackup:output_type -> plugin.v1.OperationResult
-	0,  // 72: plugin.v1.AutomationService.RestoreBackup:output_type -> plugin.v1.OperationResult
-	50, // 73: plugin.v1.AutomationService.ListSnapshots:output_type -> plugin.v1.ListSnapshotsResponse
-	0,  // 74: plugin.v1.AutomationService.CreateSnapshot:output_type -> plugin.v1.OperationResult
-	0,  // 75: plugin.v1.AutomationService.DeleteSnapshot:output_type -> plugin.v1.OperationResult
-	0,  // 76: plugin.v1.AutomationService.RestoreSnapshot:output_type -> plugin.v1.OperationResult
-	56, // 77: plugin.v1.AutomationService.ListFirewallRules:output_type -> plugin.v1.ListFirewallRulesResponse
-	0,  // 78: plugin.v1.AutomationService.AddFirewallRule:output_type -> plugin.v1.OperationResult
-	0,  // 79: plugin.v1.AutomationService.DeleteFirewallRule:output_type -> plugin.v1.OperationResult
-	45, // [45:80] is the sub-list for method output_type
-	10, // [10:45] is the sub-list for method input_type
+	59, // 45: plugin.v1.AutomationService.UpsertPackage:input_type -> plugin.v1.UpsertPackageRequest
+	60, // 46: plugin.v1.AutomationService.DeletePackage:input_type -> plugin.v1.DeletePackageRequest
+	6,  // 47: plugin.v1.AutomationService.ListAreas:output_type
+	7,  // 48: plugin.v1.AutomationService.ListLines:output_type
+	9,  // 49: plugin.v1.AutomationService.ListPackages:output_type
+	11, // 50: plugin.v1.AutomationService.ListImages:output_type
+	13, // 51: plugin.v1.AutomationService.CreateInstance:output_type
+	15, // 52: plugin.v1.AutomationService.GetInstance:output_type
+	18, // 53: plugin.v1.AutomationService.ListInstancesSimple:output_type
+	0,  // 54: plugin.v1.AutomationService.Start:output_type
+	0,  // 55: plugin.v1.AutomationService.Shutdown:output_type
+	0,  // 56: plugin.v1.AutomationService.Reboot:output_type
+	0,  // 57: plugin.v1.AutomationService.Rebuild:output_type
+	0,  // 58: plugin.v1.AutomationService.ResetPassword:output_type
+	0,  // 59: plugin.v1.AutomationService.ElasticUpdate:output_type
+	0,  // 60: plugin.v1.AutomationService.Lock:output_type
+	0,  // 61: plugin.v1.AutomationService.Unlock:output_type
+	0,  // 62: plugin.v1.AutomationService.Renew:output_type
+	0,  // 63: plugin.v1.AutomationService.Destroy:output_type
+	30, // 64: plugin.v1.AutomationService.GetPanelURL:output_type
+	32, // 65: plugin.v1.AutomationService.GetVNCURL:output_type
+	34, // 66: plugin.v1.AutomationService.GetMonitor:output_type
+	37, // 67: plugin.v1.AutomationService.ListPortMappings:output_type
+	0,  // 68: plugin.v1.AutomationService.AddPortMapping:output_type
+	0,  // 69: plugin.v1.AutomationService.DeletePortMapping:output_type
+	41, // 70: plugin.v1.AutomationService.FindPortCandidates:output_type
+	44, // 71: plugin.v1.AutomationService.ListBackups:output_type
+	0,  // 72: plugin.v1.AutomationService.CreateBackup:output_type
+	0,  // 73: plugin.v1.AutomationService.DeleteBackup:output_type
+	0,  // 74: plugin.v1.AutomationService.RestoreBackup:output_type
+	50, // 75: plugin.v1.AutomationService.ListSnapshots:output_type
+	0,  // 76: plugin.v1.AutomationService.CreateSnapshot:output_type
+	0,  // 77: plugin.v1.AutomationService.DeleteSnapshot:output_type
+	0,  // 78: plugin.v1.AutomationService.RestoreSnapshot:output_type
+	56, // 79: plugin.v1.AutomationService.ListFirewallRules:output_type
+	0,  // 80: plugin.v1.AutomationService.AddFirewallRule:output_type
+	0,  // 81: plugin.v1.AutomationService.DeleteFirewallRule:output_type
+	0,  // 82: plugin.v1.AutomationService.UpsertPackage:output_type -> plugin.v1.OperationResult
+	0,  // 83: plugin.v1.AutomationService.DeletePackage:output_type -> plugin.v1.OperationResult
+	47, // [47:84] is the sub-list for method output_type
+	10, // [10:47] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name
 	10, // [10:10] is the sub-list for extension extendee
 	0,  // [0:10] is the sub-list for field type_name
@@ -3754,7 +3928,7 @@ func file_plugin_v1_automation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_plugin_v1_automation_proto_rawDesc), len(file_plugin_v1_automation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   59,
+			NumMessages:   61,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

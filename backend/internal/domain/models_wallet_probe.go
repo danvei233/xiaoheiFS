@@ -10,14 +10,15 @@ type Wallet struct {
 }
 
 type WalletTransaction struct {
-	ID        int64
-	UserID    int64
-	Amount    int64
-	Type      string
-	RefType   string
-	RefID     int64
-	Note      string
-	CreatedAt time.Time
+	ID             int64
+	UserID         int64
+	Amount         int64
+	Type           string
+	RefType        string
+	RefID          int64
+	Note           string
+	IdempotencyKey string `json:"-"`
+	CreatedAt      time.Time
 }
 
 type WalletOrder struct {
@@ -35,6 +36,16 @@ type WalletOrder struct {
 	UpdatedAt    time.Time
 }
 
+// WalletOrderSummary contains aggregate values for the user's wallet
+// dashboard. It is computed by the repository so the API never loads an
+// unbounded order history into memory.
+type WalletOrderSummary struct {
+	MonthRecharge int64
+	MonthWithdraw int64
+	Pending       int64
+	Total         int64
+}
+
 type ProbeStatus string
 
 const (
@@ -46,7 +57,7 @@ type ProbeNode struct {
 	ID               int64
 	Name             string
 	AgentID          string
-	SecretHash       string
+	SecretHash       string `json:"-"`
 	Status           ProbeStatus
 	OSType           string
 	TagsJSON         string
@@ -60,7 +71,7 @@ type ProbeNode struct {
 type ProbeEnrollToken struct {
 	ID        int64
 	ProbeID   int64
-	TokenHash string
+	TokenHash string `json:"-"`
 	ExpiresAt time.Time
 	UsedAt    *time.Time
 	CreatedAt time.Time

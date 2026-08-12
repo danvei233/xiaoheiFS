@@ -148,6 +148,7 @@
   import { useTable } from '@/hooks/core/useTable'
   import { useAuthStore } from '@/stores/auth'
   import { INPUT_LIMITS } from '@/constants/inputLimits'
+  import { toCsvLine } from '@/utils/csv'
   import UserDetailDrawer from './modules/user-detail-drawer.vue'
   import UserDialog from './modules/user-dialog.vue'
   import UserSearch from './modules/user-search.vue'
@@ -462,34 +463,27 @@
   }
 
   async function fetchUserTable(
-    params: UserTableParams
+    params: UserTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<UserTableRow>> {
-    const firstPayload = await fetchAdminUsers({ limit: 500, offset: 0 })
-    const total = Number(firstPayload.total ?? firstPayload.items?.length ?? 0)
-    const allItems = [...(firstPayload.items || [])]
-    for (let offset = allItems.length; offset < total; offset += 500) {
-      const payload = await fetchAdminUsers({ limit: 500, offset })
-      allItems.push(...(payload.items || []))
-      if (!payload.items?.length) break
-    }
-    const keyword = params.keyword?.trim().toLocaleLowerCase() || ''
-    const records = attachTierNames(
-      allItems.map(normalizeUser).filter((item) => item.role !== 'admin')
-    ).filter((item) => {
-      const matchesStatus = !params.status || item.status === params.status
-      const matchesKeyword =
-        !keyword ||
-        [item.username, item.email, item.qq, String(item.id || '')].some((value) =>
-          value.toLocaleLowerCase().includes(keyword)
-        )
-      return matchesStatus && matchesKeyword
-    })
-    const start = (params.current - 1) * params.size
+    // web_api_contract F5：keyword / status 服务端过滤（AdminUsers 支持
+    // keyword/status），不再全量 500 条/页拉取后客户端过滤（用户量大时每次
+    // 搜索 = ~100 个串行请求）。后端已按 role<>admin 排除管理员并返回过滤后 total。
+    const payload = await fetchAdminUsers(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size,
+        keyword: params.keyword?.trim() || undefined,
+        status: params.status || undefined
+      },
+      signal
+    )
+    const rows = (payload.items || []).map((item) => normalizeUser(item))
     return {
-      records: records.slice(start, start + params.size),
+      records: attachTierNames(rows),
       current: params.current,
       size: params.size,
-      total: records.length
+      total: Number(payload.total ?? rows.length)
     }
   }
 
@@ -756,9 +750,10 @@
       return
     }
 
-    auth.token = token
+    // H4：标记为 impersonated，刷新后 loginToken 不会被误认成真实登录，
+    // 游客购物车不会被并进被模拟用户的服务端账号。
+    auth.applyImpersonatedToken(token)
     auth.profile = payload.user || null
-    localStorage.setItem('user_token', token)
     ElMessage.success('已切换到该用户')
     await router.push({ name: 'ConsoleDashboard' })
   }
@@ -817,15 +812,8 @@
     }
   }
 
-  function escapeCsvCell(value: string | number | null | undefined) {
-    const text = String(value ?? '')
-    return `"${text.replace(/"/g, '""')}"`
-  }
-
   function exportCsv() {
-    const rows = tableData.value.map((item) =>
-      [escapeCsvCell(item.id), escapeCsvCell(item.email), escapeCsvCell(item.status)].join(',')
-    )
+    const rows = tableData.value.map((item) => toCsvLine([item.id, item.email, item.status]))
     const content = ['id,email,status', ...rows].join('\n')
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)

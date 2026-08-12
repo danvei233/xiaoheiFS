@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm/clause"
@@ -84,6 +85,11 @@ func (r *GormRepo) MarkAllRead(ctx context.Context, userID int64) error {
 func (r *GormRepo) UpsertPushToken(ctx context.Context, token *domain.PushToken) error {
 	if token == nil {
 		return nil
+	}
+	if strings.TrimSpace(token.Token) == "" {
+		// Empty tokens would collide on the (user_id, token) unique index and
+		// let different devices overwrite each other.
+		return appshared.ErrInvalidInput
 	}
 	if token.CreatedAt.IsZero() {
 		token.CreatedAt = time.Now()

@@ -13,6 +13,7 @@ import (
 
 	"fmt"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/pkg/pluginsign"
 )
 
 type Checksums struct {
@@ -20,6 +21,18 @@ type Checksums struct {
 	Files map[string]string `json:"files"`
 }
 
+// VerifySignature validates the checksums.json / signature.sig pair of an
+// on-disk plugin directory. The signer and this verifier share one canonical
+// manifest (pluginsign.CanonicalManifest), so a signature covers every regular
+// file in the package except the two bookkeeping files themselves. That closes
+// the gap where a plugin could add or replace a schema, template, script or
+// shared library that was not part of the signed payload.
+//
+// Returns:
+//   - PluginSignatureOfficial  when a signature verifies against an official key
+//   - PluginSignatureUnsigned  when no checksums.json (or no signature.sig) exists
+//   - PluginSignatureUntrusted when checksums are present but incomplete,
+//     mismatched, or not signed by an official key
 func VerifySignature(pluginDir string, officialKeys []ed25519.PublicKey) (domain.PluginSignatureStatus, error) {
 	checksumsPath := filepath.Join(pluginDir, "checksums.json")
 	checksumsBytes, err := os.ReadFile(checksumsPath)
@@ -43,20 +56,20 @@ func VerifySignature(pluginDir string, officialKeys []ed25519.PublicKey) (domain
 	if len(cs.Files) == 0 {
 		return domain.PluginSignatureUntrusted, fmt.Errorf("empty checksums")
 	}
-	// checksums.json must cover all binaries under bin/** (multi-platform packages).
-	if err := ensureBinFilesCovered(pluginDir, cs.Files); err != nil {
+
+	canonical, err := pluginsign.CanonicalManifest(pluginDir)
+	if err != nil {
 		return domain.PluginSignatureUntrusted, err
 	}
+	canonicalSums := pluginsign.FilesMap(canonical)
+
+	// 1) Every listed checksum must correspond to a real, regular file and must
+	//    match its content. A checksum that resolves to a non-existent file or
+	//    collides with another entry through case/path normalization is rejected.
 	for rel, wantHex := range cs.Files {
-		rel = filepath.ToSlash(strings.TrimSpace(rel))
-		if rel == "" {
-			return domain.PluginSignatureUntrusted, fmt.Errorf("invalid checksums path")
-		}
-		if strings.HasPrefix(rel, "/") || strings.Contains(rel, "..") {
-			return domain.PluginSignatureUntrusted, fmt.Errorf("invalid checksums path")
-		}
-		if strings.Contains(rel, ":") {
-			return domain.PluginSignatureUntrusted, fmt.Errorf("invalid checksums path")
+		rel = strings.TrimSpace(rel)
+		if err := validateChecksumPath(rel); err != nil {
+			return domain.PluginSignatureUntrusted, err
 		}
 		wantHex = strings.ToLower(strings.TrimSpace(wantHex))
 		if len(wantHex) != 64 {
@@ -65,13 +78,19 @@ func VerifySignature(pluginDir string, officialKeys []ed25519.PublicKey) (domain
 		if _, err := hex.DecodeString(wantHex); err != nil {
 			return domain.PluginSignatureUntrusted, fmt.Errorf("invalid checksum")
 		}
-		full := filepath.Join(pluginDir, filepath.FromSlash(rel))
-		sum, err := sha256File(full)
-		if err != nil {
-			return domain.PluginSignatureUntrusted, err
+		sum, ok := canonicalSums[rel]
+		if !ok {
+			return domain.PluginSignatureUntrusted, fmt.Errorf("checksums reference a non-existent file: %s", rel)
 		}
 		if wantHex != sum {
-			return domain.PluginSignatureUntrusted, fmt.Errorf("checksum mismatch")
+			return domain.PluginSignatureUntrusted, fmt.Errorf("checksum mismatch: %s", rel)
+		}
+	}
+
+	// 2) Every regular file in the package must be covered by the checksums.
+	for rel := range canonicalSums {
+		if _, ok := cs.Files[rel]; !ok {
+			return domain.PluginSignatureUntrusted, fmt.Errorf("checksums missing for file: %s", rel)
 		}
 	}
 
@@ -83,9 +102,19 @@ func VerifySignature(pluginDir string, officialKeys []ed25519.PublicKey) (domain
 		}
 		return domain.PluginSignatureUntrusted, err
 	}
-	sigBytes = bytesTrimSpace(sigBytes)
-	if len(sigBytes) != ed25519.SignatureSize {
-		decoded, derr := base64.StdEncoding.DecodeString(string(sigBytes))
+	// signature.sig is stored as raw ed25519 bytes by the official signer, but
+	// some tooling may write base64. Accept either. Raw signatures must NOT be
+	// whitespace-trimmed: a valid signature can legitimately start or end with
+	// an ASCII whitespace octet, and trimming would corrupt it.
+	trimmed := bytesTrimSpace(sigBytes)
+	switch {
+	case len(sigBytes) == ed25519.SignatureSize:
+		// raw signature, use as-is
+	case len(trimmed) == ed25519.SignatureSize:
+		// raw signature with surrounding whitespace (e.g. a trailing newline)
+		sigBytes = trimmed
+	default:
+		decoded, derr := base64.StdEncoding.DecodeString(string(trimmed))
 		if derr != nil || len(decoded) != ed25519.SignatureSize {
 			return domain.PluginSignatureUntrusted, fmt.Errorf("invalid signature")
 		}
@@ -102,32 +131,17 @@ func VerifySignature(pluginDir string, officialKeys []ed25519.PublicKey) (domain
 	return domain.PluginSignatureUntrusted, nil
 }
 
-func ensureBinFilesCovered(pluginDir string, files map[string]string) error {
-	binDir := filepath.Join(pluginDir, "bin")
-	st, err := os.Stat(binDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+// validateChecksumPath rejects checksum keys that could alias a real file or
+// escape the plugin directory once joined onto it: separators, traversal
+// components, drive-colon prefixes and backslash separators are all refused.
+func validateChecksumPath(rel string) error {
+	if rel == "" {
+		return fmt.Errorf("invalid checksums path")
 	}
-	if !st.IsDir() {
-		return fmt.Errorf("bin is not a directory")
+	if strings.HasPrefix(rel, "/") || strings.Contains(rel, "..") || strings.Contains(rel, ":") || strings.Contains(rel, `\`) {
+		return fmt.Errorf("invalid checksums path")
 	}
-	return filepath.WalkDir(binDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		rel, _ := filepath.Rel(pluginDir, path)
-		rel = filepath.ToSlash(rel)
-		if _, ok := files[rel]; !ok {
-			return fmt.Errorf("%s", "checksums missing for bin file: "+rel)
-		}
-		return nil
-	})
+	return nil
 }
 
 func sha256File(path string) (string, error) {

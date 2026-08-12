@@ -29,6 +29,11 @@ type userRow struct {
 	CreatedAt            time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt            time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
 	PasswordChangedAt    *time.Time `gorm:"column:password_changed_at"`
+	// PasswordVersion is a monotonic counter incremented on every password
+	// change; JWT validation compares the token's version against this so a
+	// password change revokes all previously issued tokens without relying on
+	// timestamp precision.
+	PasswordVersion int64 `gorm:"column:password_version;not null;default:0"`
 }
 
 func (userRow) TableName() string { return "users" }
@@ -195,28 +200,48 @@ type orderRow struct {
 func (orderRow) TableName() string { return "orders" }
 
 type orderItemRow struct {
-	ID                   int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	OrderID              int64     `gorm:"column:order_id;not null;index"`
-	PackageID            int64     `gorm:"column:package_id;not null;default:0"`
-	SystemID             int64     `gorm:"column:system_id;not null;default:0"`
-	SpecJSON             string    `gorm:"column:spec_json;not null"`
-	Qty                  int       `gorm:"column:qty;not null;default:1"`
-	Amount               int64     `gorm:"column:amount;not null"`
-	Status               string    `gorm:"column:status;not null"`
-	GoodsTypeID          int64     `gorm:"column:goods_type_id;not null;default:0;index"`
-	AutomationInstanceID string    `gorm:"column:automation_instance_id"`
-	Action               string    `gorm:"column:action;not null;default:create"`
-	DurationMonths       int       `gorm:"column:duration_months;not null;default:1"`
-	CreatedAt            time.Time `gorm:"column:created_at;not null;autoCreateTime"`
-	UpdatedAt            time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
+	ID                   int64  `gorm:"primaryKey;autoIncrement;column:id"`
+	OrderID              int64  `gorm:"column:order_id;not null;index"`
+	PackageID            int64  `gorm:"column:package_id;not null;default:0"`
+	SystemID             int64  `gorm:"column:system_id;not null;default:0"`
+	SpecJSON             string `gorm:"column:spec_json;not null"`
+	Qty                  int    `gorm:"column:qty;not null;default:1"`
+	Amount               int64  `gorm:"column:amount;not null"`
+	Status               string `gorm:"column:status;not null"`
+	GoodsTypeID          int64  `gorm:"column:goods_type_id;not null;default:0;index"`
+	AutomationInstanceID string `gorm:"column:automation_instance_id"`
+	// VPSID is the normalized, indexable link to the VPS an exclusive lifecycle
+	// operation (renew/emergency_renew/resize/refund) targets, mirrored from
+	// spec_json.vps_id so exclusivity checks never depend on JSON scanning or a
+	// row limit.
+	VPSID          int64     `gorm:"column:vps_id;not null;default:0;index"`
+	Action         string    `gorm:"column:action;not null;default:create"`
+	DurationMonths int       `gorm:"column:duration_months;not null;default:1"`
+	CreatedAt      time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt      time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
 
 func (orderItemRow) TableName() string { return "order_items" }
 
+// vpsLifecycleLockRow is the explicit operation reservation that guarantees at
+// most one exclusive lifecycle operation per VPS. The unique index on vps_id is
+// the CAS: acquiring a lock atomically fails when another order already holds
+// it. Locks are deleted when the owning order reaches a terminal state.
+type vpsLifecycleLockRow struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	VPSID     int64     `gorm:"column:vps_id;not null;uniqueIndex:idx_vps_lifecycle_locks_vps"`
+	OrderID   int64     `gorm:"column:order_id;not null;default:0;index"`
+	Action    string    `gorm:"size:32;column:action;not null"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
+}
+
+func (vpsLifecycleLockRow) TableName() string { return "vps_lifecycle_locks" }
+
 type vpsInstanceRow struct {
 	ID                   int64      `gorm:"primaryKey;autoIncrement;column:id"`
 	UserID               int64      `gorm:"column:user_id;not null;index"`
-	OrderItemID          int64      `gorm:"column:order_item_id;not null;index"`
+	OrderItemID          *int64     `gorm:"column:order_item_id;index"`
 	AutomationInstanceID string     `gorm:"column:automation_instance_id;not null"`
 	GoodsTypeID          int64      `gorm:"column:goods_type_id;not null;default:0;index"`
 	Name                 string     `gorm:"size:128;column:name;not null"`
@@ -289,6 +314,7 @@ type userAPIKeyRow struct {
 	Name       string     `gorm:"column:name;not null"`
 	AKID       string     `gorm:"size:191;column:akid;not null;uniqueIndex"`
 	KeyHash    string     `gorm:"size:191;column:key_hash;not null;uniqueIndex"`
+	SecretEnc  string     `gorm:"column:secret_enc"`
 	Status     string     `gorm:"column:status;not null"`
 	ScopesJSON string     `gorm:"column:scopes_json;not null"`
 	CreatedAt  time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
@@ -297,6 +323,67 @@ type userAPIKeyRow struct {
 }
 
 func (userAPIKeyRow) TableName() string { return "user_api_keys" }
+
+// userAPIKeyNonceRow is the durable, multi-instance replay-protection ledger
+// for signed OpenAPI requests. The (akid, nonce) pair is unique so two
+// instances cannot both consume the same nonce; expired rows are swept lazily.
+type userAPIKeyNonceRow struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	AKID      string    `gorm:"size:191;column:akid;not null;uniqueIndex:idx_uak_nonce"`
+	Nonce     string    `gorm:"size:191;column:nonce;not null;uniqueIndex:idx_uak_nonce"`
+	ExpiresAt time.Time `gorm:"column:expires_at;not null;index"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (userAPIKeyNonceRow) TableName() string { return "user_api_key_nonces" }
+
+// robotWebhookNonceRow is the durable, multi-instance replay-protection ledger
+// for inbound robot command webhooks. The replay key is a SHA-256 digest of the
+// signed command (text + timestamp); the unique index makes concurrent or
+// restarted deliveries of the same command lose all but one.
+type robotWebhookNonceRow struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	ReplayKey string    `gorm:"size:64;column:replay_key;not null;uniqueIndex"`
+	ExpiresAt time.Time `gorm:"column:expires_at;not null;index"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (robotWebhookNonceRow) TableName() string { return "robot_webhook_nonces" }
+
+// authFailureBudgetRow is the durable, cross-instance failure budget for auth
+// flows (admin login, admin 2FA, user TOTP). Each row is one dimension key
+// (account, IP or global); the fixed window resets when it expires and expired
+// rows are swept lazily, keeping the table bounded.
+type authFailureBudgetRow struct {
+	ID        int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	Key       string    `gorm:"size:255;column:key;not null;uniqueIndex"`
+	Count     int       `gorm:"column:count;not null;default:0"`
+	WindowEnd time.Time `gorm:"column:window_end;not null;index"`
+	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+}
+
+func (authFailureBudgetRow) TableName() string { return "auth_failure_budgets" }
+
+type refreshTokenUseRow struct {
+	TokenHash string     `gorm:"size:64;primaryKey;column:token_hash"`
+	FamilyID  string     `gorm:"size:64;column:family_id;not null;index"`
+	ExpiresAt time.Time  `gorm:"column:expires_at;not null;index"`
+	RevokedAt *time.Time `gorm:"column:revoked_at;index"`
+	UsedAt    *time.Time `gorm:"column:used_at;index"`
+	CreatedAt time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (refreshTokenUseRow) TableName() string { return "refresh_token_uses" }
+
+type refreshTokenFamilyRow struct {
+	FamilyID  string     `gorm:"size:64;primaryKey;column:family_id"`
+	ExpiresAt time.Time  `gorm:"column:expires_at;not null;index"`
+	RevokedAt *time.Time `gorm:"column:revoked_at;index"`
+	UpdatedAt time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
+	CreatedAt time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (refreshTokenFamilyRow) TableName() string { return "refresh_token_families" }
 
 type settingRow struct {
 	Key       string    `gorm:"size:191;primaryKey;column:key"`
@@ -368,17 +455,25 @@ type automationLogRow struct {
 func (automationLogRow) TableName() string { return "automation_logs" }
 
 type provisionJobRow struct {
-	ID          int64     `gorm:"primaryKey;autoIncrement;column:id"`
-	OrderID     int64     `gorm:"column:order_id;not null"`
-	OrderItemID int64     `gorm:"column:order_item_id;not null;uniqueIndex:idx_provision_jobs_item"`
-	HostID      int64     `gorm:"column:host_id;not null"`
-	HostName    string    `gorm:"column:host_name;not null"`
-	Status      string    `gorm:"column:status;not null"`
-	Attempts    int       `gorm:"column:attempts;not null;default:0"`
-	NextRunAt   time.Time `gorm:"column:next_run_at;not null"`
-	LastError   string    `gorm:"column:last_error;not null;default:''"`
-	CreatedAt   time.Time `gorm:"column:created_at;not null;autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
+	ID          int64      `gorm:"primaryKey;autoIncrement;column:id"`
+	OrderID     int64      `gorm:"column:order_id;not null"`
+	OrderItemID int64      `gorm:"column:order_item_id;not null;uniqueIndex:idx_provision_jobs_item"`
+	HostID      int64      `gorm:"column:host_id;not null"`
+	HostName    string     `gorm:"column:host_name;not null"`
+	Status      string     `gorm:"column:status;not null"`
+	Attempts    int        `gorm:"column:attempts;not null;default:0"`
+	NextRunAt   time.Time  `gorm:"column:next_run_at;not null"`
+	LastError   string     `gorm:"column:last_error;not null;default:''"`
+	LeaseOwner  string     `gorm:"size:128;column:lease_owner;not null;default:'';index"`
+	LeaseUntil  *time.Time `gorm:"column:lease_until;index"`
+	Fence       int        `gorm:"column:fence;not null;default:0"`
+	Stage       string     `gorm:"size:32;column:stage;not null;default:''"`
+	AttemptID   string     `gorm:"size:64;column:attempt_id;not null;default:''"`
+	// CredsEncrypted stores the AES-GCM ciphertext of the attempt's system/VNC
+	// passwords. It is never returned by list/status endpoints.
+	CredsEncrypted string    `gorm:"column:creds_encrypted;not null;default:''"`
+	CreatedAt      time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt      time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
 
 func (provisionJobRow) TableName() string { return "provision_jobs" }
@@ -392,8 +487,13 @@ type resizeTaskRow struct {
 	ScheduledAt *time.Time `gorm:"column:scheduled_at"`
 	StartedAt   *time.Time `gorm:"column:started_at"`
 	FinishedAt  *time.Time `gorm:"column:finished_at"`
-	CreatedAt   time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
-	UpdatedAt   time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
+	// LeaseOwner/Fence give resize tasks the same fencing guarantees as
+	// provision jobs: a worker that lost the lease cannot overwrite a takeover.
+	LeaseOwner string     `gorm:"size:128;column:lease_owner;not null;default:''"`
+	LeaseUntil *time.Time `gorm:"column:lease_until;index"`
+	Fence      int        `gorm:"column:fence;not null;default:0"`
+	CreatedAt  time.Time  `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt  time.Time  `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
 
 func (resizeTaskRow) TableName() string { return "resize_tasks" }
@@ -468,3 +568,19 @@ type cmsCategoryRow struct {
 	CreatedAt time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
 }
+
+// migrationConflictRow records a migration-time data conflict that could not be
+// resolved automatically without data loss (e.g. duplicate live VPS rows sharing
+// an order_item_id). It is surfaced so an operator can reconcile by hand; the
+// migration itself only detaches rows that are provably safe to detach.
+type migrationConflictRow struct {
+	ID          int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	SourceTable string    `gorm:"size:64;column:source_table;not null;index"`
+	RefID       int64     `gorm:"column:ref_id;not null;index"`
+	Type        string    `gorm:"size:64;column:type;not null"`
+	Detail      string    `gorm:"column:detail;not null"`
+	Status      string    `gorm:"size:32;column:status;not null;default:pending"`
+	CreatedAt   time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+}
+
+func (migrationConflictRow) TableName() string { return "migration_conflicts" }

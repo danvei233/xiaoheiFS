@@ -145,6 +145,11 @@ func (s *OrderService) quoteResize(ctx context.Context, inst domain.VPSInstance,
 		return ResizeQuote{}, CartSpec{}, ErrResizeSamePlan
 	}
 
+	if _, _, ok := currentPeriod(inst, time.Now()); !ok {
+		// Pricing needs a resolvable billing period. Without one the proration
+		// falls back to 0, silently turning the resize into a free upgrade.
+		return ResizeQuote{}, CartSpec{}, ErrInvalidInput
+	}
 	charge := resizeProration(currentMonthly, targetMonthly, inst, time.Now(), policy.Rounding)
 	if charge > 0 {
 		quote.ChargeAmount = charge
@@ -152,13 +157,22 @@ func (s *OrderService) quoteResize(ctx context.Context, inst domain.VPSInstance,
 			quote.ChargeAmount = policy.MinCharge
 		}
 	} else if charge < 0 {
-		quote.ChargeAmount = charge
 		refund := int64(math.Round(float64(-charge) * policy.RefundRatio))
 		if policy.MinRefund > 0 && refund > 0 && refund < policy.MinRefund {
 			refund = 0
 		}
-		quote.RefundAmount = refund
-		if refund > 0 {
+		if refund <= 0 || !policy.RefundToWallet {
+			// No automatic wallet refund is due (ratio 0, below min_refund,
+			// or refund_to_wallet=false). Store a plain free resize instead of
+			// a negative ChargeAmount paired with RefundAmount=0: the
+			// approval-time refund fallback treats `RefundAmount<=0 &&
+			// ChargeAmount<0` as "credit the full negative diff", which would
+			// bypass the configured ratio/min_refund entirely.
+			quote.RefundAmount = 0
+			quote.ChargeAmount = 0
+		} else {
+			quote.ChargeAmount = charge
+			quote.RefundAmount = refund
 			quote.RefundToWallet = true
 		}
 	}
@@ -231,7 +245,34 @@ func resizeProration(currentMonthly, targetMonthly int64, inst domain.VPSInstanc
 	if total <= 0 || remaining <= 0 {
 		return 0
 	}
-	return prorateWithMode(diffMonthly, remaining, total, mode)
+	// Monthly prices are denominated per calendar month, but the current
+	// period spans the whole billing cycle (1..N months). Dividing by the
+	// full cycle here would under-charge multi-month cycles by a factor of
+	// the cycle length (e.g. diff*remaining/total where total=12mo). Scale
+	// the denominator down to a single billing month so the result is
+	// diff × remaining months.
+	months := cycleMonths(start, end)
+	perMonth := total / int64(months)
+	if perMonth <= 0 {
+		return 0
+	}
+	return prorateWithMode(diffMonthly, remaining, perMonth, mode)
+}
+
+// cycleMonths returns the number of billing months spanned by the current
+// period, estimated from the period length with a 30-day month. The period is
+// always whole calendar months in practice (set at purchase/renewal), so the
+// estimate is exact for real data and degrades gracefully for legacy periods.
+func cycleMonths(start, end time.Time) int {
+	total := end.Sub(start)
+	if total <= 0 {
+		return 1
+	}
+	months := int(math.Round(total.Hours() / 720.0))
+	if months < 1 {
+		months = 1
+	}
+	return months
 }
 
 func remainingRatio(inst domain.VPSInstance, now time.Time) float64 {
@@ -258,53 +299,7 @@ func remainingRatio(inst domain.VPSInstance, now time.Time) float64 {
 }
 
 func currentPeriod(inst domain.VPSInstance, now time.Time) (time.Time, time.Time, bool) {
-	start, end, ok := currentPeriodFromSpec(inst.SpecJSON, inst.ExpireAt)
-	if ok {
-		return start, end, true
-	}
-	if inst.ExpireAt != nil && !inst.CreatedAt.IsZero() && inst.ExpireAt.After(now) {
-		return inst.CreatedAt, *inst.ExpireAt, true
-	}
-	return time.Time{}, time.Time{}, false
-}
-
-func currentPeriodFromSpec(specJSON string, expireAt *time.Time) (time.Time, time.Time, bool) {
-	if strings.TrimSpace(specJSON) == "" {
-		return time.Time{}, time.Time{}, false
-	}
-	var payload map[string]any
-	if err := json.Unmarshal([]byte(specJSON), &payload); err != nil {
-		return time.Time{}, time.Time{}, false
-	}
-	startText := parsePeriodValue(payload, "current_period_start", "period_start", "last_renew_at", "purchase_at")
-	endText := parsePeriodValue(payload, "current_period_end", "period_end")
-	if endText == "" && expireAt != nil {
-		endText = expireAt.UTC().Format(time.RFC3339)
-	}
-	if startText == "" || endText == "" {
-		return time.Time{}, time.Time{}, false
-	}
-	start, err := time.Parse(time.RFC3339, startText)
-	if err != nil {
-		return time.Time{}, time.Time{}, false
-	}
-	end, err := time.Parse(time.RFC3339, endText)
-	if err != nil {
-		return time.Time{}, time.Time{}, false
-	}
-	return start, end, true
-}
-
-func parsePeriodValue(payload map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if raw, ok := payload[key]; ok {
-			switch val := raw.(type) {
-			case string:
-				return strings.TrimSpace(val)
-			}
-		}
-	}
-	return ""
+	return inst.CurrentBillingPeriod(now)
 }
 
 func applyRounding(value int64, mode string) int64 {
@@ -342,6 +337,11 @@ func getSettingFloat(ctx context.Context, repo SettingsRepository, key string) (
 	}
 	val, err := strconv.ParseFloat(strings.TrimSpace(setting.ValueJSON), 64)
 	if err != nil {
+		return 0, false
+	}
+	if math.IsNaN(val) {
+		// NaN is not a valid ratio: reject it so the caller falls back to its
+		// default instead of propagating a value that breaks float→int64 casts.
 		return 0, false
 	}
 	return val, true

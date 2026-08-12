@@ -36,9 +36,9 @@ Host（主系统）与 Plugin（插件进程）通过 Hashicorp `go-plugin` + gR
 
 关键实现锚点：
 
-1. 运行时启动：`backend/internal/adapter/plugins/runtime.go`
-2. 插件管理：`backend/internal/adapter/plugins/manager.go`
-3. 插件安装：`backend/internal/adapter/plugins/install.go`
+1. 运行时启动：`backend/internal/adapter/plugins/core/runtime.go`
+2. 插件管理：`backend/internal/adapter/plugins/core/manager.go`
+3. 插件安装：`backend/internal/adapter/plugins/core/install.go`
 
 ### 2.2 业务调用链（端到端）
 
@@ -47,13 +47,13 @@ Host（主系统）与 Plugin（插件进程）通过 Hashicorp `go-plugin` + gR
 1. 管理后台触发商品同步或用户发起 VPS 操作。
 2. Usecase 层请求自动化客户端。
 3. `Resolver` 从商品类型读取 `automation_plugin_id + automation_instance_id`，创建插件客户端：
-   1. `backend/internal/adapter/automation/resolver.go`
+   1. `backend/internal/adapter/plugins/automation/resolver.go`
 4. `PluginInstanceClient` 将业务请求转换为 `plugin.v1.AutomationService` RPC：
-   1. `backend/internal/adapter/automation/plugin_client.go`
+   1. `backend/internal/adapter/plugins/automation/client.go`
 5. `Manager.GetAutomationClient(...)` 确保对应插件实例已启动：
-   1. `backend/internal/adapter/plugins/manager.go`
+   1. `backend/internal/adapter/plugins/core/manager.go`
 6. `Runtime.Start(...)` 进行握手、`GetManifest`、`Init`、心跳：
-   1. `backend/internal/adapter/plugins/runtime.go`
+   1. `backend/internal/adapter/plugins/core/runtime.go`
 7. 插件完成对第三方自动化系统 API 调用并回传结果。
 
 ### 2.3 管理端相关 API 路径
@@ -114,7 +114,7 @@ Host 会比对以下字段（不一致直接启动失败）：
 4. capability presence（是否声明 sms/payment/kyc/automation）
 5. automation features 及 not_supported_reasons
 
-参考：`validateManifestConsistency` in `backend/internal/adapter/plugins/runtime.go`
+参考：`validateManifestConsistency` in `backend/internal/adapter/plugins/core/runtime.go`
 
 ---
 
@@ -174,7 +174,7 @@ Host 会比对以下字段（不一致直接启动失败）：
    2. `AddFirewallRule`
    3. `DeleteFirewallRule`
 
-`PluginInstanceClient` 会把 gRPC `Unimplemented` 映射为业务 `ErrNotSupported`，见 `backend/internal/adapter/automation/plugin_client.go`。
+`PluginInstanceClient` 会把 gRPC `Unimplemented` 映射为业务 `ErrNotSupported`，见 `backend/internal/adapter/plugins/automation/client.go`。
 
 ---
 
@@ -361,7 +361,7 @@ func main() {
 3. 配置更新时支持“空值不覆盖旧密钥”。
 
 `PluginInstanceClient` 已对日志 payload 做敏感键掩码（`***`），见：
-`backend/internal/adapter/automation/plugin_client.go`
+`backend/internal/adapter/plugins/automation/client.go`
 
 ### 6.3 开源仓库隐私基线（必须）
 
@@ -403,10 +403,14 @@ go run ./cmd/tools/pluginsign -dir ../tmp/my_automation_plugin
 1. `checksums.json`
 2. `signature.sig`
 
-如需指定固定私钥（CI）：
+如需指定固定私钥（CI），私钥绝不能出现在命令行参数里（进程列表会暴露）。用受保护的来源之一：
 
 ```bash
-go run ./cmd/tools/pluginsign -dir ../tmp/my_automation_plugin -ed25519-priv "<BASE64_PRIVATE_KEY>"
+# 0600 私钥文件
+go run ./cmd/tools/pluginsign -dir ../tmp/my_automation_plugin -ed25519-priv-file ../tmp/sign.key
+
+# 或 stdin
+cat ../tmp/sign.key | go run ./cmd/tools/pluginsign -dir ../tmp/my_automation_plugin -ed25519-priv-stdin
 ```
 
 ### 7.3 打包格式
@@ -416,7 +420,7 @@ go run ./cmd/tools/pluginsign -dir ../tmp/my_automation_plugin -ed25519-priv "<B
 1. `.zip`
 2. `.tar.gz` / `.tgz`
 
-安装校验规则（见 `backend/internal/adapter/plugins/install.go`）：
+安装校验规则（见 `backend/internal/adapter/plugins/core/install.go`）：
 
 1. 包内必须且只能有一个 `manifest.json`。
 2. 插件目录必须能解析出 `<category>/<plugin_id>` 或 `plugins/<category>/<plugin_id>`。
@@ -524,7 +528,7 @@ go run ./cmd/tools/pluginsign -dir ../tmp/my_automation_plugin -ed25519-priv "<B
 
 定位点：
 
-1. `validateManifestConsistency` in `backend/internal/adapter/plugins/runtime.go`
+1. `validateManifestConsistency` in `backend/internal/adapter/plugins/core/runtime.go`
 
 处理动作：
 
@@ -642,12 +646,12 @@ go run ./cmd/tools/pluginsign -dir ../tmp/my_automation_plugin -ed25519-priv "<B
    1. `backend/pkg/pluginsdk/handshake.go`
    2. `backend/pkg/pluginsdk/serve.go`
 3. 插件管理：
-   1. `backend/internal/adapter/plugins/runtime.go`
-   2. `backend/internal/adapter/plugins/manager.go`
-   3. `backend/internal/adapter/plugins/install.go`
+   1. `backend/internal/adapter/plugins/core/runtime.go`
+   2. `backend/internal/adapter/plugins/core/manager.go`
+   3. `backend/internal/adapter/plugins/core/install.go`
 4. 自动化适配：
-   1. `backend/internal/adapter/automation/resolver.go`
-   2. `backend/internal/adapter/automation/plugin_client.go`
+   1. `backend/internal/adapter/plugins/automation/resolver.go`
+   2. `backend/internal/adapter/plugins/automation/client.go`
 5. API 路由：
    1. `backend/internal/adapter/http/router.go`
 6. 示例实现：

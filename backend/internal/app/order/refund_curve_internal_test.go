@@ -1,6 +1,8 @@
 package order
 
 import (
+	"errors"
+	"gorm.io/gorm"
 	"context"
 	"testing"
 
@@ -11,6 +13,21 @@ type fakeSettingRepo struct {
 	values map[string]string
 }
 
+func (f *fakeSettingRepo) UpdateSettingAtomic(ctx context.Context, key string, mutate func(current string) (string, error)) error {
+	current, err := f.GetSetting(ctx, key)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			current = domain.Setting{}
+		} else {
+			return err
+		}
+	}
+	next, err := mutate(current.ValueJSON)
+	if err != nil {
+		return err
+	}
+	return f.UpsertSetting(ctx, domain.Setting{Key: key, ValueJSON: next})
+}
 func (f *fakeSettingRepo) GetSetting(ctx context.Context, key string) (domain.Setting, error) {
 	if v, ok := f.values[key]; ok {
 		return domain.Setting{Key: key, ValueJSON: v}, nil
@@ -23,6 +40,15 @@ func (f *fakeSettingRepo) UpsertSetting(ctx context.Context, setting domain.Sett
 		f.values = map[string]string{}
 	}
 	f.values[setting.Key] = setting.ValueJSON
+	return nil
+}
+
+func (f *fakeSettingRepo) UpsertSettings(ctx context.Context, settings []domain.Setting) error {
+	for _, setting := range settings {
+		if err := f.UpsertSetting(ctx, setting); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

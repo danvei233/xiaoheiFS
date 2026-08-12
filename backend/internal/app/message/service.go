@@ -36,19 +36,29 @@ func (s *Service) MarkAllRead(ctx context.Context, userID int64) error {
 	return s.repo.MarkAllRead(ctx, userID)
 }
 
+const (
+	maxNotificationTitleRunes   = 128
+	maxNotificationContentRunes = 5000
+)
+
 func (s *Service) NotifyUser(ctx context.Context, userID int64, typ, title, content string) error {
 	if userID == 0 {
 		return appshared.ErrInvalidInput
 	}
-	title = strings.TrimSpace(title)
+	typ = strings.TrimSpace(typ)
+	title = appshared.SanitizePlainText(strings.TrimSpace(title))
 	if title == "" {
 		title = "Notification"
 	}
+	content = appshared.SanitizePlainText(content)
+	if len([]rune(title)) > maxNotificationTitleRunes || len([]rune(content)) > maxNotificationContentRunes {
+		return appshared.ErrInvalidInput
+	}
 	notification := domain.Notification{
 		UserID:    userID,
-		Type:      strings.TrimSpace(typ),
+		Type:      typ,
 		Title:     title,
-		Content:   strings.TrimSpace(content),
+		Content:   content,
 		CreatedAt: time.Now(),
 	}
 	return s.repo.CreateNotification(ctx, &notification)

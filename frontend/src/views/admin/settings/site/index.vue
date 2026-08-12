@@ -132,7 +132,7 @@
   import type { FormRules } from 'element-plus'
   import DefaultLogoMark from '@/components/brand/DefaultLogoMark.vue'
   import { useAuth } from '@/hooks/core/useAuth'
-  import { clearAdminPathCache } from '@/services/adminPath'
+  import { clearAdminPathCache, setAdminPathHint } from '@/services/adminPath'
   import { listSettings, updateSetting } from '@/services/admin'
   import type { SettingItem } from '@/services/types'
   import { useSiteStore } from '@/stores/site'
@@ -288,18 +288,7 @@
     },
     { key: 'beian_info_list', label: '', span: 24 },
     { key: 'security_section', label: '', span: 24 },
-    { key: 'admin_path', label: '管理端路径', span: 24 },
-    {
-      key: 'analytics_code',
-      label: '统计代码',
-      type: 'input',
-      span: 24,
-      props: {
-        type: 'textarea',
-        rows: 4,
-        placeholder: '<script>...</' + 'script>'
-      }
-    }
+    { key: 'admin_path', label: '管理端路径', span: 24 }
   ])
 
   const formRules: FormRules<SiteSettingsForm> = {
@@ -406,9 +395,12 @@
   }
 
   function cacheAdminPath(path: string): void {
+    // localStorage 只作为路径提示（H1）：改完 admin_path 后旧内存验证态已被
+    // clearAdminPathCache 的代数自增作废，新页面首次进入会回落服务端复核。
+    setAdminPathHint(path)
     try {
-      localStorage.setItem('admin_path_cache', path)
-      localStorage.setItem('admin_path_validated', 'true')
+      // 清理旧版本遗留的"验证时间戳"键，避免误导后续代码。
+      localStorage.removeItem('admin_path_validated_at')
     } catch {
       ElMessage.warning('管理路径已保存，但浏览器缓存更新失败')
     }
@@ -431,7 +423,7 @@
       })
 
       await updateSetting({ items })
-      await siteStore.fetchSettings()
+      await siteStore.fetchSettings(true)
 
       if (nextAdminPath !== originalAdminPath.value) {
         clearAdminPathCache()

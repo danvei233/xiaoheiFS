@@ -16,7 +16,7 @@ func (h *Handler) AdminDashboardOverview(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	overview, err := h.reportSvc.Overview(c)
+	overview, err := h.reportSvc.Overview(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrReportError.Error()})
 		return
@@ -38,7 +38,7 @@ func (h *Handler) AdminDashboardRevenue(c *gin.Context) {
 	}
 	period := query.Period
 	if period == "month" {
-		points, err := h.reportSvc.RevenueByMonth(c, 6)
+		points, err := h.reportSvc.RevenueByMonth(c.Request.Context(), 6)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrReportError.Error()})
 			return
@@ -46,7 +46,7 @@ func (h *Handler) AdminDashboardRevenue(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"items": points})
 		return
 	}
-	points, err := h.reportSvc.RevenueByDay(c, 30)
+	points, err := h.reportSvc.RevenueByDay(c.Request.Context(), 30)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrReportError.Error()})
 		return
@@ -59,7 +59,7 @@ func (h *Handler) AdminDashboardVPSStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	items, err := h.reportSvc.VPSStatus(c)
+	items, err := h.reportSvc.VPSStatus(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrReportError.Error()})
 		return
@@ -70,7 +70,7 @@ func (h *Handler) AdminDashboardVPSStatus(c *gin.Context) {
 func (h *Handler) parseRevenueAnalyticsQuery(c *gin.Context) (revenueAnalyticsQueryDTO, bool) {
 	var req revenueAnalyticsQueryDTO
 	if err := bindJSON(c, &req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return req, false
 	}
 	return req, true
@@ -90,7 +90,7 @@ func (h *Handler) AdminRevenueAnalyticsOverview(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	overview, err := h.reportSvc.RevenueAnalyticsOverview(c, query)
+	overview, err := h.reportSvc.RevenueAnalyticsOverview(c.Request.Context(), query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -113,7 +113,7 @@ func (h *Handler) AdminRevenueAnalyticsTrend(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	items, err := h.reportSvc.RevenueAnalyticsTrend(c, query)
+	items, err := h.reportSvc.RevenueAnalyticsTrend(c.Request.Context(), query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -136,7 +136,7 @@ func (h *Handler) AdminRevenueAnalyticsTop(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	items, err := h.reportSvc.RevenueAnalyticsTop(c, query)
+	items, err := h.reportSvc.RevenueAnalyticsTop(c.Request.Context(), query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -159,7 +159,7 @@ func (h *Handler) AdminRevenueAnalyticsDetails(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	items, total, err := h.reportSvc.RevenueAnalyticsDetails(c, query)
+	items, total, err := h.reportSvc.RevenueAnalyticsDetails(c.Request.Context(), query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -201,7 +201,7 @@ func (h *Handler) AdminRevenueAnalyticsExport(c *gin.Context) {
 	query.Page = 1
 	query.PageSize = 200
 
-	overview, err := h.reportSvc.RevenueAnalyticsOverview(c, query)
+	overview, err := h.reportSvc.RevenueAnalyticsOverview(c.Request.Context(), query)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -271,7 +271,7 @@ func (h *Handler) AdminRevenueAnalyticsExport(c *gin.Context) {
 	page := 1
 	for {
 		query.Page = page
-		items, total, err := h.reportSvc.RevenueAnalyticsDetails(c, query)
+		items, total, err := h.reportSvc.RevenueAnalyticsDetails(c.Request.Context(), query)
 		if err != nil {
 			_ = w.Write([]string{"error", "query_failed", err.Error()})
 			w.Flush()
@@ -321,7 +321,7 @@ func (h *Handler) auditRevenueQuery(c *gin.Context, action string, req revenueAn
 	if traceID == "" {
 		traceID = strings.TrimSpace(c.GetHeader("X-Request-ID"))
 	}
-	h.adminSvc.Audit(c, operatorID, "dashboard.revenue_analytics."+action, "dashboard_revenue_analytics", action, map[string]any{
+	h.adminSvc.Audit(c.Request.Context(), operatorID, "dashboard.revenue_analytics."+action, "dashboard_revenue_analytics", action, map[string]any{
 		"operator_id":   operatorID,
 		"request_path":  c.FullPath(),
 		"from_at":       req.FromAt,

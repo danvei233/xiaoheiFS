@@ -2,6 +2,7 @@ package order_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -80,6 +81,82 @@ func TestOrderService_SubmitPaymentIdempotent(t *testing.T) {
 	}
 }
 
+func TestOrderService_RejectsPaymentAmountMismatchWithoutMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		pay  func(*apporder.OrderService, context.Context, int64, int64, appshared.PaymentInput) error
+	}{
+		{
+			name: "user submit",
+			pay: func(svc *apporder.OrderService, ctx context.Context, actorID, orderID int64, input appshared.PaymentInput) error {
+				_, err := svc.SubmitPayment(ctx, actorID, orderID, input, "mismatch-idem")
+				return err
+			},
+		},
+		{
+			name: "admin mark paid",
+			pay: func(svc *apporder.OrderService, ctx context.Context, actorID, orderID int64, input appshared.PaymentInput) error {
+				_, err := svc.MarkPaid(ctx, actorID, orderID, input)
+				return err
+			},
+		},
+	} {
+		for _, amount := range []int64{999, 1001} {
+			t.Run(tc.name+"/amount_"+fmt.Sprint(amount), func(t *testing.T) {
+				_, repo := testutil.NewTestDB(t, false)
+				user := testutil.CreateUser(t, repo, "amount-check", "amount-check@example.com", "pass")
+				ctx := context.Background()
+				order := domain.Order{
+					UserID:      user.ID,
+					OrderNo:     fmt.Sprintf("ORD-AMOUNT-%d", amount),
+					Status:      domain.OrderStatusPendingPayment,
+					TotalAmount: 1000,
+					Currency:    "CNY",
+				}
+				if err := repo.CreateOrder(ctx, &order); err != nil {
+					t.Fatalf("create order: %v", err)
+				}
+				if err := repo.CreateOrderItems(ctx, []domain.OrderItem{{
+					OrderID: order.ID, Amount: 1000, Status: domain.OrderItemStatusPendingPayment,
+					Action: "create", SpecJSON: "{}",
+				}}); err != nil {
+					t.Fatalf("create item: %v", err)
+				}
+
+				svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+				err := tc.pay(svc, ctx, user.ID, order.ID, appshared.PaymentInput{
+					Method: "manual", Amount: amount, Currency: "CNY", TradeNo: fmt.Sprintf("TN-%d", amount),
+				})
+				if err != appshared.ErrInvalidInput {
+					t.Fatalf("expected ErrInvalidInput, got %v", err)
+				}
+
+				storedOrder, err := repo.GetOrder(ctx, order.ID)
+				if err != nil {
+					t.Fatalf("get order: %v", err)
+				}
+				if storedOrder.Status != domain.OrderStatusPendingPayment {
+					t.Fatalf("order status mutated to %q", storedOrder.Status)
+				}
+				items, err := repo.ListOrderItems(ctx, order.ID)
+				if err != nil {
+					t.Fatalf("list items: %v", err)
+				}
+				if len(items) != 1 || items[0].Status != domain.OrderItemStatusPendingPayment {
+					t.Fatalf("order items mutated: %#v", items)
+				}
+				payments, err := repo.ListPaymentsByOrder(ctx, order.ID)
+				if err != nil {
+					t.Fatalf("list payments: %v", err)
+				}
+				if len(payments) != 0 {
+					t.Fatalf("mismatched amount created payments: %#v", payments)
+				}
+			})
+		}
+	}
+}
+
 func TestOrderService_SubmitPayment_RejectsCrossOrderTradeNoReuse(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	user := testutil.CreateUser(t, repo, "pay2", "pay2@example.com", "pass")
@@ -147,7 +224,7 @@ func TestOrderService_CreateOrderFromCartAndCancel(t *testing.T) {
 	}
 }
 
-func TestOrderService_CreateRefundOrder_UsesInstanceMonthlyPrice(t *testing.T) {
+func TestOrderService_CreateRefundOrder_UsesItemAmount(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	seed := testutil.SeedCatalog(t, repo)
 	user := testutil.CreateUser(t, repo, "refundbase", "refundbase@example.com", "pass")
@@ -201,11 +278,85 @@ func TestOrderService_CreateRefundOrder_UsesInstanceMonthlyPrice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create refund order: %v", err)
 	}
-	if amount != 3000 {
-		t.Fatalf("expected refund amount based on monthly price 3000, got %d", amount)
+	// The refund base must be the amount actually paid for the item (the
+	// prepaid TotalAmount 200000), not the single-month MonthlyPrice (3000).
+	// Within the full-refund window the whole prepaid amount is returned.
+	if amount != 200000 {
+		t.Fatalf("expected refund amount based on item amount 200000, got %d", amount)
 	}
-	if refundOrder.TotalAmount != -3000 {
-		t.Fatalf("expected refund order total -3000, got %d", refundOrder.TotalAmount)
+	if refundOrder.TotalAmount != -200000 {
+		t.Fatalf("expected refund order total -200000, got %d", refundOrder.TotalAmount)
+	}
+}
+
+// TestOrderService_CreateRefundOrder_MultiMonthPrepayLocks the refund base for
+// a multi-month prepay: an instance paid 3 months in advance refunds the full
+// prepaid amount (3 * monthly) inside the full-refund window, not a single
+// month. This is the order-path counterpart of the walletorder regression
+// (TestWalletOrderService_RequestRefund_MultiMonthPrepayProrated) and pins the
+// two refund paths to the same base.
+func TestOrderService_CreateRefundOrder_MultiMonthPrepay(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "refundprepay", "refundprepay@example.com", "pass")
+
+	baseOrder := domain.Order{
+		UserID:      user.ID,
+		OrderNo:     "ORD-REFUND-PREPAY",
+		Status:      domain.OrderStatusActive,
+		TotalAmount: 9000,
+		Currency:    "CNY",
+	}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:        baseOrder.ID,
+		PackageID:      seed.Package.ID,
+		SystemID:       seed.SystemImage.ID,
+		Amount:         9000,
+		DurationMonths: 3,
+		Status:         domain.OrderItemStatusActive,
+		Action:         "create",
+		SpecJSON:       "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	items, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	if err != nil || len(items) == 0 {
+		t.Fatalf("list base items: %v", err)
+	}
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		AutomationInstanceID: "1002",
+		Name:                 "vm-refund-prepay",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         3000,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		CreatedAt:            time.Now().Add(-time.Hour),
+	}
+	expire := time.Now().Add(90*24*time.Hour - time.Hour)
+	inst.ExpireAt = &expire
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	refundOrder, amount, err := svc.CreateRefundOrder(context.Background(), user.ID, inst.ID, "prepay refund")
+	if err != nil {
+		t.Fatalf("create refund order: %v", err)
+	}
+	// Full-refund window (~1h elapsed of 90d): refund equals the full prepaid
+	// 3-month amount, not a single monthly price.
+	if amount != 9000 {
+		t.Fatalf("expected full refund of prepaid amount 9000, got %d", amount)
+	}
+	if refundOrder.TotalAmount != -9000 {
+		t.Fatalf("expected refund order total -9000, got %d", refundOrder.TotalAmount)
 	}
 }
 
@@ -357,7 +508,12 @@ func TestOrderService_CreateRenewOrder_RejectsOverflowInputs(t *testing.T) {
 	}
 }
 
-func TestOrderService_CreateRefundOrder_UserAPIKeySourceAutoApprove(t *testing.T) {
+// TestOrderService_CreateRefundOrder_UserAPIKeySourceRespectsApproval locks
+// the F5 fix: an API-key refund must NOT bypass refund_requires_approval. With
+// approval required the refund order stays pending_review and no wallet credit
+// happens, so a stolen/errant key cannot delete the VPS and pocket a refund
+// without an admin review.
+func TestOrderService_CreateRefundOrder_UserAPIKeySourceRespectsApproval(t *testing.T) {
 	_, repo := testutil.NewTestDB(t, false)
 	seed := testutil.SeedCatalog(t, repo)
 	user := testutil.CreateUser(t, repo, "refundapikey", "refundapikey@example.com", "pass")
@@ -420,28 +576,205 @@ func TestOrderService_CreateRefundOrder_UserAPIKeySourceAutoApprove(t *testing.T
 	if err != nil {
 		t.Fatalf("create refund order: %v", err)
 	}
-	if amount != 3000 {
-		t.Fatalf("expected refund amount 3000, got %d", amount)
+	if amount != 200000 {
+		t.Fatalf("expected refund amount based on item amount 200000, got %d", amount)
 	}
-	if refundOrder.Status == domain.OrderStatusPendingReview {
-		t.Fatalf("expected user_apikey source auto-approved, got pending_review")
+	if refundOrder.Status != domain.OrderStatusPendingReview {
+		t.Fatalf("expected API-key refund to stay pending_review under refund_requires_approval=true, got %s", refundOrder.Status)
 	}
 
 	wAfter, err := repo.GetWallet(context.Background(), user.ID)
 	if err != nil {
 		t.Fatalf("wallet after: %v", err)
 	}
-	if wAfter.Balance-wBefore.Balance != 3000 {
-		deadline := time.Now().Add(2 * time.Second)
-		for time.Now().Before(deadline) {
-			time.Sleep(20 * time.Millisecond)
-			wAfter, err = repo.GetWallet(context.Background(), user.ID)
-			if err == nil && wAfter.Balance-wBefore.Balance == 3000 {
-				break
-			}
-		}
+	if wAfter.Balance-wBefore.Balance != 0 {
+		t.Fatalf("expected no wallet credit before admin approval, delta=%d", wAfter.Balance-wBefore.Balance)
 	}
-	if wAfter.Balance-wBefore.Balance != 3000 {
-		t.Fatalf("expected wallet credited 3000, delta=%d", wAfter.Balance-wBefore.Balance)
+}
+
+// TestOrderService_CreateRefundOrder_UserAPIKeySourceAutoApprovesWhenConfigured
+// is the positive counterpart: when refund_requires_approval=false the refund
+// auto-approves for an API-key request too (the exemption must follow the
+// configuration, not the request source).
+func TestOrderService_CreateRefundOrder_UserAPIKeySourceAutoApprovesWhenConfigured(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	seed := testutil.SeedCatalog(t, repo)
+	user := testutil.CreateUser(t, repo, "refundapikey2", "refundapikey2@example.com", "pass")
+	_ = repo.UpsertSetting(context.Background(), domain.Setting{Key: "refund_requires_approval", ValueJSON: "false"})
+
+	baseOrder := domain.Order{
+		UserID:      user.ID,
+		OrderNo:     "ORD-REFUND-APIKEY2-BASE",
+		Status:      domain.OrderStatusActive,
+		TotalAmount: 200000,
+		Currency:    "CNY",
+	}
+	if err := repo.CreateOrder(context.Background(), &baseOrder); err != nil {
+		t.Fatalf("create base order: %v", err)
+	}
+	baseItem := domain.OrderItem{
+		OrderID:   baseOrder.ID,
+		PackageID: seed.Package.ID,
+		SystemID:  seed.SystemImage.ID,
+		Amount:    200000,
+		Status:    domain.OrderItemStatusActive,
+		Action:    "create",
+		SpecJSON:  "{}",
+	}
+	if err := repo.CreateOrderItems(context.Background(), []domain.OrderItem{baseItem}); err != nil {
+		t.Fatalf("create base item: %v", err)
+	}
+	items, err := repo.ListOrderItems(context.Background(), baseOrder.ID)
+	if err != nil || len(items) == 0 {
+		t.Fatalf("list base items: %v", err)
+	}
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		OrderItemID:          items[0].ID,
+		GoodsTypeID:          1,
+		AutomationInstanceID: "1003",
+		Name:                 "vm-refund-apikey2",
+		PackageID:            seed.Package.ID,
+		PackageName:          seed.Package.Name,
+		MonthlyPrice:         3000,
+		SpecJSON:             "{}",
+		Status:               domain.VPSStatusRunning,
+		CreatedAt:            time.Now(),
+	}
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	inst.ExpireAt = &expire
+	if err := repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	automationResolver := &testutil.FakeAutomationResolver{Client: &testutil.FakeAutomationClient{}}
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, automationResolver, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	ctx := apporder.WithOrderSource(context.Background(), apporder.OrderSourceUserAPIKey)
+	refundOrder, _, err := svc.CreateRefundOrder(ctx, user.ID, inst.ID, "apikey refund")
+	if err != nil {
+		t.Fatalf("create refund order: %v", err)
+	}
+	if refundOrder.Status == domain.OrderStatusPendingReview {
+		t.Fatalf("expected API-key refund auto-approved when refund_requires_approval=false, got pending_review")
+	}
+}
+
+// TestOrderService_RejectBalancePaidOrderRefundsWallet locks the F2b fix: an
+// order whose balance payment is already approved (order in pending_review
+// before auto-approval) must be rejectable, and the wallet debit must be
+// returned idempotently — the NOT EXISTS guard in RejectOrderAtomic must only
+// protect external (provider) approved payments, not local balance debits.
+func TestOrderService_RejectBalancePaidOrderRefundsWallet(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, repo, "rejectbalance", "rejectbalance@example.com", "pass")
+	if _, err := repo.AdjustWalletBalance(ctx, user.ID, 5000, "credit", "seed", 1, "init"); err != nil {
+		t.Fatalf("seed wallet: %v", err)
+	}
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-REJ-BAL", Status: domain.OrderStatusPendingReview, TotalAmount: 2000, Currency: "CNY"}
+	if err := repo.CreateOrder(ctx, &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := repo.CreateOrderItems(ctx, []domain.OrderItem{{
+		OrderID:  order.ID,
+		Amount:   2000,
+		Status:   domain.OrderItemStatusPendingReview,
+		Action:   "create",
+		SpecJSON: "{}",
+	}}); err != nil {
+		t.Fatalf("create items: %v", err)
+	}
+	// Simulate the committed balance payment: wallet debited with ref_type=order,
+	// approved balance payment record.
+	if _, err := repo.AdjustWalletBalance(ctx, user.ID, -2000, "debit", "order", order.ID, "balance payment"); err != nil {
+		t.Fatalf("debit wallet: %v", err)
+	}
+	payment := domain.OrderPayment{
+		OrderID:  order.ID,
+		UserID:   user.ID,
+		Method:   "balance",
+		Amount:   2000,
+		Currency: "CNY",
+		TradeNo:  "BAL-REJ",
+		Status:   domain.PaymentStatusApproved,
+	}
+	if err := repo.CreatePayment(ctx, &payment); err != nil {
+		t.Fatalf("create payment: %v", err)
+	}
+
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	if err := svc.RejectOrder(ctx, 9, order.ID, "declined"); err != nil {
+		t.Fatalf("reject balance-paid order: %v", err)
+	}
+
+	updated, err := repo.GetOrder(ctx, order.ID)
+	if err != nil {
+		t.Fatalf("get order: %v", err)
+	}
+	if updated.Status != domain.OrderStatusRejected {
+		t.Fatalf("expected rejected, got %s", updated.Status)
+	}
+	wallet, err := repo.GetWallet(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get wallet: %v", err)
+	}
+	if wallet.Balance != 5000 {
+		t.Fatalf("expected balance refunded to 5000, got %d", wallet.Balance)
+	}
+	hasRefund, err := repo.HasWalletTransaction(ctx, user.ID, "balance_refund", order.ID)
+	if err != nil || !hasRefund {
+		t.Fatalf("expected balance_refund transaction, has=%v err=%v", hasRefund, err)
+	}
+
+	// Rejecting again must not double-credit (idempotency key).
+	if err := svc.RejectOrder(ctx, 9, order.ID, "declined again"); err != nil {
+		t.Fatalf("reject again: %v", err)
+	}
+	wallet, err = repo.GetWallet(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get wallet after second reject: %v", err)
+	}
+	if wallet.Balance != 5000 {
+		t.Fatalf("expected balance still 5000 after idempotent reject, got %d", wallet.Balance)
+	}
+}
+
+// TestOrderService_RejectProviderPaidOrderStillBlocked locks the flip side of
+// F2b: an order with an approved EXTERNAL (provider) payment must still be
+// protected from rejection — that guard prevents stranding real provider money
+// without an external refund path.
+func TestOrderService_RejectProviderPaidOrderStillBlocked(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+	user := testutil.CreateUser(t, repo, "rejectprovider", "rejectprovider@example.com", "pass")
+	order := domain.Order{UserID: user.ID, OrderNo: "ORD-REJ-PROV", Status: domain.OrderStatusPendingReview, TotalAmount: 2000, Currency: "CNY"}
+	if err := repo.CreateOrder(ctx, &order); err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+	if err := repo.CreateOrderItems(ctx, []domain.OrderItem{{
+		OrderID:  order.ID,
+		Amount:   2000,
+		Status:   domain.OrderItemStatusPendingReview,
+		Action:   "create",
+		SpecJSON: "{}",
+	}}); err != nil {
+		t.Fatalf("create items: %v", err)
+	}
+	payment := domain.OrderPayment{
+		OrderID:  order.ID,
+		UserID:   user.ID,
+		Method:   "wechat",
+		Amount:   2000,
+		Currency: "CNY",
+		TradeNo:  "WX-REJ",
+		Status:   domain.PaymentStatusApproved,
+	}
+	if err := repo.CreatePayment(ctx, &payment); err != nil {
+		t.Fatalf("create payment: %v", err)
+	}
+
+	svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+	if err := svc.RejectOrder(ctx, 9, order.ID, "declined"); err != appshared.ErrConflict {
+		t.Fatalf("expected conflict rejecting an order with an approved provider payment, got %v", err)
 	}
 }

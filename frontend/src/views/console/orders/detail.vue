@@ -216,7 +216,10 @@
             <ElInput v-model="paymentForm.trade_no" :maxlength="INPUT_LIMITS.PAYMENT_TRADE_NO" />
           </ElFormItem>
           <ElFormItem label="付款截图链接">
-            <ElInput v-model="paymentForm.screenshot_url" :maxlength="INPUT_LIMITS.URL" />
+            <ElInput
+              v-model="paymentForm.screenshot_url"
+              :maxlength="INPUT_LIMITS.PAYMENT_SCREENSHOT_URL"
+            />
           </ElFormItem>
           <ElFormItem label="备注">
             <ElInput
@@ -229,60 +232,13 @@
           </ElFormItem>
         </template>
 
-        <template v-else>
-          <ElFormItem
-            v-for="field in schemaFields"
-            :key="field.key"
-            :label="field.label"
-            :prop="field.key"
-            :rules="
-              field.required
-                ? [{ required: true, message: `请输入${field.label}`, trigger: 'blur' }]
-                : []
-            "
-          >
-            <ElInputNumber
-              v-if="field.type === 'number'"
-              v-model="paymentForm[field.key]"
-              class="full-width"
-            />
-            <ElSwitch v-else-if="field.type === 'boolean'" v-model="paymentForm[field.key]" />
-            <ElSelect
-              v-else-if="field.type === 'select'"
-              v-model="paymentForm[field.key]"
-              class="full-width"
-              :placeholder="field.placeholder"
-            >
-              <ElOption
-                v-for="option in field.options"
-                :key="String(option.value)"
-                :label="option.label"
-                :value="option.value"
-              />
-            </ElSelect>
-            <ElInput
-              v-else
-              v-model="paymentForm[field.key]"
-              :type="
-                field.type === 'textarea'
-                  ? 'textarea'
-                  : field.type === 'password'
-                    ? 'password'
-                    : 'text'
-              "
-              :rows="field.type === 'textarea' ? 3 : undefined"
-              :placeholder="field.placeholder"
-              show-password
-            />
-          </ElFormItem>
-        </template>
-
         <ElAlert
           v-if="paymentForm.method === 'balance' && selectedProvider?.balance != null"
           :title="`钱包余额：${formatMoney(Number(selectedProvider.balance), order?.currency)}`"
           type="info"
           :closable="false"
         />
+        <ElAlert v-if="selectedNotice" :title="selectedNotice" type="warning" :closable="false" />
 
         <ElAlert
           v-if="selectedInstructions"
@@ -308,7 +264,9 @@
       <div v-loading="wechatQrLoading" class="qr-payment">
         <img v-if="wechatQrDataUrl" :src="wechatQrDataUrl" alt="微信支付二维码" />
         <ElEmpty v-else description="二维码生成失败" />
-        <ElLink :href="wechatQrUrl" target="_blank" type="primary">打开支付链接</ElLink>
+        <ElLink :href="wechatQrUrl" target="_blank" rel="noopener noreferrer" type="primary"
+          >打开支付链接</ElLink
+        >
       </div>
     </ElDialog>
 
@@ -317,6 +275,25 @@
         >在微信中发起支付</ElButton
       >
       <pre v-if="wechatJsapiParamsJson" class="jsapi-params">{{ wechatJsapiParamsJson }}</pre>
+    </ElDialog>
+
+    <!-- P2-74：pay_kind=form 的支付网关 HTML 不再 document.write 进同源窗口。
+         srcdoc + 无 allow-same-origin 的 sandbox，让表单能自动提交（allow-forms）但
+         脚本在孤立 origin 运行，无法读取本应用 localStorage/token。
+         H3：禁止无条件 allow-top-navigation（被攻陷插件可自动把顶层导航到钓鱼页），
+         只保留 allow-top-navigation-by-user-activation；合同见 paymentSandbox.ts。 -->
+    <ElDialog
+      v-model="paymentFormOpen"
+      title="支付"
+      width="min(560px, calc(100vw - 24px))"
+      destroy-on-close
+    >
+      <iframe
+        class="payment-form-frame"
+        :srcdoc="paymentFormHtml"
+        :sandbox="PAYMENT_FORM_SANDBOX"
+        title="支付表单"
+      />
     </ElDialog>
   </div>
 </template>
@@ -337,9 +314,19 @@
     submitOrderPayment
   } from '@/services/user'
   import { createSseConnection } from '@/services/sse'
-  import type { Order, OrderItem, OrderPayment, Package, PaymentProvider } from '@/services/types'
+  import type {
+    Order,
+    OrderItem,
+    OrderPayment,
+    Package,
+    PaymentProvider,
+    PaymentRequest
+  } from '@/services/types'
   import { useAuthStore } from '@/stores/auth'
   import { useCatalogStore } from '@/stores/catalog'
+  import { IdempotentRequest } from '@/utils/idempotentRequest'
+  import { classifyPaymentUrl, openPaymentUrl } from '@/utils/paymentUrl'
+  import { PAYMENT_FORM_SANDBOX } from '@/utils/paymentSandbox'
 
   defineOptions({ name: 'ConsoleOrderDetail' })
 
@@ -389,16 +376,6 @@
     createdAt: string
   }
 
-  interface SchemaField {
-    key: string
-    label: string
-    type: 'text' | 'password' | 'textarea' | 'number' | 'boolean' | 'select'
-    required: boolean
-    placeholder: string
-    default?: unknown
-    options: Array<{ label: string; value: unknown }>
-  }
-
   const route = useRoute()
   const router = useRouter()
   const auth = useAuthStore()
@@ -421,16 +398,25 @@
     note: '',
     screenshot_url: ''
   })
+  const approvalPaymentRequest = new IdempotentRequest<PaymentRequest>('pay')
   const wechatQrOpen = ref(false)
   const wechatQrLoading = ref(false)
   const wechatQrUrl = ref('')
   const wechatQrDataUrl = ref('')
+  const paymentFormOpen = ref(false)
+  const paymentFormHtml = ref('')
   const wechatJsapiOpen = ref(false)
   const wechatJsapiParams = ref<Record<string, unknown> | null>(null)
   const hasAutoNavigated = ref(false)
   let sse: ReturnType<typeof createSseConnection> | undefined
   let pollingTimer: ReturnType<typeof setInterval> | undefined
   let vpsRetryTimer: ReturnType<typeof setInterval> | undefined
+  /** 详情请求代次：慢响应下旧请求不得覆盖新状态（web_data_races F4）。 */
+  let detailReqId = 0
+  let fetchingDetail = false
+  let detailController: AbortController | null = null
+  /** SSE 事件数组上限：长驻页面不无界增长（web_data_races F4）。 */
+  const MAX_SSE_EVENTS = 200
 
   const parseJson = (value: unknown): CompatibleRecord => {
     if (!value) return {}
@@ -523,16 +509,35 @@
   })
 
   const fetchDetail = async () => {
-    const response = await getOrderDetail(orderId.value)
-    const payload = response.data ?? {}
-    order.value = payload.order ? normalizeOrder(payload.order as Order & CompatibleRecord) : null
-    orderItems.value = (payload.items ?? []).map((item) =>
-      normalizeItem(item as OrderItem & CompatibleRecord)
-    )
-    orderPayments.value = (payload.payments ?? []).map((item) =>
-      normalizePayment(item as OrderPayment & CompatibleRecord)
-    )
-    syncPayAmountFromOrder()
+    // 在途保护 + 请求代次：慢响应下轮询不重叠、旧响应不覆盖新状态（F4）。
+    if (fetchingDetail) return
+    fetchingDetail = true
+    detailController?.abort()
+    detailController = new AbortController()
+    const requestId = ++detailReqId
+    try {
+      const response = await getOrderDetail(orderId.value, detailController.signal)
+      if (requestId !== detailReqId) return // 已有更新的请求发起，丢弃本次结果
+      const payload = response.data ?? {}
+      order.value = payload.order ? normalizeOrder(payload.order as Order & CompatibleRecord) : null
+      orderItems.value = (payload.items ?? []).map((item) =>
+        normalizeItem(item as OrderItem & CompatibleRecord)
+      )
+      orderPayments.value = (payload.payments ?? []).map((item) =>
+        normalizePayment(item as OrderPayment & CompatibleRecord)
+      )
+      syncPayAmountFromOrder()
+    } catch (error) {
+      // 主动取消（切换订单/离开页面）不算错误，静默放行。
+      if (
+        !(error as { code?: string })?.code ||
+        (error as { code?: string })?.code !== 'ERR_CANCELED'
+      ) {
+        throw error
+      }
+    } finally {
+      fetchingDetail = false
+    }
   }
 
   const canPay = computed(() => order.value?.status === 'pending_payment')
@@ -590,82 +595,33 @@
     paymentDialogVisible.value = true
   }
 
-  const normalizeSchemaFields = (schemaJson?: string): SchemaField[] => {
-    if (!schemaJson) return []
-    try {
-      const parsed = JSON.parse(schemaJson) as CompatibleRecord
-      if (Array.isArray(parsed)) return parsed as SchemaField[]
-      if (Array.isArray(parsed.fields)) return parsed.fields as SchemaField[]
-      const properties = (parsed.properties ?? {}) as CompatibleRecord
-      const required = new Set<string>(Array.isArray(parsed.required) ? parsed.required : [])
-      return Object.keys(properties).map((key) => {
-        const property = properties[key] as CompatibleRecord
-        const enumValues = Array.isArray(property.enum) ? property.enum : null
-        const type: SchemaField['type'] = enumValues
-          ? 'select'
-          : property.format === 'password'
-            ? 'password'
-            : property.format === 'textarea'
-              ? 'textarea'
-              : ['number', 'integer'].includes(property.type)
-                ? 'number'
-                : property.type === 'boolean'
-                  ? 'boolean'
-                  : 'text'
-        return {
-          key,
-          label: String(property.title ?? property.label ?? key),
-          type,
-          required: required.has(key),
-          placeholder: String(property.description ?? property.placeholder ?? ''),
-          default: property.default,
-          options: enumValues?.map((value) => ({ label: String(value), value })) ?? []
-        }
-      })
-    } catch {
-      return []
-    }
-  }
-
   const selectedProvider = computed(() =>
     providers.value.find((item) => item.key === paymentForm.method)
   )
-  const schemaFields = computed(() => {
-    const provider = selectedProvider.value
-    if (
-      !provider?.schema_json ||
-      ['approval', 'balance', 'custom', 'yipay'].includes(provider.key || '')
-    )
-      return []
-    return normalizeSchemaFields(provider.schema_json)
-  })
-  const selectedInstructions = computed(() => {
-    const config = parseJson(selectedProvider.value?.config_json)
-    return String(config.instructions ?? config.notice ?? '')
-  })
+  const selectedInstructions = computed(() => String(selectedProvider.value?.instructions ?? ''))
+  const selectedNotice = computed(() => String(selectedProvider.value?.notice ?? ''))
   const wechatJsapiParamsJson = computed(() =>
     wechatJsapiParams.value ? JSON.stringify(wechatJsapiParams.value, null, 2) : ''
   )
 
   watch(
     () => paymentForm.method,
-    (_value, previous) => {
-      if (previous) {
-        const oldProvider = providers.value.find((item) => item.key === previous)
-        normalizeSchemaFields(oldProvider?.schema_json).forEach(
-          (field) => delete paymentForm[field.key]
-        )
-      }
-      schemaFields.value.forEach((field) => {
-        if (paymentForm[field.key] === undefined) {
-          paymentForm[field.key] = field.default ?? (field.type === 'boolean' ? false : '')
-        }
-      })
+    () => {
       paymentHint.value = ''
     }
   )
 
   const openWeChatQr = async (url: string) => {
+    // 扫码内容必须是支付策略放行的 URL（H8）：微信 native 支付的 code_url
+    // 通常就是白名单 scheme `weixin://wxpay/bizpayurl?...`，被 `kind !== 'web'`
+    // 错杀会导致合法二维码扫不出；但 javascript:/data: 等危险内容仍拒绝。
+    // 二维码只是把内容渲染成图片，用户扫码后由微信 App 处理，不需要走
+    // window.open/location.href，所以这里只要求 decision.ok，不看 kind。
+    const decision = classifyPaymentUrl(url)
+    if (!decision.ok) {
+      ElMessage.error('支付链接无效，请刷新后重试')
+      return
+    }
     wechatQrOpen.value = true
     wechatQrUrl.value = url
     wechatQrLoading.value = true
@@ -715,28 +671,22 @@
     paying.value = true
     try {
       if (method === 'approval') {
-        await submitOrderPayment(
-          orderId.value,
-          {
-            method,
-            amount: Number(paymentForm.amount || 0),
-            trade_no: String(paymentForm.trade_no || ''),
-            note: String(paymentForm.note || ''),
-            screenshot_url: String(paymentForm.screenshot_url || '')
-          },
-          `pay-${Date.now()}`
-        )
+        const request = approvalPaymentRequest.prepare(() => ({
+          method,
+          amount: Number(paymentForm.amount || 0),
+          trade_no: String(paymentForm.trade_no || ''),
+          note: String(paymentForm.note || ''),
+          screenshot_url: String(paymentForm.screenshot_url || '')
+        }))
+        await submitOrderPayment(orderId.value, request.payload, request.key)
+        approvalPaymentRequest.resolve()
         ElMessage.success('已提交付款信息')
         paymentDialogVisible.value = false
         await fetchDetail()
         return
       }
 
-      const extra = schemaFields.value.reduce<Record<string, unknown>>((result, field) => {
-        result[field.key] = paymentForm[field.key]
-        return result
-      }, {})
-      const response = await createOrderPayment(orderId.value, { method, extra })
+      const response = await createOrderPayment(orderId.value, { method })
       const result = response.data ?? {}
       const resultExtra = (result.extra ?? {}) as Record<string, unknown>
       paymentHint.value = String(resultExtra.instructions ?? '')
@@ -748,18 +698,18 @@
       } else if (payKind === 'jsapi') {
         openWeChatJsapi(String(resultExtra.jsapi_params_json ?? ''))
       } else if (payKind === 'form') {
-        const opened = window.open('', '_blank')
-        if (!opened) {
-          ElMessage.warning('浏览器拦截了支付窗口')
-          return
-        }
-        opened.document.open()
-        opened.document.write(String(resultExtra.form_html ?? ''))
-        opened.document.close()
+        // P2-74：改为沙箱 iframe 渲染支付表单（见模板），不再 document.write。
+        paymentFormHtml.value = String(resultExtra.form_html ?? '')
+        paymentFormOpen.value = true
       } else if (payKind === 'urlscheme') {
-        window.location.href = String(resultExtra.urlscheme ?? '')
+        // H2：scheme 只允许支付白名单，非法值显示错误、不导航。
+        openPaymentUrl(String(resultExtra.urlscheme ?? ''), {
+          onInvalid: () => ElMessage.error('支付拉起失败，请重试')
+        })
       } else if (payKind === 'redirect' || result.pay_url) {
-        window.open(String(resultExtra.pay_url ?? result.pay_url ?? ''), '_blank')
+        openPaymentUrl(String(resultExtra.pay_url ?? result.pay_url ?? ''), {
+          onInvalid: () => ElMessage.error('支付链接无效，请刷新后重试')
+        })
       } else if (result.paid) {
         ElMessage.success('支付完成')
         await fetchDetail()
@@ -770,6 +720,8 @@
         ElMessage.success('支付请求已提交')
       }
       paymentDialogVisible.value = false
+    } catch (error) {
+      if (method === 'approval') approvalPaymentRequest.reject(error)
     } finally {
       paying.value = false
     }
@@ -826,14 +778,31 @@
 
   const startSse = () => {
     if (!auth.token) return
+    // F9：已终结订单（active/failed/rejected/cancelled）没有可推送的进度事件，
+    // 只为它们建 SSE 会占用服务端 goroutine + 15s 心跳直到页面卸载。仅活跃
+    // 推进态（可支付/审核/开通中）才建连。
+    const status = String(order.value?.status ?? '')
+    const activeStates = ['pending_payment', 'pending_review', 'approved', 'provisioning']
+    if (!activeStates.includes(status)) return
     sse?.close()
     const base = import.meta.env.VITE_API_BASE || ''
     sse = createSseConnection(`${base}/api/v1/orders/${orderId.value}/events`, {
       headers: { Authorization: `Bearer ${auth.token}` },
+      getToken: () => auth.token,
       onMessage: (message) => {
-        if (message.data) events.value.unshift(message.data)
+        if (message.data) {
+          events.value.unshift(message.data)
+          // 长驻页面不无界增长：保留最近 MAX_SSE_EVENTS 条（F4）。
+          if (events.value.length > MAX_SSE_EVENTS) {
+            events.value.splice(MAX_SSE_EVENTS)
+          }
+        }
       }
     })
+  }
+  const stopSse = () => {
+    sse?.close()
+    sse = undefined
   }
   const stopPolling = () => {
     if (pollingTimer) clearInterval(pollingTimer)
@@ -841,7 +810,8 @@
   }
   const startPolling = () => {
     if (pollingTimer) return
-    pollingTimer = setInterval(() => void fetchDetail(), 3000)
+    // 错误已由 http 拦截器弹 toast，这里静默吞掉避免轮询 tick 产生 unhandled rejection。
+    pollingTimer = setInterval(() => void fetchDetail().catch(() => {}), 3000)
   }
   const stopVpsRetry = () => {
     if (vpsRetryTimer) clearInterval(vpsRetryTimer)
@@ -866,6 +836,9 @@
   watch(
     () => order.value?.status,
     async (status, previous) => {
+      // F9：状态推进到终结态时关闭 SSE（不再占用服务端 goroutine/心跳）。
+      const terminalStates = ['active', 'failed', 'rejected', 'cancelled', 'expired']
+      if (terminalStates.includes(status ?? '')) stopSse()
       if (previous !== 'provisioning' || status !== 'active' || hasAutoNavigated.value) return
       await tryAutoNavigateToVps()
       if (hasAutoNavigated.value || instanceCount.value !== 1) return
@@ -914,7 +887,8 @@
   })
 
   onBeforeUnmount(() => {
-    sse?.close()
+    stopSse()
+    detailController?.abort()
     stopPolling()
     stopVpsRetry()
   })
@@ -1058,6 +1032,14 @@
       max-width: 100%;
       aspect-ratio: 1;
     }
+  }
+
+  .payment-form-frame {
+    width: 100%;
+    min-height: 420px;
+    border: 1px solid var(--default-border);
+    border-radius: calc(var(--custom-radius) / 2 + 2px);
+    background: var(--default-box-color);
   }
 
   .jsapi-params {

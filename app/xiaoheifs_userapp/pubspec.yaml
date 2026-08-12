@@ -70,6 +70,10 @@ dependencies:
   # URL launcher
   url_launcher: ^6.2.5
 
+  # Update package integrity (SHA-256 + Ed25519 manifest signature)
+  crypto: ^3.0.3
+  cryptography: ^2.7.0
+
   # App version info
   package_info_plus: ^8.3.1
   gt4_flutter_plugin: ^0.1.5
@@ -94,6 +98,7 @@ dev_dependencies:
   riverpod_lint: ^2.3.10
   custom_lint: ^0.6.4
   flutter_launcher_icons: ^0.14.4
+  test: ^1.25.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -23,6 +23,8 @@ const (
 	AutomationService_ListLines_FullMethodName           = "/plugin.v1.AutomationService/ListLines"
 	AutomationService_ListPackages_FullMethodName        = "/plugin.v1.AutomationService/ListPackages"
 	AutomationService_ListImages_FullMethodName          = "/plugin.v1.AutomationService/ListImages"
+	AutomationService_UpsertPackage_FullMethodName       = "/plugin.v1.AutomationService/UpsertPackage"
+	AutomationService_DeletePackage_FullMethodName       = "/plugin.v1.AutomationService/DeletePackage"
 	AutomationService_CreateInstance_FullMethodName      = "/plugin.v1.AutomationService/CreateInstance"
 	AutomationService_GetInstance_FullMethodName         = "/plugin.v1.AutomationService/GetInstance"
 	AutomationService_ListInstancesSimple_FullMethodName = "/plugin.v1.AutomationService/ListInstancesSimple"
@@ -65,6 +67,9 @@ type AutomationServiceClient interface {
 	ListLines(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListLinesResponse, error)
 	ListPackages(ctx context.Context, in *ListPackagesRequest, opts ...grpc.CallOption) (*ListPackagesResponse, error)
 	ListImages(ctx context.Context, in *ListImagesRequest, opts ...grpc.CallOption) (*ListImagesResponse, error)
+	// Catalog write-back (optional)
+	UpsertPackage(ctx context.Context, in *UpsertPackageRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeletePackage(ctx context.Context, in *DeletePackageRequest, opts ...grpc.CallOption) (*OperationResult, error)
 	// Instance lifecycle
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
@@ -145,6 +150,26 @@ func (c *automationServiceClient) ListImages(ctx context.Context, in *ListImages
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListImagesResponse)
 	err := c.cc.Invoke(ctx, AutomationService_ListImages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) UpsertPackage(ctx context.Context, in *UpsertPackageRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_UpsertPackage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) DeletePackage(ctx context.Context, in *DeletePackageRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_DeletePackage_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -470,6 +495,9 @@ type AutomationServiceServer interface {
 	ListLines(context.Context, *Empty) (*ListLinesResponse, error)
 	ListPackages(context.Context, *ListPackagesRequest) (*ListPackagesResponse, error)
 	ListImages(context.Context, *ListImagesRequest) (*ListImagesResponse, error)
+	// Catalog write-back (optional)
+	UpsertPackage(context.Context, *UpsertPackageRequest) (*OperationResult, error)
+	DeletePackage(context.Context, *DeletePackageRequest) (*OperationResult, error)
 	// Instance lifecycle
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
@@ -527,6 +555,12 @@ func (UnimplementedAutomationServiceServer) ListPackages(context.Context, *ListP
 }
 func (UnimplementedAutomationServiceServer) ListImages(context.Context, *ListImagesRequest) (*ListImagesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListImages not implemented")
+}
+func (UnimplementedAutomationServiceServer) UpsertPackage(context.Context, *UpsertPackageRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertPackage not implemented")
+}
+func (UnimplementedAutomationServiceServer) DeletePackage(context.Context, *DeletePackageRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeletePackage not implemented")
 }
 func (UnimplementedAutomationServiceServer) CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateInstance not implemented")
@@ -710,6 +744,42 @@ func _AutomationService_ListImages_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AutomationServiceServer).ListImages(ctx, req.(*ListImagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_UpsertPackage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertPackageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).UpsertPackage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_UpsertPackage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).UpsertPackage(ctx, req.(*UpsertPackageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_DeletePackage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePackageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).DeletePackage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_DeletePackage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).DeletePackage(ctx, req.(*DeletePackageRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1294,6 +1364,14 @@ var AutomationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListImages",
 			Handler:    _AutomationService_ListImages_Handler,
+		},
+		{
+			MethodName: "UpsertPackage",
+			Handler:    _AutomationService_UpsertPackage_Handler,
+		},
+		{
+			MethodName: "DeletePackage",
+			Handler:    _AutomationService_DeletePackage_Handler,
 		},
 		{
 			MethodName: "CreateInstance",

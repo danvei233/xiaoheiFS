@@ -72,13 +72,13 @@ Current state:
   - Conventions (required reading before writing a page):
     `docs/frontend/adp-conventions.md`
   - Migration plan and rules: `docs/frontend/adp-migration-plan.md`
-- **`adminweb/`** is a legacy second SPA being folded into `frontend/`. Do not
-  build on it; it is deleted at the end of the migration.
+- The legacy `adminweb/` SPA has been fully folded into `frontend/` and
+  deleted; do not reference or restore it.
 
-While the migration is in flight, `frontend/src/pages`, `frontend/src/layouts` and
-the Ant Design components at the top level of `frontend/src/components` are dead
-code kept only as a porting reference. They are excluded from `tsconfig.json` and
-no route points at them. New pages go in `frontend/src/views`.
+`frontend/src/pages`, `frontend/src/layouts` and the Ant Design components at the
+top level of `frontend/src/components` are dead code kept only as a porting
+reference. They are excluded from `tsconfig.json` and no route points at them.
+New pages go in `frontend/src/views`.
 
 Frontend commands (`frontend/package.json`) — note CONTRIBUTING.md's `npm test`
 does not exist here; there is no frontend test runner yet:

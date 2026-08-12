@@ -12,6 +12,12 @@ import (
 type FakeAutomationClient struct {
 	mu sync.Mutex
 
+	// Strict disables the optimistic default results (P2-60): when set,
+	// GetHostInfo/CreateHost return an explicit error (or a HostID=0 result)
+	// unless the test configures a result, so a test cannot accidentally pass
+	// by relying on the fake fabricating a successful, ready host.
+	Strict bool
+
 	CreateHostRequests []appshared.AutomationCreateHostRequest
 	CreateHostResult   appshared.AutomationCreateHostResult
 	CreateHostErr      error
@@ -34,6 +40,7 @@ type FakeAutomationClient struct {
 	LockCalls    []int64
 	UnlockCalls  []int64
 	DeleteCalls  []int64
+	DeleteErr    error
 	StartCalls   []int64
 	StopCalls    []int64
 	RebootCalls  []int64
@@ -73,10 +80,16 @@ func (f *FakeAutomationClient) CreateHost(ctx context.Context, req appshared.Aut
 	if f.CreateHostErr != nil {
 		return appshared.AutomationCreateHostResult{}, f.CreateHostErr
 	}
-	if f.CreateHostResult.HostID == 0 {
+	if f.CreateHostResult.HostID == 0 && !f.Strict {
 		f.CreateHostResult.HostID = 1001
 	}
 	return f.CreateHostResult, nil
+}
+
+func (f *FakeAutomationClient) CreateHostRequestCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.CreateHostRequests)
 }
 
 func (f *FakeAutomationClient) GetHostInfo(ctx context.Context, hostID int64) (appshared.AutomationHostInfo, error) {
@@ -86,6 +99,9 @@ func (f *FakeAutomationClient) GetHostInfo(ctx context.Context, hostID int64) (a
 		return appshared.AutomationHostInfo{}, f.HostInfoErr
 	}
 	if f.HostInfo == nil {
+		if f.Strict {
+			return appshared.AutomationHostInfo{}, fmt.Errorf("fake: host %d not configured (strict mode)", hostID)
+		}
 		return appshared.AutomationHostInfo{HostID: hostID, State: 2, HostName: "host"}, nil
 	}
 	if info, ok := f.HostInfo[hostID]; ok {
@@ -136,7 +152,7 @@ func (f *FakeAutomationClient) DeleteHost(ctx context.Context, hostID int64) err
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.DeleteCalls = append(f.DeleteCalls, hostID)
-	return nil
+	return f.DeleteErr
 }
 
 func (f *FakeAutomationClient) StartHost(ctx context.Context, hostID int64) error {

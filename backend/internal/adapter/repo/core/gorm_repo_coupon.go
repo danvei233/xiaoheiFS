@@ -6,6 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
@@ -107,8 +110,10 @@ func (r *GormRepo) DeleteCouponProductGroup(ctx context.Context, id int64) error
 func (r *GormRepo) ListCoupons(ctx context.Context, filter appshared.CouponFilter, limit, offset int) ([]domain.Coupon, int, error) {
 	q := r.gdb.WithContext(ctx).Model(&couponRow{})
 	if v := strings.TrimSpace(filter.Keyword); v != "" {
-		like := "%" + strings.ToUpper(v) + "%"
-		q = q.Where("UPPER(code) LIKE ? OR note LIKE ?", like, "%"+v+"%")
+		codeLike := "%" + escapeLikePattern(strings.ToUpper(v)) + "%"
+		noteLike := "%" + escapeLikePattern(v) + "%"
+		esc := likeEscapeClause(r.gdb)
+		q = q.Where("UPPER(code) LIKE ?"+esc+" OR note LIKE ?"+esc, codeLike, noteLike)
 	}
 	if filter.ProductGroupID > 0 {
 		q = q.Where("product_group_id = ?", filter.ProductGroupID)
@@ -119,6 +124,12 @@ func (r *GormRepo) ListCoupons(ctx context.Context, filter appshared.CouponFilte
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	var rows []couponRow
 	if err := q.Order("id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
@@ -210,7 +221,63 @@ func (r *GormRepo) CreateCouponRedemption(ctx context.Context, redemption *domai
 		Status:         redemption.Status,
 		DiscountAmount: redemption.DiscountAmount,
 	}
-	if err := r.gdb.WithContext(ctx).Create(&row).Error; err != nil {
+	activeStatuses := []string{
+		domain.CouponRedemptionStatusApplied,
+		domain.CouponRedemptionStatusConfirmed,
+	}
+	// The limit check and the insert must be one atomic unit. The coupon service
+	// pre-checks the limits via CountCouponRedemptions, but that is a separate call;
+	// without a conditional insert here, concurrent orders for the same coupon can
+	// both pass the pre-check and over-issue. Locking the coupon row serializes
+	// concurrent redemption creation for the same coupon.
+	// On MySQL/PostgreSQL the FOR UPDATE row lock serializes concurrent
+	// redemptions of the same coupon. SQLite has no row locks, so concurrent
+	// count-then-insert races surface as SQLITE_BUSY/SNAPSHOT instead — retry the
+	// transaction so the loser re-reads the winner's committed count and returns
+	// a stable ErrConflict rather than a raw busy error.
+	err := r.withTransientTxRetry(ctx, func(tx *gorm.DB) error {
+		var coupon couponRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", row.CouponID).First(&coupon).Error; err != nil {
+			return r.ensure(err)
+		}
+		if coupon.TotalLimit >= 0 {
+			var total int64
+			if err := tx.Model(&couponRedemptionRow{}).
+				Where("coupon_id = ? AND status IN ?", coupon.ID, activeStatuses).
+				Count(&total).Error; err != nil {
+				return err
+			}
+			if total >= int64(coupon.TotalLimit) {
+				return appshared.ErrConflict
+			}
+		}
+		if coupon.PerUserLimit >= 0 {
+			var perUser int64
+			if err := tx.Model(&couponRedemptionRow{}).
+				Where("coupon_id = ? AND user_id = ? AND status IN ?", coupon.ID, row.UserID, activeStatuses).
+				Count(&perUser).Error; err != nil {
+				return err
+			}
+			if perUser >= int64(coupon.PerUserLimit) {
+				return appshared.ErrConflict
+			}
+		}
+		if err := tx.Create(&row).Error; err != nil {
+			// On MySQL/PostgreSQL the FOR UPDATE lock on the coupon row above
+			// serializes concurrent redemptions for the same coupon. On SQLite
+			// that lock is a no-op, so the durable gate is the partial unique
+			// index (coupon_id, user_id) WHERE status IN ('applied','confirmed')
+			// created by ensureCouponRedemptionPerUserUniqueIndex. Either way a
+			// concurrent per-user over-redemption surfaces as a constraint error,
+			// which is mapped to a stable conflict instead of a raw error.
+			if isUniqueConstraintError(err) {
+				return appshared.ErrConflict
+			}
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return err
 	}
 	redemption.ID = row.ID

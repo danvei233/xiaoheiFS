@@ -157,6 +157,7 @@
 <script setup lang="ts">
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import { useTable } from '@/hooks/core/useTable'
+  import { useLifecycleSafeTimer } from '@/hooks/core/useLifecycleSafeTimer'
   import {
     approveAdminOrder,
     deleteAdminOrder,
@@ -168,6 +169,7 @@
   } from '@/services/admin'
   import type { Order, OrderDetailWithEventsResponse } from '@/services/types'
   import { INPUT_LIMITS } from '@/constants/inputLimits'
+  import { toCsvLine } from '@/utils/csv'
   import OrderDetailDrawer from './modules/order-detail-drawer.vue'
   import OrderSearch from './modules/order-search.vue'
 
@@ -227,7 +229,13 @@
   const relatedUserName = ref('')
   const rejectReason = ref('')
   const rejectTarget = ref<OrderTableRow | Order | null>(null)
-  const poller = ref<number | null>(null)
+  const pollOrderId = ref<number | null>(null)
+  /** 详情请求代次：慢响应/切换订单时旧响应不得覆盖新详情（F1）。 */
+  let detailReqId = 0
+  let detailController: AbortController | null = null
+  let loadingDetail = false
+  /** 上一次成功加载过用户名对应的 user_id：未变化时跳过重复拉取（F5）。 */
+  let lastLoadedUserId = 0
 
   const quickStatus = computed({
     get: () =>
@@ -243,15 +251,19 @@
   })
 
   async function fetchOrderTable(
-    params: OrderTableParams
+    params: OrderTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<OrderTableRow>> {
-    const response = await listAdminOrders({
-      limit: params.size,
-      offset: (params.current - 1) * params.size,
-      status: params.status || undefined,
-      user_id: normalizeUserId(params.user_id),
-      order_no: params.order_no?.trim() || undefined
-    })
+    const response = await listAdminOrders(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size,
+        status: params.status || undefined,
+        user_id: normalizeUserId(params.user_id),
+        order_no: params.order_no?.trim() || undefined
+      },
+      signal
+    )
     const payload = response.data || { items: [], total: 0 }
     let records = (payload.items || []).map(normalizeOrder)
     const keyword = params.keyword?.trim()
@@ -403,42 +415,77 @@
     getData()
   }
 
-  async function loadDetail(orderId: number | string) {
-    detailLoading.value = true
+  async function loadDetail(orderId: number | string, options: { silent?: boolean } = {}) {
+    // 在途保护 + 请求代次：慢响应/切换订单时旧响应不得覆盖新详情（F1）。
+    if (loadingDetail) return
+    loadingDetail = true
+    detailController?.abort()
+    detailController = new AbortController()
+    const requestId = ++detailReqId
+    // F2：后台轮询 tick 用 silent 模式，不把整个详情抽屉盖 loading 遮罩
+    // （每 5s 全面板闪烁）；只有首次打开/手动刷新才显示 loading。
+    if (!options.silent) detailLoading.value = true
     try {
-      const response = await getAdminOrderDetail(orderId)
+      const response = await getAdminOrderDetail(orderId, detailController.signal)
+      if (requestId !== detailReqId) return
       const payload = response.data as OrderDetailWithEventsResponse
       detail.value = { ...payload, events: payload.events || (payload as any).logs || [] }
       const userId = detail.value.order?.user_id
       if (!userId) {
         relatedUserName.value = ''
+        lastLoadedUserId = 0
+        return
+      }
+      if (requestId !== detailReqId) return
+      // 用户名字段基本不变，仅当 user_id 变化才重新拉取，避免每次轮询 N+1（F5）。
+      const numericUserId = Number(userId)
+      if (numericUserId === lastLoadedUserId && relatedUserName.value) {
         return
       }
       try {
-        const userResponse = await getAdminUserDetail(userId)
+        const userResponse = await getAdminUserDetail(userId, detailController.signal)
+        if (requestId !== detailReqId) return
         relatedUserName.value = String(
           (userResponse.data as any)?.username ?? (userResponse.data as any)?.Username ?? ''
         )
-      } catch {
-        relatedUserName.value = ''
+        lastLoadedUserId = numericUserId
+      } catch (error) {
+        if (requestId === detailReqId && !isCanceledError(error)) relatedUserName.value = ''
       }
+    } catch (error) {
+      if (!isCanceledError(error)) throw error
     } finally {
-      detailLoading.value = false
+      if (requestId === detailReqId) detailLoading.value = false
+      loadingDetail = false
     }
+  }
+
+  function isCanceledError(error: unknown): boolean {
+    return Boolean(
+      (error as { code?: string })?.code === 'ERR_CANCELED' ||
+      (error as { message?: string })?.message === 'canceled' ||
+      (error as { config?: { signal?: { aborted?: boolean } } })?.config?.signal?.aborted
+    )
   }
 
   function getCurrentDetailId() {
     return Number(detail.value?.order?.id || 0) || null
   }
+  // web_refresh_perf F1/F2：轮询用生命周期安全定时器——keep-alive 切后台时
+  // onDeactivated 停表（不再后台每 5s 打两发请求），切回前台恢复；轮询 tick
+  // 走 silent 模式不闪整面板 loading。
+  const { schedule: scheduleDetailPoll, cancel: cancelDetailPoll } = useLifecycleSafeTimer(() => {
+    const id = pollOrderId.value
+    if (!id || !detailVisible.value) return
+    // 错误已由 http 拦截器弹 toast，轮询 tick 静默吞掉避免 unhandled rejection。
+    void loadDetail(id, { silent: true }).catch(() => {})
+  }, 5000)
   function startPolling(orderId: number) {
-    stopPolling()
-    poller.value = window.setInterval(() => loadDetail(orderId), 5000)
+    pollOrderId.value = orderId
+    scheduleDetailPoll()
   }
   function stopPolling() {
-    if (poller.value) {
-      window.clearInterval(poller.value)
-      poller.value = null
-    }
+    cancelDetailPoll()
   }
   async function openDetail(record?: OrderTableRow | Order | null) {
     const orderId = Number(record?.id || 0)
@@ -449,9 +496,22 @@
   }
 
   watch(detailVisible, (visible) => {
-    if (!visible) stopPolling()
+    if (!visible) {
+      stopPolling()
+      detailController?.abort()
+    }
   })
-  onUnmounted(stopPolling)
+  onUnmounted(() => {
+    stopPolling()
+    detailController?.abort()
+  })
+  // keep-alive 切后台停表、切回前台恢复（抽屉开着时继续轮询），F1。
+  onDeactivated(() => {
+    cancelDetailPoll()
+  })
+  onActivated(() => {
+    if (detailVisible.value && pollOrderId.value) scheduleDetailPoll()
+  })
 
   async function approve(record?: OrderTableRow | Order | null) {
     const orderId = Number(record?.id || 0)
@@ -526,16 +586,21 @@
     await refreshData()
   }
 
-  function escapeCsvCell(value: string | number | null | undefined) {
-    return `"${String(value ?? '').replace(/"/g, '""')}"`
-  }
   function exportCsv() {
     const rows = data.value.map((item) =>
-      [escapeCsvCell(item.id), escapeCsvCell(item.status), escapeCsvCell(item.total_amount)].join(
-        ','
-      )
+      toCsvLine([
+        item.id,
+        item.order_no,
+        item.user_id,
+        item.status,
+        item.total_amount,
+        item.currency,
+        item.created_at
+      ])
     )
-    const content = ['id,status,total_amount', ...rows].join('\n')
+    const content = ['id,order_no,user_id,status,total_amount,currency,created_at', ...rows].join(
+      '\n'
+    )
     const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')

@@ -29,7 +29,7 @@
     "pid": { "type": "string", "title": "Merchant PID" },
     "merchant_key": { "type": "string", "title": "Merchant Key", "format": "password", "x-secret": true },
     "site_name": { "type": "string", "title": "Site Name (optional)", "default": "" },
-    "sign_type": { "type": "string", "title": "Sign Type", "default": "MD5" },
+    "sign_type": { "type": "string", "title": "Sign Type", "default": "MD5", "enum": ["MD5"], "description": "Only MD5 is supported by the plugin." },
     "sign_key_mode": {
       "type": "string",
       "title": "Sign Key Mode",
@@ -37,7 +37,8 @@
       "enum": ["plain", "amp_key"],
       "description": "plain => md5(query + key); amp_key => md5(query + '&key=' + key)"
     },
-    "timeout_sec": { "type": "integer", "title": "HTTP Timeout (sec)", "default": 10, "minimum": 1, "maximum": 60 }
+    "timeout_sec": { "type": "integer", "title": "HTTP Timeout (sec)", "default": 10, "minimum": 1, "maximum": 60 },
+    "order_expire_minutes": { "type": "integer", "title": "Order Expire Minutes", "default": 5, "minimum": 1, "maximum": 120, "description": "Reuse same order+method pay link in this window." }
   },
   "required": ["pid", "merchant_key"]
 }

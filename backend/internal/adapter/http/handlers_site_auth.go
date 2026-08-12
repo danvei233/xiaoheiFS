@@ -188,7 +188,18 @@ func validatePasswordBySettings(password string, s authSettings) error {
 }
 
 func (h *Handler) Captcha(c *gin.Context) {
-	settings := h.loadAuthSettings(c)
+	// Bound captcha issuance per source so the captcha table cannot be flooded
+	// into an unbounded size (P3-18). The counter is durable and cross-instance
+	// so N replicas cannot each issue 30 captchas for the same source (P1-1).
+	ip := strings.TrimSpace(c.ClientIP())
+	if ip == "" {
+		ip = "unknown"
+	}
+	if !h.durableAllow(c.Request.Context(), "captcha:ip:"+ip, 30, 10*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
+		return
+	}
+	settings := h.loadAuthSettings(c.Request.Context())
 	if settings.CaptchaProvider == "geetest" {
 		c.JSON(http.StatusOK, gin.H{
 			"captcha_provider": "geetest",
@@ -197,7 +208,7 @@ func (h *Handler) Captcha(c *gin.Context) {
 		})
 		return
 	}
-	captcha, code, err := h.authSvc.CreateCaptchaWithPolicy(c, 5*time.Minute, settings.CaptchaLength, settings.CaptchaComplexity)
+	captcha, code, err := h.authSvc.CreateCaptchaWithPolicy(c.Request.Context(), 5*time.Minute, settings.CaptchaLength, settings.CaptchaComplexity)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrCaptchaError.Error()})
 		return
@@ -222,11 +233,11 @@ func (h *Handler) Captcha(c *gin.Context) {
 
 func (h *Handler) Register(c *gin.Context) {
 	var payload struct {
-		Username      string `json:"username"`
+		Username      string `json:"username" binding:"required"`
 		Email         string `json:"email"`
 		QQ            string `json:"qq"`
 		Phone         string `json:"phone"`
-		Password      string `json:"password"`
+		Password      string `json:"password" binding:"required"`
 		CaptchaID     string `json:"captcha_id"`
 		CaptchaCode   string `json:"captcha_code"`
 		LotNumber     string `json:"lot_number"`
@@ -237,10 +248,10 @@ func (h *Handler) Register(c *gin.Context) {
 		VerifyChannel string `json:"verify_channel"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if !settings.RegisterEnabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrRegistrationDisabled.Error()})
 		return
@@ -318,7 +329,7 @@ func (h *Handler) Register(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrEmailRequired.Error()})
 				return
 			}
-			if err := h.authSvc.VerifyVerificationCode(c, "email", strings.TrimSpace(payload.Email), "register", code); err != nil {
+			if err := h.authSvc.VerifyVerificationCode(c.Request.Context(), "email", strings.TrimSpace(payload.Email), "register", code); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidVerificationCode.Error()})
 				return
 			}
@@ -327,7 +338,7 @@ func (h *Handler) Register(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPhoneRequired.Error()})
 				return
 			}
-			if err := h.authSvc.VerifyVerificationCode(c, "sms", strings.TrimSpace(payload.Phone), "register", code); err != nil {
+			if err := h.authSvc.VerifyVerificationCode(c.Request.Context(), "sms", strings.TrimSpace(payload.Phone), "register", code); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidVerificationCode.Error()})
 				return
 			}
@@ -348,7 +359,7 @@ func (h *Handler) Register(c *gin.Context) {
 		captchaID = ""
 		captchaCode = ""
 	}
-	user, err := h.authSvc.Register(c, appshared.RegisterInput{
+	user, err := h.authSvc.Register(c.Request.Context(), appshared.RegisterInput{
 		Username:        payload.Username,
 		Email:           payload.Email,
 		QQ:              payload.QQ,
@@ -371,8 +382,8 @@ func (h *Handler) Register(c *gin.Context) {
 
 func (h *Handler) Login(c *gin.Context) {
 	var payload struct {
-		Username      string `json:"username"`
-		Password      string `json:"password"`
+		Username      string `json:"username" binding:"required"`
+		Password      string `json:"password" binding:"required"`
 		CaptchaID     string `json:"captcha_id"`
 		CaptchaCode   string `json:"captcha_code"`
 		LotNumber     string `json:"lot_number"`
@@ -381,13 +392,16 @@ func (h *Handler) Login(c *gin.Context) {
 		GenTime       string `json:"gen_time"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if settings.LoginRateLimitEnabled {
+		// Durable cross-instance login rate limit: a single account+IP budget is
+		// shared by all replicas so an attacker spraying across instances cannot
+		// multiply the allowed attempts (P1-1).
 		key := "login:" + strings.ToLower(strings.TrimSpace(payload.Username)) + ":" + strings.TrimSpace(c.ClientIP())
-		if !loginLimiter.Allow(key, settings.LoginRateLimitMax, settings.LoginRateLimitWindow) {
+		if !h.durableAllow(c.Request.Context(), key, settings.LoginRateLimitMax, settings.LoginRateLimitWindow) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyAttempts.Error()})
 			return
 		}
@@ -403,18 +417,19 @@ func (h *Handler) Login(c *gin.Context) {
 			return
 		}
 	}
-	user, err := h.authSvc.Login(c, payload.Username, payload.Password)
+	user, err := h.authSvc.LoginUser(c.Request.Context(), payload.Username, payload.Password)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidCredentials.Error()})
 		return
 	}
 	h.postLoginSecurityHook(c, user, settings)
-	accessToken, err := h.signAuthToken(user.ID, string(user.Role), 24*time.Hour, "access")
+	familyID := newTokenID()
+	accessToken, err := h.signAuthToken(user.ID, string(user.Role), user.PasswordVersion, 24*time.Hour, "access", familyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
 		return
 	}
-	refreshToken, err := h.signAuthToken(user.ID, string(user.Role), 7*24*time.Hour, "refresh")
+	refreshToken, err := h.signAuthToken(user.ID, string(user.Role), user.PasswordVersion, 7*24*time.Hour, "refresh", familyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
 		return
@@ -437,11 +452,19 @@ func (h *Handler) Login(c *gin.Context) {
 }
 
 func (h *Handler) Logout(c *gin.Context) {
+	familyID, _ := c.Get("token_family_id")
+	family, _ := familyID.(string)
+	if strings.TrimSpace(family) != "" {
+		if err := h.authSvc.RevokeRefreshTokenFamily(c.Request.Context(), family, time.Now().Add(8*24*time.Hour)); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": domain.ErrServiceUnavailable.Error()})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) AuthSettings(c *gin.Context) {
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	c.JSON(http.StatusOK, gin.H{
 		"register_enabled":                         settings.RegisterEnabled,
 		"register_required_fields":                 settings.RegisterRequiredFields,
@@ -497,10 +520,10 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 		GenTime       string `json:"gen_time"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if !settings.RegisterEnabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrRegistrationDisabled.Error()})
 		return
@@ -536,11 +559,11 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrEmailRequired.Error()})
 			return
 		}
-		if !registerCodeLimiter.Allow("register_code:email:"+strings.ToLower(emailVal), 3, 10*time.Minute) {
+		if !h.durableAllow(c.Request.Context(), "register_code:email:"+strings.ToLower(emailVal), 3, 10*time.Minute) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 			return
 		}
-		code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, "email", emailVal, "register", settings.RegisterVerifyTTL, settings.EmailCodeLength, settings.EmailCodeComplexity)
+		code, err := h.authSvc.CreateVerificationCodeWithPolicy(c.Request.Context(), "email", emailVal, "register", settings.RegisterVerifyTTL, settings.EmailCodeLength, settings.EmailCodeComplexity)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -557,7 +580,7 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrEmailSenderNotConfigured.Error()})
 			return
 		}
-		if err := h.emailSender.Send(c, emailVal, subject, body); err != nil {
+		if err := h.emailSender.Send(c.Request.Context(), emailVal, subject, body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrEmailSendFailed.Error()})
 			return
 		}
@@ -573,11 +596,11 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrSMSPluginNotConfigured.Error()})
 			return
 		}
-		if !registerCodeLimiter.Allow("register_code:sms:"+phoneVal, 3, 10*time.Minute) {
+		if !h.durableAllow(c.Request.Context(), "register_code:sms:"+phoneVal, 3, 10*time.Minute) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 			return
 		}
-		code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, "sms", phoneVal, "register", settings.RegisterVerifyTTL, settings.SMSCodeLength, settings.SMSCodeComplexity)
+		code, err := h.authSvc.CreateVerificationCodeWithPolicy(c.Request.Context(), "sms", phoneVal, "register", settings.RegisterVerifyTTL, settings.SMSCodeLength, settings.SMSCodeComplexity)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -599,7 +622,7 @@ func (h *Handler) RegisterCode(c *gin.Context) {
 			return
 		}
 		msg.Content = content
-		cCtx, cancel := context.WithTimeout(c, 10*time.Second)
+		cCtx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 		defer cancel()
 		if _, err := h.smsSender.Send(cCtx, settings.RegisterSMSPluginID, settings.RegisterSMSInstanceID, msg); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrSmsSendFailed.Error()})
@@ -625,10 +648,10 @@ func (h *Handler) postLoginSecurityHook(c *gin.Context, user domain.User, settin
 	ipChanged := !firstLogin && strings.TrimSpace(user.LastLoginIP) != "" && strings.TrimSpace(user.LastLoginIP) != ip
 	shouldNotify := (settings.LoginNotifyOnFirst && firstLogin) || (settings.LoginNotifyOnIPChange && ipChanged)
 	if !shouldNotify {
-		_ = h.authSvc.UpdateLoginSecurity(c, user.ID, ip, user.LastLoginCity, user.LastLoginTZ, time.Now())
+		_ = h.authSvc.UpdateLoginSecurity(c.Request.Context(), user.ID, ip, user.LastLoginCity, user.LastLoginTZ, time.Now())
 		return
 	}
-	city, tz := h.resolveGeoByIP(c, ip, settings.GeoIPMMDBPath)
+	city, tz := h.resolveGeoByIP(c.Request.Context(), ip, settings.GeoIPMMDBPath)
 	loginTime := time.Now()
 	timeText := loginTime.Format("01/02 15:04")
 	if strings.TrimSpace(tz) == "" {
@@ -641,7 +664,7 @@ func (h *Handler) postLoginSecurityHook(c *gin.Context, user domain.User, settin
 		"time":     fmt.Sprintf("%s (%s)", timeText, tz),
 		"username": user.Username,
 	})
-	_ = h.authSvc.UpdateLoginSecurity(c, user.ID, ip, city, tz, loginTime)
+	_ = h.authSvc.UpdateLoginSecurity(c.Request.Context(), user.ID, ip, city, tz, loginTime)
 }
 
 func (h *Handler) resolveGeoByIP(ctx context.Context, ip, mmdbPath string) (string, string) {
@@ -701,7 +724,7 @@ func (h *Handler) sendSecurityMessage(c *gin.Context, channels []string, templat
 				lastErr = domain.ErrEmailSenderNotConfigured
 				continue
 			}
-			if err := h.emailSender.Send(c, emailAddr, subject, body); err != nil {
+			if err := h.emailSender.Send(c.Request.Context(), emailAddr, subject, body); err != nil {
 				lastErr = err
 				continue
 			}
@@ -739,7 +762,7 @@ func (h *Handler) sendSecurityMessage(c *gin.Context, channels []string, templat
 			for k, v := range vars {
 				msgVars[k] = v
 			}
-			_, err := h.smsSender.Send(c, pluginID, instanceID, appshared.SMSMessage{
+			_, err := h.smsSender.Send(c.Request.Context(), pluginID, instanceID, appshared.SMSMessage{
 				TemplateID: providerTemplateID,
 				Content:    content,
 				Vars:       msgVars,
@@ -788,10 +811,10 @@ func (h *Handler) Refresh(c *gin.Context) {
 		RefreshToken string `json:"refresh_token"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	claims, err := h.parseRefreshToken(payload.RefreshToken)
+	claims, err := h.parseRefreshToken(c.Request.Context(), payload.RefreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
 		return
@@ -802,28 +825,51 @@ func (h *Handler) Refresh(c *gin.Context) {
 		return
 	}
 	role, _ := claims["role"].(string)
-	if role == "" {
-		role = "user"
+	if role != string(domain.UserRoleUser) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
+		return
 	}
-	if h.authSvc != nil {
-		user, err := h.authSvc.GetUser(c, userID)
-		if err != nil {
+	familyID, _ := claims["fid"].(string)
+	if strings.TrimSpace(familyID) == "" {
+		// Adopt refresh tokens issued before family tracking was deployed. Their
+		// unique jti becomes the root family so upgrades do not force every active
+		// user to log in again.
+		familyID, _ = claims["jti"].(string)
+		if strings.TrimSpace(familyID) == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
 			return
 		}
-		if tokenIssuedBeforePasswordChange(user, claims) {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
-			return
-		}
 	}
-	accessToken, err := h.signAuthToken(userID, role, 24*time.Hour, "access")
+	user, err := h.authSvc.GetUser(c.Request.Context(), userID)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
+		return
+	}
+	accessToken, err := h.signAuthToken(userID, role, user.PasswordVersion, 24*time.Hour, "access", familyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
 		return
 	}
-	newRefreshToken, err := h.signAuthToken(userID, role, 7*24*time.Hour, "refresh")
+	newRefreshToken, err := h.signAuthToken(userID, role, user.PasswordVersion, 7*24*time.Hour, "refresh", familyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
+		return
+	}
+	expiresAt, err := claims.GetExpirationTime()
+	if err != nil || expiresAt == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
+		return
+	}
+	rotated, familyRevoked, err := h.authSvc.RotateRefreshToken(
+		c.Request.Context(), payload.RefreshToken, newRefreshToken, familyID,
+		expiresAt.Time, time.Now().Add(7*24*time.Hour),
+	)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": domain.ErrServiceUnavailable.Error()})
+		return
+	}
+	if !rotated || familyRevoked {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidRefreshToken.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -833,84 +879,134 @@ func (h *Handler) Refresh(c *gin.Context) {
 	})
 }
 
-func (h *Handler) signAuthToken(userID int64, role string, ttl time.Duration, tokenType string) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+// Token issuer and audience. These are written into every issued token and
+// strictly re-validated on parse so a token minted for another deployment or
+// another audience is rejected, not just decoded (Issue #51 P3-22 hardening).
+const (
+	jwtIssuer   = "xiaoheiplay"
+	jwtAudience = "xiaoheiplay"
+)
+
+// newTokenID returns a random JWT id used to identify a single issued token.
+func newTokenID() string {
+	return randomToken(16)
+}
+
+// baseAuthClaims builds the shared claim set. iat is a NumericDate (integer
+// Unix seconds, per RFC 7519) and each token carries iss/aud/jti so tokens are
+// attributable and revocable-by-id. pvv is the user's password version at
+// issuance; a later password change increments the stored version, which
+// revokes this token (see tokenInvalidatedByPasswordChange).
+func baseAuthClaims(userID int64, role, tokenType string, pvv int64, ttl time.Duration) jwt.MapClaims {
+	now := time.Now()
+	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
 		"type":    tokenType,
-		"iat":     float64(time.Now().UnixNano()) / 1e9,
-		"exp":     time.Now().Add(ttl).Unix(),
-	})
+		"iss":     jwtIssuer,
+		"aud":     jwtAudience,
+		"jti":     newTokenID(),
+		"iat":     now.Unix(),
+		"exp":     now.Add(ttl).Unix(),
+	}
+	if pvv > 0 {
+		claims["pvv"] = pvv
+	}
+	return claims
+}
+
+func (h *Handler) signAuthToken(userID int64, role string, pvv int64, ttl time.Duration, tokenType string, familyID ...string) (string, error) {
+	claims := baseAuthClaims(userID, role, tokenType, pvv, ttl)
+	family := ""
+	if len(familyID) > 0 {
+		family = strings.TrimSpace(familyID[0])
+	}
+	if family == "" && tokenType == "refresh" {
+		family = newTokenID()
+	}
+	if family != "" {
+		claims["fid"] = family
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(h.jwtSecret)
 }
 
-func (h *Handler) signAuthTokenWithMFA(userID int64, role string, ttl time.Duration, tokenType string, mfa int) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": userID,
-		"role":    role,
-		"type":    tokenType,
-		"mfa":     mfa,
-		"iat":     float64(time.Now().UnixNano()) / 1e9,
-		"exp":     time.Now().Add(ttl).Unix(),
-	})
+// signImpersonationToken signs an access token that acts as another (regular)
+// user, tagging it with the impersonating admin's id in the `imp` claim so the
+// middleware can surface the operator in RequestActor and audit logs can
+// distinguish "the user themselves" from "an admin acting as the user" (round-4
+// auth review Finding 7). The token still carries the target user's role/pvv so
+// the existing per-request state checks apply unchanged.
+func (h *Handler) signImpersonationToken(operatorID, operatorPVV, userID int64, role string, pvv int64, ttl time.Duration) (string, error) {
+	claims := baseAuthClaims(userID, role, "access", pvv, ttl)
+	// purpose=impersonation distinguishes a real login token from a
+	// impersonation token so the frontend only honors impersonation for the
+	// latter (web_auth_surface F1).
+	claims["purpose"] = "impersonation"
+	if operatorID > 0 {
+		claims["imp"] = operatorID
+		claims["imp_pvv"] = operatorPVV
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(h.jwtSecret)
+}
+
+func (h *Handler) signAuthTokenWithMFA(userID int64, role string, pvv int64, ttl time.Duration, tokenType string, mfa int, familyID ...string) (string, error) {
+	claims := baseAuthClaims(userID, role, tokenType, pvv, ttl)
+	claims["mfa"] = mfa
+	family := ""
+	if len(familyID) > 0 {
+		family = strings.TrimSpace(familyID[0])
+	}
+	if family == "" && tokenType == "refresh" {
+		family = newTokenID()
+	}
+	if family != "" {
+		claims["fid"] = family
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString(h.jwtSecret)
+}
+
+// parseAuthToken verifies the signature, algorithm, issuer, audience, expiry
+// and token type for access and refresh tokens, then checks the current user
+// state (status/role/password version).
+func (h *Handler) parseAuthToken(ctx context.Context, raw string, wantType string, emptyErr, invalidErr error) (jwt.MapClaims, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, emptyErr
+	}
+	claims := jwt.MapClaims{}
+	parsed, err := jwt.ParseWithClaims(raw, claims,
+		func(token *jwt.Token) (interface{}, error) {
+			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+				return nil, domain.ErrUnexpectedSigningMethod
+			}
+			return h.jwtSecret, nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(jwtIssuer),
+		jwt.WithAudience(jwtAudience),
+	)
+	if err != nil || parsed == nil || !parsed.Valid {
+		return nil, invalidErr
+	}
+	tokenType, _ := claims["type"].(string)
+	if tokenType != wantType {
+		return nil, domain.ErrInvalidTokenType
+	}
+	if err := validateCurrentAuthClaims(ctx, h.authSvc, claims); err != nil {
+		return nil, invalidErr
+	}
+	return claims, nil
 }
 
 func (h *Handler) parseAccessToken(ctx context.Context, raw string) (jwt.MapClaims, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, domain.ErrEmptyToken
-	}
-	claims := jwt.MapClaims{}
-	parsed, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, domain.ErrUnexpectedSigningMethod
-		}
-		return h.jwtSecret, nil
-	})
-	if err != nil || parsed == nil || !parsed.Valid {
-		return nil, domain.ErrInvalidToken
-	}
-	tokenType, _ := claims["type"].(string)
-	if tokenType != "" && tokenType != "access" {
-		return nil, domain.ErrInvalidTokenType
-	}
-	if h.authSvc != nil {
-		userID, ok := parseMapInt64(claims["user_id"])
-		if ok && userID > 0 {
-			user, userErr := h.authSvc.GetUser(ctx, userID)
-			if userErr != nil {
-				return nil, domain.ErrInvalidToken
-			}
-			if tokenIssuedBeforePasswordChange(user, claims) {
-				return nil, domain.ErrInvalidToken
-			}
-		}
-	}
-	return claims, nil
+	return h.parseAuthToken(ctx, raw, "access", domain.ErrEmptyToken, domain.ErrInvalidToken)
 }
 
-func (h *Handler) parseRefreshToken(raw string) (jwt.MapClaims, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, domain.ErrEmptyRefreshToken
-	}
-	claims := jwt.MapClaims{}
-	parsed, err := jwt.ParseWithClaims(raw, claims, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, domain.ErrUnexpectedSigningMethod
-		}
-		return h.jwtSecret, nil
-	})
-	if err != nil || parsed == nil || !parsed.Valid {
-		return nil, domain.ErrInvalidRefreshToken
-	}
-	tokenType, _ := claims["type"].(string)
-	// Backward compatible: allow legacy tokens without type.
-	if tokenType != "" && tokenType != "refresh" {
-		return nil, domain.ErrInvalidTokenType
-	}
-	return claims, nil
+func (h *Handler) parseRefreshToken(ctx context.Context, raw string) (jwt.MapClaims, error) {
+	return h.parseAuthToken(ctx, raw, "refresh", domain.ErrEmptyRefreshToken, domain.ErrInvalidRefreshToken)
 }
 
 func parseMapInt64(v any) (int64, bool) {
@@ -932,25 +1028,34 @@ func parseMapInt64(v any) (int64, bool) {
 	}
 }
 
-func tokenIssuedBeforePasswordChange(user domain.User, claims jwt.MapClaims) bool {
-	if user.Role == domain.UserRoleAdmin {
+// tokenInvalidatedByPasswordChange reports whether a token must be rejected
+// because the user's password changed after the token was issued. The check is
+// version-based: every issued token carries the password version it was
+// created at, and every password change increments the stored version. This
+// makes revocation exact — no dependence on timestamp precision or the
+// same-second issuance boundary. Tokens issued before version tracking existed
+// carry no version and are accepted only when the account has never changed its
+// password since tracking began.
+func tokenInvalidatedByPasswordChange(user domain.User, claims jwt.MapClaims) bool {
+	if user.PasswordVersion <= 0 {
 		return false
 	}
-	if user.PasswordChangedAt == nil || user.PasswordChangedAt.IsZero() {
-		return false
-	}
-	iatSeconds, ok := toFloat64Claim(claims["iat"])
-	if !ok || iatSeconds <= 0 {
-		// No iat -> treat as legacy token, invalidate after password change.
+	issued, ok := toInt64Claim(claims["pvv"])
+	if !ok || issued != user.PasswordVersion {
 		return true
 	}
-	changedAt := float64(user.PasswordChangedAt.UnixNano()) / 1e9
-	return iatSeconds <= changedAt
+	return false
+}
+
+// tokenIssuedBeforePasswordChange is kept as an alias for call sites that
+// reason about legacy tokens; it now delegates to the version-based check.
+func tokenIssuedBeforePasswordChange(user domain.User, claims jwt.MapClaims) bool {
+	return tokenInvalidatedByPasswordChange(user, claims)
 }
 
 func (h *Handler) Me(c *gin.Context) {
 	userID := getUserID(c)
-	user, err := h.authSvc.GetUser(c, userID)
+	user, err := h.authSvc.GetUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -970,7 +1075,7 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		TOTPCode string `json:"totp_code"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if strings.TrimSpace(payload.Password) != "" {
@@ -981,20 +1086,26 @@ func (h *Handler) UpdateProfile(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrEmailPhoneUpdateRequiresApiV1MeSecurity.Error()})
 		return
 	}
-	settings := h.loadAuthSettings(c)
-	currentUser, err := h.authSvc.GetUser(c, getUserID(c))
+	settings := h.loadAuthSettings(c.Request.Context())
+	currentUser, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
 	}
 	usernameChange := strings.TrimSpace(payload.Username) != "" && strings.TrimSpace(payload.Username) != strings.TrimSpace(currentUser.Username)
 	if currentUser.TOTPEnabled && settings.TwoFAEnabled && usernameChange {
-		if err := h.authSvc.VerifyTOTP(c, currentUser.ID, payload.TOTPCode); err != nil {
+		if !h.allowTOTPVerify(c, currentUser.ID) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyAttempts.Error()})
+			return
+		}
+		if err := h.authSvc.VerifyTOTP(c.Request.Context(), currentUser.ID, payload.TOTPCode); err != nil {
+			h.recordAuthFailures(c.Request.Context(), h.totpBudgetDims(c, currentUser.ID), time.Now())
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalid2faCode.Error()})
 			return
 		}
+		h.resetAuthFailures(c.Request.Context(), h.totpBudgetDims(c, currentUser.ID)[0].key)
 	}
-	user, err := h.authSvc.UpdateProfile(c, getUserID(c), appshared.UpdateProfileInput{
+	user, err := h.authSvc.UpdateProfile(c.Request.Context(), getUserID(c), appshared.UpdateProfileInput{
 		Username: payload.Username,
 		QQ:       payload.QQ,
 		Bio:      payload.Bio,
@@ -1018,30 +1129,36 @@ func (h *Handler) MePasswordChange(c *gin.Context) {
 		TOTPCode        string `json:"totp_code"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
-	currentUser, err := h.authSvc.GetUser(c, getUserID(c))
+	settings := h.loadAuthSettings(c.Request.Context())
+	currentUser, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
 	}
-	if err := h.authSvc.VerifyPassword(c, getUserID(c), payload.CurrentPassword); err != nil {
+	if err := h.authSvc.VerifyPassword(c.Request.Context(), getUserID(c), payload.CurrentPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrCurrentPasswordInvalid.Error()})
 		return
 	}
 	if currentUser.TOTPEnabled && settings.TwoFAEnabled {
-		if err := h.authSvc.VerifyTOTP(c, currentUser.ID, payload.TOTPCode); err != nil {
+		if !h.allowTOTPVerify(c, currentUser.ID) {
+			c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyAttempts.Error()})
+			return
+		}
+		if err := h.authSvc.VerifyTOTP(c.Request.Context(), currentUser.ID, payload.TOTPCode); err != nil {
+			h.recordAuthFailures(c.Request.Context(), h.totpBudgetDims(c, currentUser.ID), time.Now())
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalid2faCode.Error()})
 			return
 		}
+		h.resetAuthFailures(c.Request.Context(), h.totpBudgetDims(c, currentUser.ID)[0].key)
 	}
 	if err := validatePasswordBySettings(payload.NewPassword, settings); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if _, err := h.authSvc.UpdateProfile(c, getUserID(c), appshared.UpdateProfileInput{Password: payload.NewPassword}); err != nil {
+	if _, err := h.authSvc.UpdateProfile(c.Request.Context(), getUserID(c), appshared.UpdateProfileInput{Password: payload.NewPassword}); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -1053,9 +1170,9 @@ func (h *Handler) RealNameStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	enabled, provider, actions := h.realNameSvc.GetConfig(c)
+	enabled, provider, actions := h.realNameSvc.GetConfig(c.Request.Context())
 	var record *domain.RealNameVerification
-	if latest, err := h.realNameSvc.Latest(c, getUserID(c)); err == nil {
+	if latest, err := h.realNameSvc.Latest(c.Request.Context(), getUserID(c)); err == nil {
 		record = &latest
 	}
 	verified := false
@@ -1070,7 +1187,7 @@ func (h *Handler) RealNameStatus(c *gin.Context) {
 		"verification":  nil,
 	}
 	if record != nil {
-		resp["verification"] = toRealNameVerificationDTO(*record)
+		resp["verification"] = toRealNameVerificationDTO(*record, h.realNameRedirectURL(c.Request.Context(), *record))
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -1086,25 +1203,25 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 		Phone    string `json:"phone"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	phone := strings.TrimSpace(payload.Phone)
 	if h.authSvc != nil {
-		if user, err := h.authSvc.GetUser(c, getUserID(c)); err == nil {
+		if user, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c)); err == nil {
 			if strings.TrimSpace(user.Phone) != "" {
 				phone = strings.TrimSpace(user.Phone)
 			}
 		}
 	}
 	if h.realNameSvc != nil {
-		_, providerKey, _ := h.realNameSvc.GetConfig(c)
+		_, providerKey, _ := h.realNameSvc.GetConfig(c.Request.Context())
 		if realNameProviderNeedsMobile(providerKey) && phone == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPhoneRequired.Error()})
 			return
 		}
 	}
-	record, err := h.realNameSvc.VerifyWithInput(c, getUserID(c), appshared.RealNameVerifyInput{
+	record, err := h.realNameSvc.VerifyWithInput(c.Request.Context(), getUserID(c), appshared.RealNameVerifyInput{
 		RealName:    payload.RealName,
 		IDNumber:    payload.IDNumber,
 		Phone:       phone,
@@ -1112,13 +1229,16 @@ func (h *Handler) RealNameVerify(c *gin.Context) {
 	})
 	if err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, appshared.ErrForbidden) {
+		switch {
+		case errors.Is(err, appshared.ErrForbidden):
 			status = http.StatusForbidden
+		case errors.Is(err, appshared.ErrTooManyAttempts):
+			status = http.StatusTooManyRequests
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toRealNameVerificationDTO(record))
+	c.JSON(http.StatusOK, toRealNameVerificationDTO(record, h.realNameRedirectURL(c.Request.Context(), record)))
 }
 
 func realNameProviderNeedsMobile(providerKey string) bool {

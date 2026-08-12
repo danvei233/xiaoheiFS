@@ -3,6 +3,9 @@ package repo
 import (
 	"context"
 	"time"
+
+	"gorm.io/gorm"
+
 	"xiaoheiplay/internal/domain"
 )
 
@@ -15,13 +18,26 @@ func (r *GormRepo) CreateAPIKey(ctx context.Context, key *domain.APIKey) error {
 		ScopesJSON:        key.ScopesJSON,
 		PermissionGroupID: key.PermissionGroupID,
 	}
-	if err := r.gdb.WithContext(ctx).Create(&row).Error; err != nil {
-		return err
+	create := func(db *gorm.DB) error {
+		if err := db.Create(&row).Error; err != nil {
+			return err
+		}
+		key.ID = row.ID
+		key.CreatedAt = row.CreatedAt
+		key.UpdatedAt = row.UpdatedAt
+		return nil
 	}
-	key.ID = row.ID
-	key.CreatedAt = row.CreatedAt
-	key.UpdatedAt = row.UpdatedAt
-	return nil
+	if key.PermissionGroupID != nil {
+		// Serialize with group deletion so a concurrent delete cannot strand a
+		// new API key with a dangling permission-group reference.
+		return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := lockPermissionGroupForWrite(tx, key.PermissionGroupID); err != nil {
+				return err
+			}
+			return create(tx)
+		})
+	}
+	return create(r.gdb.WithContext(ctx))
 
 }
 
@@ -81,7 +97,19 @@ func (r *GormRepo) UpdateAPIKeyStatus(ctx context.Context, id int64, status doma
 }
 
 func (r *GormRepo) TouchAPIKey(ctx context.Context, id int64) error {
+	// Throttle last_used_at writes so the hot request path does not contend on
+	// a write for every call (P2-29).
+	const interval = 5 * time.Minute
+	return r.gdb.WithContext(ctx).Model(&apiKeyRow{}).
+		Where("id = ? AND (last_used_at IS NULL OR last_used_at < ?)", id, time.Now().Add(-interval)).
+		Update("last_used_at", time.Now()).Error
 
-	return r.gdb.WithContext(ctx).Model(&apiKeyRow{}).Where("id = ?", id).Update("last_used_at", time.Now()).Error
+}
 
+func (r *GormRepo) CountAPIKeysByPermissionGroup(ctx context.Context, groupID int64) (int64, error) {
+	var count int64
+	if err := r.gdb.WithContext(ctx).Model(&apiKeyRow{}).Where("permission_group_id = ?", groupID).Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
 }

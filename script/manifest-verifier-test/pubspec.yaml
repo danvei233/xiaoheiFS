@@ -1,0 +1,14 @@
+name: manifest_verifier_test
+description: >-
+  Pure-Dart executable tests for the Flutter update-manifest Ed25519 verifier.
+  Imports the verifier source files directly from both Flutter apps so there is
+  no code copy to drift. Runs with `dart test` (no Flutter SDK needed) and is
+  also exercised by `flutter test` in CI.
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+
+dev_dependencies:
+  cryptography: ^2.7.0
+  test: ^1.25.0

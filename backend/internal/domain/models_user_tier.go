@@ -36,6 +36,9 @@ type UserTierDiscountRule struct {
 	RegionID         int64
 	PlanGroupID      int64
 	PackageID        int64
+	// DiscountPermille is the retained fraction in per-10,000: 0 = free,
+	// 9500 = 5% off (applyDiscount computes v*(10000-permille)/10000). Do not
+	// confuse with Coupon.DiscountPermille, which is per-1,000.
 	DiscountPermille int
 	FixedPrice       *int64
 	AddCorePermille  int

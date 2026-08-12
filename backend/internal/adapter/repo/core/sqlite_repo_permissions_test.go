@@ -3,10 +3,12 @@ package repo_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
 	"xiaoheiplay/internal/adapter/repo/core"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
@@ -27,6 +29,76 @@ func newTestRepo(t *testing.T) (*sql.DB, *repo.GormRepo) {
 		t.Fatalf("migrate: %v", err)
 	}
 	return conn.SQL, repo.NewGormRepo(conn.Gorm)
+}
+
+func TestSQLiteRepo_UpdatePermissionGroupRejectsUnknownGroup(t *testing.T) {
+	rawDB, r := newTestRepo(t)
+	ctx := context.Background()
+
+	missing := domain.PermissionGroup{ID: 999999, Name: "ghost", PermissionsJSON: `["order.view"]`}
+	err := r.UpdatePermissionGroup(ctx, missing)
+	if err == nil {
+		t.Fatalf("expected update of non-existent group to fail")
+	}
+	if !errors.Is(err, appshared.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	var count int64
+	if err := rawDB.QueryRow("SELECT COUNT(1) FROM permission_group_permissions WHERE permission_group_id = ?", missing.ID).Scan(&count); err != nil {
+		t.Fatalf("count dangling join rows: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected no orphan permission_group_permissions rows, got %d", count)
+	}
+}
+
+func TestSQLiteRepo_DeletePermissionGroupDetachesUserAndAPIKeyRefs(t *testing.T) {
+	_, r := newTestRepo(t)
+	ctx := context.Background()
+
+	group := &domain.PermissionGroup{Name: "ops", Description: "ops team", PermissionsJSON: `["order.view"]`}
+	if err := r.CreatePermissionGroup(ctx, group); err != nil {
+		t.Fatalf("create permission group: %v", err)
+	}
+	groupID := group.ID
+
+	user := domain.User{
+		Username:          "grpuser",
+		Email:             "grpuser@example.com",
+		PasswordHash:      "hash",
+		Role:              domain.UserRoleAdmin,
+		Status:            domain.UserStatusActive,
+		PermissionGroupID: &groupID,
+	}
+	if err := r.CreateUser(ctx, &user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	key := domain.APIKey{Name: "grpkey", KeyHash: "hash-grpkey", Status: domain.APIKeyStatusActive, ScopesJSON: `["*"]`, PermissionGroupID: &groupID}
+	if err := r.CreateAPIKey(ctx, &key); err != nil {
+		t.Fatalf("create api key: %v", err)
+	}
+
+	if err := r.DeletePermissionGroup(ctx, groupID); err != nil {
+		t.Fatalf("delete permission group: %v", err)
+	}
+
+	gotUser, err := r.GetUserByID(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("get user: %v", err)
+	}
+	if gotUser.PermissionGroupID != nil {
+		t.Fatalf("expected user.permission_group_id detached after group delete, got %d", *gotUser.PermissionGroupID)
+	}
+	gotKey, err := r.GetAPIKeyByHash(ctx, "hash-grpkey")
+	if err != nil {
+		t.Fatalf("get api key: %v", err)
+	}
+	if gotKey.PermissionGroupID != nil {
+		t.Fatalf("expected api_key.permission_group_id detached after group delete, got %d", *gotKey.PermissionGroupID)
+	}
+	if _, err := r.GetPermissionGroup(ctx, groupID); err == nil {
+		t.Fatalf("expected permission group to be gone")
+	}
 }
 
 func TestSQLiteRepo_PermissionsAndGroups(t *testing.T) {

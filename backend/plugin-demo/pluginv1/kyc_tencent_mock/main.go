@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -137,6 +138,12 @@ func (k *kycServer) Start(ctx context.Context, req *pluginv1.KycStartRequest) (*
 	if idNumber == "" || name == "" {
 		return nil, status.Error(codes.InvalidArgument, "params.name/params.id_number required")
 	}
+	// Only allow absolute http(s) redirect URLs; an end-user-injectable
+	// redirect_url would otherwise let the provider send the certified result
+	// (with PII) to an arbitrary third party (M12).
+	if redirectURL != "" && !validCallbackURL(redirectURL) {
+		return nil, status.Error(codes.InvalidArgument, "invalid redirect_url: must be an absolute http(s) URL with a host")
+	}
 	r := faceid.NewDetectAuthRequest()
 	r.RuleId = common.StringPtr(strings.TrimSpace(k.core.cfg.RuleID))
 	r.IdCard = common.StringPtr(idNumber)
@@ -205,6 +212,25 @@ func main() {
 		pluginsdk.PluginKeyCore: &pluginsdk.CoreGRPCPlugin{Impl: core},
 		pluginsdk.PluginKeyKYC:  &pluginsdk.KycGRPCPlugin{Impl: kyc},
 	})
+}
+
+// validCallbackURL reports whether a callback/redirect URL is acceptable to
+// forward to the KYC provider: an absolute http(s) URL with a non-empty host.
+// It rejects javascript:/data:/file: and protocol-relative URLs.
+func validCallbackURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+	return strings.TrimSpace(u.Host) != ""
 }
 
 func sanitizeErr(err error) string {

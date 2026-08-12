@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/utils/idempotent_request.dart';
 import '../../../core/utils/money_formatter.dart';
 import '../../providers/catalog_provider.dart';
 import '../../providers/cart_provider.dart';
@@ -20,6 +21,8 @@ class CartPage extends ConsumerStatefulWidget {
 
 class _CartPageState extends ConsumerState<CartPage> {
   ProviderSubscription<RefreshEvent?>? _refreshSub;
+  final IdempotentRequest<Object?> _orderRequest =
+      IdempotentRequest<Object?>('order');
 
   @override
   void initState() {
@@ -501,9 +504,13 @@ class _CartPageState extends ConsumerState<CartPage> {
   }
 
   Future<void> _checkout(BuildContext context, WidgetRef ref) async {
+    final request = _orderRequest.prepare(() => null);
     try {
       final orderRepo = ref.read(orderRepositoryProvider);
-      final res = await orderRepo.createOrderFromCart();
+      final res = await orderRepo.createOrderFromCart(
+        idempotencyKey: request.key,
+      );
+      _orderRequest.resolve();
       final orderId = res['order']?['id'] ?? res['id'] ?? res['order_id'];
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -515,6 +522,7 @@ class _CartPageState extends ConsumerState<CartPage> {
       }
       await ref.read(cartProvider.notifier).fetchCart();
     } catch (e) {
+      _orderRequest.reject(e);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.toString())),

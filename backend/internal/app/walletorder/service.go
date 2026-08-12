@@ -3,7 +3,11 @@ package walletorder
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
 	"math"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +16,8 @@ import (
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/pkg/money"
+	"xiaoheiplay/internal/pkg/scrub"
 )
 
 type (
@@ -44,10 +50,25 @@ type Service struct {
 	automation appports.AutomationClientResolver
 	audit      appports.AuditRepository
 	userTiers  userTierAutoApprover
+	cleanup    appports.RefundCleanupRepository
+
+	// workerID uniquely identifies this service instance so cleanup job leases
+	// are owned and fenced per process.
+	workerID string
 }
 
 func NewService(orders appports.WalletOrderRepository, wallets appports.WalletRepository, settings appports.SettingsRepository, vps appports.VPSRepository, orderItems appports.OrderItemRepository, automation appports.AutomationClientResolver, audit appports.AuditRepository) *Service {
-	return &Service{orders: orders, wallets: wallets, settings: settings, vps: vps, orderItems: orderItems, automation: automation, audit: audit}
+	return &Service{
+		orders: orders, wallets: wallets, settings: settings, vps: vps, orderItems: orderItems,
+		automation: automation, audit: audit,
+		workerID: fmt.Sprintf("walletorder-svc-%d", time.Now().UnixNano()),
+	}
+}
+
+// SetRefundCleanupRepo wires the durable cleanup outbox repository so refund
+// approvals enqueue a delete job that a worker retries with bounded backoff.
+func (s *Service) SetRefundCleanupRepo(repo appports.RefundCleanupRepository) {
+	s.cleanup = repo
 }
 
 type userTierAutoApprover interface {
@@ -74,7 +95,7 @@ func (s *Service) CreateRefundOrder(ctx context.Context, userID int64, amount in
 }
 
 func (s *Service) CreateRecharge(ctx context.Context, userID int64, input WalletOrderCreateInput) (domain.WalletOrder, error) {
-	if userID == 0 || input.Amount <= 0 {
+	if userID == 0 || input.Amount <= 0 || input.Amount > maxWalletOrderAmountCents {
 		return domain.WalletOrder{}, appshared.ErrInvalidInput
 	}
 	trimmedNote, err := trimAndValidateOptional(input.Note, maxLenPaymentNote)
@@ -85,6 +106,9 @@ func (s *Service) CreateRecharge(ctx context.Context, userID int64, input Wallet
 	if currency == "" {
 		currency = "CNY"
 	}
+	if currency != "CNY" {
+		return domain.WalletOrder{}, appshared.ErrInvalidInput
+	}
 	order := domain.WalletOrder{UserID: userID, Type: domain.WalletOrderRecharge, Amount: input.Amount, Currency: currency, Status: domain.WalletOrderPendingReview, Note: trimmedNote, MetaJSON: toJSON(input.Meta)}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
 		return domain.WalletOrder{}, err
@@ -93,11 +117,18 @@ func (s *Service) CreateRecharge(ctx context.Context, userID int64, input Wallet
 }
 
 func (s *Service) CreateWithdraw(ctx context.Context, userID int64, input WalletOrderCreateInput) (domain.WalletOrder, error) {
-	if userID == 0 || input.Amount <= 0 {
+	if userID == 0 || input.Amount <= 0 || input.Amount > maxWalletOrderAmountCents {
 		return domain.WalletOrder{}, appshared.ErrInvalidInput
 	}
 	trimmedNote, err := trimAndValidateOptional(input.Note, maxLenPaymentNote)
 	if err != nil {
+		return domain.WalletOrder{}, appshared.ErrInvalidInput
+	}
+	currency := strings.TrimSpace(input.Currency)
+	if currency == "" {
+		currency = "CNY"
+	}
+	if currency != "CNY" {
 		return domain.WalletOrder{}, appshared.ErrInvalidInput
 	}
 	if s.wallets == nil {
@@ -110,10 +141,6 @@ func (s *Service) CreateWithdraw(ctx context.Context, userID int64, input Wallet
 	if wallet.Balance < input.Amount {
 		return domain.WalletOrder{}, appshared.ErrInsufficientBalance
 	}
-	currency := strings.TrimSpace(input.Currency)
-	if currency == "" {
-		currency = "CNY"
-	}
 	order := domain.WalletOrder{UserID: userID, Type: domain.WalletOrderWithdraw, Amount: input.Amount, Currency: currency, Status: domain.WalletOrderPendingReview, Note: trimmedNote, MetaJSON: toJSON(input.Meta)}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
 		return domain.WalletOrder{}, err
@@ -122,7 +149,23 @@ func (s *Service) CreateWithdraw(ctx context.Context, userID int64, input Wallet
 }
 
 func (s *Service) ListUserOrders(ctx context.Context, userID int64, limit, offset int) ([]domain.WalletOrder, int, error) {
-	return s.orders.ListWalletOrders(ctx, userID, limit, offset)
+	return s.orders.ListWalletOrdersFiltered(ctx, userID, "", "", limit, offset)
+}
+
+// ListUserOrdersFiltered 支持 status / type 服务端过滤（cross-module residual）。
+func (s *Service) ListUserOrdersFiltered(ctx context.Context, userID int64, status, orderType string, limit, offset int) ([]domain.WalletOrder, int, error) {
+	return s.orders.ListWalletOrdersFiltered(ctx, userID, status, orderType, limit, offset)
+}
+
+// SummarizeUserOrders returns database aggregates for the current calendar
+// month and all-time counts without loading every order.
+func (s *Service) SummarizeUserOrders(ctx context.Context, userID int64, now time.Time) (domain.WalletOrderSummary, error) {
+	if userID <= 0 {
+		return domain.WalletOrderSummary{}, appshared.ErrInvalidInput
+	}
+	localNow := now.In(time.Local)
+	monthStart := time.Date(localNow.Year(), localNow.Month(), 1, 0, 0, 0, 0, localNow.Location())
+	return s.orders.SummarizeWalletOrders(ctx, userID, monthStart, monthStart.AddDate(0, 1, 0))
 }
 
 func (s *Service) ListAllOrders(ctx context.Context, status string, limit, offset int) ([]domain.WalletOrder, int, error) {
@@ -143,6 +186,27 @@ func (s *Service) GetUserOrder(ctx context.Context, userID, orderID int64) (doma
 	return order, nil
 }
 
+// GetOrderByID returns a wallet order without an ownership check. It is used by
+// payment-callback handlers that resolve the order from the server-derived
+// WALLET-ORDER-<id> order number, avoiding a paginated scan.
+func (s *Service) GetOrderByID(ctx context.Context, orderID int64) (domain.WalletOrder, error) {
+	if orderID <= 0 {
+		return domain.WalletOrder{}, appshared.ErrInvalidInput
+	}
+	return s.orders.GetWalletOrder(ctx, orderID)
+}
+
+// GetOrderByPaymentTradeNo resolves a recharge wallet order by the provider
+// trade_no stored in its meta (P1-4): the slow notify path must not scan
+// bounded pages that truncate deep orders.
+func (s *Service) GetOrderByPaymentTradeNo(ctx context.Context, tradeNo string) (domain.WalletOrder, error) {
+	tradeNo = strings.TrimSpace(tradeNo)
+	if tradeNo == "" {
+		return domain.WalletOrder{}, appshared.ErrInvalidInput
+	}
+	return s.orders.GetWalletOrderByPaymentTradeNo(ctx, tradeNo)
+}
+
 func (s *Service) UpdateOrderMeta(ctx context.Context, orderID int64, metaJSON string) error {
 	return s.orders.UpdateWalletOrderMeta(ctx, orderID, metaJSON)
 }
@@ -156,7 +220,7 @@ func (s *Service) CancelByUser(ctx context.Context, userID, orderID int64, reaso
 	if err != nil {
 		return domain.WalletOrder{}, err
 	}
-	if order.Type != domain.WalletOrderRecharge && order.Type != domain.WalletOrderRefund {
+	if order.Type != domain.WalletOrderRecharge && order.Type != domain.WalletOrderWithdraw && order.Type != domain.WalletOrderRefund {
 		return domain.WalletOrder{}, appshared.ErrInvalidInput
 	}
 	if order.Status != domain.WalletOrderPendingReview {
@@ -206,19 +270,17 @@ func (s *Service) RequestRefund(ctx context.Context, userID int64, vpsID int64, 
 		return domain.WalletOrder{}, nil, appshared.ErrForbidden
 	}
 	meta := map[string]any{"vps_id": inst.ID, "order_item_id": item.ID, "refund_policy": policy, "reason": reason, "delete_on_approve": true}
-	status := domain.WalletOrderPendingReview
-	if !policy.RequireApproval {
-		status = domain.WalletOrderApproved
-	}
-	order := domain.WalletOrder{UserID: userID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: status, Note: reason, MetaJSON: toJSON(meta)}
+	autoApprove := !policy.RequireApproval
+	order := domain.WalletOrder{UserID: userID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: domain.WalletOrderPendingReview, Note: reason, MetaJSON: toJSON(meta)}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
 		return domain.WalletOrder{}, nil, err
 	}
-	if status == domain.WalletOrderApproved {
+	if autoApprove {
 		wallet, err := s.approveOrder(ctx, 0, order, true)
 		if err != nil {
 			return domain.WalletOrder{}, nil, err
 		}
+		order.Status = domain.WalletOrderApproved
 		return order, &wallet, nil
 	}
 	return order, nil, nil
@@ -251,23 +313,69 @@ func (s *Service) AutoRefundOnAdminDelete(ctx context.Context, adminID int64, vp
 	if amount <= 0 {
 		return domain.WalletOrder{}, nil, nil
 	}
-	meta := map[string]any{"vps_id": inst.ID, "order_item_id": item.ID, "refund_policy": policy, "reason": reason, "delete_on_approve": false, "trigger": "admin_delete"}
-	status := domain.WalletOrderPendingReview
-	if !policy.RequireApproval {
-		status = domain.WalletOrderApproved
+	// Idempotency: the admin delete flow creates the refund BEFORE the external
+	// DeleteHost. If that delete fails and the admin retries, a second refund
+	// order would credit the wallet twice (each wallet order gets its own
+	// idempotency key). Reuse an existing pending/approved admin_delete refund
+	// for this VPS instead of creating a duplicate.
+	if existing, found, findErr := s.findAdminDeleteRefund(ctx, inst.UserID, inst.ID); findErr != nil {
+		return domain.WalletOrder{}, nil, findErr
+	} else if found {
+		if existing.Status == domain.WalletOrderApproved {
+			if w, err := s.wallets.GetWallet(ctx, inst.UserID); err == nil {
+				return existing, &w, nil
+			}
+		}
+		return existing, nil, nil
 	}
-	order := domain.WalletOrder{UserID: inst.UserID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: status, Note: reason, MetaJSON: toJSON(meta)}
+	meta := map[string]any{"vps_id": inst.ID, "order_item_id": item.ID, "refund_policy": policy, "reason": reason, "delete_on_approve": false, "trigger": "admin_delete"}
+	autoApprove := !policy.RequireApproval
+	order := domain.WalletOrder{UserID: inst.UserID, Type: domain.WalletOrderRefund, Amount: amount, Currency: "CNY", Status: domain.WalletOrderPendingReview, Note: reason, MetaJSON: toJSON(meta)}
 	if err := s.orders.CreateWalletOrder(ctx, &order); err != nil {
 		return domain.WalletOrder{}, nil, err
 	}
-	if status == domain.WalletOrderApproved {
+	if autoApprove {
 		wallet, err := s.approveOrder(ctx, adminID, order, false)
 		if err != nil {
 			return domain.WalletOrder{}, nil, err
 		}
+		order.Status = domain.WalletOrderApproved
 		return order, &wallet, nil
 	}
 	return order, nil, nil
+}
+
+// findAdminDeleteRefund returns an existing pending/approved refund wallet
+// order for the given VPS that was triggered by the admin-delete flow, so a
+// retried delete after an external DeleteHost failure does not create a second
+// refund (double wallet credit).
+func (s *Service) findAdminDeleteRefund(ctx context.Context, userID, vpsID int64) (domain.WalletOrder, bool, error) {
+	if s.orders == nil {
+		return domain.WalletOrder{}, false, nil
+	}
+	const pageSize = 100
+	for offset := 0; ; offset += pageSize {
+		orders, total, err := s.orders.ListWalletOrders(ctx, userID, pageSize, offset)
+		if err != nil {
+			return domain.WalletOrder{}, false, err
+		}
+		for _, o := range orders {
+			if o.Type != domain.WalletOrderRefund {
+				continue
+			}
+			if o.Status != domain.WalletOrderPendingReview && o.Status != domain.WalletOrderApproved {
+				continue
+			}
+			meta := parseJSON(o.MetaJSON)
+			if getInt64(meta["vps_id"]) == vpsID && getString(meta["trigger"]) == "admin_delete" {
+				return o, true, nil
+			}
+		}
+		if offset+len(orders) >= total || len(orders) == 0 {
+			break
+		}
+	}
+	return domain.WalletOrder{}, false, nil
 }
 
 func (s *Service) Approve(ctx context.Context, adminID int64, orderID int64) (domain.WalletOrder, *domain.Wallet, error) {
@@ -299,8 +407,12 @@ func (s *Service) Reject(ctx context.Context, adminID int64, orderID int64, reas
 	if order.Status != domain.WalletOrderPendingReview {
 		return appshared.ErrConflict
 	}
-	if err := s.orders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderRejected, &adminID, reason); err != nil {
+	updated, err := s.orders.UpdateWalletOrderStatusIfCurrent(ctx, order.ID, domain.WalletOrderPendingReview, domain.WalletOrderRejected, &adminID, reason)
+	if err != nil {
 		return err
+	}
+	if !updated {
+		return appshared.ErrConflict
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "wallet_order.reject", TargetType: "wallet_order", TargetID: strconv.FormatInt(order.ID, 10), DetailJSON: mustJSON(map[string]any{"type": order.Type, "amount": order.Amount, "reason": reason})})
@@ -311,13 +423,6 @@ func (s *Service) Reject(ctx context.Context, adminID int64, orderID int64, reas
 func (s *Service) approveOrder(ctx context.Context, adminID int64, order domain.WalletOrder, allowDelete bool) (domain.Wallet, error) {
 	if s.wallets == nil {
 		return domain.Wallet{}, appshared.ErrInvalidInput
-	}
-	if allowDelete && order.Type == domain.WalletOrderRefund {
-		if deleteOnApprove(order.MetaJSON) {
-			if err := s.deleteVPS(ctx, order.MetaJSON); err != nil {
-				return domain.Wallet{}, err
-			}
-		}
 	}
 	var amount int64
 	var txType string
@@ -334,33 +439,40 @@ func (s *Service) approveOrder(ctx context.Context, adminID int64, order domain.
 	default:
 		return domain.Wallet{}, appshared.ErrInvalidInput
 	}
-	refType := "wallet_order"
-	exists, err := s.wallets.HasWalletTransaction(ctx, order.UserID, refType, order.ID)
+	wallet, claimed, err := s.orders.ApproveWalletOrderAtomic(ctx, order, adminID, amount, txType)
 	if err != nil {
 		return domain.Wallet{}, err
 	}
-	var wallet domain.Wallet
-	if exists {
-		wallet, err = s.wallets.GetWallet(ctx, order.UserID)
-		if err != nil {
-			return domain.Wallet{}, err
-		}
-	} else {
-		wallet, err = s.wallets.AdjustWalletBalance(ctx, order.UserID, amount, txType, refType, order.ID, string(order.Type))
-		if err != nil {
-			ok, checkErr := s.wallets.HasWalletTransaction(ctx, order.UserID, refType, order.ID)
-			if checkErr == nil && ok {
-				wallet, checkErr = s.wallets.GetWallet(ctx, order.UserID)
-				if checkErr != nil {
-					return domain.Wallet{}, checkErr
-				}
-			} else {
-				return domain.Wallet{}, err
+	if !claimed {
+		return domain.Wallet{}, appshared.ErrConflict
+	}
+	if allowDelete && order.Type == domain.WalletOrderRefund && deleteOnApprove(order.MetaJSON) {
+		// Persist the durable cleanup outbox entry BEFORE the inline delete so a
+		// crash after the balance credit still deletes the refunded host: the
+		// cleanup worker retries any pending entry with bounded backoff.
+		s.enqueueRefundCleanup(ctx, order)
+		if deleteErr := s.deleteVPS(ctx, order.MetaJSON); deleteErr != nil {
+			// External provider errors can embed signed URLs, tokens, passwords
+			// and internal topology. Persist only a centralized stable error code
+			// and a sanitized one-line summary; the detailed error goes to the
+			// log only after passing through the secret scrubber. The cleanup job
+			// stays pending and the worker drives the retries.
+			code := cleanupErrorCode(deleteErr)
+			meta := parseJSON(order.MetaJSON)
+			meta["delete_pending"] = true
+			meta["delete_error_code"] = code
+			meta["delete_error"] = scrub.SanitizeSummary(code)
+			_ = s.orders.UpdateWalletOrderMeta(ctx, order.ID, toJSON(meta))
+			if s.audit != nil {
+				_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "wallet_order.refund_cleanup_failed", TargetType: "wallet_order", TargetID: strconv.FormatInt(order.ID, 10), DetailJSON: mustJSON(map[string]any{"error_code": code, "error": scrub.SanitizeSummary(code)})})
+			}
+			log.Printf("wallet_order.refund_cleanup_failed order_id=%d code=%s detail=%s", order.ID, code, scrub.Redact(deleteErr.Error()))
+		} else if s.cleanup != nil {
+			// Inline delete succeeded; retire the outbox entry.
+			if job, err := s.cleanup.GetRefundCleanupJobByWalletOrder(ctx, order.ID); err == nil {
+				_ = s.cleanup.MarkRefundCleanupDone(ctx, job.ID)
 			}
 		}
-	}
-	if err := s.orders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderApproved, &adminID, ""); err != nil {
-		return domain.Wallet{}, err
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "wallet_order.approve", TargetType: "wallet_order", TargetID: strconv.FormatInt(order.ID, 10), DetailJSON: mustJSON(map[string]any{"type": order.Type, "amount": order.Amount})})
@@ -392,11 +504,14 @@ func (s *Service) deleteVPS(ctx context.Context, metaJSON string) error {
 	if err != nil {
 		return err
 	}
-	if err := cli.DeleteHost(ctx, hostID); err != nil {
+	// A DeleteHost reporting the host is already gone is an idempotent success:
+	// the refund already credited the wallet and the cleanup outbox retry must
+	// converge on updating the local row rather than being blocked by the
+	// provider's "instance does not exist" error.
+	if err := cli.DeleteHost(ctx, hostID); err != nil && !appshared.IsHostNotFoundError(err) {
 		return err
 	}
-	_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, inst.AutomationState)
-	return nil
+	return s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, inst.AutomationState)
 }
 
 func (s *Service) refundPolicy(ctx context.Context) RefundPolicy {
@@ -444,9 +559,13 @@ func (s *Service) refundPolicy(ctx context.Context) RefundPolicy {
 }
 
 func (s *Service) calculateRefundAmount(inst domain.VPSInstance, item domain.OrderItem, policy RefundPolicy) int64 {
-	baseAmount := inst.MonthlyPrice
+	// The refund base must be the amount actually paid for the item, which
+	// already accounts for prepaid DurationMonths and any coupon discount.
+	// MonthlyPrice (single month) is only a fallback when the paid amount is
+	// unavailable; using it for multi-month prepays systematically under-refunds.
+	baseAmount := item.Amount
 	if baseAmount <= 0 {
-		baseAmount = item.Amount
+		baseAmount = inst.MonthlyPrice
 	}
 	return calculateRefundAmountForAmount(inst, baseAmount, policy)
 }
@@ -526,7 +645,10 @@ func NormalizeRefundCurve(points []RefundCurvePoint) []RefundCurvePoint {
 	seen := make(map[int]float64)
 	order := make([]int, 0, len(points))
 	for _, point := range points {
-		if point.Percent < 0 {
+		// The curve x-axis is a 0-100 percentage of the lifecycle. Values
+		// outside that range (e.g. hours entered as if they were percent)
+		// would silently make the curve degenerate, so drop them.
+		if point.Percent < 0 || point.Percent > 100 {
 			continue
 		}
 		ratio := clamp01(point.Ratio)
@@ -590,14 +712,37 @@ func calculateRefundAmountForAmount(inst domain.VPSInstance, amount int64, polic
 	if inst.ExpireAt != nil && !inst.ExpireAt.After(now) {
 		return 0
 	}
-	elapsedRatio := refundElapsedRatio(inst, now)
+	// The elapsed ratio must be measured against the current billing period,
+	// not the instance creation time: renewals extend ExpireAt without touching
+	// CreatedAt, so a lifetime-based ratio would systematically under-refund
+	// every renewed instance. This mirrors the order-package fix (m016 F1).
+	periodStart, periodEnd, hasPeriod := inst.CurrentBillingPeriod(now)
+	var elapsedRatio float64
+	if hasPeriod {
+		total := periodEnd.Sub(periodStart)
+		if total <= 0 {
+			hasPeriod = false
+		} else {
+			elapsed := now.Sub(periodStart)
+			switch {
+			case elapsed <= 0:
+				elapsedRatio = 0
+			case elapsed >= total:
+				elapsedRatio = 1
+			default:
+				elapsedRatio = float64(elapsed) / float64(total)
+			}
+		}
+	}
+	if !hasPeriod {
+		elapsedRatio = refundElapsedRatio(inst, now)
+	}
 	if len(policy.Curve) > 0 {
 		if ratio, ok := RefundCurveRatio(policy.Curve, elapsedRatio*100); ok {
 			return int64(math.Round(float64(amount) * ratio))
 		}
 	}
-	totalHours, ok := refundPeriodHours(inst)
-	if !ok {
+	if !hasPeriod {
 		ageHoursFloat := now.Sub(inst.CreatedAt).Hours()
 		ageHours := int(ageHoursFloat)
 		ageDays := int(ageHoursFloat / 24)
@@ -623,20 +768,41 @@ func calculateRefundAmountForAmount(inst domain.VPSInstance, amount int64, polic
 		}
 		return 0
 	}
-	fullRatio := refundRatioThreshold(totalHours, policy.FullHours, policy.FullDays)
-	prorateRatio := refundRatioThreshold(totalHours, policy.ProrateHours, policy.ProrateDays)
-	noRefundRatio := refundRatioThreshold(totalHours, policy.NoRefundHours, policy.NoRefundDays)
-	if noRefundRatio > 0 && elapsedRatio > noRefundRatio {
+
+	// Integer-exact proration against the current billing period, consistent
+	// with the order-package refund path: the refund windows are absolute
+	// (e.g. "full refund within 15 days") rather than a ratio of the full
+	// lifetime, which would under-refund renewed instances.
+	fullNanos := refundThresholdNanos(policy.FullHours, policy.FullDays)
+	prorateNanos := refundThresholdNanos(policy.ProrateHours, policy.ProrateDays)
+	noRefundNanos := refundThresholdNanos(policy.NoRefundHours, policy.NoRefundDays)
+	elapsedNanos := int64(now.Sub(periodStart))
+	if elapsedNanos < 0 {
+		elapsedNanos = 0
+	}
+	if noRefundNanos > 0 && elapsedNanos > noRefundNanos {
 		return 0
 	}
-	if fullRatio > 0 && elapsedRatio <= fullRatio {
+	if fullNanos > 0 && elapsedNanos <= fullNanos {
 		return amount
 	}
-	if prorateRatio > 0 && elapsedRatio <= prorateRatio {
-		ratio := (prorateRatio - elapsedRatio) / prorateRatio
-		return int64(math.Round(float64(amount) * ratio))
+	if prorateNanos > 0 && elapsedNanos <= prorateNanos {
+		return money.ProrateCents(amount, prorateNanos-elapsedNanos, prorateNanos)
 	}
 	return 0
+}
+
+// refundThresholdNanos converts a refund policy window expressed in hours
+// and/or days into nanoseconds. Hours win when both are set.
+func refundThresholdNanos(hours int, days int) int64 {
+	h := int64(hours)
+	if h <= 0 && days > 0 {
+		h = int64(days) * 24
+	}
+	if h <= 0 {
+		return 0
+	}
+	return h * int64(time.Hour)
 }
 
 func refundElapsedRatio(inst domain.VPSInstance, now time.Time) float64 {
@@ -746,6 +912,17 @@ func getInt64(v any) int64 {
 	}
 }
 
+func getString(v any) string {
+	switch val := v.(type) {
+	case string:
+		return strings.TrimSpace(val)
+	case fmt.Stringer:
+		return strings.TrimSpace(val.String())
+	default:
+		return ""
+	}
+}
+
 func getSettingString(ctx context.Context, repo appports.SettingsRepository, key string) (string, bool) {
 	if repo == nil {
 		return "", false
@@ -797,6 +974,34 @@ func getSettingBool(ctx context.Context, repo appports.SettingsRepository, key s
 func parseHostID(v string) int64 {
 	id, _ := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 	return id
+}
+
+// cleanupErrorCode classifies a refund-cleanup (DeleteHost) failure into a
+// centralized stable code. The provider error itself is never persisted raw;
+// callers persist this code plus a scrubbed summary and route the detailed
+// error through the secret scrubber before logging.
+func cleanupErrorCode(err error) string {
+	switch {
+	case err == nil:
+		return ""
+	case errors.Is(err, appshared.ErrInvalidInput):
+		return "invalid_input"
+	case errors.Is(err, appshared.ErrNotFound):
+		return "not_found"
+	case errors.Is(err, context.Canceled):
+		return "canceled"
+	case errors.Is(err, context.DeadlineExceeded):
+		return "provider_timeout"
+	default:
+		var netErr net.Error
+		if errors.As(err, &netErr) {
+			if netErr.Timeout() {
+				return "provider_timeout"
+			}
+			return "provider_unreachable"
+		}
+		return "provider_error"
+	}
 }
 
 func mustJSON(v any) string {

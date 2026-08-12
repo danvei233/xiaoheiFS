@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -235,7 +237,7 @@ class _UsersScreenState extends State<UsersScreen> {
     final qqController = TextEditingController();
     final username = TextEditingController();
     final email = TextEditingController();
-    final password = TextEditingController(text: _randomPassword());
+    final password = TextEditingController(text: randomPassword());
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -266,7 +268,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 ),
                 const SizedBox(width: 4),
                 OutlinedButton(
-                  onPressed: () => password.text = _randomPassword(),
+                  onPressed: () => password.text = randomPassword(),
                   child: const Text('随机生成'),
                 ),
               ],
@@ -297,7 +299,7 @@ class _UsersScreenState extends State<UsersScreen> {
           : (qq.isNotEmpty ? '$qq@qq.com' : '');
       final resolvedPassword = password.text.isNotEmpty
           ? password.text
-          : _randomPassword();
+          : randomPassword();
       if (resolvedUsername.isEmpty || resolvedPassword.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(
@@ -472,7 +474,6 @@ class _UsersScreenState extends State<UsersScreen> {
       ).showSnackBar(const SnackBar(content: Text('未获取到用户令牌')));
       return;
     }
-    await Clipboard.setData(ClipboardData(text: token));
     final baseUrl = context.read<AppState>().apiClient?.baseUrl ?? '';
     final url = _buildImpersonateConsoleUri(baseUrl, token);
     final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
@@ -1081,10 +1082,13 @@ class _Avatar extends StatelessWidget {
     if (url.isEmpty) {
       return CircleAvatar(radius: radius, child: const Icon(Icons.person));
     }
-    final session = context.read<AppState>().session;
+    final app = context.read<AppState>();
+    final session = app.session;
     final headers = avatarHeaders(
       token: session?.token,
       apiKey: session?.apiKey,
+      baseUrl: app.apiClient?.baseUrl,
+      url: url,
     );
     return CircleAvatar(
       radius: radius,
@@ -1109,13 +1113,17 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-String _randomPassword() {
+/// Generates a 10-character initial password for a newly created user.
+///
+/// Uses [Random.secure] so the output is not predictable from the creation
+/// timestamp (the previous millisecond-derived generator made accounts
+/// created in the same moment share the same password).
+String randomPassword() {
   const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  final now = DateTime.now().millisecondsSinceEpoch;
+  final rng = Random.secure();
   final sb = StringBuffer();
   for (var i = 0; i < 10; i++) {
-    final idx = (now + i * 37) % chars.length;
-    sb.write(chars[idx]);
+    sb.write(chars[rng.nextInt(chars.length)]);
   }
   return sb.toString();
 }

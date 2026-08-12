@@ -937,7 +937,6 @@ class _VpsTile extends StatelessWidget {
   Future<void> _openPanel(BuildContext context, VpsItem item) async {
     final client = context.read<AppState>().apiClient;
     if (client == null) return;
-    final session = context.read<AppState>().session;
     if (item.userId <= 0) {
       if (context.mounted) {
         ScaffoldMessenger.of(
@@ -957,11 +956,6 @@ class _VpsTile extends StatelessWidget {
           uri = base.resolveUri(uri);
         }
         final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-        if (!ok && context.mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('无法打开面板链接，请检查系统浏览器设置')));
-        }
         return ok;
       }
 
@@ -975,27 +969,20 @@ class _VpsTile extends StatelessWidget {
                     : detail);
           item.panelUrlCache = data['panel_url_cache']?.toString() ?? '';
         }
-        if (item.panelUrlCache.isNotEmpty) {
-          final ok = await launchPanelUrl(item.panelUrlCache);
-          if (ok) return;
-        }
-
-        final adminToken = session?.token ?? '';
-        if (adminToken.isEmpty) {
-          if (context.mounted) {
+        if (item.panelUrlCache.trim().isNotEmpty) {
+          final opened = await launchPanelUrl(item.panelUrlCache);
+          if (!opened && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('面板地址为空，且未获取到管理员登录令牌')),
+              const SnackBar(content: Text('无法打开面板链接，请检查面板地址或系统浏览器设置')),
             );
           }
           return;
         }
-        final normalizedBase = client.baseUrl.endsWith('/')
-            ? client.baseUrl.substring(0, client.baseUrl.length - 1)
-            : client.baseUrl;
-        final adminPanelUri = Uri.parse(
-          '$normalizedBase/api/v1/vps/${item.id}/panel',
-        ).replace(queryParameters: {'token': adminToken});
-        await launchPanelUrl(adminPanelUri.toString());
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('面板地址为空')));
+        }
         return;
       }
 
@@ -1011,13 +998,24 @@ class _VpsTile extends StatelessWidget {
         }
         return;
       }
-      final normalizedBase = client.baseUrl.endsWith('/')
-          ? client.baseUrl.substring(0, client.baseUrl.length - 1)
-          : client.baseUrl;
-      final uri = Uri.parse(
-        '$normalizedBase/api/v1/vps/${item.id}/panel',
-      ).replace(queryParameters: {'token': token});
-      await launchPanelUrl(uri.toString());
+      final userClient = ApiClient(baseUrl: client.baseUrl, token: token);
+      final response = await userClient.getJson(
+        '/api/v1/vps/${item.id}/panel-url',
+      );
+      final panelUrl = response['url']?.toString() ?? '';
+      if (panelUrl.trim().isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('面板地址为空')));
+        }
+        return;
+      }
+      if (!await launchPanelUrl(panelUrl) && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('无法打开面板链接，请检查面板地址或系统浏览器设置')),
+        );
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(

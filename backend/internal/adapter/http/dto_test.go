@@ -3,8 +3,14 @@ package http
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"github.com/gin-gonic/gin"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+	apppayment "xiaoheiplay/internal/app/payment"
 	"xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
@@ -119,14 +125,14 @@ func TestDTO_Mappings(t *testing.T) {
 	}
 
 	methods := []shared.PaymentMethodInfo{{
-		Key:        "balance",
-		Name:       "Balance",
-		SchemaJSON: `{}`,
-		ConfigJSON: `{}`,
-		Balance:    1250,
+		Key:          "balance",
+		Name:         "Balance",
+		Instructions: "Use wallet balance",
+		Notice:       "Immediate",
+		Balance:      1250,
 	}}
 	methodDTOs := toPaymentMethodDTOs(methods)
-	if len(methodDTOs) != 1 || methodDTOs[0].Key != "balance" || methodDTOs[0].Balance != 12.5 {
+	if len(methodDTOs) != 1 || methodDTOs[0].Key != "balance" || methodDTOs[0].Balance != 12.5 || methodDTOs[0].Instructions == "" || methodDTOs[0].Notice == "" {
 		t.Fatalf("method dto list mismatch: %+v", methodDTOs)
 	}
 
@@ -178,7 +184,7 @@ func TestDTO_Mappings(t *testing.T) {
 		CreatedAt:  now,
 		VerifiedAt: &verifiedAt,
 	}
-	realDTO := toRealNameVerificationDTO(realname)
+	realDTO := toRealNameVerificationDTO(realname, "")
 	if realDTO.ID != realname.ID || realDTO.IDNumber != "1234****3456" {
 		t.Fatalf("realname dto mismatch: %+v", realDTO)
 	}
@@ -272,7 +278,7 @@ func TestDTO_Mappings(t *testing.T) {
 func TestToRealNameVerificationDTO_ParsePendingFaceRedirectURL(t *testing.T) {
 	redirect := "https://e.mangzhuyun.cn/face?token=abc"
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(redirect))
-	dto := toRealNameVerificationDTO(domain.RealNameVerification{
+	record := domain.RealNameVerification{
 		ID:       1,
 		UserID:   2,
 		RealName: "Alice",
@@ -280,7 +286,8 @@ func TestToRealNameVerificationDTO_ParsePendingFaceRedirectURL(t *testing.T) {
 		Status:   "pending",
 		Provider: "plugin/mangzhu_realname/default",
 		Reason:   "pending_face:baidu:token123:" + encoded,
-	})
+	}
+	dto := toRealNameVerificationDTO(record, parsePendingRedirectURL(record.Reason))
 	if dto.RedirectURL != redirect {
 		t.Fatalf("redirect_url parse failed: got=%q", dto.RedirectURL)
 	}
@@ -398,5 +405,208 @@ func TestToSettingDTO_LeavesPlainTextUntouched(t *testing.T) {
 	dto := toSettingDTO(domain.Setting{Key: "site_name", ValueJSON: input})
 	if dto.Value != input {
 		t.Fatalf("plain text should remain unchanged: got=%q want=%q", dto.Value, input)
+	}
+}
+
+// TestRequestDTO_BindingValidation guards the request-contract validation tags on
+// catalog/email DTOs. These DTOs are bound via bindJSON (gin ShouldBindJSON with
+// `binding` tags); empty/negative required fields must be rejected instead of
+// being persisted verbatim by the catalog/email services.
+func TestRequestDTO_BindingValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name    string
+		payload any
+		body    string
+	}{
+		{name: "region empty name", payload: &RegionDTO{}, body: `{"code":"","name":""}`},
+		{name: "plan group empty name", payload: &PlanGroupDTO{}, body: `{"region_id":1,"name":""}`},
+		{name: "plan group negative unit_core", payload: &PlanGroupDTO{}, body: `{"region_id":1,"name":"x","unit_core":-5}`},
+		{name: "plan group negative unit_bw", payload: &PlanGroupDTO{}, body: `{"region_id":1,"name":"x","unit_bw":-1}`},
+		{name: "package empty name", payload: &PackageDTO{}, body: `{"plan_group_id":1,"name":""}`},
+		{name: "package negative monthly_price", payload: &PackageDTO{}, body: `{"plan_group_id":1,"name":"x","monthly_price":-1}`},
+		{name: "billing cycle empty name", payload: &BillingCycleDTO{}, body: `{"name":"","months":1,"multiplier":1}`},
+		{name: "billing cycle zero months", payload: &BillingCycleDTO{}, body: `{"name":"x","months":0,"multiplier":1}`},
+		{name: "billing cycle negative multiplier", payload: &BillingCycleDTO{}, body: `{"name":"x","months":1,"multiplier":-1}`},
+		{name: "system image empty name", payload: &SystemImageDTO{}, body: `{"name":""}`},
+		{name: "email template empty subject", payload: &EmailTemplateDTO{}, body: `{"name":"x","subject":""}`},
+		{name: "email template empty name", payload: &EmailTemplateDTO{}, body: `{"name":"","subject":"x"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tc.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			if err := bindJSON(c, tc.payload); err == nil {
+				t.Fatalf("expected validation error for body %s", tc.body)
+			}
+		})
+	}
+}
+
+// TestParseAnyInt64_FloatRoundsNotTruncates guards against float64 spec values
+// being truncated (9.99 -> 9) instead of rounded (9.99 -> 10) in order-item specs.
+func TestParseAnyInt64_FloatRoundsNotTruncates(t *testing.T) {
+	got, ok := parseAnyInt64(float64(9.99))
+	if !ok {
+		t.Fatal("parseAnyInt64(9.99) returned ok=false")
+	}
+	if got != 10 {
+		t.Fatalf("parseAnyInt64(9.99) = %d, want 10 (must round, not truncate)", got)
+	}
+}
+
+// TestMaskIDNumber_MasksShortIDs guards that short ID numbers (e.g. passport-style)
+// are masked instead of returned in full.
+func TestMaskIDNumber_MasksShortIDs(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{in: "", want: ""},
+		{in: "ABCD", want: "****"},
+		{in: "AB12345", want: "AB****"},
+		{in: "1234567890123456", want: "1234****3456"},
+	}
+	for _, tc := range cases {
+		if got := maskIDNumber(tc.in); got != tc.want {
+			t.Fatalf("maskIDNumber(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestPaymentProviderDTO_MasksSecrets locks P2-13: the admin providers list
+// must not echo payment-channel secrets (merchant keys / app secrets) in the
+// config JSON; secret-keyed fields are masked, and the update path preserves
+// the previously stored secret when the masked literal is submitted back.
+func TestPaymentProviderDTO_MasksSecrets(t *testing.T) {
+	providers := []shared.PaymentProviderInfo{{
+		Key:        "ezpay",
+		Name:       "EZPay",
+		Enabled:    true,
+		SchemaJSON: `{"fields":[]}`,
+		ConfigJSON: `{"merchant_id":"MID-1","merchant_key":"REAL-SECRET","app_secret":"APP-SECRET","notify_url":"https://x/p"}`,
+	}}
+	dtos := toPaymentProviderDTOs(providers)
+	if len(dtos) != 1 {
+		t.Fatalf("provider dto list mismatch: %+v", dtos)
+	}
+	cfg := dtos[0].ConfigJSON
+	if strings.Contains(cfg, "REAL-SECRET") || strings.Contains(cfg, "APP-SECRET") {
+		t.Fatalf("provider list leaked a secret: %s", cfg)
+	}
+	if !strings.Contains(cfg, apppayment.ConfigSecretMask) {
+		t.Fatalf("expected a masked secret in provider config: %s", cfg)
+	}
+	// Non-secret values are preserved.
+	if !strings.Contains(cfg, "MID-1") || !strings.Contains(cfg, "https://x/p") {
+		t.Fatalf("non-secret config fields were dropped: %s", cfg)
+	}
+
+	// The masked config round-trips without overwriting the stored secret.
+	existing := `{"merchant_id":"MID-1","merchant_key":"REAL-SECRET","app_secret":"APP-SECRET","notify_url":"https://x/p"}`
+	merged, err := apppayment.MergeConfigMask(existing, cfg)
+	if err != nil {
+		t.Fatalf("merge masked config: %v", err)
+	}
+	if !strings.Contains(merged, "REAL-SECRET") || !strings.Contains(merged, "APP-SECRET") {
+		t.Fatalf("masked round-trip overwrote the stored secret: %s", merged)
+	}
+
+	nested := toPaymentProviderDTO(shared.PaymentProviderInfo{
+		ConfigJSON: `{"credentials":{"api_key":"NESTED-SECRET"},"accounts":[{"id":"primary","private_key":"ARRAY-SECRET","name":"visible"}]}`,
+	}).ConfigJSON
+	if strings.Contains(nested, "NESTED-SECRET") || strings.Contains(nested, "ARRAY-SECRET") {
+		t.Fatalf("nested provider credentials leaked: %s", nested)
+	}
+	nestedMerged, err := apppayment.MergeConfigMask(
+		`{"credentials":{"api_key":"NESTED-SECRET"},"accounts":[{"id":"primary","private_key":"ARRAY-SECRET","name":"visible"}]}`,
+		nested,
+	)
+	if err != nil {
+		t.Fatalf("merge nested config: %v", err)
+	}
+	if !strings.Contains(nestedMerged, "NESTED-SECRET") || !strings.Contains(nestedMerged, "ARRAY-SECRET") {
+		t.Fatalf("nested masked round-trip overwrote stored credentials: %s", nestedMerged)
+	}
+
+	camelAndSchema := toPaymentProviderDTO(shared.PaymentProviderInfo{
+		SchemaJSON: `{"type":"object","properties":{"opaque":{"type":"string","x-secret":true},"passwordField":{"type":"string","format":"password"}}}`,
+		ConfigJSON: `{"privateKey":"CAMEL-PRIVATE","clientSecret":"CAMEL-CLIENT","accessToken":"CAMEL-TOKEN","opaque":"SCHEMA-SECRET","passwordField":"FORMAT-SECRET","label":"visible"}`,
+	}).ConfigJSON
+	for _, secret := range []string{"CAMEL-PRIVATE", "CAMEL-CLIENT", "CAMEL-TOKEN", "SCHEMA-SECRET", "FORMAT-SECRET"} {
+		if strings.Contains(camelAndSchema, secret) {
+			t.Fatalf("provider schema/camelCase credential leaked (%s): %s", secret, camelAndSchema)
+		}
+	}
+	if !strings.Contains(camelAndSchema, `"label":"visible"`) {
+		t.Fatalf("non-secret provider field was lost: %s", camelAndSchema)
+	}
+
+	reordered, err := apppayment.MergeConfigMask(
+		`{"accounts":[{"id":"a","privateKey":"SECRET-A"},{"id":"b","privateKey":"SECRET-B"}]}`,
+		`{"accounts":[{"id":"b","privateKey":"********"},{"id":"a","privateKey":"********"}]}`,
+	)
+	if err != nil {
+		t.Fatalf("merge reordered config: %v", err)
+	}
+	if !strings.Contains(reordered, `"id":"b","privateKey":"SECRET-B"`) ||
+		!strings.Contains(reordered, `"id":"a","privateKey":"SECRET-A"`) {
+		t.Fatalf("reordered account array restored credentials by index: %s", reordered)
+	}
+
+	_, err = apppayment.MergeConfigMask(
+		`{"accounts":[{"name":"A","privateKey":"SECRET-A"},{"name":"B","privateKey":"SECRET-B"}]}`,
+		`{"accounts":[{"name":"B","privateKey":"********"},{"name":"A","privateKey":"********"}]}`,
+	)
+	if !errors.Is(err, domain.ErrPaymentConfigMaskedSecretUnmatched) {
+		t.Fatalf("anonymous reordered accounts must fail closed, got %v", err)
+	}
+	_, err = apppayment.MergeConfigMask(
+		`{"accounts":[{"id":"dup","privateKey":"SECRET-A"},{"id":"dup","privateKey":"SECRET-B"}]}`,
+		`{"accounts":[{"id":"dup","privateKey":"********"}]}`,
+	)
+	if !errors.Is(err, domain.ErrPaymentConfigMaskedSecretUnmatched) {
+		t.Fatalf("duplicate account identities must fail closed, got %v", err)
+	}
+
+	topArray := toPaymentProviderDTO(shared.PaymentProviderInfo{ConfigJSON: `[{"secret":"TOP-SECRET","label":"visible"}]`}).ConfigJSON
+	if strings.Contains(topArray, "TOP-SECRET") || !strings.Contains(topArray, apppayment.ConfigSecretMask) {
+		t.Fatalf("top-level array leaked a secret: %s", topArray)
+	}
+	composed := toPaymentProviderDTO(shared.PaymentProviderInfo{
+		SchemaJSON: `{"type":"object","$defs":{"credential":{"type":"string","x-secret":true}},"properties":{"custom":{"$ref":"#/$defs/credential"}},"allOf":[{"properties":{"other":{"type":"string","format":"password"}}}]}`,
+		ConfigJSON: `{"custom":"REF-SECRET","other":"COMPOSED-SECRET","webhookSecret":"HOOK-SECRET","label":"visible"}`,
+	}).ConfigJSON
+	for _, secret := range []string{"REF-SECRET", "COMPOSED-SECRET", "HOOK-SECRET"} {
+		if strings.Contains(composed, secret) {
+			t.Fatalf("composed-schema secret leaked (%s): %s", secret, composed)
+		}
+	}
+
+	arraySecrets := toPaymentProviderDTO(shared.PaymentProviderInfo{
+		SchemaJSON: `{"type":"object","properties":{"keys":{"type":"array","items":{"type":"string","format":"password"}}}}`,
+		ConfigJSON: `{"keys":["ARRAY-SECRET-A","ARRAY-SECRET-B"]}`,
+	}).ConfigJSON
+	if strings.Contains(arraySecrets, "ARRAY-SECRET") || strings.Count(arraySecrets, apppayment.ConfigSecretMask) != 2 {
+		t.Fatalf("schema-declared array secrets leaked: %s", arraySecrets)
+	}
+
+	wildcardSecrets := toPaymentProviderDTO(shared.PaymentProviderInfo{
+		SchemaJSON: `{"type":"object","properties":{"tenants":{"type":"object","additionalProperties":{"type":"object","additionalProperties":{"type":"string","x-secret":true}}}}}`,
+		ConfigJSON: `{"tenants":{"acme":{"primary":"MULTI-WILDCARD-SECRET"}}}`,
+	}).ConfigJSON
+	if strings.Contains(wildcardSecrets, "MULTI-WILDCARD-SECRET") {
+		t.Fatalf("multi-wildcard schema secret leaked: %s", wildcardSecrets)
+	}
+
+	recursiveSchema := `{"$defs":{"node":{"type":"object","properties":{"label":{"type":"string"},"secret":{"type":"string","x-secret":true},"children":{"type":"array","items":{"$ref":"#/$defs/node"}}}}},"type":"object","properties":{"root":{"$ref":"#/$defs/node"}}}`
+	recursive := toPaymentProviderDTO(shared.PaymentProviderInfo{
+		SchemaJSON: recursiveSchema,
+		ConfigJSON: `{"root":{"label":"visible","secret":"ROOT-SECRET","children":[{"label":"child","secret":"CHILD-SECRET"}]}}`,
+	}).ConfigJSON
+	if strings.Contains(recursive, "ROOT-SECRET") || strings.Contains(recursive, "CHILD-SECRET") {
+		t.Fatalf("recursive-schema secret leaked: %s", recursive)
 	}
 }

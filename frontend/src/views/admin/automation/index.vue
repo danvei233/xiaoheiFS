@@ -242,11 +242,17 @@
     }
   }
 
-  async function fetchLogTable(): Promise<Api.Common.PaginatedResponse<IntegrationSyncLogRecord>> {
-    const payload = await fetchAdminAutomationSyncLogs({
-      limit: 200,
-      offset: 0
-    })
+  async function fetchLogTable(
+    _params?: unknown,
+    signal?: AbortSignal
+  ): Promise<Api.Common.PaginatedResponse<IntegrationSyncLogRecord>> {
+    const payload = await fetchAdminAutomationSyncLogs(
+      {
+        limit: 200,
+        offset: 0
+      },
+      signal
+    )
     const records = payload.items || []
     return {
       records,

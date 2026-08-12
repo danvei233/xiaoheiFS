@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
@@ -12,20 +13,43 @@ import (
 
 func (h *Handler) PasswordResetOptions(c *gin.Context) {
 	var payload struct {
-		Account string `json:"account"`
+		Account string `json:"account" binding:"required"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if !settings.PasswordResetEnabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrPasswordResetDisabled.Error()})
 		return
 	}
+	// Rate limit this unauthenticated endpoint per IP so an attacker cannot
+	// hammer it to enumerate accounts or harvest masks (P3-19 follow-up).
+	ip := strings.TrimSpace(c.ClientIP())
+	if ip == "" {
+		ip = "unknown"
+	}
+	if !h.durableAllow(c.Request.Context(), "password_reset_options:ip:"+ip, 10, 10*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
+		return
+	}
 	user, err := h.findUserByAccount(c, payload.Account)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrAccountNotFound.Error()})
+		// An admin or disabled account is explicitly refused (the password-reset
+		// flow must never reveal recovery options for them), while an unknown
+		// account returns the same shape as one with no usable recovery channel
+		// so the endpoint cannot be used as an account-existence oracle.
+		if errors.Is(err, domain.ErrNotAUserAccount) || errors.Is(err, appshared.ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrAccountNotFound.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"channels":                []string{},
+			"masked_email":            "",
+			"masked_phone":            "",
+			"sms_requires_phone_full": false,
+		})
 		return
 	}
 	channels := make([]string, 0, 2)
@@ -35,14 +59,12 @@ func (h *Handler) PasswordResetOptions(c *gin.Context) {
 	if hasChannel(settings.PasswordResetChannels, "sms") && strings.TrimSpace(user.Phone) != "" {
 		channels = append(channels, "sms")
 	}
+	// Do not leak user_id / has_email / has_phone to an unauthenticated caller;
+	// the frontend only needs the recovery channels and masks.
 	c.JSON(http.StatusOK, gin.H{
-		"user_id":      user.ID,
-		"account":      user.Username,
 		"channels":     channels,
 		"masked_email": maskEmail(user.Email),
 		"masked_phone": maskPhone(user.Phone),
-		"has_email":    strings.TrimSpace(user.Email) != "",
-		"has_phone":    strings.TrimSpace(user.Phone) != "",
 		"sms_requires_phone_full": strings.TrimSpace(payload.Account) != "" &&
 			strings.TrimSpace(payload.Account) != strings.TrimSpace(user.Phone),
 	})
@@ -50,15 +72,15 @@ func (h *Handler) PasswordResetOptions(c *gin.Context) {
 
 func (h *Handler) PasswordResetSendCode(c *gin.Context) {
 	var payload struct {
-		Account   string `json:"account"`
-		Channel   string `json:"channel"`
+		Account   string `json:"account" binding:"required"`
+		Channel   string `json:"channel" binding:"required"`
 		PhoneFull string `json:"phone_full"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if !settings.PasswordResetEnabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrPasswordResetDisabled.Error()})
 		return
@@ -105,8 +127,8 @@ func (h *Handler) PasswordResetSendCode(c *gin.Context) {
 	if channel == "email" {
 		receiverKey = strings.ToLower(receiverKey)
 	}
-	if !resetCodeLimiter.Allow("password_reset_send:ip:"+strings.TrimSpace(c.ClientIP()), 10, 10*time.Minute) ||
-		!resetCodeLimiter.Allow("password_reset_send:"+channel+":"+receiverKey, 3, 10*time.Minute) {
+	if !h.durableAllow(c.Request.Context(), "password_reset_send:ip:"+strings.TrimSpace(c.ClientIP()), 10, 10*time.Minute) ||
+		!h.durableAllow(c.Request.Context(), "password_reset_send:"+channel+":"+receiverKey, 3, 10*time.Minute) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 		return
 	}
@@ -116,7 +138,7 @@ func (h *Handler) PasswordResetSendCode(c *gin.Context) {
 		length = settings.EmailCodeLength
 		complexity = settings.EmailCodeComplexity
 	}
-	code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, channel, receiver, "password_reset", settings.PasswordResetVerifyTTL, length, complexity)
+	code, err := h.authSvc.CreateVerificationCodeWithPolicy(c.Request.Context(), channel, receiver, "password_reset", settings.PasswordResetVerifyTTL, length, complexity)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -143,23 +165,23 @@ func (h *Handler) PasswordResetSendCode(c *gin.Context) {
 
 func (h *Handler) PasswordResetVerifyCode(c *gin.Context) {
 	var payload struct {
-		Account string `json:"account"`
-		Channel string `json:"channel"`
-		Code    string `json:"code"`
+		Account string `json:"account" binding:"required"`
+		Channel string `json:"channel" binding:"required"`
+		Code    string `json:"code" binding:"required"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if !settings.PasswordResetEnabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrPasswordResetDisabled.Error()})
 		return
 	}
 	accountKey := strings.ToLower(strings.TrimSpace(payload.Account))
 	channelKey := strings.ToLower(strings.TrimSpace(payload.Channel))
-	if !resetVerifyLimiter.Allow("password_reset_verify:ip:"+strings.TrimSpace(c.ClientIP()), 20, 10*time.Minute) ||
-		!resetVerifyLimiter.Allow("password_reset_verify:"+channelKey+":"+accountKey, 8, 10*time.Minute) {
+	if !h.durableAllow(c.Request.Context(), "password_reset_verify:ip:"+strings.TrimSpace(c.ClientIP()), 20, 10*time.Minute) ||
+		!h.durableAllow(c.Request.Context(), "password_reset_verify:"+channelKey+":"+accountKey, 8, 10*time.Minute) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 		return
 	}
@@ -179,7 +201,7 @@ func (h *Handler) PasswordResetVerifyCode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrReceiverNotFound.Error()})
 		return
 	}
-	if err := h.authSvc.VerifyVerificationCode(c, channel, receiver, "password_reset", payload.Code); err != nil {
+	if err := h.authSvc.VerifyVerificationCode(c.Request.Context(), channel, receiver, "password_reset", payload.Code); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidVerificationCode.Error()})
 		return
 	}
@@ -188,7 +210,7 @@ func (h *Handler) PasswordResetVerifyCode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	_ = svc.DeleteExpired(c)
+	_ = svc.DeleteExpired(c.Request.Context())
 	token := randomToken(32)
 	ticket := &domain.PasswordResetTicket{
 		UserID:    user.ID,
@@ -197,7 +219,7 @@ func (h *Handler) PasswordResetVerifyCode(c *gin.Context) {
 		Token:     token,
 		ExpiresAt: time.Now().Add(15 * time.Minute),
 	}
-	if err := svc.Create(c, ticket.UserID, ticket.Channel, ticket.Receiver, ticket.Token, ticket.ExpiresAt); err != nil {
+	if err := svc.Create(c.Request.Context(), ticket.UserID, ticket.Channel, ticket.Receiver, ticket.Token, ticket.ExpiresAt); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -206,14 +228,14 @@ func (h *Handler) PasswordResetVerifyCode(c *gin.Context) {
 
 func (h *Handler) PasswordResetConfirm(c *gin.Context) {
 	var payload struct {
-		ResetTicket string `json:"reset_ticket"`
-		NewPassword string `json:"new_password"`
+		ResetTicket string `json:"reset_ticket" binding:"required"`
+		NewPassword string `json:"new_password" binding:"required"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if !settings.PasswordResetEnabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrPasswordResetDisabled.Error()})
 		return
@@ -223,27 +245,38 @@ func (h *Handler) PasswordResetConfirm(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	ticket, err := svc.Get(c, strings.TrimSpace(payload.ResetTicket))
+	ticket, err := svc.Get(c.Request.Context(), strings.TrimSpace(payload.ResetTicket))
 	if err != nil || ticket.Used || time.Now().After(ticket.ExpiresAt) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidResetTicket.Error()})
 		return
 	}
-	if err := validatePasswordBySettings(payload.NewPassword, h.loadAuthSettings(c)); err != nil {
+	if err := validatePasswordBySettings(payload.NewPassword, h.loadAuthSettings(c.Request.Context())); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	user, err := h.authSvc.UpdateProfile(c, ticket.UserID, appshared.UpdateProfileInput{Password: payload.NewPassword})
+	// Claim the ticket and reset the password in one atomic repository
+	// operation, so a failed bcrypt/DB update cannot burn a usable ticket and
+	// a concurrent loser cannot consume the same ticket (TOCTOU + P2-8).
+	if err := svc.ResetPasswordWithTicket(c.Request.Context(), ticket.ID, ticket.UserID, payload.NewPassword); err != nil {
+		if errors.Is(err, domain.ErrTicketUsed) || errors.Is(err, domain.ErrTokenExpired) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidResetTicket.Error()})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	user, err := h.authSvc.GetUser(c.Request.Context(), ticket.UserID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	_ = svc.MarkUsed(c, ticket.ID)
-	accessToken, err := h.signAuthToken(user.ID, string(user.Role), 24*time.Hour, "access")
+	familyID := newTokenID()
+	accessToken, err := h.signAuthToken(user.ID, string(user.Role), user.PasswordVersion, 24*time.Hour, "access", familyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
 		return
 	}
-	refreshToken, err := h.signAuthToken(user.ID, string(user.Role), 7*24*time.Hour, "refresh")
+	refreshToken, err := h.signAuthToken(user.ID, string(user.Role), user.PasswordVersion, 7*24*time.Hour, "refresh", familyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignTokenFailed.Error()})
 		return
@@ -258,7 +291,7 @@ func (h *Handler) PasswordResetConfirm(c *gin.Context) {
 }
 
 func (h *Handler) MeSecurityContacts(c *gin.Context) {
-	user, err := h.authSvc.GetUser(c, getUserID(c))
+	user, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -298,7 +331,7 @@ func (h *Handler) MeSecurityPhoneConfirm(c *gin.Context) {
 }
 
 func (h *Handler) MeTwoFAStatus(c *gin.Context) {
-	user, err := h.authSvc.GetUser(c, getUserID(c))
+	user, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -308,19 +341,19 @@ func (h *Handler) MeTwoFAStatus(c *gin.Context) {
 
 func (h *Handler) MeTwoFASetup(c *gin.Context) {
 	var payload struct {
-		Password    string `json:"password"`
+		Password    string `json:"password" binding:"required"`
 		CurrentCode string `json:"current_code"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	if !settings.TwoFAEnabled {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.Err2faDisabled.Error()})
 		return
 	}
-	user, err := h.authSvc.GetUser(c, getUserID(c))
+	user, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -333,7 +366,7 @@ func (h *Handler) MeTwoFASetup(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": domain.Err2faBindDisabled.Error()})
 		return
 	}
-	secret, otpURL, err := h.authSvc.SetupTOTP(c, getUserID(c), payload.Password, payload.CurrentCode)
+	secret, otpURL, err := h.authSvc.SetupTOTP(c.Request.Context(), getUserID(c), payload.Password, payload.CurrentCode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -343,16 +376,22 @@ func (h *Handler) MeTwoFASetup(c *gin.Context) {
 
 func (h *Handler) MeTwoFAConfirm(c *gin.Context) {
 	var payload struct {
-		Code string `json:"code"`
+		Code string `json:"code" binding:"required"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.authSvc.ConfirmTOTP(c, getUserID(c), payload.Code); err != nil {
+	if !h.allowTOTPVerify(c, getUserID(c)) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyAttempts.Error()})
+		return
+	}
+	if err := h.authSvc.ConfirmTOTP(c.Request.Context(), getUserID(c), payload.Code); err != nil {
+		h.recordAuthFailures(c.Request.Context(), h.totpBudgetDims(c, getUserID(c)), time.Now())
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	h.resetAuthFailures(c.Request.Context(), h.totpBudgetDims(c, getUserID(c))[0].key)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -372,7 +411,7 @@ func (h *Handler) verifyContactSecurityTicket(ctx *gin.Context, userID int64, ki
 	if token == "" {
 		return domain.PasswordResetTicket{}, domain.ErrSecurityTicketRequired
 	}
-	ticket, err := svc.Get(ctx, token)
+	ticket, err := svc.Get(ctx.Request.Context(), token)
 	if err != nil {
 		return domain.PasswordResetTicket{}, domain.ErrSecurityTicketInvalid
 	}
@@ -389,29 +428,7 @@ func (h *Handler) verifyContactSecurityTicket(ctx *gin.Context, userID int64, ki
 }
 
 func (h *Handler) findUserByAccount(ctx *gin.Context, account string) (domain.User, error) {
-	account = strings.TrimSpace(account)
-	if account == "" {
-		return domain.User{}, appshared.ErrInvalidInput
-	}
-	if looksLikePhone(account) {
-		if user, err := h.authSvc.GetUserByPhone(ctx, account); err == nil {
-			return user, nil
-		}
-	}
-	return h.authSvc.GetUserByUsernameOrEmail(ctx, account)
-}
-
-func looksLikePhone(v string) bool {
-	v = strings.TrimSpace(v)
-	if len(v) < 6 {
-		return false
-	}
-	for _, r := range v {
-		if (r < '0' || r > '9') && r != '+' && r != '-' && r != ' ' {
-			return false
-		}
-	}
-	return true
+	return h.authSvc.GetUserForPasswordReset(ctx.Request.Context(), account)
 }
 
 func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {
@@ -421,11 +438,11 @@ func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {
 		SecurityTicket  string `json:"security_ticket"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
-	user, err := h.authSvc.GetUser(c, getUserID(c))
+	settings := h.loadAuthSettings(c.Request.Context())
+	user, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -462,13 +479,13 @@ func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {
 		}
 	} else {
 		if isRebind && settings.RebindRequirePasswordWhenNo2FA {
-			if err := h.authSvc.VerifyPassword(c, user.ID, payload.CurrentPassword); err != nil {
+			if err := h.authSvc.VerifyPassword(c.Request.Context(), user.ID, payload.CurrentPassword); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidPassword.Error()})
 				return
 			}
 		}
 		if !isRebind && settings.BindRequirePasswordWhenNo2FA {
-			if err := h.authSvc.VerifyPassword(c, user.ID, payload.CurrentPassword); err != nil {
+			if err := h.authSvc.VerifyPassword(c.Request.Context(), user.ID, payload.CurrentPassword); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidPassword.Error()})
 				return
 			}
@@ -478,8 +495,8 @@ func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {
 	if kind == "email" {
 		valueKey = strings.ToLower(valueKey)
 	}
-	if !contactCodeLimiter.Allow(fmt.Sprintf("contact_bind_send:user:%d:%s", user.ID, kind), 3, 10*time.Minute) ||
-		!contactCodeLimiter.Allow("contact_bind_send:"+kind+":"+valueKey, 5, 10*time.Minute) {
+	if !h.durableAllow(c.Request.Context(), fmt.Sprintf("contact_bind_send:user:%d:%s", user.ID, kind), 3, 10*time.Minute) ||
+		!h.durableAllow(c.Request.Context(), "contact_bind_send:"+kind+":"+valueKey, 5, 10*time.Minute) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 		return
 	}
@@ -495,7 +512,7 @@ func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {
 		length = settings.EmailCodeLength
 		complexity = settings.EmailCodeComplexity
 	}
-	code, err := h.authSvc.CreateVerificationCodeWithPolicy(c, channel, value, purpose, settings.ContactBindVerifyTTL, length, complexity)
+	code, err := h.authSvc.CreateVerificationCodeWithPolicy(c.Request.Context(), channel, value, purpose, settings.ContactBindVerifyTTL, length, complexity)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -523,15 +540,15 @@ func (h *Handler) meSecurityContactSendCode(c *gin.Context, kind string) {
 
 func (h *Handler) meSecurityContactConfirm(c *gin.Context, kind string) {
 	var payload struct {
-		Value          string `json:"value"`
-		Code           string `json:"code"`
+		Value          string `json:"value" binding:"required"`
+		Code           string `json:"code" binding:"required"`
 		SecurityTicket string `json:"security_ticket"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	user, err := h.authSvc.GetUser(c, getUserID(c))
+	user, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -543,7 +560,7 @@ func (h *Handler) meSecurityContactConfirm(c *gin.Context, kind string) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrValueRequired.Error()})
 		return
 	}
-	settings := h.loadAuthSettings(c)
+	settings := h.loadAuthSettings(c.Request.Context())
 	require2FA := user.TOTPEnabled && settings.TwoFAEnabled
 	var ticketSvc = h.securityTicketSvc
 	var ticket domain.PasswordResetTicket
@@ -560,7 +577,7 @@ func (h *Handler) meSecurityContactConfirm(c *gin.Context, kind string) {
 		}
 		ticket = t
 	}
-	if !contactVerifyLimiter.Allow(fmt.Sprintf("contact_bind_verify:user:%d:%s", user.ID, kind), 10, 10*time.Minute) {
+	if !h.durableAllow(c.Request.Context(), fmt.Sprintf("contact_bind_verify:user:%d:%s", user.ID, kind), 10, 10*time.Minute) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 		return
 	}
@@ -570,32 +587,51 @@ func (h *Handler) meSecurityContactConfirm(c *gin.Context, kind string) {
 		channel = "sms"
 		purpose = "bind_phone"
 	}
-	if err := h.authSvc.VerifyVerificationCode(c, channel, value, purpose, payload.Code); err != nil {
+	if err := h.authSvc.VerifyVerificationCode(c.Request.Context(), channel, value, purpose, payload.Code); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidVerificationCode.Error()})
 		return
 	}
-	if kind == "email" {
-		if exists, err := h.authSvc.GetUserByUsernameOrEmail(c, value); err == nil && exists.ID != user.ID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrEmailAlreadyExists.Error()})
+	if require2FA && ticketSvc != nil {
+		// Claim the ticket, re-check uniqueness and apply the contact change in
+		// one atomic repository operation. A concurrent loser or a uniqueness
+		// violation rolls everything back, so a stale/used ticket can never
+		// complete a sensitive contact change (TOCTOU + P2-8). Notifications are
+		// sent only after the commit below succeeds.
+		claimed, err := ticketSvc.ConsumeContactChange(c.Request.Context(), ticket.ID, user.ID, kind, value)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		user.Email = value
+		if !claimed {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrSecurityTicketInvalid.Error()})
+			return
+		}
 	} else {
-		if exists, err := h.authSvc.GetUserByPhone(c, value); err == nil && exists.ID != user.ID {
-			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPhoneAlreadyExists.Error()})
+		// No 2FA gate: the contact change is guarded by the verification code
+		// already consumed above; apply it directly with a uniqueness check.
+		if kind == "email" {
+			if exists, err := h.authSvc.GetUserByUsernameOrEmail(c.Request.Context(), value); err == nil && exists.ID != user.ID {
+				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrEmailAlreadyExists.Error()})
+				return
+			}
+			user.Email = value
+		} else {
+			if exists, err := h.authSvc.GetUserByPhone(c.Request.Context(), value); err == nil && exists.ID != user.ID {
+				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPhoneAlreadyExists.Error()})
+				return
+			}
+			user.Phone = value
+		}
+		if err := h.authSvc.UpdateUser(c.Request.Context(), user); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		user.Phone = value
-	}
-	if err := h.authSvc.UpdateUser(c, user); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
 	}
 	if settings.ContactChangeNotifyOldEnabled {
-		h.notifyOldContactAfterContactChanged(c, kind, user, oldEmail, oldPhone, value)
-	}
-	if require2FA && ticketSvc != nil {
-		_ = ticketSvc.MarkUsed(c, ticket.ID)
+		reloaded, err := h.authSvc.GetUser(c.Request.Context(), user.ID)
+		if err == nil {
+			h.notifyOldContactAfterContactChanged(c, kind, reloaded, oldEmail, oldPhone, value)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -639,11 +675,11 @@ func (h *Handler) meSecurityContactVerify2FA(c *gin.Context, kind string) {
 		TOTPCode string `json:"totp_code"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	settings := h.loadAuthSettings(c)
-	user, err := h.authSvc.GetUser(c, getUserID(c))
+	settings := h.loadAuthSettings(c.Request.Context())
+	user, err := h.authSvc.GetUser(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrUserNotFound.Error()})
 		return
@@ -652,17 +688,25 @@ func (h *Handler) meSecurityContactVerify2FA(c *gin.Context, kind string) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.Err2faNotEnabled.Error()})
 		return
 	}
-	if err := h.authSvc.VerifyTOTP(c, user.ID, payload.TOTPCode); err != nil {
+	if !h.allowTOTPVerify(c, user.ID) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyAttempts.Error()})
+		return
+	}
+	if err := h.authSvc.VerifyTOTP(c.Request.Context(), user.ID, payload.TOTPCode); err != nil {
+		h.recordAuthFailures(c.Request.Context(), h.totpBudgetDims(c, user.ID), time.Now())
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalid2faCode.Error()})
 		return
 	}
+	h.resetAuthFailures(c.Request.Context(), h.totpBudgetDims(c, user.ID)[0].key)
 	svc := h.securityTicketSvc
 	if svc == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	_ = svc.DeleteExpired(c)
-	token := randomToken(9)
+	_ = svc.DeleteExpired(c.Request.Context())
+	// 128-bit random token so the contact-change security ticket is not
+	// brute-forceable within its 20-minute lifetime (P3-21).
+	token := randomToken(16)
 	ticket := &domain.PasswordResetTicket{
 		UserID:    user.ID,
 		Channel:   contactSecurityTicketChannel(kind),
@@ -670,7 +714,7 @@ func (h *Handler) meSecurityContactVerify2FA(c *gin.Context, kind string) {
 		Token:     token,
 		ExpiresAt: time.Now().Add(20 * time.Minute),
 	}
-	if err := svc.Create(c, ticket.UserID, ticket.Channel, ticket.Receiver, ticket.Token, ticket.ExpiresAt); err != nil {
+	if err := svc.Create(c.Request.Context(), ticket.UserID, ticket.Channel, ticket.Receiver, ticket.Token, ticket.ExpiresAt); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

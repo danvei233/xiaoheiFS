@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 )
@@ -246,8 +247,69 @@ func TestSQLiteRepo_CartVPSAndRealNamePaths(t *testing.T) {
 		t.Fatalf("create realname: %v", err)
 	}
 	userID := user.ID
-	records, total, err := repo.ListRealNameVerifications(ctx, &userID, 10, 0)
+	records, total, err := repo.ListRealNameVerifications(ctx, &userID, "", 10, 0)
 	if err != nil || total == 0 || len(records) == 0 {
 		t.Fatalf("list realname verifications: %v total=%d", err, total)
+	}
+}
+
+// TestSQLiteRepo_DeletePackageRejectsInUsePackage locks P1-19: a package still
+// referenced by a cart item (or order/VPS) must not be hard-deleted, otherwise
+// the referencing rows dangle.
+func TestSQLiteRepo_DeletePackageRejectsInUsePackage(t *testing.T) {
+	_, repo := newTestRepo(t)
+	ctx := context.Background()
+
+	user := domain.User{Username: "pkgref", Email: "pkgref@example.com", PasswordHash: "hash", Role: domain.UserRoleUser, Status: domain.UserStatusActive}
+	if err := repo.CreateUser(ctx, &user); err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	region := domain.Region{Name: "r", Code: "r", Active: true}
+	if err := repo.CreateRegion(ctx, &region); err != nil {
+		t.Fatalf("create region: %v", err)
+	}
+	plan := domain.PlanGroup{Name: "p", RegionID: region.ID, GoodsTypeID: 1, LineID: 1}
+	if err := repo.CreatePlanGroup(ctx, &plan); err != nil {
+		t.Fatalf("create plan group: %v", err)
+	}
+	pkg := domain.Package{Name: "pk", GoodsTypeID: 1, PlanGroupID: plan.ID, Monthly: 1000}
+	if err := repo.CreatePackage(ctx, &pkg); err != nil {
+		t.Fatalf("create package: %v", err)
+	}
+
+	cart := domain.CartItem{UserID: user.ID, PackageID: pkg.ID, SystemID: 1, SpecJSON: "{}", Qty: 1, Amount: 1000}
+	if err := repo.AddCartItem(ctx, &cart); err != nil {
+		t.Fatalf("add cart item: %v", err)
+	}
+
+	if err := repo.DeletePackage(ctx, pkg.ID); err != appshared.ErrConflict {
+		t.Fatalf("expected ErrConflict deleting an in-use package, got %v", err)
+	}
+	if _, err := repo.GetPackage(ctx, pkg.ID); err != nil {
+		t.Fatalf("package must still exist after refused delete: %v", err)
+	}
+}
+
+// TestSQLiteRepo_DeletePlanGroupRejectsInUseGroup locks the plan-group side of
+// P1-19: deleting a plan group still referenced by a package must fail.
+func TestSQLiteRepo_DeletePlanGroupRejectsInUseGroup(t *testing.T) {
+	_, repo := newTestRepo(t)
+	ctx := context.Background()
+
+	region := domain.Region{Name: "r2", Code: "r2", Active: true}
+	if err := repo.CreateRegion(ctx, &region); err != nil {
+		t.Fatalf("create region: %v", err)
+	}
+	plan := domain.PlanGroup{Name: "pg", RegionID: region.ID, GoodsTypeID: 1, LineID: 1}
+	if err := repo.CreatePlanGroup(ctx, &plan); err != nil {
+		t.Fatalf("create plan group: %v", err)
+	}
+	pkg := domain.Package{Name: "pk2", GoodsTypeID: 1, PlanGroupID: plan.ID, Monthly: 1000}
+	if err := repo.CreatePackage(ctx, &pkg); err != nil {
+		t.Fatalf("create package: %v", err)
+	}
+
+	if err := repo.DeletePlanGroup(ctx, plan.ID); err != appshared.ErrConflict {
+		t.Fatalf("expected ErrConflict deleting an in-use plan group, got %v", err)
 	}
 }

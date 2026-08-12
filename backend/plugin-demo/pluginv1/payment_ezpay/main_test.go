@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -447,6 +449,77 @@ func TestEZPay_CreatePayment_MAPI_CacheByOrderAndMethod(t *testing.T) {
 	}
 }
 
+func TestEZPay_BuildCacheKey_SensitiveToAmountAndSubject(t *testing.T) {
+	outTradeNo := "ORDER-123-wx-abc"
+	k1 := buildEZPayCacheKey(outTradeNo, "12.34", "test")
+	k2 := buildEZPayCacheKey(outTradeNo, "12.34", "test")
+	if k1 != k2 {
+		t.Fatalf("same amount+subject must produce same cache key: %q vs %q", k1, k2)
+	}
+	if k2 == buildEZPayCacheKey(outTradeNo, "56.78", "test") {
+		t.Fatalf("different amount must produce a different cache key")
+	}
+	if k2 == buildEZPayCacheKey(outTradeNo, "12.34", "other") {
+		t.Fatalf("different subject must produce a different cache key")
+	}
+}
+
+func TestEZPay_CreatePayment_MAPI_CacheKeyedByAmount(t *testing.T) {
+	callCount := 0
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		_ = r.ParseForm()
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"code":1,"trade_no":"TN-%d","payurl":"https://pay.example/redirect/%d?amount=%s"}`, callCount, callCount, r.FormValue("money"))
+	}))
+	defer ts.Close()
+
+	core := &coreServer{}
+	core.cfg = config{
+		SubmitURL:      ts.URL + "/mapi.php",
+		PID:            "10001",
+		MerchantKey:    "testkey",
+		SignType:       "MD5",
+		SignKeyMode:    "plain",
+		TimeoutSec:     5,
+		GatewayBaseURL: "",
+	}
+	pay := &payServer{core: core}
+
+	makeReq := func(amount int64) *pluginv1.CreatePaymentRpcRequest {
+		return &pluginv1.CreatePaymentRpcRequest{
+			Method: "wxpay",
+			Request: &pluginv1.PaymentCreateRequest{
+				OrderNo:   "ORDER-123",
+				UserId:    "1",
+				Amount:    amount,
+				Currency:  "CNY",
+				Subject:   "test",
+				NotifyUrl: "https://host.example/api/v1/payments/notify/ezpay.wxpay",
+				ReturnUrl: "https://host.example/return",
+				Extra:     map[string]string{"client_ip": "127.0.0.1", "device": "mobile"},
+			},
+		}
+	}
+
+	first, err := pay.CreatePayment(context.Background(), makeReq(1234))
+	if err != nil {
+		t.Fatalf("first CreatePayment err: %v", err)
+	}
+	// Same order+method within the same window but a different amount must NOT
+	// return the stale cached link (M5) — it must call upstream again.
+	second, err := pay.CreatePayment(context.Background(), makeReq(5678))
+	if err != nil {
+		t.Fatalf("second CreatePayment err: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 upstream calls when amount changes, got %d", callCount)
+	}
+	if first.GetExtra()["pay_url"] == second.GetExtra()["pay_url"] {
+		t.Fatalf("expected different pay_url for different amount, both %q", first.GetExtra()["pay_url"])
+	}
+}
+
 func contains(s, sub string) bool {
 	return len(sub) == 0 || (len(s) >= len(sub) && (stringIndex(s, sub) >= 0))
 }
@@ -476,4 +549,105 @@ func extractInputValue(html string, name string) string {
 		return ""
 	}
 	return html[start:end]
+}
+
+// P2-82: QueryPayment must reuse the creation-time out_trade_no (which embeds
+// the creation-window token) instead of rebuilding it with the current window
+// token. A query in a later window would otherwise look for a different
+// out_trade_no and never find the order.
+func TestEZPay_QueryPayment_UsesCreationOutTradeNo(t *testing.T) {
+	var capturedOutTradeNo string
+	querySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		capturedOutTradeNo = r.FormValue("out_trade_no")
+		w.Header().Set("Content-Type", "application/json")
+		// Generic EZPay query item (no top-level code field -> parseQueryItem path).
+		_, _ = w.Write([]byte(`{"trade_status":"TRADE_SUCCESS","trade_no":"PLAT-9","money":"12.34"}`))
+	}))
+	defer querySrv.Close()
+
+	createSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":1,"trade_no":"TN-1","qrcode":"weixin://wxpay/bizpayurl?pr=abc"}`))
+	}))
+	defer createSrv.Close()
+
+	core := &coreServer{}
+	core.cfg = config{
+		SubmitURL:         createSrv.URL + "/mapi.php",
+		QueryAPIURL:       querySrv.URL + "/api.php?act=order",
+		PID:               "10001",
+		MerchantKey:       "testkey",
+		SignType:          "MD5",
+		SignKeyMode:       "plain",
+		TimeoutSec:        5,
+		OrderExpireMinutes: 5,
+	}
+	pay := &payServer{core: core}
+
+	createResp, err := pay.CreatePayment(context.Background(), &pluginv1.CreatePaymentRpcRequest{
+		Method: "wxpay",
+		Request: &pluginv1.PaymentCreateRequest{
+			OrderNo:   "ORDER-QUERY-1",
+			UserId:    "1",
+			Amount:    1234,
+			Currency:  "CNY",
+			Subject:   "q",
+			NotifyUrl: "https://host.example/notify",
+			ReturnUrl: "https://host.example/return",
+			Extra:     map[string]string{"client_ip": "127.0.0.1", "device": "mobile"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreatePayment err: %v", err)
+	}
+	wantOutTradeNo := createResp.GetExtra()["out_trade_no"]
+	if wantOutTradeNo == "" {
+		t.Fatalf("create response missing out_trade_no")
+	}
+
+	// Query by order_no only (no trade_no) -> must send the creation-time
+	// out_trade_no, not a rebuilt current-window one.
+	q, err := pay.QueryPayment(context.Background(), &pluginv1.QueryPaymentRpcRequest{
+		Method:  "wxpay",
+		OrderNo: "ORDER-QUERY-1",
+	})
+	if err != nil {
+		t.Fatalf("QueryPayment err: %v", err)
+	}
+	if !q.GetOk() {
+		t.Fatalf("QueryPayment not ok: %v", q.GetStatus())
+	}
+	if capturedOutTradeNo != wantOutTradeNo {
+		t.Fatalf("query used out_trade_no %q, want creation-time %q (window-token drift)",
+			capturedOutTradeNo, wantOutTradeNo)
+	}
+}
+
+// lookupOutTradeNo must prefer the stored creation-time token even when the
+// current window token would differ (a later-window query).
+func TestLookupOutTradeNo_PrefersCreationToken(t *testing.T) {
+	core := &coreServer{}
+	core.cfg = config{MerchantKey: "k", OrderExpireMinutes: 5}
+	pay := &payServer{core: core}
+
+	createdAt := time.Unix(1_700_000_000, 0)
+	stored := buildMethodOrderNo("ORDER-2", "alipay", core.cfg, createdAt)
+	pay.rememberOutTradeNo("ORDER-2", stored)
+
+	// Simulate a query much later (different window bucket).
+	later := createdAt.Add(20 * time.Minute)
+	got := pay.lookupOutTradeNo("ORDER-2", "alipay", core.cfg)
+	if got != stored {
+		t.Fatalf("lookupOutTradeNo = %q, want stored creation token %q", got, stored)
+	}
+	if got == buildMethodOrderNo("ORDER-2", "alipay", core.cfg, later) {
+		t.Fatalf("lookupOutTradeNo rebuilt the current-window token; creation token must be reused")
+	}
+
+	// Unknown order (not created in-process) falls back to a current-window token.
+	fallback := pay.lookupOutTradeNo("NEVER-CREATED", "alipay", core.cfg)
+	if fallback == "" {
+		t.Fatalf("unknown order should fall back to a best-effort token")
+	}
 }

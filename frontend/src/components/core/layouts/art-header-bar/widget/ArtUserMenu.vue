@@ -89,14 +89,14 @@
    * 打开文档页面
    */
   const toDocs = (): void => {
-    window.open(WEB_LINKS.DOCS)
+    window.open(WEB_LINKS.DOCS, '_blank', 'noopener,noreferrer')
   }
 
   /**
    * 打开 GitHub 页面
    */
   const toGithub = (): void => {
-    window.open(WEB_LINKS.GITHUB)
+    window.open(WEB_LINKS.GITHUB, '_blank', 'noopener,noreferrer')
   }
 
   /**

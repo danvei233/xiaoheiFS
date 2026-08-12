@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { getDashboard, listOrders, listVps, getWallet, getRealNameStatus } from '@/services/user'
+import { useAuthStore } from '@/stores/auth'
 import { normalizeWallet } from '@/utils/wallet'
 
 const toDateKey = (d) => {
@@ -25,6 +26,8 @@ export const useDashboardStore = defineStore('dashboard', {
   }),
   actions: {
     async fetchUserDashboard() {
+      const auth = useAuthStore()
+      const tokenAtStart = auth.token
       this.loading = true
       try {
         const [dashRes, ordersRes, vpsRes, walletRes, realnameRes] = await Promise.all([
@@ -34,6 +37,9 @@ export const useDashboardStore = defineStore('dashboard', {
           getWallet(),
           getRealNameStatus()
         ])
+        // 会话切换（登出/模拟登录/换账号）后丢弃旧账号响应，避免跨账号残留
+        // 写回 store（web_data_races F7）。
+        if (auth.token !== tokenAtStart) return
 
         const dash = dashRes.data || {}
         const orders = ordersRes.data?.items || []
@@ -97,6 +103,13 @@ export const useDashboardStore = defineStore('dashboard', {
       } finally {
         this.loading = false
       }
+    },
+    reset() {
+      this.loading = false
+      this.metrics = {}
+      this.charts = {}
+      this.wallet = null
+      this.realname = null
     }
   }
 })

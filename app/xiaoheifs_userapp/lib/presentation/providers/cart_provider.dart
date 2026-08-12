@@ -78,6 +78,12 @@ class CartNotifier extends StateNotifier<CartState> {
     state = state.copyWith(items: []);
   }
 
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    _lastFetchedAt = null;
+    state = const CartState();
+  }
+
   List<Map<String, dynamic>> _normalizeItems(dynamic raw) {
     if (raw is List) {
       return raw.map((e) => ensureMap(e)).toList();

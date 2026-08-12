@@ -33,6 +33,10 @@ type probeLogSessionPurger interface {
 	PurgeProbeLogSessions(ctx context.Context, before time.Time) error
 }
 
+type rateLimitPurger interface {
+	CleanupRateLimits(ctx context.Context, before time.Time) (int64, error)
+}
+
 type Service struct {
 	settings      appports.SettingsRepository
 	audit         auditLogPurger
@@ -41,6 +45,7 @@ type Service struct {
 	taskRuns      taskRunPurger
 	probeEvents   probeStatusEventPurger
 	probeSessions probeLogSessionPurger
+	rateLimits    rateLimitPurger
 }
 
 func NewService(
@@ -51,6 +56,7 @@ func NewService(
 	taskRuns taskRunPurger,
 	probeEvents probeStatusEventPurger,
 	probeSessions probeLogSessionPurger,
+	rateLimits rateLimitPurger,
 ) *Service {
 	return &Service{
 		settings:      settings,
@@ -60,6 +66,7 @@ func NewService(
 		taskRuns:      taskRuns,
 		probeEvents:   probeEvents,
 		probeSessions: probeSessions,
+		rateLimits:    rateLimits,
 	}
 }
 
@@ -115,7 +122,9 @@ func (s *Service) Cleanup(ctx context.Context) (string, error) {
 	if s.probeEvents != nil {
 		probeEventFn = func(before time.Time) error { return s.probeEvents.DeleteProbeStatusEventsBefore(ctx, before) }
 	}
-	if err := run("probe_status_event_retention_days", 30, "probe_event", probeEventFn); err != nil {
+	// Default retention covers the full SLA query window (365d) plus margin.
+	// scanOffline no longer deletes status events, so this is the only purge path.
+	if err := run("probe_status_event_retention_days", 366, "probe_event", probeEventFn); err != nil {
 		return strings.Join(parts, ","), err
 	}
 	var probeSessionFn func(before time.Time) error
@@ -123,6 +132,16 @@ func (s *Service) Cleanup(ctx context.Context) (string, error) {
 		probeSessionFn = func(before time.Time) error { return s.probeSessions.PurgeProbeLogSessions(ctx, before) }
 	}
 	if err := run("probe_log_session_retention_days", 7, "probe_session", probeSessionFn); err != nil {
+		return strings.Join(parts, ","), err
+	}
+	var rateLimitFn func(before time.Time) error
+	if s.rateLimits != nil {
+		rateLimitFn = func(before time.Time) error {
+			_, err := s.rateLimits.CleanupRateLimits(ctx, before)
+			return err
+		}
+	}
+	if err := run("rate_limit_retention_days", 1, "rate_limit", rateLimitFn); err != nil {
 		return strings.Join(parts, ","), err
 	}
 

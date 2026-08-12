@@ -10,6 +10,29 @@ import (
 	"xiaoheiplay/internal/domain"
 )
 
+// normalizedCMSPage lowercases a page key for the public surface so lookups and
+// seeded rows stay consistent (avoiding write amplification on page variants).
+func normalizedCMSPage(page string) string {
+	return strings.ToLower(strings.TrimSpace(page))
+}
+
+// normalizeCMSLang falls back unknown browser locales to zh-CN instead of
+// rejecting them. The public surface must keep rendering for en-GB, zh-HK etc.
+func normalizeCMSLang(lang string) string {
+	lang = strings.ToLower(strings.TrimSpace(lang))
+	if lang == "" {
+		return "zh-CN"
+	}
+	// Accept regional variants of the two supported languages.
+	if strings.HasPrefix(lang, "zh") {
+		return "zh-CN"
+	}
+	if strings.HasPrefix(lang, "en") {
+		return "en-US"
+	}
+	return "zh-CN"
+}
+
 func (h *Handler) CMSBlocksPublic(c *gin.Context) {
 	var query struct {
 		Page string `form:"page"`
@@ -19,14 +42,11 @@ func (h *Handler) CMSBlocksPublic(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	page := strings.TrimSpace(query.Page)
-	lang := strings.TrimSpace(query.Lang)
-	if lang == "" {
-		lang = "zh-CN"
-	}
-	items, err := h.cmsSvc.ListBlocks(c, page, lang, false)
+	page := normalizedCMSPage(query.Page)
+	lang := normalizeCMSLang(query.Lang)
+	items, err := h.cmsSvc.ListBlocks(c.Request.Context(), page, lang, false)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
 	}
 	resp := make([]CMSBlockDTO, 0, len(items))
@@ -45,15 +65,12 @@ func (h *Handler) CMSPostsPublic(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	lang := strings.TrimSpace(query.Lang)
-	if lang == "" {
-		lang = "zh-CN"
-	}
+	lang := normalizeCMSLang(query.Lang)
 	categoryKey := strings.TrimSpace(query.CategoryKey)
 	limit, offset := paging(c)
-	items, total, err := h.cmsSvc.ListPosts(c, appshared.CMSPostFilter{CategoryKey: categoryKey, Lang: lang, PublishedOnly: true, Limit: limit, Offset: offset})
+	items, total, err := h.cmsSvc.ListPosts(c.Request.Context(), appshared.CMSPostFilter{CategoryKey: categoryKey, Lang: lang, PublishedOnly: true, Limit: limit, Offset: offset})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
 	}
 	resp := make([]CMSPostDTO, 0, len(items))
@@ -72,7 +89,7 @@ func (h *Handler) CMSPostDetailPublic(c *gin.Context) {
 		return
 	}
 	slug := strings.TrimSpace(uri.Slug)
-	post, err := h.cmsSvc.GetPostBySlug(c, slug)
+	post, err := h.cmsSvc.GetPostBySlug(c.Request.Context(), slug)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -93,7 +110,7 @@ func (h *Handler) AdminCMSCategories(c *gin.Context) {
 		return
 	}
 	lang := strings.TrimSpace(query.Lang)
-	items, err := h.cmsSvc.ListCategories(c, lang, true)
+	items, err := h.cmsSvc.ListCategories(c.Request.Context(), lang, true)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -114,7 +131,7 @@ func (h *Handler) AdminCMSCategoryCreate(c *gin.Context) {
 		Visible   *bool  `json:"visible"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	key := strings.TrimSpace(payload.Key)
@@ -132,7 +149,7 @@ func (h *Handler) AdminCMSCategoryCreate(c *gin.Context) {
 		visible = *payload.Visible
 	}
 	item := domain.CMSCategory{Key: key, Name: name, Lang: lang, SortOrder: payload.SortOrder, Visible: visible}
-	if err := h.cmsSvc.CreateCategory(c, &item); err != nil {
+	if err := h.cmsSvc.CreateCategory(c.Request.Context(), &item); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -145,7 +162,7 @@ func (h *Handler) AdminCMSCategoryUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	item, err := h.cmsSvc.GetCategory(c, uri.ID)
+	item, err := h.cmsSvc.GetCategory(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -158,7 +175,7 @@ func (h *Handler) AdminCMSCategoryUpdate(c *gin.Context) {
 		Visible   *bool   `json:"visible"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.Key != nil {
@@ -180,7 +197,7 @@ func (h *Handler) AdminCMSCategoryUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrKeyNameAndLangRequired.Error()})
 		return
 	}
-	if err := h.cmsSvc.UpdateCategory(c, item); err != nil {
+	if err := h.cmsSvc.UpdateCategory(c.Request.Context(), item); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -193,7 +210,13 @@ func (h *Handler) AdminCMSCategoryDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.cmsSvc.DeleteCategory(c, uri.ID); err != nil {
+	// A category that still contains posts must not be deleted, otherwise its
+	// posts become orphans invisible on the public site.
+	if _, total, err := h.cmsSvc.ListPosts(c.Request.Context(), appshared.CMSPostFilter{CategoryID: &uri.ID, Limit: 1}); err == nil && total > 0 {
+		c.JSON(http.StatusConflict, gin.H{"error": domain.ErrConflict.Error()})
+		return
+	}
+	if err := h.cmsSvc.DeleteCategory(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -213,7 +236,7 @@ func (h *Handler) AdminCMSPosts(c *gin.Context) {
 	lang := strings.TrimSpace(query.Lang)
 	status := strings.TrimSpace(query.Status)
 	limit, offset := paging(c)
-	items, total, err := h.cmsSvc.ListPosts(c, appshared.CMSPostFilter{CategoryID: query.CategoryID, Status: status, Lang: lang, Limit: limit, Offset: offset})
+	items, total, err := h.cmsSvc.ListPosts(c.Request.Context(), appshared.CMSPostFilter{CategoryID: query.CategoryID, Status: status, Lang: lang, Limit: limit, Offset: offset})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -240,7 +263,7 @@ func (h *Handler) AdminCMSPostCreate(c *gin.Context) {
 		PublishedAt string `json:"published_at"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	lang := strings.TrimSpace(payload.Lang)
@@ -267,7 +290,7 @@ func (h *Handler) AdminCMSPostCreate(c *gin.Context) {
 		publishedAt = &now
 	}
 	post := domain.CMSPost{CategoryID: payload.CategoryID, Title: strings.TrimSpace(payload.Title), Slug: strings.TrimSpace(payload.Slug), Summary: payload.Summary, ContentHTML: payload.ContentHTML, CoverURL: payload.CoverURL, Lang: lang, Status: status, Pinned: payload.Pinned, SortOrder: payload.SortOrder, PublishedAt: publishedAt}
-	if err := h.cmsSvc.CreatePost(c, &post); err != nil {
+	if err := h.cmsSvc.CreatePost(c.Request.Context(), &post); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -280,7 +303,7 @@ func (h *Handler) AdminCMSPostUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	post, err := h.cmsSvc.GetPost(c, uri.ID)
+	post, err := h.cmsSvc.GetPost(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -299,7 +322,7 @@ func (h *Handler) AdminCMSPostUpdate(c *gin.Context) {
 		PublishedAt *string `json:"published_at"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.CategoryID != nil {
@@ -347,7 +370,7 @@ func (h *Handler) AdminCMSPostUpdate(c *gin.Context) {
 		now := time.Now()
 		post.PublishedAt = &now
 	}
-	if err := h.cmsSvc.UpdatePost(c, post); err != nil {
+	if err := h.cmsSvc.UpdatePost(c.Request.Context(), post); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -360,7 +383,7 @@ func (h *Handler) AdminCMSPostDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.cmsSvc.DeletePost(c, uri.ID); err != nil {
+	if err := h.cmsSvc.DeletePost(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -378,7 +401,7 @@ func (h *Handler) AdminCMSBlocks(c *gin.Context) {
 	}
 	page := strings.TrimSpace(query.Page)
 	lang := strings.TrimSpace(query.Lang)
-	items, err := h.cmsSvc.ListBlocks(c, page, lang, true)
+	items, err := h.cmsSvc.ListBlocks(c.Request.Context(), page, lang, true)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -403,7 +426,7 @@ func (h *Handler) AdminCMSBlockCreate(c *gin.Context) {
 		SortOrder   int    `json:"sort_order"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	page := strings.TrimSpace(payload.Page)
@@ -424,15 +447,15 @@ func (h *Handler) AdminCMSBlockCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrContentJsonInvalid.Error()})
 		return
 	}
-	if typeName == "custom_html" {
-		payload.CustomHTML = sanitizeHTML(payload.CustomHTML)
-	}
+	// CustomHTML is sanitized for every block type so a non-custom_html block
+	// cannot become an unsanitized storage vector for stored XSS.
+	payload.CustomHTML = sanitizeHTML(payload.CustomHTML)
 	visible := true
 	if payload.Visible != nil {
 		visible = *payload.Visible
 	}
 	block := domain.CMSBlock{Page: page, Type: typeName, Title: payload.Title, Subtitle: payload.Subtitle, ContentJSON: payload.ContentJSON, CustomHTML: payload.CustomHTML, Lang: lang, Visible: visible, SortOrder: payload.SortOrder}
-	if err := h.cmsSvc.CreateBlock(c, &block); err != nil {
+	if err := h.cmsSvc.CreateBlock(c.Request.Context(), &block); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -445,7 +468,7 @@ func (h *Handler) AdminCMSBlockUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	block, err := h.cmsSvc.GetBlock(c, uri.ID)
+	block, err := h.cmsSvc.GetBlock(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -462,7 +485,7 @@ func (h *Handler) AdminCMSBlockUpdate(c *gin.Context) {
 		SortOrder   *int    `json:"sort_order"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.Page != nil {
@@ -485,11 +508,7 @@ func (h *Handler) AdminCMSBlockUpdate(c *gin.Context) {
 		block.ContentJSON = *payload.ContentJSON
 	}
 	if payload.CustomHTML != nil {
-		if block.Type == "custom_html" {
-			block.CustomHTML = sanitizeHTML(*payload.CustomHTML)
-		} else {
-			block.CustomHTML = *payload.CustomHTML
-		}
+		block.CustomHTML = sanitizeHTML(*payload.CustomHTML)
 	}
 	if payload.Lang != nil {
 		block.Lang = strings.TrimSpace(*payload.Lang)
@@ -508,7 +527,7 @@ func (h *Handler) AdminCMSBlockUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.cmsSvc.UpdateBlock(c, block); err != nil {
+	if err := h.cmsSvc.UpdateBlock(c.Request.Context(), block); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -521,7 +540,7 @@ func (h *Handler) AdminCMSBlockDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.cmsSvc.DeleteBlock(c, uri.ID); err != nil {
+	if err := h.cmsSvc.DeleteBlock(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

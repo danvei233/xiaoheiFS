@@ -144,6 +144,12 @@ class TicketListNotifier extends StateNotifier<TicketListState> {
 
   String _cacheKey(String? status, int limit, int offset) =>
       '${status ?? 'all'}|$limit|$offset';
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    _cache.clear();
+    state = const TicketListState();
+  }
 }
 
 class _TicketCacheEntry {
@@ -190,5 +196,10 @@ class TicketDetailNotifier extends StateNotifier<TicketDetailState> {
   Future<void> closeTicket(int id) async {
     await _repo.closeTicket(id);
     await fetchDetail(id, showLoading: false);
+  }
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    state = const TicketDetailState();
   }
 }

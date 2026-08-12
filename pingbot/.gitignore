@@ -1,0 +1,4 @@
+# Runtime config may contain real enrollment credentials (enroll_token /
+# probe_secret). Never commit a real config; deploy the sanitized example
+# from deploy/*/config.example.yaml instead.
+config.yaml

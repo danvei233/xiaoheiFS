@@ -69,7 +69,14 @@ func (s *Service) Overview(ctx context.Context) (OverviewReport, error) {
 		if o.Status == domain.OrderStatusPendingReview {
 			pending++
 		}
-		if shouldIncludeRevenueOrder(o.Status) {
+		// Revenue is only recognized once at least one payment has actually been
+		// approved — the same criterion as RevenueAnalytics. A positive order
+		// without an approved payment (e.g. an admin-approved order whose
+		// provider payment is still pending, or a manual-proof order not yet
+		// confirmed) must not count or the dashboard and the analytics module
+		// disagree. Negative refund orders reduce revenue and are kept even
+		// though refunds settle through wallet orders (no order_payment row).
+		if shouldIncludeRevenueOrder(o.Status) && s.revenueRecognized(ctx, o) {
 			revenue += o.TotalAmount
 		}
 	}
@@ -497,11 +504,13 @@ func (s *Service) collectRevenueDataByDimension(ctx context.Context, q RevenueAn
 		}
 		recognizedAmount := order.TotalAmount
 		effectiveAt := order.CreatedAt
+		approvedCount := 0
 		var paymentID int64 = -order.ID
 		for _, p := range pays {
 			if p.Status != domain.PaymentStatusApproved {
 				continue
 			}
+			approvedCount++
 			if p.CreatedAt.After(effectiveAt) {
 				effectiveAt = p.CreatedAt
 			}
@@ -511,6 +520,14 @@ func (s *Service) collectRevenueDataByDimension(ctx context.Context, q RevenueAn
 		}
 		if order.ApprovedAt != nil && !order.ApprovedAt.IsZero() {
 			effectiveAt = *order.ApprovedAt
+		}
+		// Revenue is only recognized once at least one payment has actually been
+		// approved. A positive order without an approved payment (e.g. a
+		// pending_review manual-proof order the admin has not confirmed) must not
+		// count as revenue. Negative refund orders reduce revenue and are kept
+		// even though refunds settle through wallet orders (no order_payment row).
+		if approvedCount == 0 && order.TotalAmount >= 0 {
+			continue
 		}
 		if !effectiveAt.After(q.FromAt) && !effectiveAt.Equal(q.FromAt) {
 			continue
@@ -577,12 +594,38 @@ func (s *Service) collectRevenueDataByDimension(ctx context.Context, q RevenueAn
 	return out, total, nil
 }
 
+// revenueRecognized mirrors the RevenueAnalytics criterion: a positive order
+// only counts as revenue once it has at least one approved payment. Negative
+// refund orders reduce revenue even though refunds settle through wallet orders
+// and carry no order_payment row.
+func (s *Service) revenueRecognized(ctx context.Context, order domain.Order) bool {
+	if order.TotalAmount < 0 {
+		return true
+	}
+	if s.payments == nil {
+		return true // conservative: caller wired no payment repository
+	}
+	pays, err := s.payments.ListPaymentsByOrder(ctx, order.ID)
+	if err != nil {
+		return false
+	}
+	for _, p := range pays {
+		if p.Status == domain.PaymentStatusApproved {
+			return true
+		}
+	}
+	return false
+}
+
 func shouldIncludeRevenueOrder(status domain.OrderStatus) bool {
 	switch status {
-	case domain.OrderStatusCanceled, domain.OrderStatusFailed, domain.OrderStatusPendingPayment:
-		return false
-	default:
+	case domain.OrderStatusApproved, domain.OrderStatusProvisioning, domain.OrderStatusActive:
 		return true
+	default:
+		// draft, pending_payment, pending_review, rejected, failed and canceled
+		// must never count: the money was either never requested, not yet
+		// confirmed by an approved payment, or explicitly refused.
+		return false
 	}
 }
 

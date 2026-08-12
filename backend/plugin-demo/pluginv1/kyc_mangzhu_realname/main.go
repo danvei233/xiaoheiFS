@@ -194,6 +194,13 @@ func (k *kycServer) Start(ctx context.Context, req *pluginv1.KycStartRequest) (*
 		if callbackURL == "" {
 			return nil, status.Error(codes.InvalidArgument, "callback_url required for face mode")
 		}
+		// Only allow absolute http(s) callbacks: the provider redirects the
+		// user (and later posts the certified result) to this URL, so an
+		// arbitrary scheme/host would leak PII or execute a client-side
+		// javascript: URL (M12).
+		if !validCallbackURL(callbackURL) {
+			return nil, status.Error(codes.InvalidArgument, "invalid callback_url: must be an absolute http(s) URL with a host")
+		}
 		startPath := "/index/bd_sm"
 		if cfg.FaceProvider == "wechat" {
 			startPath = "/index/wx_sm"
@@ -384,12 +391,27 @@ func parseTwoFactorResult(code int, msg string, raw string) (bool, string) {
 }
 
 func parseThreeFactorResult(code int, msg string, raw string) (bool, string) {
-	if code == 200 {
+	// Must mirror parseTwoFactorResult: a transport-level code==200 is NOT
+	// sufficient — the upstream may return {"code":200,"data":{"result":0}}
+	// for a business failure (name/idcard/mobile mismatch). Only result==1
+	// (or a "通过" hint) counts as verified.
+	var doc struct {
+		Code int `json:"code"`
+		Data struct {
+			Result  int    `json:"result"`
+			Message string `json:"message"`
+		} `json:"data"`
+		Result string `json:"result"`
+		Msg    string `json:"msg"`
+	}
+	_ = json.Unmarshal([]byte(raw), &doc)
+	if code == 200 && (doc.Data.Result == 1 || strings.Contains(doc.Result, "通过")) {
 		return true, ""
 	}
-	var doc map[string]any
-	_ = json.Unmarshal([]byte(raw), &doc)
-	reason := strings.TrimSpace(anyToString(doc["msg"]))
+	reason := strings.TrimSpace(doc.Data.Message)
+	if reason == "" {
+		reason = strings.TrimSpace(doc.Msg)
+	}
 	if reason == "" {
 		reason = strings.TrimSpace(msg)
 	}
@@ -493,6 +515,25 @@ func anyToString(v any) string {
 		}
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// validCallbackURL reports whether a callback/redirect URL is acceptable to
+// forward to the KYC provider: an absolute http(s) URL with a non-empty host.
+// It rejects javascript:/data:/file: and protocol-relative URLs.
+func validCallbackURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+	return strings.TrimSpace(u.Host) != ""
 }
 
 func nonEmpty(values ...string) string {

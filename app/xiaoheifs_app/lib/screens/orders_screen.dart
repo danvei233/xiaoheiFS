@@ -61,6 +61,32 @@ class _OrdersViewState extends State<_OrdersView> {
     super.dispose();
   }
 
+  /// Guard money/destructive actions behind an explicit confirmation dialog.
+  Future<void> _confirmThen({
+    required String title,
+    required String message,
+    required Future<void> Function() action,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await action();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<OrdersState>(
@@ -213,10 +239,26 @@ class _OrdersViewState extends State<_OrdersView> {
               state.refresh();
             }
           },
-          onApprove: () => state.approve(item),
-          onReject: () => state.reject(item),
-          onRetry: () => state.retry(item),
-          onDelete: () => state.delete(item),
+          onApprove: () => _confirmThen(
+            title: '通过订单',
+            message: '确认通过该订单？将触发支付确认与开通交付。',
+            action: () => state.approve(item),
+          ),
+          onReject: () => _confirmThen(
+            title: '驳回订单',
+            message: '确认驳回该订单？驳回后用户将收到失败通知。',
+            action: () => state.reject(item),
+          ),
+          onRetry: () => _confirmThen(
+            title: '重试订单',
+            message: '确认重新处理该订单？',
+            action: () => state.retry(item),
+          ),
+          onDelete: () => _confirmThen(
+            title: '删除订单',
+            message: '确认删除该订单？此操作不可恢复，可能涉及退款。',
+            action: () => state.delete(item),
+          ),
         );
       },
     );

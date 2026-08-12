@@ -98,6 +98,8 @@ const (
 	VPSStatusRescue           VPSStatus = "rescue"
 	VPSStatusCrackingPassword VPSStatus = "cracking_password"
 	VPSStatusLocked           VPSStatus = "locked"
+	VPSStatusFailed           VPSStatus = "failed"
+	VPSStatusDeleting         VPSStatus = "deleting"
 	VPSStatusUnknown          VPSStatus = "unknown"
 )
 
@@ -131,24 +133,30 @@ type User struct {
 	LastLoginCity        string
 	LastLoginTZ          string
 	TOTPEnabled          bool
-	TOTPSecretEnc        string
-	TOTPPendingSecretEnc string
+	TOTPSecretEnc        string `json:"-"`
+	TOTPPendingSecretEnc string `json:"-"`
 	Bio                  string
 	Intro                string
 	PermissionGroupID    *int64
 	UserTierGroupID      *int64
 	UserTierExpireAt     *time.Time
-	PasswordHash         string
+	PasswordHash         string `json:"-"`
 	PasswordChangedAt    *time.Time
-	Role                 UserRole
-	Status               UserStatus
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	// PasswordVersion is a monotonic counter incremented on every password
+	// change. Auth tokens carry the version they were issued at, so a password
+	// change revokes every previously issued token without relying on
+	// timestamp-precision edge cases (the same-second boundary). Zero means the
+	// password has not changed since version tracking was introduced.
+	PasswordVersion int64
+	Role            UserRole
+	Status          UserStatus
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type Captcha struct {
 	ID        string
-	CodeHash  string
+	CodeHash  string `json:"-"`
 	ExpiresAt time.Time
 	CreatedAt time.Time
 }
@@ -158,7 +166,7 @@ type VerificationCode struct {
 	Channel   string
 	Receiver  string
 	Purpose   string
-	CodeHash  string
+	CodeHash  string `json:"-"`
 	ExpiresAt time.Time
 	CreatedAt time.Time
 }
@@ -166,7 +174,7 @@ type VerificationCode struct {
 type APIKey struct {
 	ID                int64
 	Name              string
-	KeyHash           string
+	KeyHash           string `json:"-"`
 	Status            APIKeyStatus
 	ScopesJSON        string
 	PermissionGroupID *int64
@@ -176,11 +184,16 @@ type APIKey struct {
 }
 
 type UserAPIKey struct {
-	ID         int64
-	UserID     int64
-	Name       string
-	AKID       string
-	KeyHash    string
+	ID      int64
+	UserID  int64
+	Name    string
+	AKID    string
+	KeyHash string `json:"-"`
+	// SecretEnc holds the AES-GCM-encrypted signing secret. The raw secret is
+	// returned to the owner exactly once at creation, so a database leak does
+	// not expose usable signing keys (P0-6). Legacy rows may have SecretEnc
+	// empty, in which case KeyHash itself is the legacy signing secret.
+	SecretEnc  string
 	Status     APIKeyStatus
 	ScopesJSON string
 	CreatedAt  time.Time
@@ -194,12 +207,38 @@ type RequestActor struct {
 	Role          string
 	UserAPIKeyID  int64
 	AdminAPIKeyID int64
+	// ImpersonatorID is the admin user id that issued an impersonation token
+	// (the actor acting as another user). Zero when the request is not an
+	// impersonated one, so audit trails can distinguish "user themselves" from
+	// "admin acting as user" (round-4 auth review Finding 7).
+	ImpersonatorID int64
+}
+
+// RobotWebhookOperatorID is the audit actor used for business commands issued
+// through the authenticated robot webhook. It is distinct from 0 (unattributed)
+// so webhook approvals/rejections are traceable in the audit log.
+const RobotWebhookOperatorID int64 = -1
+
+// AdminAPIKeyActorBase is the negative base from which admin API-key actor ids
+// are derived. Encoding the actor as a large negative number keeps the three
+// actor classes disjoint in audit logs: admin/user ids are > 0,
+// RobotWebhookOperatorID is -1, and admin API keys are <= AdminAPIKeyActorBase.
+// A raw API key id stored verbatim would collide with admin user ids, so the
+// offset keeps the type+id information without collision (Issue #51 P2-22).
+const AdminAPIKeyActorBase int64 = -1_000_000_000
+
+// AdminAPIKeyActorID maps a stored admin API-key id to its audit actor id.
+func AdminAPIKeyActorID(keyID int64) int64 {
+	if keyID <= 0 {
+		return 0
+	}
+	return AdminAPIKeyActorBase - keyID
 }
 
 type PasswordResetToken struct {
 	ID        int64
 	UserID    int64
-	Token     string
+	Token     string `json:"-"`
 	ExpiresAt time.Time
 	Used      bool
 	CreatedAt time.Time
@@ -210,7 +249,7 @@ type PasswordResetTicket struct {
 	UserID    int64
 	Channel   string
 	Receiver  string
-	Token     string
+	Token     string `json:"-"`
 	ExpiresAt time.Time
 	Used      bool
 	CreatedAt time.Time

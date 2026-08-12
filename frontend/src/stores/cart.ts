@@ -1,3 +1,4 @@
+import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { ElMessage } from 'element-plus'
 import { addCartItem, clearCart, deleteCartItem, listCart, updateCartItem } from '@/services/user'
@@ -81,9 +82,14 @@ export const useCartStore = defineStore(
     let mergePromise: Promise<{ failed: number }> | null = null
 
     const isGuest = computed(() => !auth.token)
-    const items = computed(() =>
-      isGuest.value ? guestItems.value : [...serverItems.value, ...guestItems.value]
-    )
+    const isMergeEligible = computed(() => !!auth.token && auth.loginToken === auth.token)
+    const items = computed(() => {
+      if (isGuest.value) return guestItems.value
+      // 模拟登录（loginToken 为空）下不得把设备级游客条目混进服务端购物车，
+      // 避免跨账号继承（P3-37 / m053 H2）。
+      if (!isMergeEligible.value) return serverItems.value
+      return [...serverItems.value, ...guestItems.value]
+    })
     const itemCount = computed(() =>
       items.value.reduce((total, item) => total + Math.max(1, Number(item.qty || 1)), 0)
     )
@@ -112,7 +118,10 @@ export const useCartStore = defineStore(
     }
 
     const mergeGuestCart = async (): Promise<{ failed: number }> => {
-      if (!auth.token || guestItems.value.length === 0) return { failed: 0 }
+      // 只有真实登录（auth.login 建立 loginToken 且与 token 一致）才允许合并游客车。
+      // 模拟登录直接写 auth.token 但不设 loginToken，此时合并不应发生（P2-70 / m053 H2）。
+      if (!auth.token || auth.loginToken !== auth.token) return { failed: 0 }
+      if (guestItems.value.length === 0) return { failed: 0 }
       if (mergePromise) return mergePromise
 
       mergePromise = (async () => {
@@ -171,7 +180,10 @@ export const useCartStore = defineStore(
           coalesceGuestItems()
           return
         }
-        if (guestItems.value.length > 0) {
+        // 模拟登录（!isMergeEligible）：不得合并设备级游客车，直接加载被模拟
+        // 用户的服务端车。否则 guestItems 非空会让 mergeGuestCart 早退，
+        // 服务端车永远不加载，展示上一账号残留（web_perf F2）。
+        if (isMergeEligible.value && guestItems.value.length > 0) {
           await mergeGuestCart()
         } else {
           await loadServerCart()
@@ -260,12 +272,29 @@ export const useCartStore = defineStore(
       serverItems.value = []
     }
 
+    /**
+     * 模拟登录（impersonation）切换账号时清空购物车状态，防止上一账号的
+     * 服务端购物车 / 设备级游客车残留给被模拟用户（web_security F3）。
+     */
+    const resetForAccountSwitch = () => {
+      serverItems.value = []
+      guestItems.value = []
+      merging.value = false
+      mergePromise = null
+    }
+
     watch(
       () => auth.token,
       (token) => {
         if (!token) {
           serverItems.value = []
           return
+        }
+        // 模拟登录（loginToken !== token）：换账号必须清掉上一账号残留的
+        // 服务端购物车；mergeGuestCart 对非真实登录会早退，由页面 fetchCart
+        // 用 loadServerCart 拉取被模拟用户的真实服务端车（web_perf F2）。
+        if (!auth.loginToken || auth.loginToken !== token) {
+          serverItems.value = []
         }
         void mergeGuestCart()
       }
@@ -285,6 +314,7 @@ export const useCartStore = defineStore(
       removeItem,
       clearAll,
       clear,
+      resetForAccountSwitch,
       mergeGuestCart
     }
   },

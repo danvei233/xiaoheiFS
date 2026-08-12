@@ -11,14 +11,8 @@
   },
   "capabilities": {
     "automation": {
-      "features": [
-        "catalog_sync",
-        "lifecycle",
-        "port_mapping",
-        "backup",
-        "snapshot",
-        "firewall"
-      ]
+      "features": [],
+      "note": "No-op scaffold: MinimalAutomationPlugin inherits NoopAutomationPlugin and implements no provider logic. Features are intentionally empty so the host does not advertise capabilities this plugin cannot fulfill."
     }
   }
 }

@@ -1,17 +1,52 @@
 package http
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"strings"
 	"time"
+	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
 
+var validVPSStatuses = map[domain.VPSStatus]bool{
+	domain.VPSStatusProvisioning:     true,
+	domain.VPSStatusRunning:          true,
+	domain.VPSStatusStopped:          true,
+	domain.VPSStatusReinstalling:     true,
+	domain.VPSStatusReinstallFailed:  true,
+	domain.VPSStatusExpiredLocked:    true,
+	domain.VPSStatusRescue:           true,
+	domain.VPSStatusCrackingPassword: true,
+	domain.VPSStatusLocked:           true,
+	domain.VPSStatusUnknown:          true,
+}
+
+var validVPSAdminStatuses = map[domain.VPSAdminStatus]bool{
+	domain.VPSAdminStatusNormal: true,
+	domain.VPSAdminStatusAbuse:  true,
+	domain.VPSAdminStatusFraud:  true,
+	domain.VPSAdminStatusLocked: true,
+}
+
 func (h *Handler) AdminVPSList(c *gin.Context) {
 	limit, offset := paging(c)
-	items, total, err := h.adminSvc.ListInstances(c, limit, offset)
+	var query struct {
+		Status  string `form:"status"`
+		Keyword string `form:"keyword"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	// web_refresh_perf F4: status/keyword filtering is pushed to the backend so
+	// the frontend no longer pulls the whole table and filters client-side.
+	items, total, err := h.adminSvc.ListInstancesFiltered(c.Request.Context(), appports.VPSInstanceFilter{
+		AdminStatus: strings.TrimSpace(query.Status),
+		Keyword:     strings.TrimSpace(query.Keyword),
+	}, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -49,11 +84,11 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 		MonthlyPrice         float64        `json:"monthly_price"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.PackageID > 0 && h.catalogSvc != nil {
-		if pkg, err := h.catalogSvc.GetPackage(c, payload.PackageID); err == nil {
+		if pkg, err := h.catalogSvc.GetPackage(c.Request.Context(), payload.PackageID); err == nil {
 			if payload.GoodsTypeID == 0 {
 				payload.GoodsTypeID = pkg.GoodsTypeID
 			}
@@ -78,7 +113,7 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 			if payload.MonthlyPrice == 0 {
 				payload.MonthlyPrice = centsToFloat(pkg.Monthly)
 			}
-			if plan, err := h.catalogSvc.GetPlanGroup(c, pkg.PlanGroupID); err == nil {
+			if plan, err := h.catalogSvc.GetPlanGroup(c.Request.Context(), pkg.PlanGroupID); err == nil {
 				if payload.LineID == 0 {
 					payload.LineID = plan.LineID
 				}
@@ -89,7 +124,7 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 		}
 	}
 	if payload.Region == "" && payload.RegionID > 0 && h.catalogSvc != nil {
-		if region, err := h.catalogSvc.GetRegion(c, payload.RegionID); err == nil {
+		if region, err := h.catalogSvc.GetRegion(c.Request.Context(), payload.RegionID); err == nil {
 			payload.Region = region.Name
 			if payload.GoodsTypeID == 0 {
 				payload.GoodsTypeID = region.GoodsTypeID
@@ -115,11 +150,11 @@ func (h *Handler) AdminVPSCreate(c *gin.Context) {
 	}
 	osName := strings.TrimSpace(payload.OS)
 	if payload.Provision && osName == "" && payload.SystemID > 0 {
-		if img, err := h.catalogSvc.GetSystemImage(c, payload.SystemID); err == nil {
+		if img, err := h.catalogSvc.GetSystemImage(c.Request.Context(), payload.SystemID); err == nil {
 			osName = img.Name
 		}
 	}
-	inst, err := h.adminVPS.Create(c, getUserID(c), appshared.AdminVPSCreateInput{
+	inst, err := h.adminVPS.Create(c.Request.Context(), getUserID(c), appshared.AdminVPSCreateInput{
 		UserID:               payload.UserID,
 		OrderItemID:          payload.OrderItemID,
 		AutomationInstanceID: payload.AutomationInstanceID,
@@ -160,7 +195,7 @@ func (h *Handler) AdminVPSDetail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	inst, err := h.adminVPS.Get(c, uri.ID)
+	inst, err := h.adminVPS.Get(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -192,11 +227,11 @@ func (h *Handler) AdminVPSUpdate(c *gin.Context) {
 		SyncMode      string         `json:"sync_mode"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.PackageID != nil && payload.PackageName == nil && h.catalogSvc != nil {
-		if pkg, err := h.catalogSvc.GetPackage(c, *payload.PackageID); err == nil {
+		if pkg, err := h.catalogSvc.GetPackage(c.Request.Context(), *payload.PackageID); err == nil {
 			name := pkg.Name
 			payload.PackageName = &name
 		}
@@ -212,11 +247,19 @@ func (h *Handler) AdminVPSUpdate(c *gin.Context) {
 	var statusVal *domain.VPSStatus
 	if payload.Status != nil {
 		tmp := domain.VPSStatus(*payload.Status)
+		if !validVPSStatuses[tmp] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+			return
+		}
 		statusVal = &tmp
 	}
 	var adminStatusVal *domain.VPSAdminStatus
 	if payload.AdminStatus != nil {
 		tmp := domain.VPSAdminStatus(*payload.AdminStatus)
+		if !validVPSAdminStatuses[tmp] {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+			return
+		}
 		adminStatusVal = &tmp
 	}
 	var monthlyPrice *int64
@@ -245,8 +288,12 @@ func (h *Handler) AdminVPSUpdate(c *gin.Context) {
 	if accessJSON != "" {
 		input.AccessInfoJSON = &accessJSON
 	}
-	inst, err := h.adminVPS.Update(c, getUserID(c), uri.ID, input)
+	inst, err := h.adminVPS.Update(c.Request.Context(), getUserID(c), uri.ID, input)
 	if err != nil {
+		if errors.Is(err, domain.ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrForbidden.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -263,7 +310,7 @@ func (h *Handler) AdminVPSUpdateExpire(c *gin.Context) {
 		ExpireAt string `json:"expire_at"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.ExpireAt == "" {
@@ -278,7 +325,7 @@ func (h *Handler) AdminVPSUpdateExpire(c *gin.Context) {
 			return
 		}
 	}
-	inst, err := h.adminVPS.UpdateExpireAt(c, getUserID(c), uri.ID, t)
+	inst, err := h.adminVPS.UpdateExpireAt(c.Request.Context(), getUserID(c), uri.ID, t)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -292,7 +339,7 @@ func (h *Handler) AdminVPSLock(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.adminVPS.SetAdminStatus(c, getUserID(c), uri.ID, domain.VPSAdminStatusLocked, "lock"); err != nil {
+	if err := h.adminVPS.SetAdminStatus(c.Request.Context(), getUserID(c), uri.ID, domain.VPSAdminStatusLocked, "lock"); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -305,7 +352,7 @@ func (h *Handler) AdminVPSUnlock(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.adminVPS.SetAdminStatus(c, getUserID(c), uri.ID, domain.VPSAdminStatusNormal, "unlock"); err != nil {
+	if err := h.adminVPS.SetAdminStatus(c.Request.Context(), getUserID(c), uri.ID, domain.VPSAdminStatusNormal, "unlock"); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -322,15 +369,23 @@ func (h *Handler) AdminVPSDelete(c *gin.Context) {
 		Reason string `json:"reason"`
 	}
 	if err := bindJSONOptional(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.adminVPS.Delete(c, getUserID(c), uri.ID); err != nil {
+	// Create the automatic refund BEFORE the instance is hard-deleted. The
+	// refund service re-fetches the VPS instance (GetInstance) to compute the
+	// amount, so deleting first makes the refund silently fail — the row is gone
+	// by the time it is read. Abort the delete if the refund cannot be created,
+	// otherwise the user would lose both the VPS and the money.
+	if h.walletOrder != nil {
+		if _, _, refundErr := h.walletOrder.AutoRefundOnAdminDelete(c.Request.Context(), getUserID(c), uri.ID, payload.Reason); refundErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": refundErr.Error()})
+			return
+		}
+	}
+	if err := h.adminVPS.Delete(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
-	}
-	if h.walletOrder != nil {
-		_, _, _ = h.walletOrder.AutoRefundOnAdminDelete(c, getUserID(c), uri.ID, payload.Reason)
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -348,7 +403,7 @@ func (h *Handler) AdminVPSResize(c *gin.Context) {
 		Bandwidth int `json:"bandwidth_mbps"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	req := appshared.AutomationElasticUpdateRequest{}
@@ -364,7 +419,7 @@ func (h *Handler) AdminVPSResize(c *gin.Context) {
 	if payload.Bandwidth > 0 {
 		req.Bandwidth = &payload.Bandwidth
 	}
-	if err := h.adminVPS.Resize(c, getUserID(c), uri.ID, req, mustJSON(payload)); err != nil {
+	if err := h.adminVPS.Resize(c.Request.Context(), getUserID(c), uri.ID, req, mustJSON(payload)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -382,11 +437,11 @@ func (h *Handler) AdminVPSStatus(c *gin.Context) {
 		Reason string `json:"reason"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	status := domain.VPSAdminStatus(payload.Status)
-	if err := h.adminVPS.SetAdminStatus(c, getUserID(c), uri.ID, status, payload.Reason); err != nil {
+	if err := h.adminVPS.SetAdminStatus(c.Request.Context(), getUserID(c), uri.ID, status, payload.Reason); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -399,12 +454,12 @@ func (h *Handler) AdminVPSEmergencyRenew(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	inst, err := h.adminVPS.Get(c, uri.ID)
+	inst, err := h.adminVPS.Get(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
-	_, err = h.orderSvc.CreateEmergencyRenewOrder(c, inst.UserID, inst.ID)
+	_, err = h.orderSvc.CreateEmergencyRenewOrder(c.Request.Context(), inst.UserID, inst.ID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrConflict {
@@ -415,7 +470,7 @@ func (h *Handler) AdminVPSEmergencyRenew(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
-	updated, _ := h.adminVPS.Get(c, uri.ID)
+	updated, _ := h.adminVPS.Get(c.Request.Context(), uri.ID)
 	c.JSON(http.StatusOK, h.toVPSInstanceDTOWithLifecycle(c, updated))
 }
 
@@ -425,7 +480,7 @@ func (h *Handler) AdminVPSRefresh(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	inst, err := h.adminVPS.Refresh(c, getUserID(c), uri.ID)
+	inst, err := h.adminVPS.Refresh(c.Request.Context(), getUserID(c), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

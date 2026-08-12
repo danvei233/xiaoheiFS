@@ -471,8 +471,10 @@
     (await getRevenueAnalyticsTrend(payload)).data
   const fetchAdminRevenueAnalyticsTop = async (payload: RevenueAnalyticsQuery) =>
     (await getRevenueAnalyticsTop(payload)).data
-  const fetchAdminRevenueAnalyticsDetails = async (payload: RevenueAnalyticsQuery) =>
-    (await getRevenueAnalyticsDetails(payload)).data
+  const fetchAdminRevenueAnalyticsDetails = async (
+    payload: RevenueAnalyticsQuery,
+    signal?: AbortSignal
+  ) => (await getRevenueAnalyticsDetails(payload, signal)).data
   const fetchAdminUserDetail = async (id: number | string) => (await getAdminUserDetail(id)).data
   const exportAdminRevenueAnalyticsAudit = async (payload: RevenueAnalyticsQuery) =>
     http.post<Blob>('/admin/api/v1/dashboard/revenue-analytics/export', payload, {
@@ -548,10 +550,12 @@
   const quickRangeKey = ref('30d')
 
   async function fetchRevenueDetailsTable(
-    params: Api.Common.CommonSearchParams
+    params: Api.Common.CommonSearchParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<RevenueAnalyticsDetailRecord>> {
     const payload = await fetchAdminRevenueAnalyticsDetails(
-      createQueryPayload({ page: params.current, page_size: params.size })
+      createQueryPayload({ page: params.current, page_size: params.size }),
+      signal
     )
     const records = payload.items || []
 

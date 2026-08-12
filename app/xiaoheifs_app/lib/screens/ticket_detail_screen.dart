@@ -271,6 +271,24 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   Future<void> _emergencyRenew(int vpsId) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('紧急续费'),
+        content: const Text('确认对该实例执行紧急续费？将立即创建紧急续费订单。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
     final client = context.read<AppState>().apiClient;
     if (client == null) return;
     await client.postJson('/admin/api/v1/vps/$vpsId/emergency-renew');
@@ -839,10 +857,13 @@ class _Avatar extends StatelessWidget {
     if (url.isEmpty) {
       return CircleAvatar(radius: radius, child: const Icon(Icons.person));
     }
-    final session = context.read<AppState>().session;
+    final app = context.read<AppState>();
+    final session = app.session;
     final headers = avatarHeaders(
       token: session?.token,
       apiKey: session?.apiKey,
+      baseUrl: app.apiClient?.baseUrl,
+      url: url,
     );
     return CircleAvatar(
       radius: radius,

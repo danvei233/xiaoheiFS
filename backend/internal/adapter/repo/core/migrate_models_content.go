@@ -12,7 +12,7 @@ type cmsPostRow struct {
 	Title       string     `gorm:"column:title;not null"`
 	Slug        string     `gorm:"size:191;column:slug;not null;uniqueIndex"`
 	Summary     string     `gorm:"column:summary;not null;default:''"`
-	ContentHTML string     `gorm:"type:longtext;column:content_html;not null"`
+	ContentHTML string     `gorm:"column:content_html;not null"`
 	CoverURL    string     `gorm:"column:cover_url;not null;default:''"`
 	Lang        string     `gorm:"size:191;column:lang;not null;default:zh-CN;index"`
 	Status      string     `gorm:"column:status;not null;default:draft"`
@@ -31,8 +31,8 @@ type cmsBlockRow struct {
 	Type        string    `gorm:"column:type;not null"`
 	Title       string    `gorm:"column:title;not null;default:''"`
 	Subtitle    string    `gorm:"column:subtitle;not null;default:''"`
-	ContentJSON string    `gorm:"type:longtext;column:content_json;not null"`
-	CustomHTML  string    `gorm:"type:longtext;column:custom_html;not null"`
+	ContentJSON string    `gorm:"column:content_json;not null"`
+	CustomHTML  string    `gorm:"column:custom_html;not null"`
 	Lang        string    `gorm:"column:lang;not null;default:zh-CN"`
 	Visible     int       `gorm:"column:visible;not null;default:1"`
 	SortOrder   int       `gorm:"column:sort_order;not null;default:0"`

@@ -2,17 +2,22 @@ package order
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
-	"math/rand"
+	"math/big"
+	"net"
 	"strings"
 	"time"
 
 	appcoupon "xiaoheiplay/internal/app/coupon"
+	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/pkg/cryptox"
+	"xiaoheiplay/internal/pkg/safego"
 )
 
 const (
@@ -24,34 +29,83 @@ const (
 )
 
 type OrderService struct {
-	orders      OrderRepository
-	items       OrderItemRepository
-	cart        CartRepository
-	catalog     CatalogRepository
-	images      SystemImageRepository
-	billing     BillingCycleRepository
-	vps         VPSRepository
-	wallets     WalletRepository
-	events      EventPublisher
-	automation  AutomationClientResolver
-	robot       RobotNotifier
-	audit       AuditRepository
-	users       UserRepository
-	email       EmailSender
-	settings    SettingsRepository
-	payments    PaymentRepository
-	autoLogs    AutomationLogRepository
-	provision   ProvisionJobRepository
-	resizeTasks ResizeTaskRepository
-	messages    messageNotifier
-	realname    realNameActionChecker
-	pricer      userTierPricingResolver
-	userTiers   userTierAutoApprover
-	coupon      couponEngine
+	orders           OrderRepository
+	items            OrderItemRepository
+	cart             CartRepository
+	catalog          CatalogRepository
+	images           SystemImageRepository
+	billing          BillingCycleRepository
+	vps              VPSRepository
+	wallets          WalletRepository
+	events           EventPublisher
+	automation       AutomationClientResolver
+	robot            RobotNotifier
+	audit            AuditRepository
+	users            UserRepository
+	email            EmailSender
+	settings         SettingsRepository
+	capabilityPolicy appports.CapabilityPolicyRepository
+	payments         PaymentRepository
+	autoLogs         AutomationLogRepository
+	provision        ProvisionJobRepository
+	resizeTasks      ResizeTaskRepository
+	cleanup          appports.RefundCleanupRepository
+	messages         messageNotifier
+	realname         realNameActionChecker
+	pricer           userTierPricingResolver
+	userTiers        userTierAutoApprover
+	coupon           couponEngine
+
+	// workerID uniquely identifies this service instance so job leases are owned
+	// and fenced per process (multi-instance deployments never double-consume).
+	workerID string
+
+	// provisionCipher encrypts the provision intent credentials at rest. Nil
+	// means credentials are kept in memory only (stage/host recovery still
+	// works, but the passwords are not durable across a crash).
+	provisionCipher *cryptox.AESGCM
 }
 
 type messageNotifier interface {
 	NotifyUser(ctx context.Context, userID int64, typ, title, content string) error
+}
+
+// vpsLifecycleLockPort is the explicit operation reservation repository that
+// guarantees at most one exclusive lifecycle operation per VPS via a unique
+// index (CAS). It is optional: the real repository implements it, and test
+// fakes that do not simply skip reservation.
+type vpsLifecycleLockPort interface {
+	AcquireVPSLifecycleLock(ctx context.Context, vpsID, orderID int64, action string) error
+	BindVPSLifecycleLock(ctx context.Context, vpsID, orderID int64) error
+	ReleaseVPSLifecycleLockByVPS(ctx context.Context, vpsID int64) error
+	ReleaseVPSLifecycleLocksForOrder(ctx context.Context, orderID int64) error
+}
+
+func (s *OrderService) vpsLocks() vpsLifecycleLockPort {
+	if l, ok := s.orders.(vpsLifecycleLockPort); ok {
+		return l
+	}
+	return nil
+}
+
+// reserveVPSLifecycleLock atomically reserves a VPS for one exclusive lifecycle
+// operation. It is the TOCTOU backstop: two concurrent refund/renew/resize
+// requests for the same VPS cannot both pass a check-then-insert because the
+// unique index makes the second reservation fail.
+func (s *OrderService) reserveVPSLifecycleLock(ctx context.Context, vpsID, orderID int64, action string) error {
+	l := s.vpsLocks()
+	if l == nil {
+		return nil
+	}
+	return l.AcquireVPSLifecycleLock(ctx, vpsID, orderID, action)
+}
+
+// releaseVPSLifecycleLocks releases reservations held by an order reaching a
+// terminal state, atomically freeing the VPS for the next lifecycle operation.
+func (s *OrderService) releaseVPSLifecycleLocks(ctx context.Context, orderID int64) {
+	if l := s.vpsLocks(); l != nil {
+		_ = l.ReleaseVPSLifecycleLocksForOrder(ctx, orderID)
+	}
 }
 
 type realNameActionChecker interface {
@@ -70,7 +124,15 @@ type CouponPreview struct {
 }
 
 func NewOrderService(orders OrderRepository, items OrderItemRepository, cart CartRepository, catalog CatalogRepository, images SystemImageRepository, billing BillingCycleRepository, vps VPSRepository, wallets WalletRepository, payments PaymentRepository, events EventPublisher, automation AutomationClientResolver, robot RobotNotifier, audit AuditRepository, users UserRepository, email EmailSender, settings SettingsRepository, autoLogs AutomationLogRepository, provision ProvisionJobRepository, resizeTasks ResizeTaskRepository, messages messageNotifier, realname realNameActionChecker) *OrderService {
-	return &OrderService{orders: orders, items: items, cart: cart, catalog: catalog, images: images, billing: billing, vps: vps, wallets: wallets, payments: payments, events: events, automation: automation, robot: robot, audit: audit, users: users, email: email, settings: settings, autoLogs: autoLogs, provision: provision, resizeTasks: resizeTasks, messages: messages, realname: realname}
+	service := &OrderService{
+		orders: orders, items: items, cart: cart, catalog: catalog, images: images, billing: billing,
+		vps: vps, wallets: wallets, payments: payments, events: events, automation: automation, robot: robot,
+		audit: audit, users: users, email: email, settings: settings, autoLogs: autoLogs, provision: provision,
+		resizeTasks: resizeTasks, messages: messages, realname: realname,
+		workerID: fmt.Sprintf("order-svc-%d", time.Now().UnixNano()),
+	}
+	service.capabilityPolicy, _ = settings.(appports.CapabilityPolicyRepository)
+	return service
 }
 
 type userTierPricingResolver interface {
@@ -107,6 +169,75 @@ func (s *OrderService) client(ctx context.Context, goodsTypeID int64) (Automatio
 	return s.automation.ClientForGoodsType(ctx, goodsTypeID)
 }
 
+// replayExistingOrder resolves an already-created order for an idempotency key.
+// It is used after an insert fails on the unique index because a concurrent
+// request with the same key won the race, so the loser replays the winner's
+// result instead of surfacing a raw DB error.
+func (s *OrderService) replayExistingOrder(ctx context.Context, userID int64, idemKey string) (domain.Order, []domain.OrderItem, bool) {
+	if idemKey == "" {
+		return domain.Order{}, nil, false
+	}
+	existing, err := s.orders.GetOrderByIdempotencyKey(ctx, userID, idemKey)
+	if err != nil {
+		return domain.Order{}, nil, false
+	}
+	items, _ := s.items.ListOrderItems(ctx, existing.ID)
+	return existing, items, true
+}
+
+// restoreCart re-adds the user's cart items after a failed coupon redemption.
+// The atomic cart->order path clears the cart before the redemption record is
+// written, so a redemption failure would otherwise lose the user's cart.
+func restoreCart(ctx context.Context, cart CartRepository, items []domain.CartItem) {
+	if cart == nil {
+		return
+	}
+	for i := range items {
+		item := items[i]
+		item.ID = 0
+		item.CreatedAt = time.Time{}
+		item.UpdatedAt = time.Time{}
+		_ = cart.AddCartItem(ctx, &item)
+	}
+}
+
+// normalizeOrderQty validates an order-line quantity, defaulting non-positive
+// values to 1 and rejecting quantities above maxOrderItemQty so a single line
+// cannot trigger an unbounded item expansion.
+func normalizeOrderQty(qty int) (int, error) {
+	if qty <= 0 {
+		qty = 1
+	}
+	if qty > maxOrderItemQty {
+		return 0, ErrInvalidInput
+	}
+	return qty, nil
+}
+
+// addLineTotal adds unitTotal*qty to the running order total, rejecting qty
+// beyond maxOrderItemQty and any int64 overflow so an attacker cannot wrap the
+// total to a negative or tiny amount.
+func addLineTotal(total, unitTotal int64, qty int) (int64, error) {
+	normalized, err := normalizeOrderQty(qty)
+	if err != nil {
+		return 0, err
+	}
+	if unitTotal < 0 {
+		return 0, ErrInvalidInput
+	}
+	if unitTotal == 0 {
+		return total, nil
+	}
+	if unitTotal > math.MaxInt64/int64(normalized) {
+		return 0, ErrInvalidInput
+	}
+	product := unitTotal * int64(normalized)
+	if total > math.MaxInt64-product {
+		return 0, ErrInvalidInput
+	}
+	return total + product, nil
+}
+
 func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, currency string, idemKey string, couponCode string) (domain.Order, []domain.OrderItem, error) {
 	if s.realname != nil {
 		if err := s.realname.RequireAction(ctx, userID, "purchase_vps"); err != nil {
@@ -129,7 +260,7 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 	if currency == "" {
 		currency = "CNY"
 	}
-	orderNo := fmt.Sprintf("ORD-%d-%d", userID, time.Now().Unix())
+	orderNo := fmt.Sprintf("ORD-%d-%d", userID, time.Now().UnixNano())
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
@@ -169,9 +300,9 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 		}
 		spec.DurationMonths = months
 		specJSON := mustJSON(spec)
-		qty := item.Qty
-		if qty <= 0 {
-			qty = 1
+		qty, err := normalizeOrderQty(item.Qty)
+		if err != nil {
+			return domain.Order{}, nil, err
 		}
 		metas = append(metas, struct {
 			PackageID int64
@@ -206,7 +337,10 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 			UnitTotalAmount: unitTotal,
 			Qty:             qty,
 		})
-		total += unitTotal * int64(qty)
+		total, err = addLineTotal(total, unitTotal, qty)
+		if err != nil {
+			return domain.Order{}, nil, err
+		}
 	}
 	order.TotalAmount = total
 	var couponResult *appcoupon.ApplyResult
@@ -228,6 +362,7 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 		order.TotalAmount -= order.CouponDiscount
 	}
 	var orderItems []domain.OrderItem
+	totalItems := 0
 	for idx, meta := range metas {
 		unitAmount := meta.UnitTotal
 		if couponResult != nil && idx < len(couponResult.UnitDiscount) {
@@ -236,8 +371,11 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 				unitAmount = 0
 			}
 		}
-		qty := meta.Qty
-		for i := 0; i < qty; i++ {
+		totalItems += meta.Qty
+		if totalItems > maxOrderTotalItems {
+			return domain.Order{}, nil, ErrInvalidInput
+		}
+		for i := 0; i < meta.Qty; i++ {
 			orderItems = append(orderItems, domain.OrderItem{
 				OrderID:        order.ID,
 				PackageID:      meta.PackageID,
@@ -259,21 +397,31 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 	if atomic, ok := s.orders.(orderFromCartAtomicCreator); ok {
 		createdOrder, createdItems, err := atomic.CreateOrderFromCartAtomic(ctx, order, orderItems)
 		if err != nil {
+			if existing, replayItems, replayOK := s.replayExistingOrder(ctx, userID, idemKey); replayOK {
+				return existing, replayItems, nil
+			}
 			return domain.Order{}, nil, err
 		}
 		order = createdOrder
 		orderItems = createdItems
 	} else {
 		if err := s.orders.CreateOrder(ctx, &order); err != nil {
+			if existing, replayItems, replayOK := s.replayExistingOrder(ctx, userID, idemKey); replayOK {
+				return existing, replayItems, nil
+			}
 			return domain.Order{}, nil, err
 		}
 		for i := range orderItems {
 			orderItems[i].OrderID = order.ID
 		}
 		if err := s.items.CreateOrderItems(ctx, orderItems); err != nil {
+			_ = s.orders.DeleteOrder(ctx, order.ID)
 			return domain.Order{}, nil, err
 		}
 		if err := s.cart.ClearCart(ctx, userID); err != nil {
+			// Keep the non-atomic fallback transactional at the service level:
+			// order + items + cart-clearing must live or die together.
+			_ = s.orders.DeleteOrder(ctx, order.ID)
 			return domain.Order{}, nil, err
 		}
 	}
@@ -286,6 +434,10 @@ func (s *OrderService) CreateOrderFromCart(ctx context.Context, userID int64, cu
 			DiscountAmount: order.CouponDiscount,
 		}); err != nil {
 			_ = s.orders.DeleteOrder(ctx, order.ID)
+			// The cart was already cleared (atomically in the common path), so
+			// restore it to avoid destroying the user's pending order contents
+			// when the coupon redemption fails after order creation.
+			restoreCart(ctx, s.cart, items)
 			return domain.Order{}, nil, err
 		}
 	}
@@ -345,9 +497,9 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 		if err != nil {
 			return domain.Order{}, nil, err
 		}
-		qty := in.Qty
-		if qty <= 0 {
-			qty = 1
+		qty, err := normalizeOrderQty(in.Qty)
+		if err != nil {
+			return domain.Order{}, nil, err
 		}
 		in.Spec.DurationMonths = months
 		specJSON := mustJSON(in.Spec)
@@ -384,7 +536,10 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 			UnitTotalAmount: unitTotal,
 			Qty:             qty,
 		})
-		total += unitTotal * int64(qty)
+		total, err = addLineTotal(total, unitTotal, qty)
+		if err != nil {
+			return domain.Order{}, nil, err
+		}
 	}
 	couponCode = strings.ToUpper(strings.TrimSpace(couponCode))
 	var couponResult *appcoupon.ApplyResult
@@ -399,6 +554,7 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 		couponResult = &res
 	}
 	var orderItems []domain.OrderItem
+	totalItems := 0
 	for idx, meta := range metas {
 		unitAmount := meta.UnitTotal
 		if couponResult != nil && idx < len(couponResult.UnitDiscount) {
@@ -406,6 +562,10 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 			if unitAmount < 0 {
 				unitAmount = 0
 			}
+		}
+		totalItems += meta.Qty
+		if totalItems > maxOrderTotalItems {
+			return domain.Order{}, nil, ErrInvalidInput
 		}
 		for i := 0; i < meta.Qty; i++ {
 			orderItems = append(orderItems, domain.OrderItem{
@@ -422,7 +582,7 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 			})
 		}
 	}
-	orderNo := fmt.Sprintf("ORD-%d-%d", userID, time.Now().Unix())
+	orderNo := fmt.Sprintf("ORD-%d-%d", userID, time.Now().UnixNano())
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
@@ -442,12 +602,20 @@ func (s *OrderService) CreateOrderFromItems(ctx context.Context, userID int64, c
 		order.TotalAmount -= order.CouponDiscount
 	}
 	if err := s.orders.CreateOrder(ctx, &order); err != nil {
+		// A concurrent request with the same idempotency key may have won the
+		// race; replay its order instead of surfacing the unique-index error.
+		if existing, replayItems, ok := s.replayExistingOrder(ctx, userID, idemKey); ok {
+			return existing, replayItems, nil
+		}
 		return domain.Order{}, nil, err
 	}
 	for i := range orderItems {
 		orderItems[i].OrderID = order.ID
 	}
 	if err := s.items.CreateOrderItems(ctx, orderItems); err != nil {
+		// Roll back the just-created order so a partial failure does not leave
+		// an itemless orphan burning the idempotency key.
+		_ = s.orders.DeleteOrder(ctx, order.ID)
 		return domain.Order{}, nil, err
 	}
 	if couponResult != nil && order.CouponID != nil && s.coupon != nil {
@@ -541,9 +709,9 @@ func (s *OrderService) buildCouponQuotesFromInputs(ctx context.Context, userID i
 		if err != nil {
 			return nil, 0, err
 		}
-		qty := in.Qty
-		if qty <= 0 {
-			qty = 1
+		qty, err := normalizeOrderQty(in.Qty)
+		if err != nil {
+			return nil, 0, err
 		}
 		quotes = append(quotes, appcoupon.QuoteItem{
 			PackageID:       pkg.ID,
@@ -563,7 +731,10 @@ func (s *OrderService) buildCouponQuotesFromInputs(ctx context.Context, userID i
 			UnitTotalAmount: unitTotal,
 			Qty:             qty,
 		})
-		total += unitTotal * int64(qty)
+		total, err = addLineTotal(total, unitTotal, qty)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	return quotes, total, nil
 }
@@ -691,12 +862,37 @@ func (s *OrderService) SubmitPayment(ctx context.Context, userID int64, orderID 
 		IdempotencyKey: idemKey,
 	}
 	if err := s.payments.CreatePayment(ctx, &payment); err != nil {
+		// A concurrent submit with the same idempotency key/trade_no may have
+		// won the race; replay its payment instead of surfacing the raw
+		// unique-index error.
+		if idemKey != "" {
+			if existing, replayErr := s.payments.GetPaymentByIdempotencyKey(ctx, order.ID, idemKey); replayErr == nil {
+				return existing, nil
+			}
+		}
+		if input.TradeNo != "" {
+			if existing, replayErr := s.payments.GetPaymentByTradeNo(ctx, input.TradeNo); replayErr == nil {
+				if existing.OrderID != order.ID {
+					return domain.OrderPayment{}, ErrConflict
+				}
+				return existing, nil
+			}
+		}
 		return domain.OrderPayment{}, err
 	}
-	order.Status = domain.OrderStatusPendingReview
-	order.PendingReason = ""
-	if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
+	// Transition to pending_review conditionally: if the order was canceled or
+	// rejected between the read above and this write (concurrent CancelOrder /
+	// RejectOrder), do not resurrect it. The payment record is left in place;
+	// the order stays canceled/rejected.
+	transitioned, err := s.orders.UpdateOrderStatusIfCurrent(ctx, order.ID, domain.OrderStatusPendingReview, []domain.OrderStatus{
+		domain.OrderStatusPendingPayment,
+		domain.OrderStatusPendingReview,
+	})
+	if err != nil {
 		return domain.OrderPayment{}, err
+	}
+	if !transitioned {
+		return domain.OrderPayment{}, ErrConflict
 	}
 	items, _ := s.items.ListOrderItems(ctx, order.ID)
 	for _, item := range items {
@@ -742,14 +938,26 @@ func (s *OrderService) CancelOrder(ctx context.Context, userID int64, orderID in
 	if order.Status != domain.OrderStatusPendingPayment && order.Status != domain.OrderStatusPendingReview {
 		return ErrConflict
 	}
-	order.Status = domain.OrderStatusCanceled
-	if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
+	// The order CAS, the "no approved external payment" guard and the rejection
+	// of still-pending payments must all commit in one transaction, or a
+	// concurrent provider callback can approve a payment in the window between
+	// the status read and the payment write — the order ends canceled with real
+	// external money confirmed and no automatic refund (finance F1).
+	claimed, err := s.orders.CancelOrderAtomic(ctx, order, []domain.OrderStatus{
+		domain.OrderStatusPendingPayment,
+		domain.OrderStatusPendingReview,
+	})
+	if err != nil {
 		return err
 	}
-	items, _ := s.items.ListOrderItems(ctx, order.ID)
-	for _, item := range items {
-		_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusCanceled)
+	if !claimed {
+		// The order is no longer cancellable (already approved elsewhere, or it
+		// now carries an approved external payment — the user must go through
+		// the refund flow).
+		return ErrConflict
 	}
+	order.Status = domain.OrderStatusCanceled
+	s.releaseVPSLifecycleLocks(ctx, order.ID)
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.canceled", map[string]any{"status": order.Status})
 	}
@@ -802,6 +1010,16 @@ func (s *OrderService) MarkPaid(ctx context.Context, adminID int64, orderID int6
 	if order.Currency != "" && input.Currency != order.Currency {
 		return domain.OrderPayment{}, ErrInvalidInput
 	}
+	// Idempotency: re-submitting the same trade_no must return the existing
+	// payment instead of hitting the unique index and surfacing a raw DB error.
+	if input.TradeNo != "" {
+		if existing, err := s.payments.GetPaymentByTradeNo(ctx, input.TradeNo); err == nil {
+			if existing.OrderID != order.ID {
+				return domain.OrderPayment{}, ErrConflict
+			}
+			return existing, nil
+		}
+	}
 	payment := domain.OrderPayment{
 		OrderID:       order.ID,
 		UserID:        order.UserID,
@@ -816,10 +1034,16 @@ func (s *OrderService) MarkPaid(ctx context.Context, adminID int64, orderID int6
 	if err := s.payments.CreatePayment(ctx, &payment); err != nil {
 		return domain.OrderPayment{}, err
 	}
-	order.Status = domain.OrderStatusPendingReview
-	if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
+	transitioned, err := s.orders.UpdateOrderStatusIfCurrent(ctx, order.ID, domain.OrderStatusPendingReview, []domain.OrderStatus{
+		domain.OrderStatusPendingPayment,
+	})
+	if err != nil {
 		return domain.OrderPayment{}, err
 	}
+	if !transitioned {
+		return domain.OrderPayment{}, ErrConflict
+	}
+	order.Status = domain.OrderStatusPendingReview
 	items, _ := s.items.ListOrderItems(ctx, order.ID)
 	for _, item := range items {
 		_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusPendingReview)
@@ -909,11 +1133,36 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 	if err != nil {
 		return err
 	}
+	if order.Status == domain.OrderStatusApproved {
+		items, listErr := s.items.ListOrderItems(ctx, order.ID)
+		if listErr != nil {
+			return listErr
+		}
+		if err := s.finishOrderApprovalPersistence(ctx, adminID, order, items); err != nil {
+			return err
+		}
+		for _, item := range items {
+			if item.Action != "resize" {
+				s.provisionOrderAsync(order.ID)
+				break
+			}
+		}
+		return nil
+	}
+	// An automatic approval (adminID==0 — a provider callback or a
+	// configuration-driven auto-refund) must never resurrect a rejected order:
+	// only a human admin (adminID>0) may re-approve an order the admin just
+	// rejected. Otherwise a late payment callback racing RejectOrderAtomic
+	// would undo the rejection (F5 doublepay).
+	if adminID == 0 && order.Status == domain.OrderStatusRejected {
+		return ErrConflict
+	}
 	if order.Status != domain.OrderStatusPendingReview &&
 		order.Status != domain.OrderStatusPendingPayment &&
 		order.Status != domain.OrderStatusRejected {
 		return ErrConflict
 	}
+	expectedStatus := order.Status
 	now := time.Now()
 	order.Status = domain.OrderStatusApproved
 	order.ApprovedAt = &now
@@ -921,7 +1170,10 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 		order.ApprovedBy = &adminID
 	}
 	order.RejectedReason = ""
-	items, _ := s.items.ListOrderItems(ctx, order.ID)
+	items, err := s.items.ListOrderItems(ctx, order.ID)
+	if err != nil {
+		return err
+	}
 	hasResize := false
 	hasNonResize := false
 	var resizeTasks []*domain.ResizeTask
@@ -962,45 +1214,19 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 		}
 	}
 
-	if hasResize && s.resizeTasks != nil {
-		if approver, ok := s.orders.(resizeOrderAtomicApprover); ok {
-			if err := approver.ApproveResizeOrderWithTasks(ctx, order, items, resizeTasks); err != nil {
-				return err
-			}
-		} else {
-			if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
-				return err
-			}
-			for _, item := range items {
-				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusApproved)
-			}
-			for _, task := range resizeTasks {
-				if err := s.resizeTasks.CreateResizeTask(ctx, task); err != nil {
-					return err
-				}
-			}
-		}
-	} else {
-		if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
-			return err
-		}
-		for _, item := range items {
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusApproved)
-		}
-	}
+	itemIDs := make([]int64, 0, len(items))
 	for _, item := range items {
-		if item.Action != "resize" {
-			continue
-		}
-		if err := s.creditResizeRefundOnApprove(ctx, item); err != nil {
-			return err
-		}
+		itemIDs = append(itemIDs, item.ID)
 	}
-	if s.payments != nil {
-		pays, _ := s.payments.ListPaymentsByOrder(ctx, order.ID)
-		for _, pay := range pays {
-			_ = s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusApproved, &adminID, "")
-		}
+	claimed, err := s.orders.ApproveOrderAtomic(ctx, order, itemIDs, resizeTasks, []domain.OrderStatus{expectedStatus})
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return ErrConflict
+	}
+	if err := s.finishOrderApprovalPersistence(ctx, adminID, order, items); err != nil {
+		return err
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "order.approve", TargetType: "order", TargetID: fmt.Sprintf("%d", order.ID), DetailJSON: "{}"})
@@ -1019,20 +1245,47 @@ func (s *OrderService) ApproveOrder(ctx context.Context, adminID int64, orderID 
 		now := time.Now()
 		for _, task := range resizeTasks {
 			if task.ScheduledAt == nil || !task.ScheduledAt.After(now) {
-				go s.executeResizeTask(context.Background(), *task)
+				s.executeResizeTaskAsync(*task)
 			}
 		}
 		if hasNonResize {
-			go s.provisionOrder(order.ID)
+			s.provisionOrderAsync(order.ID)
 		}
 		return nil
 	}
-	go s.provisionOrder(order.ID)
+	s.provisionOrderAsync(order.ID)
 	return nil
 }
 
-type resizeOrderAtomicApprover interface {
-	ApproveResizeOrderWithTasks(ctx context.Context, order domain.Order, items []domain.OrderItem, tasks []*domain.ResizeTask) error
+func (s *OrderService) finishOrderApprovalPersistence(ctx context.Context, adminID int64, order domain.Order, items []domain.OrderItem) error {
+	for _, item := range items {
+		if item.Action != "resize" {
+			continue
+		}
+		if err := s.creditResizeRefundOnApprove(ctx, item); err != nil {
+			return err
+		}
+	}
+	if s.payments == nil {
+		return nil
+	}
+	pays, err := s.payments.ListPaymentsByOrder(ctx, order.ID)
+	if err != nil {
+		return err
+	}
+	for _, pay := range pays {
+		// Only upgrade the admin-reviewable payment. A provider payment that
+		// never entered manual review (pending_payment) must not be
+		// force-approved: the money has not necessarily arrived, and approving
+		// it inflates revenue with payments that may never settle.
+		if pay.Status != domain.PaymentStatusPendingReview {
+			continue
+		}
+		if err := s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusApproved, &adminID, ""); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *OrderService) RetryProvision(orderID int64) error {
@@ -1065,7 +1318,7 @@ func (s *OrderService) RetryProvision(orderID int64) error {
 	}
 	switch order.Status {
 	case domain.OrderStatusApproved, domain.OrderStatusProvisioning, domain.OrderStatusFailed:
-		go s.provisionOrder(orderID)
+		s.provisionOrderAsync(orderID)
 		return nil
 	default:
 		return ErrConflict
@@ -1086,22 +1339,23 @@ func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID i
 		order.Status != domain.OrderStatusRejected {
 		return ErrConflict
 	}
+	expectedStatus := order.Status
 	order.Status = domain.OrderStatusRejected
 	order.RejectedReason = normalizedReason
 	order.PendingReason = ""
-	if err := s.orders.UpdateOrderMeta(ctx, order); err != nil {
+	claimed, err := s.orders.RejectOrderAtomic(ctx, order, adminID, []domain.OrderStatus{expectedStatus})
+	if err != nil {
 		return err
 	}
-	items, _ := s.items.ListOrderItems(ctx, order.ID)
-	for _, item := range items {
-		_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusRejected)
+	if !claimed {
+		return ErrConflict
 	}
-	if s.payments != nil {
-		pays, _ := s.payments.ListPaymentsByOrder(ctx, order.ID)
-		for _, pay := range pays {
-			_ = s.payments.UpdatePaymentStatus(ctx, pay.ID, domain.PaymentStatusRejected, &adminID, normalizedReason)
-		}
-	}
+	// A balance-paid order (approved balance payment) is now rejected: return
+	// the deducted wallet funds. The refund is idempotent via the
+	// balance_refund:<orderID> key, so a concurrent compensation in payWithBalance
+	// cannot double-credit.
+	s.refundBalanceOnReject(ctx, order)
+	s.releaseVPSLifecycleLocks(ctx, order.ID)
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "order.reject", TargetType: "order", TargetID: fmt.Sprintf("%d", order.ID), DetailJSON: mustJSON(map[string]any{"reason": normalizedReason})})
 	}
@@ -1113,6 +1367,33 @@ func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID i
 	}
 	s.notifyOrderDecision(ctx, order.UserID, order.OrderNo, "order_rejected", "Order Rejected: {{.order.no}}", normalizedReason)
 	return nil
+}
+
+// refundBalanceOnReject returns the wallet debit of a balance-paid order that
+// is being rejected. It only acts when a balance settlement actually exists for
+// the order (ref_type=order), and the credit itself is idempotent via the
+// balance_refund:<orderID> key so concurrent compensation (payWithBalance) or a
+// retried reject cannot double-credit the wallet.
+func (s *OrderService) refundBalanceOnReject(ctx context.Context, order domain.Order) {
+	if s.wallets == nil || order.TotalAmount <= 0 {
+		return
+	}
+	hasDebit, err := s.wallets.HasWalletTransaction(ctx, order.UserID, "order", order.ID)
+	if err != nil || !hasDebit {
+		return
+	}
+	const refType = "balance_refund"
+	idemKey := fmt.Sprintf("balance_refund:%d", order.ID)
+	if idem, ok := s.wallets.(interface {
+		AdjustWalletBalanceIdempotent(context.Context, int64, int64, string, string, int64, string, string) (domain.Wallet, error)
+	}); ok {
+		_, _ = idem.AdjustWalletBalanceIdempotent(ctx, order.UserID, order.TotalAmount, "credit", refType, order.ID, "refund: order rejected after balance payment", idemKey)
+		return
+	}
+	if has, err := s.wallets.HasWalletTransaction(ctx, order.UserID, refType, order.ID); err == nil && has {
+		return
+	}
+	_, _ = s.wallets.AdjustWalletBalance(ctx, order.UserID, order.TotalAmount, "credit", refType, order.ID, "refund: order rejected after balance payment")
 }
 
 func (s *OrderService) provisionOrder(orderID int64) {
@@ -1130,15 +1411,18 @@ func (s *OrderService) provisionOrder(orderID int64) {
 	if err != nil {
 		return
 	}
-	order.Status = domain.OrderStatusProvisioning
-	_ = s.orders.UpdateOrderMeta(ctx, order)
+	transitioned, err := s.orders.UpdateOrderStatusIfCurrent(ctx, order.ID, domain.OrderStatusProvisioning, []domain.OrderStatus{
+		domain.OrderStatusApproved,
+		domain.OrderStatusProvisioning,
+		domain.OrderStatusFailed,
+	})
+	if err != nil || !transitioned {
+		return
+	}
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.provisioning", map[string]any{"status": domain.OrderStatusProvisioning})
 	}
 
-	allActive := true
-	anyProvisioning := false
-	anyFailed := false
 	shouldProcess := func(status domain.OrderItemStatus) bool {
 		switch status {
 		case domain.OrderItemStatusActive, domain.OrderItemStatusRejected, domain.OrderItemStatusCanceled:
@@ -1149,38 +1433,35 @@ func (s *OrderService) provisionOrder(orderID int64) {
 	}
 	for _, item := range items {
 		if !shouldProcess(item.Status) {
-			if item.Status != domain.OrderItemStatusActive {
-				allActive = false
-			}
+			continue
+		}
+		if item.Action == "resize" && s.resizeTasks != nil {
 			continue
 		}
 		switch item.Action {
-		case "create":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
-			inst, err := s.provisionItem(ctx, order, item)
-			if err != nil {
-				allActive = false
-				if errors.Is(err, ErrProvisioning) {
-					anyProvisioning = true
-					continue
-				}
-				anyFailed = true
-				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
-				if s.events != nil {
-					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
-				}
-				continue
-			}
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusActive)
-			_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, inst.AutomationInstanceID)
-			if s.events != nil {
-				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID, "instance_id": inst.ID})
-			}
+		case "create", "renew", "emergency_renew", "resize", "refund":
+		default:
+			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
+			continue
+		}
+		if item.Action == "create" {
+			// Create items are driven by the durable provision job (lease +
+			// fence), not the order-item status claim. The job is the ownership
+			// token: a fresh lease is never stolen, and a crashed attempt is
+			// resumed from its persisted stage instead of being blindly re-created.
+			s.provisionCreateItem(ctx, order, item)
+			continue
+		}
+		claimed, claimErr := s.items.ClaimOrderItemForProvision(ctx, item.ID)
+		if claimErr != nil {
+			continue
+		}
+		if !claimed {
+			continue
+		}
+		switch item.Action {
 		case "renew":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleRenew(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1192,10 +1473,7 @@ func (s *OrderService) provisionOrder(orderID int64) {
 				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID})
 			}
 		case "emergency_renew":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleEmergencyRenew(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1207,10 +1485,7 @@ func (s *OrderService) provisionOrder(orderID int64) {
 				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID})
 			}
 		case "resize":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleResize(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1222,10 +1497,7 @@ func (s *OrderService) provisionOrder(orderID int64) {
 				_, _ = s.events.Publish(ctx, order.ID, "order.item.active", map[string]any{"item_id": item.ID})
 			}
 		case "refund":
-			_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
 			if err := s.handleRefund(ctx, item); err != nil {
-				allActive = false
-				anyFailed = true
 				_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusFailed)
 				if s.events != nil {
 					_, _ = s.events.Publish(ctx, order.ID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
@@ -1241,16 +1513,32 @@ func (s *OrderService) provisionOrder(orderID int64) {
 		}
 	}
 
-	finalStatus := domain.OrderStatusActive
-	if anyFailed {
-		finalStatus = domain.OrderStatusFailed
-	} else if !allActive || anyProvisioning {
-		finalStatus = domain.OrderStatusProvisioning
+	refreshedItems, err := s.items.ListOrderItems(ctx, orderID)
+	if err != nil {
+		return
 	}
-	order.Status = finalStatus
-	_ = s.orders.UpdateOrderMeta(ctx, order)
+	finalStatus := orderStatusFromProvisionedItems(refreshedItems)
+	updated, err := s.orders.UpdateOrderStatusIfCurrent(ctx, order.ID, finalStatus, []domain.OrderStatus{
+		domain.OrderStatusApproved,
+		domain.OrderStatusProvisioning,
+		domain.OrderStatusFailed,
+	})
+	if err != nil || !updated {
+		return
+	}
+	// Only a genuinely active/completed order publishes the completion event; a
+	// failed order publishes an explicit failure event and an order still
+	// provisioning publishes neither (the watchdog will keep driving it). This
+	// prevents a premature `order.completed` — and the "VPS provisioned"
+	// notification it triggers — while provisioning is still running or after it
+	// has definitively failed.
 	if s.events != nil {
-		_, _ = s.events.Publish(ctx, order.ID, "order.completed", map[string]any{"status": finalStatus})
+		switch finalStatus {
+		case domain.OrderStatusActive:
+			_, _ = s.events.Publish(ctx, order.ID, "order.completed", map[string]any{"status": finalStatus})
+		case domain.OrderStatusFailed:
+			_, _ = s.events.Publish(ctx, order.ID, "order.failed", map[string]any{"status": finalStatus})
+		}
 	}
 	if finalStatus == domain.OrderStatusActive {
 		s.notifyOrderActive(ctx, order.UserID, order.OrderNo)
@@ -1262,134 +1550,139 @@ func (s *OrderService) provisionOrder(orderID int64) {
 	}
 }
 
-func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, item domain.OrderItem) (domain.VPSInstance, error) {
-	ctx = WithAutomationLogContext(ctx, order.ID, item.ID)
-	pkg, err := s.catalog.GetPackage(ctx, item.PackageID)
-	if err != nil {
-		return domain.VPSInstance{}, err
-	}
-	cli, err := s.client(ctx, pkg.GoodsTypeID)
-	if err != nil {
-		return domain.VPSInstance{}, err
-	}
-	plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
-	if err != nil {
-		return domain.VPSInstance{}, err
-	}
-	img, err := s.images.GetSystemImage(ctx, item.SystemID)
-	if err != nil {
-		return domain.VPSInstance{}, err
-	}
-	var spec CartSpec
-	_ = json.Unmarshal([]byte(item.SpecJSON), &spec)
-	cpu := pkg.Cores + spec.AddCores
-	mem := pkg.MemoryGB + spec.AddMemGB
-	disk := pkg.DiskGB + spec.AddDiskGB
-	bw := pkg.BandwidthMB + spec.AddBWMbps
+func (s *OrderService) provisionOrderAsync(orderID int64) {
+	safego.Go("order provision", func() { s.provisionOrder(orderID) })
+}
 
-	portNum := pkg.PortNum
-	if portNum <= 0 {
-		portNum = defaultPortNum
-	}
+func (s *OrderService) executeResizeTaskAsync(task domain.ResizeTask) {
+	safego.Go("order resize", func() { s.executeResizeTask(context.Background(), task) })
+}
 
-	hostName := fmt.Sprintf("ecs-%d-%d", order.UserID, time.Now().UnixNano())
-	sysPwd := randomPass(systemPasswordLength)
-	vncPwd := randomPass(vncPasswordLength)
-	months := item.DurationMonths
-	if months <= 0 {
-		months = 1
+// provisionCreateItem drives a create order item through the durable provision
+// job. If a job already exists for the item (a crashed earlier attempt), it is
+// resumed from its persisted stage; otherwise a fresh intent is written first so
+// a crash before CreateHost leaves a recoverable intent, not a stranded
+// `creating:` item with no owner.
+func (s *OrderService) provisionCreateItem(ctx context.Context, order domain.Order, item domain.OrderItem) {
+	if s.provision == nil {
+		return
 	}
-	expireAt := time.Now().AddDate(0, months, 0)
-	req := AutomationCreateHostRequest{
-		LineID:     plan.LineID,
-		OS:         img.Name,
-		CPU:        cpu,
-		MemoryGB:   mem,
-		DiskGB:     disk,
-		Bandwidth:  bw,
-		PortNum:    portNum,
-		ExpireTime: expireAt,
-		HostName:   hostName,
-		SysPwd:     sysPwd,
-		VNCPwd:     vncPwd,
+	job, err := s.provision.GetProvisionJobByOrderItem(ctx, item.ID)
+	if err == ErrNotFound {
+		job = s.buildCreateProvisionIntent(ctx, order, item)
+		if job.ID == 0 {
+			return
+		}
+	} else if err != nil {
+		return
 	}
-	res, err := cli.CreateHost(ctx, req)
+	if job.Status == provisionJobStatusDone {
+		// A terminal job from an earlier attempt is requeued for a manual retry.
+		// RequeueProvisionJob preserves create_host_sent (reconcile-only) and
+		// clears any other terminal stage so the next run resolves from host id.
+		job, err = s.provision.RequeueProvisionJob(ctx, job.ID)
+		if err != nil {
+			return
+		}
+	}
+	s.handleProvisionJob(ctx, job)
+}
+
+func (s *OrderService) buildCreateProvisionIntent(ctx context.Context, order domain.Order, item domain.OrderItem) domain.ProvisionJob {
+	hostName := fmt.Sprintf("ecs-%d-%d-%d", order.UserID, order.ID, item.ID)
+	job := domain.ProvisionJob{
+		OrderID:     order.ID,
+		OrderItemID: item.ID,
+		HostName:    hostName,
+		Status:      provisionJobStatusPending,
+		Attempts:    0,
+		NextRunAt:   time.Now(),
+		Stage:       domain.ProvisionStageIntent,
+		AttemptID:   fmt.Sprintf("%d-%d-%d", order.ID, item.ID, time.Now().UnixNano()),
+	}
+	if err := s.provision.CreateOrUpdateProvisionJob(ctx, &job); err != nil {
+		return domain.ProvisionJob{}
+	}
+	return job
+}
+
+func orderStatusFromProvisionedItems(items []domain.OrderItem) domain.OrderStatus {
+	if len(items) == 0 {
+		return domain.OrderStatusFailed
+	}
+	allActive := true
+	for _, item := range items {
+		switch item.Status {
+		case domain.OrderItemStatusFailed, domain.OrderItemStatusRejected, domain.OrderItemStatusCanceled:
+			return domain.OrderStatusFailed
+		case domain.OrderItemStatusActive:
+		default:
+			allActive = false
+		}
+	}
+	if allActive {
+		return domain.OrderStatusActive
+	}
+	return domain.OrderStatusProvisioning
+}
+
+func createHostFailureIsDefinitive(err error) bool {
+	if errors.Is(err, ErrInvalidInput) {
+		return true
+	}
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		return true
+	}
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && strings.EqualFold(strings.TrimSpace(opErr.Op), "dial")
+}
+
+// specCurrentPeriodEnd returns the locally recorded current_period_end from an
+// instance's spec JSON, or nil when absent/unparseable.
+func specCurrentPeriodEnd(specJSON string) *time.Time {
+	payload := parseJSON(specJSON)
+	raw, ok := payload["current_period_end"]
+	if !ok {
+		return nil
+	}
+	s, ok := raw.(string)
+	if !ok || strings.TrimSpace(s) == "" {
+		return nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		s.logAutomation(ctx, order.ID, item.ID, "create_host", req, map[string]any{"error": err.Error()}, false, err.Error())
-		return domain.VPSInstance{}, err
+		return nil
 	}
-	var hostID int64
-	if res.HostID > 0 {
-		hostID = res.HostID
-	} else {
-		hosts, _ := cli.ListHostSimple(ctx, hostName)
-		for _, h := range hosts {
-			if h.HostName == hostName {
-				hostID = h.ID
-				break
+	return &t
+}
+
+// renewalNextDue computes the new due date for a renewal. It prefers the
+// instance's locally recorded current_period_end over its ExpireAt so a retry
+// after a partially applied renewal (remote renewed and ExpireAt advanced, but
+// the period/spec update failed) re-asserts the same due date instead of
+// extending the already-advanced expiry a second time.
+func renewalNextDue(inst domain.VPSInstance, renewDays int, now time.Time) time.Time {
+	if renewDays <= 0 {
+		renewDays = defaultOrderRenewDays
+	}
+	if periodEnd := specCurrentPeriodEnd(inst.SpecJSON); periodEnd != nil {
+		if periodEnd.After(now) {
+			return periodEnd.Add(time.Duration(renewDays) * 24 * time.Hour)
+		}
+		if inst.ExpireAt != nil && inst.ExpireAt.After(now) {
+			diffDays := int(inst.ExpireAt.Sub(*periodEnd).Hours() / 24)
+			if diffDays == renewDays {
+				// The previous attempt already advanced the local expiry by this
+				// renewal's duration; re-assert it idempotently.
+				return *inst.ExpireAt
 			}
 		}
 	}
-	if hostID == 0 {
-		s.logAutomation(ctx, order.ID, item.ID, "create_host", req, res.Raw, false, "host id not found")
-		return domain.VPSInstance{}, domain.ErrHostIDNotFound
+	if inst.ExpireAt != nil && inst.ExpireAt.After(now) {
+		return inst.ExpireAt.Add(time.Duration(renewDays) * 24 * time.Hour)
 	}
-	info, err := s.waitHostActive(ctx, cli, hostID, 5, 6*time.Second)
-	if err != nil {
-		if errors.Is(err, ErrProvisioning) {
-			if err := s.ensureProvisioningInstance(ctx, order, item, hostID, hostName, sysPwd, vncPwd, expireAt); err != nil {
-				return domain.VPSInstance{}, err
-			}
-			_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", hostID))
-			s.enqueueProvisionJob(ctx, order.ID, item.ID, hostID, hostName)
-			return domain.VPSInstance{}, ErrProvisioning
-		}
-		s.logAutomation(ctx, order.ID, item.ID, "hostinfo", map[string]any{"host_id": hostID}, map[string]any{"error": err.Error()}, false, err.Error())
-		return domain.VPSInstance{}, err
-	}
-	status := MapAutomationState(info.State)
-	accessInfo := mustJSON(map[string]any{
-		"remote_ip":      info.RemoteIP,
-		"panel_password": info.PanelPassword,
-		"vnc_password":   info.VNCPassword,
-		"os_password":    sysPwd,
-	})
-	exp := info.ExpireAt
-	if exp == nil {
-		exp = &expireAt
-	}
-	snap := s.buildVPSLocalSnapshot(ctx, order.UserID, item)
-	specJSON := setCurrentPeriod(item.SpecJSON, time.Now(), *exp)
-	inst := domain.VPSInstance{
-		UserID:               order.UserID,
-		OrderItemID:          item.ID,
-		AutomationInstanceID: fmt.Sprintf("%d", hostID),
-		GoodsTypeID:          pkg.GoodsTypeID,
-		Name:                 info.HostName,
-		Region:               snap.Region,
-		RegionID:             snap.RegionID,
-		LineID:               snap.LineID,
-		PackageID:            snap.PackageID,
-		PackageName:          snap.PackageName,
-		CPU:                  snap.CPU,
-		MemoryGB:             snap.MemoryGB,
-		DiskGB:               snap.DiskGB,
-		BandwidthMB:          snap.BandwidthMB,
-		PortNum:              snap.PortNum,
-		MonthlyPrice:         snap.MonthlyPrice,
-		SpecJSON:             specJSON,
-		SystemID:             item.SystemID,
-		Status:               status,
-		AutomationState:      info.State,
-		AdminStatus:          domain.VPSAdminStatusNormal,
-		ExpireAt:             exp,
-		AccessInfoJSON:       accessInfo,
-	}
-	if err := s.vps.CreateInstance(ctx, &inst); err != nil {
-		return domain.VPSInstance{}, err
-	}
-	s.logAutomation(ctx, order.ID, item.ID, "create_host", req, res.Raw, true, "ok")
-	return inst, nil
+	return now.Add(time.Duration(renewDays) * 24 * time.Hour)
 }
 
 func (s *OrderService) handleRenew(ctx context.Context, item domain.OrderItem) error {
@@ -1426,19 +1719,30 @@ func (s *OrderService) handleRenew(ctx context.Context, item domain.OrderItem) e
 	if err != nil {
 		return err
 	}
-	next := time.Now().Add(time.Duration(payload.RenewDays) * 24 * time.Hour)
-	if inst.ExpireAt != nil && inst.ExpireAt.After(time.Now()) {
-		next = inst.ExpireAt.Add(time.Duration(payload.RenewDays) * 24 * time.Hour)
-	}
+	next := renewalNextDue(inst, payload.RenewDays, time.Now())
 	if err := cli.RenewHost(ctx, hostID, next); err != nil {
 		s.logAutomation(ctx, item.OrderID, item.ID, "renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error()}, false, err.Error())
 		return err
 	}
 	if inst.AdminStatus != domain.VPSAdminStatusNormal || inst.Status == domain.VPSStatusExpiredLocked {
 		_ = cli.UnlockHost(ctx, hostID)
+		// The renewal succeeded and the host is unlocked: persist the reset of
+		// the stale local auto-lock markers. Otherwise the next expiry is never
+		// re-locked (AutoLockExpired treats status=locked as a permanent
+		// exemption) and the instance stays unlocked forever.
+		_ = s.vps.UpdateInstanceAdminStatus(ctx, inst.ID, domain.VPSAdminStatusNormal)
+		if inst.Status == domain.VPSStatusExpiredLocked {
+			_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, 0)
+		}
 	}
-	_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next)
-	_ = s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next))
+	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
+	if err := s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next)); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
 	s.logAutomation(ctx, item.OrderID, item.ID, "renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"status": "ok"}, true, "ok")
 	return nil
 }
@@ -1489,20 +1793,30 @@ func (s *OrderService) handleEmergencyRenew(ctx context.Context, item domain.Ord
 	if err != nil {
 		return err
 	}
-	next := time.Now().Add(time.Duration(renewDays) * 24 * time.Hour)
-	if inst.ExpireAt != nil && inst.ExpireAt.After(time.Now()) {
-		next = inst.ExpireAt.Add(time.Duration(renewDays) * 24 * time.Hour)
-	}
+	next := renewalNextDue(inst, renewDays, time.Now())
 	if err := cli.RenewHost(ctx, hostID, next); err != nil {
 		s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error()}, false, err.Error())
 		return err
 	}
 	if inst.AdminStatus != domain.VPSAdminStatusNormal || inst.Status == domain.VPSStatusExpiredLocked {
 		_ = cli.UnlockHost(ctx, hostID)
+		_ = s.vps.UpdateInstanceAdminStatus(ctx, inst.ID, domain.VPSAdminStatusNormal)
+		if inst.Status == domain.VPSStatusExpiredLocked {
+			_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, 0)
+		}
 	}
-	_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next)
-	_ = s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next))
-	_ = s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, time.Now())
+	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
+	if err := s.vps.UpdateInstanceSpec(ctx, inst.ID, setCurrentPeriod(inst.SpecJSON, time.Now(), next)); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
+	if err := s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, time.Now()); err != nil {
+		s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"error": err.Error(), "remote_renewed": true}, false, err.Error())
+		return err
+	}
 	s.logAutomation(ctx, item.OrderID, item.ID, "emergency_renew", map[string]any{"host_id": hostID, "next_due": next}, map[string]any{"status": "ok"}, true, "ok")
 	return nil
 }
@@ -1576,12 +1890,26 @@ func (s *OrderService) handleResize(ctx context.Context, item domain.OrderItem) 
 		inst.DiskGB = disk
 		inst.BandwidthMB = bw
 		inst.PortNum = pkg.PortNum
-		inst.MonthlyPrice = pkg.Monthly
+		// Recompute the monthly price from the same pricing source used at
+		// creation, otherwise a member-tier instance loses its discounted price
+		// after a resize and is overcharged on later renewals.
+		baseMonthly := pkg.Monthly
+		unitCore, unitMem, unitDisk, unitBW := plan.UnitCore, plan.UnitMem, plan.UnitDisk, plan.UnitBW
+		if s.pricer != nil && inst.UserID > 0 {
+			if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, inst.UserID, targetPkgID); err == nil {
+				baseMonthly = pricing.MonthlyPrice
+				unitCore = pricing.UnitCore
+				unitMem = pricing.UnitMem
+				unitDisk = pricing.UnitDisk
+				unitBW = pricing.UnitBW
+			}
+		}
+		inst.MonthlyPrice = baseMonthly
 		if plan.ID > 0 {
-			inst.MonthlyPrice += int64(payload.Spec.AddCores)*plan.UnitCore +
-				int64(payload.Spec.AddMemGB)*plan.UnitMem +
-				int64(payload.Spec.AddDiskGB)*plan.UnitDisk +
-				int64(payload.Spec.AddBWMbps)*plan.UnitBW
+			inst.MonthlyPrice += int64(payload.Spec.AddCores)*unitCore +
+				int64(payload.Spec.AddMemGB)*unitMem +
+				int64(payload.Spec.AddDiskGB)*unitDisk +
+				int64(payload.Spec.AddBWMbps)*unitBW
 		}
 		inst.SpecJSON = mergeSpecJSON(inst.SpecJSON, payload.Spec)
 		_ = s.vps.UpdateInstanceLocal(ctx, inst)
@@ -1676,13 +2004,74 @@ func (s *OrderService) handleRefund(ctx context.Context, item domain.OrderItem) 
 		"reason":            strings.TrimSpace(payload.Reason),
 		"delete_on_approve": payload.DeleteOnApprove,
 	}
-	if err := s.createAndApproveWalletRefund(ctx, inst.UserID, payload.RefundAmount, strings.TrimSpace(payload.Reason), meta, "vps_refund", item.OrderID); err != nil {
+	walletOrderID, err := s.createAndApproveWalletRefund(ctx, inst.UserID, payload.RefundAmount, strings.TrimSpace(payload.Reason), meta, "vps_refund", item.OrderID)
+	if err != nil {
 		return err
 	}
-	if payload.DeleteOnApprove {
+	if !payload.DeleteOnApprove {
+		return nil
+	}
+	if s.cleanup == nil {
+		// No durable outbox wired (e.g. tests): keep the previous behavior —
+		// an inline delete failure fails the item so a manual RetryProvision
+		// re-runs handleRefund (the wallet credit is idempotent).
 		return s.deleteVPSForRefund(ctx, inst)
 	}
+	// Persist the durable cleanup outbox entry BEFORE the inline delete so a
+	// crash after the wallet credit still deletes the refunded host. If the
+	// inline delete fails the job stays pending and the cleanup worker retries
+	// it with bounded backoff — the refund item is NOT failed, mirroring the
+	// walletorder path.
+	enqueued := s.enqueueRefundCleanupForOrder(ctx, inst, walletOrderID)
+	if err := s.deleteVPSForRefund(ctx, inst); err != nil {
+		if !enqueued {
+			// No outbox entry to converge the deletion (host id or wallet order
+			// id unavailable): fail the item so a manual retry can act rather
+			// than silently completing the refund with a live VPS.
+			return err
+		}
+		// The durable outbox will converge the deletion; the money was already
+		// credited so the refund order completes.
+		return nil
+	}
+	if enqueued && walletOrderID > 0 {
+		if job, jerr := s.cleanup.GetRefundCleanupJobByWalletOrder(ctx, walletOrderID); jerr == nil {
+			_ = s.cleanup.MarkRefundCleanupDone(ctx, job.ID)
+		}
+	}
 	return nil
+}
+
+// enqueueRefundCleanupForOrder writes the durable cleanup outbox entry for a
+// refund order approval so a crash after the wallet credit still deletes the
+// host. Mirrors walletorder.enqueueRefundCleanup. A zero walletOrderID (an
+// idempotent retry whose refund already settled) cannot be deduplicated, so no
+// duplicate job is created — the first attempt already enqueued it. It returns
+// whether an outbox entry is now in place (created or already present).
+func (s *OrderService) enqueueRefundCleanupForOrder(ctx context.Context, inst domain.VPSInstance, walletOrderID int64) bool {
+	if s.cleanup == nil || walletOrderID <= 0 {
+		return false
+	}
+	hostID := parseHostID(inst.AutomationInstanceID)
+	if hostID == 0 {
+		return false
+	}
+	if _, err := s.cleanup.GetRefundCleanupJobByWalletOrder(ctx, walletOrderID); err == nil {
+		return true
+	}
+	job := domain.RefundCleanupJob{
+		WalletOrderID: walletOrderID,
+		UserID:        inst.UserID,
+		VPSID:         inst.ID,
+		HostID:        hostID,
+		GoodsTypeID:   inst.GoodsTypeID,
+		Status:        domain.RefundCleanupPending,
+		NextRunAt:     time.Now(),
+	}
+	if err := s.cleanup.CreateRefundCleanupJob(ctx, &job); err != nil {
+		return false
+	}
+	return true
 }
 
 func (s *OrderService) deleteVPSForRefund(ctx context.Context, inst domain.VPSInstance) error {
@@ -1697,46 +2086,75 @@ func (s *OrderService) deleteVPSForRefund(ctx context.Context, inst domain.VPSIn
 	if err != nil {
 		return err
 	}
-	if err := cli.DeleteHost(ctx, hostID); err != nil {
+	if err := cli.DeleteHost(ctx, hostID); err != nil && !deleteHostNotFound(err) {
 		return err
 	}
+	// A DeleteHost that reports the host is already gone is an idempotent
+	// success: the refund already credited the wallet, and the retry after a
+	// crash between DeleteHost and DeleteInstance must converge instead of
+	// leaving a phantom local instance.
 	return s.vps.DeleteInstance(ctx, inst.ID)
 }
 
-func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID int64, amount int64, note string, meta map[string]any, txRefType string, txRefID int64) error {
+// deleteHostNotFound reports whether a DeleteHost error means the host is
+// already gone — an idempotent success for a refund deletion. Delegates to the
+// shared classifier used by the admin VPS delete and the walletorder cleanup
+// worker so every delete path converges identically on retry.
+func deleteHostNotFound(err error) bool {
+	return appshared.IsHostNotFoundError(err)
+}
+
+func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID int64, amount int64, note string, meta map[string]any, txRefType string, txRefID int64) (int64, error) {
 	if amount <= 0 {
-		return ErrInvalidInput
+		return 0, ErrInvalidInput
 	}
 	if s.wallets == nil {
-		return ErrInvalidInput
+		return 0, ErrInvalidInput
 	}
 	walletOrders, ok := s.wallets.(WalletOrderRepository)
 	if !ok {
-		return ErrInvalidInput
+		return 0, ErrInvalidInput
 	}
 	if txRefType != "" && txRefID > 0 {
 		exists, err := s.wallets.HasWalletTransaction(ctx, userID, txRefType, txRefID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if exists {
+			// Idempotent retry: the refund already settled. Promote any still
+			// pending wallet order and return its id so the cleanup outbox can
+			// dedupe (a 0 means "already handled", and enqueue skips).
 			s.promoteRefundWalletOrderIfNeeded(ctx, walletOrders, userID, txRefID)
-			return nil
+			if order, found := s.findRefundWalletOrderByOrder(ctx, walletOrders, userID, txRefID); found {
+				return order.ID, nil
+			}
+			return 0, nil
 		}
 	}
-	order := domain.WalletOrder{
-		UserID:   userID,
-		Type:     domain.WalletOrderRefund,
-		Amount:   amount,
-		Currency: "CNY",
-		Status:   domain.WalletOrderPendingReview,
-		Note:     strings.TrimSpace(note),
-		MetaJSON: mustJSON(meta),
+	order, found := s.findPendingRefundWalletOrder(ctx, walletOrders, userID, txRefID)
+	if !found {
+		order = domain.WalletOrder{
+			UserID:   userID,
+			Type:     domain.WalletOrderRefund,
+			Amount:   amount,
+			Currency: "CNY",
+			Status:   domain.WalletOrderPendingReview,
+			Note:     strings.TrimSpace(note),
+			MetaJSON: mustJSON(meta),
+		}
+		if err := walletOrders.CreateWalletOrder(ctx, &order); err != nil {
+			return 0, err
+		}
 	}
-	if err := walletOrders.CreateWalletOrder(ctx, &order); err != nil {
-		return err
+	adjust := s.wallets.AdjustWalletBalance
+	if idempotent, ok := s.wallets.(interface {
+		AdjustWalletBalanceIdempotent(context.Context, int64, int64, string, string, int64, string, string) (domain.Wallet, error)
+	}); ok {
+		adjust = func(ctx context.Context, userID, amount int64, txType, refType string, refID int64, note string) (domain.Wallet, error) {
+			return idempotent.AdjustWalletBalanceIdempotent(ctx, userID, amount, txType, refType, refID, note, fmt.Sprintf("%s:%d", txRefType, txRefID))
+		}
 	}
-	if _, err := s.wallets.AdjustWalletBalance(ctx, userID, amount, "credit", txRefType, txRefID, fmt.Sprintf("refund wallet order %d", order.ID)); err != nil {
+	if _, err := adjust(ctx, userID, amount, "credit", txRefType, txRefID, fmt.Sprintf("refund wallet order %d", order.ID)); err != nil {
 		alreadyDone := false
 		if txRefType != "" && txRefID > 0 {
 			if exists, checkErr := s.wallets.HasWalletTransaction(ctx, userID, txRefType, txRefID); checkErr == nil && exists {
@@ -1744,11 +2162,11 @@ func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID 
 			}
 		}
 		if !alreadyDone {
-			return err
+			return 0, err
 		}
 	}
 	if err := walletOrders.UpdateWalletOrderStatus(ctx, order.ID, domain.WalletOrderApproved, nil, ""); err != nil {
-		return err
+		return 0, err
 	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{
@@ -1759,7 +2177,48 @@ func (s *OrderService) createAndApproveWalletRefund(ctx context.Context, userID 
 			DetailJSON: mustJSON(map[string]any{"type": order.Type, "amount": order.Amount}),
 		})
 	}
-	return nil
+	return order.ID, nil
+}
+
+// findRefundWalletOrderByOrder returns any refund wallet order whose meta
+// references the given order, regardless of status. Used to resolve the wallet
+// order id on an idempotent refund retry so the cleanup outbox can dedupe.
+func (s *OrderService) findRefundWalletOrderByOrder(ctx context.Context, walletOrders WalletOrderRepository, userID, txRefID int64) (domain.WalletOrder, bool) {
+	if txRefID <= 0 {
+		return domain.WalletOrder{}, false
+	}
+	orders, _, err := walletOrders.ListWalletOrders(ctx, userID, defaultWalletOrderPageSize, 0)
+	if err != nil {
+		return domain.WalletOrder{}, false
+	}
+	for _, candidate := range orders {
+		if candidate.Type != domain.WalletOrderRefund {
+			continue
+		}
+		if getInt64(parseJSON(candidate.MetaJSON)["order_id"]) == txRefID {
+			return candidate, true
+		}
+	}
+	return domain.WalletOrder{}, false
+}
+
+func (s *OrderService) findPendingRefundWalletOrder(ctx context.Context, walletOrders WalletOrderRepository, userID, txRefID int64) (domain.WalletOrder, bool) {
+	if txRefID <= 0 {
+		return domain.WalletOrder{}, false
+	}
+	orders, _, err := walletOrders.ListWalletOrders(ctx, userID, defaultWalletOrderPageSize, 0)
+	if err != nil {
+		return domain.WalletOrder{}, false
+	}
+	for _, candidate := range orders {
+		if candidate.Type != domain.WalletOrderRefund || candidate.Status != domain.WalletOrderPendingReview {
+			continue
+		}
+		if getInt64(parseJSON(candidate.MetaJSON)["order_id"]) == txRefID {
+			return candidate, true
+		}
+	}
+	return domain.WalletOrder{}, false
 }
 
 func (s *OrderService) promoteRefundWalletOrderIfNeeded(ctx context.Context, walletOrders WalletOrderRepository, userID int64, txRefID int64) {
@@ -1817,25 +2276,31 @@ func (s *OrderService) creditResizeRefundOnApprove(ctx context.Context, item dom
 		"refund_amount":    refundAmount,
 		"refund_to_wallet": true,
 	}
-	return s.createAndApproveWalletRefund(ctx, inst.UserID, refundAmount, "resize refund", meta, "resize_refund", item.OrderID)
+	_, err = s.createAndApproveWalletRefund(ctx, inst.UserID, refundAmount, "resize refund", meta, "resize_refund", item.OrderID)
+	return err
 }
 
 func (s *OrderService) executeResizeTask(ctx context.Context, task domain.ResizeTask) error {
 	if s.resizeTasks == nil || s.items == nil || s.vps == nil || s.automation == nil || s.catalog == nil {
 		return ErrInvalidInput
 	}
-	now := time.Now()
-	task.Status = domain.ResizeTaskStatusRunning
-	task.StartedAt = &now
-	if err := s.resizeTasks.UpdateResizeTask(ctx, task); err != nil {
+	// Atomically claim the task with a lease so a second worker cannot
+	// double-execute it, and a running task whose lease elapsed (a crashed
+	// worker) can be reclaimed. If another worker won the claim, skip. The
+	// returned task carries the fresh owner/fence; all final writes are CAS'd on
+	// them so a worker that lost the lease cannot overwrite a takeover.
+	claimedTask, claimed, err := s.resizeTasks.ClaimResizeTask(ctx, task.ID, s.workerID, time.Now().Add(domain.ResizeTaskStaleDuration))
+	if err != nil {
 		return err
 	}
+	if !claimed {
+		return nil
+	}
+	task = claimedTask
+
 	item, err := s.items.GetOrderItem(ctx, task.OrderItemID)
 	if err != nil {
-		task.Status = domain.ResizeTaskStatusFailed
-		finished := time.Now()
-		task.FinishedAt = &finished
-		_ = s.resizeTasks.UpdateResizeTask(ctx, task)
+		s.failResizeTask(ctx, task, err.Error())
 		return err
 	}
 	_ = s.items.UpdateOrderItemStatus(ctx, item.ID, domain.OrderItemStatusProvisioning)
@@ -1844,10 +2309,7 @@ func (s *OrderService) executeResizeTask(ctx context.Context, task domain.Resize
 		if s.events != nil {
 			_, _ = s.events.Publish(ctx, task.OrderID, "order.item.failed", map[string]any{"item_id": item.ID, "reason": err.Error()})
 		}
-		task.Status = domain.ResizeTaskStatusFailed
-		finished := time.Now()
-		task.FinishedAt = &finished
-		_ = s.resizeTasks.UpdateResizeTask(ctx, task)
+		s.failResizeTask(ctx, task, err.Error())
 		s.refreshOrderStatus(ctx, task.OrderID)
 		return err
 	}
@@ -1858,9 +2320,20 @@ func (s *OrderService) executeResizeTask(ctx context.Context, task domain.Resize
 	task.Status = domain.ResizeTaskStatusDone
 	finished := time.Now()
 	task.FinishedAt = &finished
-	_ = s.resizeTasks.UpdateResizeTask(ctx, task)
+	task.LeaseUntil = nil
+	_, _ = s.resizeTasks.UpdateResizeTask(ctx, task)
 	s.refreshOrderStatus(ctx, task.OrderID)
 	return nil
+}
+
+// failResizeTask marks a resize task failed and releases the lease. The write is
+// CAS'd on owner+fence; a lost lease abandons the write.
+func (s *OrderService) failResizeTask(ctx context.Context, task domain.ResizeTask, reason string) {
+	task.Status = domain.ResizeTaskStatusFailed
+	finished := time.Now()
+	task.FinishedAt = &finished
+	task.LeaseUntil = nil
+	_, _ = s.resizeTasks.UpdateResizeTask(ctx, task)
 }
 
 func (s *OrderService) buildRobotItems(ctx context.Context, items []domain.OrderItem) []RobotOrderItem {
@@ -2033,179 +2506,6 @@ func resolveBillingCycle(ctx context.Context, billing BillingCycleRepository, sp
 	return months, multiplier, nil
 }
 
-func (s *OrderService) waitHostActive(ctx context.Context, cli AutomationClient, hostID int64, attempts int, interval time.Duration) (AutomationHostInfo, error) {
-	var lastErr error
-	for i := 0; i < attempts; i++ {
-		info, err := cli.GetHostInfo(ctx, hostID)
-		if err != nil {
-			lastErr = err
-		} else {
-			if info.State == 2 || info.State == 3 || info.State == 10 {
-				return info, nil
-			}
-			lastErr = ErrProvisioning
-		}
-		time.Sleep(interval)
-	}
-	if lastErr != nil {
-		return AutomationHostInfo{}, lastErr
-	}
-	return AutomationHostInfo{}, ErrProvisioning
-}
-
-type vpsLocalSnapshot struct {
-	Region       string
-	RegionID     int64
-	LineID       int64
-	PackageID    int64
-	PackageName  string
-	CPU          int
-	MemoryGB     int
-	DiskGB       int
-	BandwidthMB  int
-	PortNum      int
-	MonthlyPrice int64
-}
-
-func (s *OrderService) buildVPSLocalSnapshot(ctx context.Context, userID int64, item domain.OrderItem) vpsLocalSnapshot {
-	snap := vpsLocalSnapshot{PackageID: item.PackageID}
-	pkg, err := s.catalog.GetPackage(ctx, item.PackageID)
-	if err != nil {
-		return snap
-	}
-	snap.PackageName = pkg.Name
-	snap.CPU = pkg.Cores
-	snap.MemoryGB = pkg.MemoryGB
-	snap.DiskGB = pkg.DiskGB
-	snap.BandwidthMB = pkg.BandwidthMB
-	snap.PortNum = pkg.PortNum
-	snap.MonthlyPrice = pkg.Monthly
-	plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
-	if err == nil {
-		snap.LineID = plan.LineID
-		snap.RegionID = plan.RegionID
-		unitCore := plan.UnitCore
-		unitMem := plan.UnitMem
-		unitDisk := plan.UnitDisk
-		unitBW := plan.UnitBW
-		if s.pricer != nil && userID > 0 {
-			if pricing, _, err := s.pricer.ResolvePackagePricing(ctx, userID, item.PackageID); err == nil {
-				snap.MonthlyPrice = pricing.MonthlyPrice
-				unitCore = pricing.UnitCore
-				unitMem = pricing.UnitMem
-				unitDisk = pricing.UnitDisk
-				unitBW = pricing.UnitBW
-			}
-		}
-		addon := int64(0)
-		var spec CartSpec
-		if err := json.Unmarshal([]byte(item.SpecJSON), &spec); err == nil {
-			snap.CPU += spec.AddCores
-			snap.MemoryGB += spec.AddMemGB
-			snap.DiskGB += spec.AddDiskGB
-			snap.BandwidthMB += spec.AddBWMbps
-			addon = int64(spec.AddCores)*unitCore +
-				int64(spec.AddMemGB)*unitMem +
-				int64(spec.AddDiskGB)*unitDisk +
-				int64(spec.AddBWMbps)*unitBW
-		}
-		snap.MonthlyPrice += addon
-		if region, err := s.catalog.GetRegion(ctx, plan.RegionID); err == nil {
-			snap.Region = region.Name
-		}
-	}
-	return snap
-}
-
-func (s *OrderService) ensureProvisioningInstance(ctx context.Context, order domain.Order, item domain.OrderItem, hostID int64, hostName, sysPwd, vncPwd string, expireAt time.Time) error {
-	if s.vps == nil {
-		return nil
-	}
-	access := map[string]any{
-		"os_password":    sysPwd,
-		"vnc_password":   vncPwd,
-		"panel_password": vncPwd,
-	}
-	inst, err := s.vps.GetInstanceByOrderItem(ctx, item.ID)
-	if err == nil {
-		if hostID > 0 && inst.AutomationInstanceID != fmt.Sprintf("%d", hostID) {
-			inst.AutomationInstanceID = fmt.Sprintf("%d", hostID)
-			if hostName != "" {
-				inst.Name = hostName
-			}
-			_ = s.vps.UpdateInstanceLocal(ctx, inst)
-		}
-		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusProvisioning, 0)
-		if inst.ExpireAt == nil {
-			_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, expireAt)
-		}
-		if inst.AccessInfoJSON != "" {
-			var existing map[string]any
-			if err := json.Unmarshal([]byte(inst.AccessInfoJSON), &existing); err == nil {
-				if v, ok := existing["remote_ip"]; ok && v != "" {
-					access["remote_ip"] = v
-				}
-				if v, ok := existing["panel_password"]; ok && v != "" {
-					access["panel_password"] = v
-				}
-				if v, ok := existing["vnc_password"]; ok && v != "" {
-					access["vnc_password"] = v
-				}
-				if v, ok := existing["os_password"]; ok && v != "" {
-					access["os_password"] = v
-				}
-			}
-		}
-		return s.vps.UpdateInstanceAccessInfo(ctx, inst.ID, mustJSON(access))
-	}
-	if !errors.Is(err, ErrNotFound) {
-		return err
-	}
-	snap := s.buildVPSLocalSnapshot(ctx, order.UserID, item)
-	inst = domain.VPSInstance{
-		UserID:               order.UserID,
-		OrderItemID:          item.ID,
-		AutomationInstanceID: fmt.Sprintf("%d", hostID),
-		GoodsTypeID:          item.GoodsTypeID,
-		Name:                 hostName,
-		Region:               snap.Region,
-		RegionID:             snap.RegionID,
-		LineID:               snap.LineID,
-		PackageID:            snap.PackageID,
-		PackageName:          snap.PackageName,
-		CPU:                  snap.CPU,
-		MemoryGB:             snap.MemoryGB,
-		DiskGB:               snap.DiskGB,
-		BandwidthMB:          snap.BandwidthMB,
-		PortNum:              snap.PortNum,
-		MonthlyPrice:         snap.MonthlyPrice,
-		SpecJSON:             item.SpecJSON,
-		SystemID:             item.SystemID,
-		Status:               domain.VPSStatusProvisioning,
-		AutomationState:      0,
-		AdminStatus:          domain.VPSAdminStatusNormal,
-		ExpireAt:             &expireAt,
-		AccessInfoJSON:       mustJSON(access),
-	}
-	return s.vps.CreateInstance(ctx, &inst)
-}
-
-func (s *OrderService) enqueueProvisionJob(ctx context.Context, orderID, orderItemID, hostID int64, hostName string) {
-	if s.provision == nil {
-		return
-	}
-	job := domain.ProvisionJob{
-		OrderID:     orderID,
-		OrderItemID: orderItemID,
-		HostID:      hostID,
-		HostName:    hostName,
-		Status:      provisionJobStatusPending,
-		Attempts:    0,
-		NextRunAt:   time.Now(),
-	}
-	_ = s.provision.CreateOrUpdateProvisionJob(ctx, &job)
-}
-
 func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID int64, action string, req any, resp any, success bool, message string) {
 	if s.autoLogs == nil {
 		return
@@ -2223,6 +2523,8 @@ func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID i
 			}
 			if strings.TrimSpace(traceMsg) != "" {
 				message = traceMsg
+			} else {
+				message = messageWithoutHTTPTrace(message)
 			}
 		}
 	}
@@ -2230,7 +2532,7 @@ func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID i
 		"method":  "RPC",
 		"url":     strings.TrimSpace(action),
 		"headers": map[string]string{},
-		"body":    req,
+		"body":    redactAutomationPayload(req),
 	}
 	status := 500
 	if success {
@@ -2242,9 +2544,10 @@ func (s *OrderService) logAutomation(ctx context.Context, orderID, orderItemID i
 		"duration_ms": 0,
 	}
 	if resp != nil {
-		responsePayload["body"] = resp
+		redactedResponse := redactAutomationPayload(resp)
+		responsePayload["body"] = redactedResponse
 		responsePayload["format"] = "json"
-		responsePayload["body_json"] = resp
+		responsePayload["body_json"] = redactedResponse
 	} else if strings.TrimSpace(message) != "" {
 		responsePayload["body"] = message
 		responsePayload["format"] = "text"
@@ -2286,6 +2589,17 @@ func extractHTTPTraceFromMessage(message string) (map[string]any, map[string]any
 	return trace.Request, trace.Response, trace.Action, trace.Message, true
 }
 
+func messageWithoutHTTPTrace(message string) string {
+	const marker = "http_trace="
+	if index := strings.LastIndex(message, marker); index >= 0 {
+		message = strings.TrimSpace(message[:index])
+	}
+	if message == "" {
+		return "upstream request failed"
+	}
+	return message
+}
+
 func parseOrderItemVPSID(specJSON string) int64 {
 	if strings.TrimSpace(specJSON) == "" {
 		return 0
@@ -2299,13 +2613,18 @@ func parseOrderItemVPSID(specJSON string) int64 {
 	return payload.VPSID
 }
 
-func randomPass(n int) string {
-	letters := []rune("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%")
-	out := make([]rune, n)
+func randomPass(n int) (string, error) {
+	letters := []byte("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%")
+	out := make([]byte, n)
+	max := big.NewInt(int64(len(letters)))
 	for i := range out {
-		out[i] = letters[rand.Intn(len(letters))]
+		index, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		out[i] = letters[index.Int64()]
 	}
-	return string(out)
+	return string(out), nil
 }
 
 func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID int64, renewDays int, durationMonths int) (domain.Order, error) {
@@ -2328,6 +2647,19 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 			return domain.Order{}, fmt.Errorf("该实例已有待审批或执行中的互斥订单: %w", ErrConflict)
 		}
 	}
+	// Reserve the VPS atomically BEFORE creating the order so two concurrent
+	// requests cannot both pass the check above (the unique index is the CAS).
+	if err := s.reserveVPSLifecycleLock(ctx, vpsID, 0, "renew"); err != nil {
+		return domain.Order{}, fmt.Errorf("该实例已有待审批或执行中的互斥订单: %w", err)
+	}
+	lockBound := false
+	defer func() {
+		if !lockBound {
+			if l := s.vpsLocks(); l != nil {
+				_ = l.ReleaseVPSLifecycleLockByVPS(ctx, vpsID)
+			}
+		}
+	}()
 	months := durationMonths
 	if months <= 0 {
 		if renewDays <= 0 {
@@ -2362,7 +2694,7 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 	if renewDays <= 0 {
 		renewDays = defaultOrderRenewDays
 	}
-	orderNo := fmt.Sprintf("REN-%d-%d", userID, time.Now().Unix())
+	orderNo := fmt.Sprintf("REN-%d-%d", userID, time.Now().UnixNano())
 	status := domain.OrderStatusPendingPayment
 	itemStatus := domain.OrderItemStatusPendingPayment
 	if amount == 0 {
@@ -2380,17 +2712,26 @@ func (s *OrderService) CreateRenewOrder(ctx context.Context, userID int64, vpsID
 	if err := s.orders.CreateOrder(ctx, &order); err != nil {
 		return domain.Order{}, err
 	}
+	// Bind the reservation to the created order; the deferred cleanup releases
+	// it if anything below fails.
+	if l := s.vpsLocks(); l != nil {
+		if err := l.BindVPSLifecycleLock(ctx, vpsID, order.ID); err != nil {
+			return domain.Order{}, err
+		}
+	}
 	item := domain.OrderItem{
 		OrderID:  order.ID,
 		Qty:      1,
 		Amount:   amount,
 		Status:   itemStatus,
 		Action:   "renew",
+		VPSID:    vpsID,
 		SpecJSON: mustJSON(map[string]any{"vps_id": vpsID, "renew_days": renewDays, "duration_months": months}),
 	}
 	if err := s.items.CreateOrderItems(ctx, []domain.OrderItem{item}); err != nil {
 		return domain.Order{}, err
 	}
+	lockBound = true
 	if s.events != nil {
 		eventName := "order.pending_payment"
 		if status == domain.OrderStatusPendingReview {
@@ -2444,7 +2785,18 @@ func (s *OrderService) CreateEmergencyRenewOrder(ctx context.Context, userID int
 			return domain.Order{}, ErrConflict
 		}
 	}
-	orderNo := fmt.Sprintf("EMR-%d-%d", userID, time.Now().Unix())
+	if err := s.reserveVPSLifecycleLock(ctx, vpsID, 0, "emergency_renew"); err != nil {
+		return domain.Order{}, err
+	}
+	lockBound := false
+	defer func() {
+		if !lockBound {
+			if l := s.vpsLocks(); l != nil {
+				_ = l.ReleaseVPSLifecycleLockByVPS(ctx, vpsID)
+			}
+		}
+	}()
+	orderNo := fmt.Sprintf("EMR-%d-%d", userID, time.Now().UnixNano())
 	order := domain.Order{
 		UserID:      userID,
 		OrderNo:     orderNo,
@@ -2456,17 +2808,24 @@ func (s *OrderService) CreateEmergencyRenewOrder(ctx context.Context, userID int
 	if err := s.orders.CreateOrder(ctx, &order); err != nil {
 		return domain.Order{}, err
 	}
+	if l := s.vpsLocks(); l != nil {
+		if err := l.BindVPSLifecycleLock(ctx, vpsID, order.ID); err != nil {
+			return domain.Order{}, err
+		}
+	}
 	item := domain.OrderItem{
 		OrderID:  order.ID,
 		Qty:      1,
 		Amount:   0,
 		Status:   domain.OrderItemStatusPendingReview,
 		Action:   "emergency_renew",
+		VPSID:    vpsID,
 		SpecJSON: mustJSON(map[string]any{"vps_id": vpsID, "renew_days": policy.RenewDays}),
 	}
 	if err := s.items.CreateOrderItems(ctx, []domain.OrderItem{item}); err != nil {
 		return domain.Order{}, err
 	}
+	lockBound = true
 	if s.events != nil {
 		_, _ = s.events.Publish(ctx, order.ID, "order.pending_review", map[string]any{"status": order.Status, "total": 0})
 	}
@@ -2494,6 +2853,21 @@ func (s *OrderService) capabilityPolicyGoodsTypeID(ctx context.Context, inst dom
 	return pkg.GoodsTypeID
 }
 
+func (s *OrderService) automationFeatureAllowed(ctx context.Context, inst domain.VPSInstance, feature string, policyAllowed bool) (bool, error) {
+	if !policyAllowed {
+		return false, nil
+	}
+	fallback := policyAllowed
+	if resolver, ok := s.automation.(appports.AutomationCapabilityResolver); ok {
+		capability, err := resolver.CapabilitiesForGoodsType(ctx, s.capabilityPolicyGoodsTypeID(ctx, inst))
+		if err != nil {
+			return false, err
+		}
+		fallback = capability != nil && featureSliceContains(capability.Features, feature)
+	}
+	return isAutomationFeatureAllowed(inst, feature, fallback), nil
+}
+
 func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsID int64, spec *CartSpec, targetPackageID int64, resetAddons bool, scheduledAt *time.Time) (domain.Order, ResizeQuote, error) {
 	if s.realname != nil {
 		if err := s.realname.RequireAction(ctx, userID, "resize_vps"); err != nil {
@@ -2513,11 +2887,18 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	if err != nil {
 		return domain.Order{}, ResizeQuote{}, err
 	}
-	policy := loadCapabilityPolicy(ctx, s.settings, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	policy, err := loadCapabilityPolicy(ctx, s.capabilityPolicy, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	if err != nil {
+		return domain.Order{}, ResizeQuote{}, err
+	}
 	if policy.ResizeEnabled != nil {
 		resizeDefault = *policy.ResizeEnabled
 	}
-	if !isResizeAllowed(inst, resizeDefault) {
+	resizeAllowed, err := s.automationFeatureAllowed(ctx, inst, "resize", resizeDefault)
+	if err != nil {
+		return domain.Order{}, ResizeQuote{}, err
+	}
+	if !resizeAllowed {
 		return domain.Order{}, ResizeQuote{}, ErrResizeDisabled
 	}
 	if inst.UserID != userID {
@@ -2544,8 +2925,19 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	if err != nil {
 		return domain.Order{}, ResizeQuote{}, err
 	}
+	if err := s.reserveVPSLifecycleLock(ctx, vpsID, 0, "resize"); err != nil {
+		return domain.Order{}, ResizeQuote{}, ErrResizeInProgress
+	}
+	lockBound := false
+	defer func() {
+		if !lockBound {
+			if l := s.vpsLocks(); l != nil {
+				_ = l.ReleaseVPSLifecycleLockByVPS(ctx, vpsID)
+			}
+		}
+	}()
 	amount := quote.ChargeAmount
-	orderNo := fmt.Sprintf("UPG-%d-%d", userID, time.Now().Unix())
+	orderNo := fmt.Sprintf("UPG-%d-%d", userID, time.Now().UnixNano())
 	status := domain.OrderStatusPendingPayment
 	itemStatus := domain.OrderItemStatusPendingPayment
 	if amount <= 0 {
@@ -2563,6 +2955,11 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 	if err := s.orders.CreateOrder(ctx, &order); err != nil {
 		return domain.Order{}, ResizeQuote{}, err
 	}
+	if l := s.vpsLocks(); l != nil {
+		if err := l.BindVPSLifecycleLock(ctx, vpsID, order.ID); err != nil {
+			return domain.Order{}, ResizeQuote{}, err
+		}
+	}
 	specPayload := quote.ToPayload(vpsID, targetSpec)
 	if scheduledAt != nil && !scheduledAt.IsZero() {
 		specPayload["scheduled_at"] = scheduledAt.UTC().Format(time.RFC3339)
@@ -2573,11 +2970,13 @@ func (s *OrderService) CreateResizeOrder(ctx context.Context, userID int64, vpsI
 		Amount:   amount,
 		Status:   itemStatus,
 		Action:   "resize",
+		VPSID:    vpsID,
 		SpecJSON: mustJSON(specPayload),
 	}
 	if err := s.items.CreateOrderItems(ctx, []domain.OrderItem{item}); err != nil {
 		return domain.Order{}, ResizeQuote{}, err
 	}
+	lockBound = true
 	if s.events != nil {
 		eventName := "order.pending_payment"
 		if status == domain.OrderStatusPendingReview {
@@ -2615,17 +3014,32 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	if v, ok := getSettingBool(ctx, s.settings, "refund_enabled"); ok {
 		refundDefault = v
 	}
-	pkgPolicy := loadCapabilityPolicy(ctx, s.settings, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	pkgPolicy, err := loadCapabilityPolicy(ctx, s.capabilityPolicy, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	if err != nil {
+		return domain.Order{}, 0, err
+	}
 	if pkgPolicy.RefundEnabled != nil {
 		refundDefault = *pkgPolicy.RefundEnabled
 	}
-	if !isRefundAllowed(inst, refundDefault) {
+	refundAllowed, err := s.automationFeatureAllowed(ctx, inst, "refund", refundDefault)
+	if err != nil {
+		return domain.Order{}, 0, err
+	}
+	if !refundAllowed {
 		return domain.Order{}, 0, ErrForbidden
 	}
 	if inst.UserID != userID {
 		return domain.Order{}, 0, ErrForbidden
 	}
 	if pending, err := s.items.HasPendingResizeOrder(ctx, userID, vpsID); err != nil {
+		return domain.Order{}, 0, err
+	} else if pending {
+		return domain.Order{}, 0, ErrConflict
+	}
+	// A refund order is exclusive per VPS: without this guard a user could open
+	// two refund orders for the same VPS and, under an auto-approve path, get a
+	// double wallet credit when both are provisioned concurrently.
+	if pending, err := s.items.HasPendingRefundOrder(ctx, userID, vpsID); err != nil {
 		return domain.Order{}, 0, err
 	} else if pending {
 		return domain.Order{}, 0, ErrConflict
@@ -2637,20 +3051,36 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 			return domain.Order{}, 0, ErrConflict
 		}
 	}
+	if err := s.reserveVPSLifecycleLock(ctx, vpsID, 0, "refund"); err != nil {
+		return domain.Order{}, 0, ErrConflict
+	}
+	lockBound := false
+	defer func() {
+		if !lockBound {
+			if l := s.vpsLocks(); l != nil {
+				_ = l.ReleaseVPSLifecycleLockByVPS(ctx, vpsID)
+			}
+		}
+	}()
 	item, err := s.items.GetOrderItem(ctx, inst.OrderItemID)
 	if err != nil {
 		return domain.Order{}, 0, err
 	}
 	refundPolicy := loadRefundPolicy(ctx, s.settings)
-	baseAmount := inst.MonthlyPrice
+	// The refund base must be the amount actually paid for the item, which
+	// already accounts for prepaid DurationMonths and any coupon discount.
+	// MonthlyPrice (single month) is only a fallback when the paid amount is
+	// unavailable; using it for multi-month prepays systematically under-refunds
+	// (the walletorder path fixed this first — see calculateRefundAmount).
+	baseAmount := item.Amount
 	if baseAmount <= 0 {
-		baseAmount = item.Amount
+		baseAmount = inst.MonthlyPrice
 	}
 	amount := calculateRefundAmountForAmount(inst, baseAmount, refundPolicy)
 	if amount <= 0 {
 		return domain.Order{}, 0, ErrForbidden
 	}
-	orderNo := fmt.Sprintf("REF-%d-%d", userID, time.Now().Unix())
+	orderNo := fmt.Sprintf("REF-%d-%d", userID, time.Now().UnixNano())
 	order := domain.Order{
 		UserID:         userID,
 		OrderNo:        orderNo,
@@ -2663,6 +3093,11 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 	}
 	if err := s.orders.CreateOrder(ctx, &order); err != nil {
 		return domain.Order{}, 0, err
+	}
+	if l := s.vpsLocks(); l != nil {
+		if err := l.BindVPSLifecycleLock(ctx, vpsID, order.ID); err != nil {
+			return domain.Order{}, 0, err
+		}
 	}
 	specPayload := map[string]any{
 		"vps_id":            inst.ID,
@@ -2677,6 +3112,7 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 		Amount:   -amount,
 		Status:   domain.OrderItemStatusPendingReview,
 		Action:   "refund",
+		VPSID:    vpsID,
 		SpecJSON: mustJSON(specPayload),
 	}
 	if err := s.items.CreateOrderItems(ctx, []domain.OrderItem{refundItem}); err != nil {
@@ -2687,7 +3123,14 @@ func (s *OrderService) CreateRefundOrder(ctx context.Context, userID int64, vpsI
 		}
 		return domain.Order{}, 0, err
 	}
-	if !refundPolicy.RequireApproval || resolveOrderSource(ctx) == OrderSourceUserAPIKey {
+	lockBound = true
+	// A user API key does not get to bypass the refund review gate: the
+	// `refund_requires_approval` setting is an admin control, and auto-approving
+	// an API-key refund would both credit the wallet without review and delete
+	// the VPS (delete_on_approve) on a single unauthenticated-key call. Only the
+	// explicit `refund_requires_approval=false` configuration enables instant
+	// refunds, regardless of the request source.
+	if !refundPolicy.RequireApproval {
 		if err := s.ApproveOrder(ctx, 0, order.ID); err != nil {
 			return domain.Order{}, 0, err
 		}
@@ -2740,11 +3183,18 @@ func (s *OrderService) QuoteResizeOrder(ctx context.Context, userID int64, vpsID
 	if err != nil {
 		return ResizeQuote{}, CartSpec{}, err
 	}
-	policy := loadCapabilityPolicy(ctx, s.settings, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	policy, err := loadCapabilityPolicy(ctx, s.capabilityPolicy, s.settings, inst.PackageID, s.capabilityPolicyGoodsTypeID(ctx, inst))
+	if err != nil {
+		return ResizeQuote{}, CartSpec{}, err
+	}
 	if policy.ResizeEnabled != nil {
 		resizeDefault = *policy.ResizeEnabled
 	}
-	if !isResizeAllowed(inst, resizeDefault) {
+	resizeAllowed, err := s.automationFeatureAllowed(ctx, inst, "resize", resizeDefault)
+	if err != nil {
+		return ResizeQuote{}, CartSpec{}, err
+	}
+	if !resizeAllowed {
 		return ResizeQuote{}, CartSpec{}, ErrResizeDisabled
 	}
 	if inst.UserID != userID {

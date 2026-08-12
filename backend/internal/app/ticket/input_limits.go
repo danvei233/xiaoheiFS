@@ -12,6 +12,8 @@ const (
 	maxLenTicketSubject = 240
 	maxLenTicketContent = 10000
 	maxLenTicketResName = 128
+	maxLenTicketResType = 64
+	maxTicketResources  = 50
 )
 
 var ticketFieldValidator = validator.New()

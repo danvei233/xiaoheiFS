@@ -12,7 +12,7 @@
             <a
               v-for="social in socialLinks"
               :key="`${social.key}-${social.url}`"
-              :href="social.url || '#'"
+              :href="safeHref(social.url)"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -28,7 +28,7 @@
               <RouterLink v-if="isInternalLink(link.url)" :to="link.url || '/'">{{
                 link.label
               }}</RouterLink>
-              <a v-else :href="link.url || '#'" rel="noopener noreferrer">{{ link.label }}</a>
+              <a v-else :href="safeHref(link.url)" rel="noopener noreferrer">{{ link.label }}</a>
             </template>
           </section>
         </nav>
@@ -40,7 +40,7 @@
           <a
             v-for="beian in beianInfoList"
             :key="beian.number"
-            :href="beian.link_url || '#'"
+            :href="safeHref(beian.link_url)"
             :target="beian.link_url ? '_blank' : '_self'"
             rel="noopener noreferrer"
           >
@@ -61,6 +61,7 @@
 <script setup lang="ts">
   import { RouterLink } from 'vue-router'
   import SiteLogoMedia from '@/components/brand/SiteLogoMedia.vue'
+  import { safeHref } from '@/utils/urlPolicy'
 
   const props = defineProps<{
     siteName: string

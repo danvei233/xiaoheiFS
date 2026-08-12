@@ -26,7 +26,7 @@ func (h *Handler) AdminWalletInfo(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	wallet, err := h.walletSvc.GetWallet(c, uri.UserID)
+	wallet, err := h.walletSvc.GetWallet(c.Request.Context(), uri.UserID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -49,7 +49,7 @@ func (h *Handler) AdminWalletAdjust(c *gin.Context) {
 		Note   string `json:"note"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	amount, err := parseAmountCents(payload.Amount)
@@ -57,7 +57,7 @@ func (h *Handler) AdminWalletAdjust(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidAmount.Error()})
 		return
 	}
-	wallet, err := h.walletSvc.AdjustBalance(c, getUserID(c), uri.UserID, amount, payload.Note)
+	wallet, err := h.walletSvc.AdjustBalance(c.Request.Context(), getUserID(c), uri.UserID, amount, payload.Note)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrInsufficientBalance {
@@ -80,7 +80,7 @@ func (h *Handler) AdminWalletTransactions(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	items, total, err := h.walletSvc.ListTransactions(c, uri.UserID, limit, offset)
+	items, total, err := h.walletSvc.ListTransactions(c.Request.Context(), uri.UserID, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -109,15 +109,48 @@ func (h *Handler) AdminWalletOrders(c *gin.Context) {
 		err   error
 	)
 	if query.UserID != nil {
-		items, total, err = h.walletOrder.ListUserOrders(c, *query.UserID, limit, offset)
+		items, total, err = h.walletOrder.ListUserOrders(c.Request.Context(), *query.UserID, limit, offset)
 	} else {
-		items, total, err = h.walletOrder.ListAllOrders(c, status, limit, offset)
+		items, total, err = h.walletOrder.ListAllOrders(c.Request.Context(), status, limit, offset)
 	}
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toWalletOrderDTOs(items), "total": total})
+}
+
+// AdminWalletRefundCleanups lists the durable refund-cleanup outbox so pending
+// and failed host deletions are visible and an operator can reconcile them
+// instead of a "refunded" VPS staying usable forever.
+func (h *Handler) AdminWalletRefundCleanups(c *gin.Context) {
+	if h.walletOrder == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrWalletOrdersDisabled.Error()})
+		return
+	}
+	limit, offset := paging(c)
+	items, total, err := h.walletOrder.ListCleanupJobs(c.Request.Context(), limit, offset)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	out := make([]gin.H, 0, len(items))
+	for _, job := range items {
+		out = append(out, gin.H{
+			"id":              job.ID,
+			"wallet_order_id": job.WalletOrderID,
+			"user_id":         job.UserID,
+			"vps_id":          job.VPSID,
+			"host_id":         job.HostID,
+			"status":          job.Status,
+			"attempts":        job.Attempts,
+			"last_error_code": job.LastErrorCode,
+			"last_error":      job.LastError,
+			"created_at":      job.CreatedAt,
+			"updated_at":      job.UpdatedAt,
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"items": out, "total": total})
 }
 
 func (h *Handler) AdminWalletOrderApprove(c *gin.Context) {
@@ -130,7 +163,7 @@ func (h *Handler) AdminWalletOrderApprove(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	order, wallet, err := h.walletOrder.Approve(c, getUserID(c), uri.ID)
+	order, wallet, err := h.walletOrder.Approve(c.Request.Context(), getUserID(c), uri.ID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrConflict {
@@ -160,10 +193,10 @@ func (h *Handler) AdminWalletOrderReject(c *gin.Context) {
 		Reason string `json:"reason"`
 	}
 	if err := bindJSONOptional(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.walletOrder.Reject(c, getUserID(c), uri.ID, payload.Reason); err != nil {
+	if err := h.walletOrder.Reject(c.Request.Context(), getUserID(c), uri.ID, payload.Reason); err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrConflict {
 			status = http.StatusConflict
@@ -179,7 +212,7 @@ func (h *Handler) AdminScheduledTasks(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrScheduledTasksDisabled.Error()})
 		return
 	}
-	items, err := h.taskSvc.ListTasks(c)
+	items, err := h.taskSvc.ListTasks(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -199,10 +232,10 @@ func (h *Handler) AdminScheduledTaskUpdate(c *gin.Context) {
 	}
 	var payload appshared.ScheduledTaskUpdate
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	item, err := h.taskSvc.UpdateTask(c, uri.Key, payload)
+	item, err := h.taskSvc.UpdateTask(c.Request.Context(), uri.Key, payload)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrNotFound {
@@ -231,7 +264,7 @@ func (h *Handler) AdminScheduledTaskRuns(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	items, err := h.taskSvc.ListTaskRuns(c, uri.Key, query.Limit)
+	items, err := h.taskSvc.ListTaskRuns(c.Request.Context(), uri.Key, query.Limit)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrInvalidInput {

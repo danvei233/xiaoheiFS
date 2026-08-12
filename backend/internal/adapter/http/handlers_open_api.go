@@ -43,7 +43,7 @@ func (h *Handler) OpenUserAPIKeys(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	items, total, err := h.userAPIKeySvc.List(c, getUserID(c), limit, offset)
+	items, total, err := h.userAPIKeySvc.List(c.Request.Context(), getUserID(c), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -65,10 +65,10 @@ func (h *Handler) OpenUserAPIKeyCreate(c *gin.Context) {
 		Scopes []string `json:"scopes"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	result, err := h.userAPIKeySvc.Create(c, getUserID(c), payload.Name, payload.Scopes)
+	result, err := h.userAPIKeySvc.Create(c.Request.Context(), getUserID(c), payload.Name, payload.Scopes)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -94,10 +94,10 @@ func (h *Handler) OpenUserAPIKeyPatch(c *gin.Context) {
 		Status string `json:"status"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.userAPIKeySvc.UpdateStatus(c, getUserID(c), uri.ID, domain.APIKeyStatus(strings.TrimSpace(payload.Status))); err != nil {
+	if err := h.userAPIKeySvc.UpdateStatus(c.Request.Context(), getUserID(c), uri.ID, domain.APIKeyStatus(strings.TrimSpace(payload.Status))); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -114,7 +114,7 @@ func (h *Handler) OpenUserAPIKeyDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.userAPIKeySvc.Delete(c, getUserID(c), uri.ID); err != nil {
+	if err := h.userAPIKeySvc.Delete(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -131,14 +131,14 @@ func (h *Handler) OpenInstantOrderCreate(c *gin.Context) {
 		CouponCode string                     `json:"coupon_code"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if len(payload.Items) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrItemsRequired.Error()})
 		return
 	}
-	ctx := apporder.WithOrderSource(c, apporder.OrderSourceUserAPIKey)
+	ctx := apporder.WithOrderSource(c.Request.Context(), apporder.OrderSourceUserAPIKey)
 	order, items, payRes, err := h.openAPISvc.InstantCreate(ctx, getUserID(c), payload.Items, c.GetHeader("Idempotency-Key"), payload.CouponCode)
 	if err != nil {
 		h.writeOpenOrderError(c, err)
@@ -158,10 +158,10 @@ func (h *Handler) OpenInstantOrderRenew(c *gin.Context) {
 		DurationMonths int   `json:"duration_months"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	ctx := apporder.WithOrderSource(c, apporder.OrderSourceUserAPIKey)
+	ctx := apporder.WithOrderSource(c.Request.Context(), apporder.OrderSourceUserAPIKey)
 	order, payRes, err := h.openAPISvc.InstantRenew(ctx, getUserID(c), payload.VPSID, payload.RenewDays, payload.DurationMonths)
 	if err != nil {
 		h.writeOpenOrderError(c, err)
@@ -183,7 +183,7 @@ func (h *Handler) OpenInstantOrderResize(c *gin.Context) {
 		ScheduledAt     string              `json:"scheduled_at"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	var scheduledAt *time.Time
@@ -195,7 +195,7 @@ func (h *Handler) OpenInstantOrderResize(c *gin.Context) {
 		}
 		scheduledAt = &t
 	}
-	ctx := apporder.WithOrderSource(c, apporder.OrderSourceUserAPIKey)
+	ctx := apporder.WithOrderSource(c.Request.Context(), apporder.OrderSourceUserAPIKey)
 	order, quote, payRes, err := h.openAPISvc.InstantResize(ctx, getUserID(c), payload.VPSID, payload.Spec, payload.TargetPackageID, payload.ResetAddons, scheduledAt)
 	if err != nil {
 		h.writeOpenOrderError(c, err)
@@ -221,10 +221,10 @@ func (h *Handler) OpenInstantOrderRefund(c *gin.Context) {
 		Reason string `json:"reason"`
 	}
 	if err := bindJSONOptional(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	ctx := apporder.WithOrderSource(c, apporder.OrderSourceUserAPIKey)
+	ctx := apporder.WithOrderSource(c.Request.Context(), apporder.OrderSourceUserAPIKey)
 	order, amount, err := h.openAPISvc.InstantRefund(ctx, getUserID(c), payload.VPSID, payload.Reason)
 	if err != nil {
 		h.writeOpenOrderError(c, err)

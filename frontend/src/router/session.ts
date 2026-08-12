@@ -20,7 +20,9 @@
  */
 import type { RouteLocationRaw } from 'vue-router'
 import { useUserStore } from '@/store/modules/user'
+import { useWorktabStore } from '@/store/modules/worktab'
 import { useAuthStore } from '@/stores/auth'
+import { clearRefreshToken, bumpSessionEpoch } from '@/utils/auth/refresh'
 import { useAdminAuthStore } from '@/stores/adminAuth'
 import { getCachedAdminPath } from '@/services/adminPath'
 import { RoutesAlias } from './routesAlias'
@@ -54,6 +56,13 @@ export function loginRouteFor(realm: SessionRealm, redirect?: string): RouteLoca
  *                 这里只需要拆掉路由与权限状态，避免重复触发。
  */
 export function clearSession(realm: SessionRealm, options: { keepStores?: boolean } = {}): void {
+  const userStore = useUserStore()
+
+  // P1-21：会话 epoch +1，使任何在途刷新结果失效；同时清除 refresh_token，
+  // 之后 401 不再尝试刷新而是直接登出。
+  bumpSessionEpoch(realm === 'admin' ? 'admin' : 'user')
+  clearRefreshToken(realm === 'admin' ? 'admin' : 'user')
+
   if (!options.keepStores) {
     if (realm === 'admin') {
       useAdminAuthStore().logout()
@@ -62,9 +71,19 @@ export function clearSession(realm: SessionRealm, options: { keepStores?: boolea
     }
   }
 
+  userStore.setLockStatus(false)
+  userStore.setLockPassword('')
+
+  // 跨账号隔离：console 域登出时清掉工作台标签与 keep-alive 缓存（m071 F2
+  // 残余）。admin 域由 setUserInfo 的 prevUserId 比对按账号清空，这里兜底
+  // 清 console。注意工作台 store 是 persist 的，必须清它的持久化状态。
+  const worktabStore = useWorktabStore()
+  worktabStore.opened = []
+  worktabStore.keepAliveExclude = []
+
   if (realm === 'admin') {
     // 按钮权限来源，必须清掉，否则下一个管理员会继承上一个人的按钮
-    useUserStore().setUserInfo({
+    userStore.setUserInfo({
       buttons: [],
       roles: [],
       userId: 0,

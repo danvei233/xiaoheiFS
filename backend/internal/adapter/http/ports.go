@@ -7,6 +7,7 @@ import (
 	"time"
 	appintegration "xiaoheiplay/internal/app/integration"
 	apporder "xiaoheiplay/internal/app/order"
+	appports "xiaoheiplay/internal/app/ports"
 	appreport "xiaoheiplay/internal/app/report"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
@@ -25,6 +26,9 @@ type SettingsService interface {
 	Get(ctx context.Context, key string) (domain.Setting, error)
 	List(ctx context.Context) ([]domain.Setting, error)
 	ListEmailTemplates(ctx context.Context) ([]domain.EmailTemplate, error)
+	// AllowRateLimit atomically records one call for the bucket in the current
+	// window and reports whether the budget is still within max (DB-backed).
+	AllowRateLimit(ctx context.Context, bucket string, max int, window time.Duration) (bool, error)
 }
 
 type SecurityTicketService interface {
@@ -32,10 +36,36 @@ type SecurityTicketService interface {
 	Create(ctx context.Context, userID int64, channel, receiver, token string, expiresAt time.Time) error
 	Get(ctx context.Context, token string) (domain.PasswordResetTicket, error)
 	MarkUsed(ctx context.Context, id int64) error
+	MarkUsedIfUnused(ctx context.Context, id int64) (bool, error)
+	// ResetPasswordWithTicket atomically claims a ticket and updates the owner's
+	// password in one repository transaction (failed updates roll back).
+	ResetPasswordWithTicket(ctx context.Context, ticketID, userID int64, newPassword string) error
+	// ConsumeContactChange atomically claims a ticket, re-checks contact
+	// uniqueness and applies the new email/phone. Reports whether this caller
+	// won the claim.
+	ConsumeContactChange(ctx context.Context, ticketID, userID int64, kind, value string) (bool, error)
+}
+
+// RobotWebhookReplayRepository is the durable, multi-instance replay-protection
+// ledger for inbound robot command webhooks.
+type RobotWebhookReplayRepository interface {
+	SaveRobotWebhookNonce(ctx context.Context, replayKey string, expiresAt time.Time) (bool, error)
+	DeleteExpiredRobotWebhookNonces(ctx context.Context) error
+}
+
+// AuthFailureBudgetRepository is the durable, cross-instance failure budget for
+// auth flows. Account, IP and global dimensions are stored separately so an
+// attacker rotating IPs or instances cannot reset another dimension's budget.
+type AuthFailureBudgetRepository interface {
+	PeekAuthFailure(ctx context.Context, key string, limit int, window time.Duration, now time.Time) (count int, locked bool, err error)
+	RecordAuthFailure(ctx context.Context, key string, limit int, window time.Duration, now time.Time) (count int, lockedUntil time.Time, err error)
+	ResetAuthFailure(ctx context.Context, key string) error
+	DeleteExpiredAuthFailureBudgets(ctx context.Context) error
 }
 
 type OrderEventService interface {
 	ListAfter(ctx context.Context, orderID int64, afterSeq int64, limit int) ([]domain.OrderEvent, error)
+	CountByOrder(ctx context.Context, orderID int64) (int64, error)
 }
 
 type AutomationLogService interface {
@@ -52,14 +82,19 @@ type UploadService interface {
 }
 
 type AuthService interface {
+	RotateRefreshToken(ctx context.Context, currentRaw, nextRaw, familyID string, currentExpiresAt, nextExpiresAt time.Time) (rotated bool, familyRevoked bool, err error)
+	RevokeRefreshTokenFamily(ctx context.Context, familyID string, expiresAt time.Time) error
 	CreateCaptchaWithPolicy(ctx context.Context, ttl time.Duration, length int, complexity string) (domain.Captcha, string, error)
 	VerifyCaptcha(ctx context.Context, id, code string) error
 	Register(ctx context.Context, in appshared.RegisterInput) (domain.User, error)
 	Login(ctx context.Context, usernameOrEmail, password string) (domain.User, error)
+	LoginUser(ctx context.Context, usernameOrEmail, password string) (domain.User, error)
 	VerifyPassword(ctx context.Context, userID int64, password string) error
 	GetUser(ctx context.Context, userID int64) (domain.User, error)
 	GetUserByPhone(ctx context.Context, phone string) (domain.User, error)
 	GetUserByUsernameOrEmail(ctx context.Context, account string) (domain.User, error)
+	GetUserForPasswordReset(ctx context.Context, account string) (domain.User, error)
+	ResetUserPassword(ctx context.Context, userID int64, newPassword string) (domain.User, error)
 	UpdateUser(ctx context.Context, user domain.User) error
 	UpdateLoginSecurity(ctx context.Context, userID int64, ip, city, tz string, at time.Time) error
 	SetupTOTP(ctx context.Context, userID int64, password, currentCode string) (string, string, error)
@@ -68,6 +103,10 @@ type AuthService interface {
 	UpdateProfile(ctx context.Context, userID int64, in appshared.UpdateProfileInput) (domain.User, error)
 	CreateVerificationCodeWithPolicy(ctx context.Context, channel, receiver, purpose string, ttl time.Duration, length int, complexity string) (string, error)
 	VerifyVerificationCode(ctx context.Context, channel, receiver, purpose, code string) error
+}
+
+type ImpersonationAuditService interface {
+	AuditRequired(ctx context.Context, adminID int64, action, targetType, targetID string, detail any) error
 }
 
 type OrderService interface {
@@ -96,6 +135,7 @@ type OrderService interface {
 
 type VPSService interface {
 	ListByUser(ctx context.Context, userID int64) ([]domain.VPSInstance, error)
+	ListByUserFiltered(ctx context.Context, userID int64, filter appports.VPSUserInstanceFilter, limit, offset int) ([]domain.VPSInstance, int, error)
 	Get(ctx context.Context, id int64, userID int64) (domain.VPSInstance, error)
 	RefreshStatus(ctx context.Context, inst domain.VPSInstance) (domain.VPSInstance, error)
 	GetPanelURL(ctx context.Context, inst domain.VPSInstance) (string, error)
@@ -145,16 +185,17 @@ type IntegrationService interface {
 
 type PluginAdminService interface {
 	UpsertPaymentMethod(ctx context.Context, category, pluginID, instanceID, method string, enabled bool) error
-	ResolveUploadPassword(ctx context.Context, configuredPassword string) string
 	ResolveUploadDir(ctx context.Context, configuredDir string) string
 	List(ctx context.Context) ([]appshared.PluginListItem, error)
 	DiscoverOnDisk(ctx context.Context) ([]appshared.PluginDiscoverItem, error)
 	ListPaymentMethods(ctx context.Context, category, pluginID, instanceID string) ([]appshared.PluginPaymentMethodState, error)
 	UpdatePaymentMethod(ctx context.Context, category, pluginID, instanceID, method string, enabled bool) error
 	Install(ctx context.Context, filename string, r io.Reader) (domain.PluginInstallation, error)
+	InstallVerified(ctx context.Context, filename string, r io.Reader, expectedDigest string) (domain.PluginInstallation, error)
+	VerifyInstallPackage(ctx context.Context, filename string, r io.Reader) (appshared.PluginInstallVerifyResult, error)
 	Uninstall(ctx context.Context, category, pluginID string) error
-	SignatureStatusOnDisk(category, pluginID string) (domain.PluginSignatureStatus, error)
-	ImportFromDisk(ctx context.Context, category, pluginID string) (domain.PluginInstallation, error)
+	PreviewImportFromDisk(ctx context.Context, category, pluginID string) (appshared.PluginImportPreview, error)
+	ImportFromDisk(ctx context.Context, category, pluginID, expectedDigest string) (domain.PluginInstallation, error)
 	EnableInstance(ctx context.Context, category, pluginID, instanceID string) error
 	DisableInstance(ctx context.Context, category, pluginID, instanceID string) error
 	DeleteInstance(ctx context.Context, category, pluginID, instanceID string) error

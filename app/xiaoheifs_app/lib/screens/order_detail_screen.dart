@@ -238,14 +238,21 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
                 child: _ActionBar(
                   busy: _busy,
                   status: status,
-                  onApprove: () => _perform(
-                    '/admin/api/v1/orders/${widget.orderId}/approve',
+                  onApprove: () => _confirmPerform(
+                    title: '通过订单',
+                    message: '确认通过该订单？将触发支付确认与开通交付。',
+                    path: '/admin/api/v1/orders/${widget.orderId}/approve',
                   ),
                   onReject: _rejectOrder,
-                  onRetry: () =>
-                      _perform('/admin/api/v1/orders/${widget.orderId}/retry'),
-                  onDelete: () => _perform(
-                    '/admin/api/v1/orders/${widget.orderId}',
+                  onRetry: () => _confirmPerform(
+                    title: '重试订单',
+                    message: '确认重新处理该订单？',
+                    path: '/admin/api/v1/orders/${widget.orderId}/retry',
+                  ),
+                  onDelete: () => _confirmPerform(
+                    title: '删除订单',
+                    message: '确认删除该订单？此操作不可恢复，可能涉及退款。',
+                    path: '/admin/api/v1/orders/${widget.orderId}',
                     method: _ActionMethod.delete,
                   ),
                 ),
@@ -435,6 +442,36 @@ class _OrderDetailScreenState extends State<OrderDetailScreen>
       }
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Guard money/destructive actions behind an explicit confirmation dialog.
+  Future<void> _confirmPerform({
+    required String title,
+    required String message,
+    required String path,
+    _ActionMethod method = _ActionMethod.post,
+    Map<String, dynamic>? body,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _perform(path, method: method, body: body);
     }
   }
 
@@ -1734,10 +1771,13 @@ class _Avatar extends StatelessWidget {
         ),
       );
     }
-    final session = context.read<AppState>().session;
+    final app = context.read<AppState>();
+    final session = app.session;
     final headers = avatarHeaders(
       token: session?.token,
       apiKey: session?.apiKey,
+      baseUrl: app.apiClient?.baseUrl,
+      url: url,
     );
     return Container(
       width: size,

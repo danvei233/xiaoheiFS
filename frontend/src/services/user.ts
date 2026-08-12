@@ -1,4 +1,4 @@
-import { http, withApiKey } from './http'
+import { http } from './http'
 import type {
   ApiList,
   AuthResponse,
@@ -61,6 +61,12 @@ export const userRegister = (payload: Record<string, unknown>) =>
   http.post('/api/v1/auth/register', payload)
 export const userLogin = (payload: Record<string, unknown>) =>
   http.post<AuthResponse>('/api/v1/auth/login', payload)
+export const userLogout = (accessToken: string) =>
+  http.post(
+    '/api/v1/auth/logout',
+    null,
+    accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined
+  )
 export const getMe = () => http.get<User>('/api/v1/me')
 export const getMyUserTier = () => http.get<UserTierSelf>('/api/v1/me/user-tier')
 export const updateMe = (payload: Record<string, unknown>) =>
@@ -84,8 +90,8 @@ export const updateCartItem = (id: number | string, payload: CartItemRequest) =>
 export const deleteCartItem = (id: number | string) => http.delete(`/api/v1/cart/${id}`)
 export const clearCart = () => http.delete('/api/v1/cart')
 
-export const listOrders = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Order>>('/api/v1/orders', { params })
+export const listOrders = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Order>>('/api/v1/orders', { params, signal })
 export const createOrderFromCart = (idempotencyKey?: string) =>
   http.post<OrderCreateResponse>('/api/v1/orders', null, {
     headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}
@@ -105,8 +111,8 @@ export const previewCoupon = (payload: {
   coupon_code: string
   items?: OrderCreateRequest['items']
 }) => http.post<CouponPreviewResponse>('/api/v1/coupons/preview', payload)
-export const getOrderDetail = (id: number | string) =>
-  http.get<OrderDetailResponse>(`/api/v1/orders/${id}`)
+export const getOrderDetail = (id: number | string, signal?: AbortSignal) =>
+  http.get<OrderDetailResponse>(`/api/v1/orders/${id}`, { signal })
 export const refreshOrder = (id: number | string) => http.post(`/api/v1/orders/${id}/refresh`)
 export const cancelOrder = (id: number | string) => http.post(`/api/v1/orders/${id}/cancel`)
 export const submitOrderPayment = (
@@ -145,8 +151,13 @@ export const cancelWalletOrder = (id: number | string, payload?: { reason?: stri
   )
 export const createWalletWithdraw = (payload: WalletOrderCreateRequest) =>
   http.post<{ order?: Record<string, unknown> }>('/api/v1/wallet/withdraw', payload)
-export const listWalletOrders = (params?: Record<string, unknown>) =>
-  http.get<WalletOrderListResponse>('/api/v1/wallet/orders', { params })
+export const listWalletOrders = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<WalletOrderListResponse>('/api/v1/wallet/orders', { params, signal })
+export const getWalletOrderSummary = (signal?: AbortSignal) =>
+  http.get<{ recharge: number; withdraw: number; pending: number; total: number }>(
+    '/api/v1/wallet/orders/summary',
+    { signal }
+  )
 export const listWalletTransactions = (params?: Record<string, unknown>) =>
   http.get<ApiList<WalletTransaction>>('/api/v1/wallet/transactions', { params })
 
@@ -159,13 +170,31 @@ export const markNotificationRead = (id: number | string) =>
   http.post(`/api/v1/notifications/${id}/read`)
 export const markAllNotificationsRead = () => http.post('/api/v1/notifications/read-all')
 
-export const listVps = () => http.get<ApiList<VPSInstance>>('/api/v1/vps')
+export const listVps = (
+  params?: {
+    status?: string
+    keyword?: string
+    region?: string
+    expire_days?: number
+    limit?: number
+    offset?: number
+  },
+  signal?: AbortSignal
+) => http.get<ApiList<VPSInstance> & { total: number }>('/api/v1/vps', { params, signal })
 export const getVpsDetail = (id: number | string) => http.get<VPSInstance>(`/api/v1/vps/${id}`)
+// P2-4: credentials are served only by the explicit, audited endpoint; they are
+// never part of the list/detail/monitor DTOs.
+export const getVpsCredentials = (id: number | string, signal?: AbortSignal) =>
+  http.get<{ access_info?: Record<string, unknown> }>(`/api/v1/vps/${id}/credentials`, {
+    signal
+  })
 export const refreshVps = (id: number | string) => http.post(`/api/v1/vps/${id}/refresh`)
-export const getVpsPanel = (id: number | string) => http.get(`/api/v1/vps/${id}/panel`)
+export const getVpsPanelUrl = (id: number | string) =>
+  http.get<{ url?: string }>(`/api/v1/vps/${id}/panel-url`)
 export const getVpsMonitor = (id: number | string) =>
   http.get<MonitorResponse>(`/api/v1/vps/${id}/monitor`)
-export const getVpsVnc = (id: number | string) => http.get(`/api/v1/vps/${id}/vnc`)
+export const getVpsVncUrl = (id: number | string) =>
+  http.get<{ url?: string }>(`/api/v1/vps/${id}/vnc-url`)
 export const startVps = (id: number | string) => http.post(`/api/v1/vps/${id}/start`)
 export const shutdownVps = (id: number | string) => http.post(`/api/v1/vps/${id}/shutdown`)
 export const rebootVps = (id: number | string) => http.post(`/api/v1/vps/${id}/reboot`)
@@ -210,14 +239,9 @@ export const quoteVpsResizeOrder = (id: number | string, payload: Record<string,
 export const requestVpsRefund = (id: number | string, payload: { reason?: string }) =>
   http.post(`/api/v1/vps/${id}/refund`, payload)
 
-export const triggerRobotWebhook = (
-  payload: Record<string, unknown>,
-  headers?: Record<string, string>
-) => http.post('/api/v1/integrations/robot/webhook', payload, withApiKey(headers))
-
 // Open API key management (JWT user)
-export const listUserApiKeys = (params?: Record<string, unknown>) =>
-  http.get<ApiList<UserAPIKey>>('/api/v1/open/me/api-keys', { params })
+export const listUserApiKeys = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<UserAPIKey>>('/api/v1/open/me/api-keys', { params, signal })
 export const createUserApiKey = (payload: { name: string; scopes?: string[] }) =>
   http.post<{ item?: UserAPIKey; key?: string; secret?: string }>(
     '/api/v1/open/me/api-keys',
@@ -305,8 +329,8 @@ export const confirmTwoFA = (payload: { code: string }) =>
   http.post('/api/v1/me/security/2fa/confirm', payload)
 
 // 工单
-export const listTickets = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Ticket>>('/api/v1/tickets', { params })
+export const listTickets = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Ticket>>('/api/v1/tickets', { params, signal })
 export const createTicket = (payload: Record<string, unknown>) =>
   http.post<TicketDetailResponse>('/api/v1/tickets', payload)
 export const getTicketDetail = (id: number | string) =>

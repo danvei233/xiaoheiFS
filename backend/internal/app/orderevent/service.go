@@ -21,3 +21,10 @@ func (s *Service) ListAfter(ctx context.Context, orderID int64, afterSeq int64, 
 	}
 	return s.repo.ListEventsAfter(ctx, orderID, afterSeq, limit)
 }
+
+func (s *Service) CountByOrder(ctx context.Context, orderID int64) (int64, error) {
+	if s == nil || s.repo == nil {
+		return 0, nil
+	}
+	return s.repo.CountEventsByOrder(ctx, orderID)
+}

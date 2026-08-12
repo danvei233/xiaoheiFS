@@ -5,7 +5,7 @@
     "mch_id": { "type": "string", "title": "Merchant ID (mchid)" },
     "merchant_serial_no": { "type": "string", "title": "Merchant Certificate Serial No" },
     "merchant_private_key_pem": { "type": "string", "title": "Merchant Private Key (PEM)", "format": "password" },
-    "api_v3_key": { "type": "string", "title": "API v3 Key", "format": "password" },
+    "api_v3_key": { "type": "string", "title": "API v3 Key", "format": "password", "minLength": 32, "maxLength": 32, "description": "API v3 Key (32 chars)" },
     "app_id": { "type": "string", "title": "AppID" },
     "default_notify_url": { "type": "string", "title": "Default Notify URL" },
     "default_return_url": { "type": "string", "title": "Default Return URL" },

@@ -79,9 +79,20 @@ export const useUserStore = defineStore(
     /**
      * 设置用户信息
      * @param newInfo 新的用户信息
+     *
+     * P3-53 / m071 F2：记录上一个登录用户 ID，登录/登出时联动清理跨账号
+     * 工作台标签与 keep-alive 缓存，避免 A 登出后 B 登录继承 A 的页面状态。
      */
     const setUserInfo = (newInfo: Api.Auth.UserInfo) => {
+      const prevUserId = info.value?.userId
       info.value = newInfo
+      if (newInfo.userId) {
+        // 登录（或身份同步）：比对上一用户，不同则清空工作台标签。
+        checkAndClearWorktabs()
+      } else if (prevUserId) {
+        // 登出清空：记下当前用户，供下次登录比对。
+        localStorage.setItem(StorageConfig.LAST_USER_ID_KEY, String(prevUserId))
+      }
     }
 
     /**

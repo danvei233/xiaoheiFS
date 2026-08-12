@@ -1,6 +1,9 @@
 package avatar
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 const (
 	qqAvatarURL = "https://q1.qlogo.cn/g?b=qq&nk=%s&s=%d"
@@ -10,7 +13,7 @@ func GetQQAvatarURL(qq string, size int) string {
 	if size <= 0 {
 		size = 100
 	}
-	return fmt.Sprintf(qqAvatarURL, qq, size)
+	return fmt.Sprintf(qqAvatarURL, url.QueryEscape(qq), size)
 }
 
 func GetQQAvatarURLDefault(qq string) string {

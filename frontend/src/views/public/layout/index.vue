@@ -19,7 +19,7 @@
             </RouterLink>
             <a
               v-else
-              :href="item.url"
+              :href="safeHref(item.url)"
               :target="item.target || '_self'"
               rel="noopener noreferrer"
               class="public-header__link"
@@ -80,6 +80,14 @@
       </RouterView>
     </main>
 
+    <!-- P3-45：渲染 CMS 管理员配置的 custom_html 公开区块（受信管理内容）。 -->
+    <div
+      v-for="block in customHtmlBlocks"
+      :key="String(block.id ?? block.title ?? block.custom_html ?? 'custom-html')"
+      class="public-custom-html"
+      v-html="block.custom_html"
+    ></div>
+
     <FooterBlock
       :site-name="siteName"
       :logo-url="siteStore.logoUrl"
@@ -112,7 +120,12 @@
             >
               {{ item.label }}
             </RouterLink>
-            <a v-else :href="item.url" :target="item.target || '_self'" rel="noopener noreferrer">
+            <a
+              v-else
+              :href="safeHref(item.url)"
+              :target="item.target || '_self'"
+              rel="noopener noreferrer"
+            >
               {{ item.label }}
             </a>
           </template>
@@ -141,6 +154,7 @@
   import { useSiteStore, type SiteNavItem } from '@/stores/site'
   import FooterBlock from '@/components/business/cms-blocks/FooterBlock.vue'
   import SiteLogoMedia from '@/components/brand/SiteLogoMedia.vue'
+  import { safeHref } from '@/utils/urlPolicy'
 
   defineOptions({ name: 'PublicLayout' })
 
@@ -155,6 +169,7 @@
   type BeianInfo = { number: string; icon_url?: string; link_url?: string }
 
   const router = useRouter()
+  const route = useRoute()
   const settingStore = useSettingStore()
   const { setSystemTheme } = useTheme()
   const siteStore = useSiteStore()
@@ -246,6 +261,25 @@
       ? footerBlockContent.value.beian_info
       : parseSettingJson<BeianInfo[]>(siteStore.settings.beian_info_list, [])
   )
+
+  // P3-45：custom_html 类型的 CMS 公开区块此前从未被渲染（死特性）。这里在
+  // 公共布局里按「当前页 + footer 页」的区块渲染 v-html。custom_html 是 CMS
+  // 管理员显式编写的 HTML（与 posts/detail.vue 渲染 content_html 同源），
+  // 属于受信管理内容，不作为用户输入渲染。
+  const currentPageKey = computed(() => {
+    const path = route.path
+    if (path === '/' || path === '/home') return 'home'
+    return String(path.split('/').filter(Boolean)[0] || 'home')
+  })
+  const customHtmlBlocks = computed(() => {
+    const current = (siteStore.blocks[currentPageKey.value] || []) as Array<Record<string, any>>
+    const footer = (siteStore.blocks.footer || []) as Array<Record<string, any>>
+    return [...footer, ...current]
+      .filter(
+        (block) => block?.type === 'custom_html' && block?.visible !== false && block?.custom_html
+      )
+      .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+  })
 
   const isInternal = (url: string) =>
     String(url || '')

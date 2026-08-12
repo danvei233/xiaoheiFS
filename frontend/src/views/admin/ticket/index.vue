@@ -232,15 +232,19 @@
   }
 
   async function fetchTicketTable(
-    params: TicketTableParams
+    params: TicketTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<TicketTableRow>> {
-    const payload = await fetchAdminTickets({
-      limit: params.size,
-      offset: (params.current - 1) * params.size,
-      status: params.status || undefined,
-      user_id: normalizeUserId(params.user_id),
-      q: params.q.trim() || undefined
-    })
+    const payload = await fetchAdminTickets(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size,
+        status: params.status || undefined,
+        user_id: normalizeUserId(params.user_id),
+        q: params.q.trim() || undefined
+      },
+      signal
+    )
     const records = (payload.items || []).map(normalizeTicket)
     return {
       records,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	apppluginadmin "xiaoheiplay/internal/app/pluginadmin"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
@@ -20,5 +21,22 @@ func TestResolvePluginUploadDir(t *testing.T) {
 	}
 	if got := svc.ResolveUploadDir(context.Background(), ""); got != "plugins/custom" {
 		t.Fatalf("unexpected setting upload dir: %s", got)
+	}
+}
+
+func TestApplyGinModeDefaultsToRelease(t *testing.T) {
+	t.Setenv("GIN_MODE", "")
+	applyGinMode()
+	// gin.Mode() is a string; "release" is the expected default.
+	if gin.Mode() != gin.ReleaseMode {
+		t.Fatalf("expected release mode by default, got %q", gin.Mode())
+	}
+}
+
+func TestApplyGinModeHonorsDebugOverride(t *testing.T) {
+	t.Setenv("GIN_MODE", "debug")
+	applyGinMode()
+	if gin.Mode() != gin.DebugMode {
+		t.Fatalf("expected debug mode honored, got %q", gin.Mode())
 	}
 }

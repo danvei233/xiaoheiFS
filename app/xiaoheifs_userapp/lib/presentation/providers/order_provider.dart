@@ -137,6 +137,12 @@ class OrderListNotifier extends StateNotifier<OrderListState> {
 
   String _cacheKey(String? status, int limit, int offset) =>
       '${status ?? 'all'}|$limit|$offset';
+
+  /// 清除缓存并重置为初始状态（登出时调用，防止跨账号数据串台）。
+  void reset() {
+    _cache.clear();
+    state = const OrderListState();
+  }
 }
 
 class _OrderCacheEntry {
@@ -167,5 +173,10 @@ class OrderDetailNotifier extends StateNotifier<OrderDetailState> {
   Future<void> refresh(int id) async {
     await _repo.refreshOrder(id);
     await fetchDetail(id);
+  }
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    state = const OrderDetailState();
   }
 }

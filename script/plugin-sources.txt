@@ -1,0 +1,14 @@
+# plugin id|Go package (relative to backend/)
+payment/ezpay|./plugin-demo/pluginv1/payment_ezpay
+payment/wechatpay_v3|./plugin-demo/pluginv1/payment_wechatpay_v3
+payment/alipay_open|./plugin-demo/pluginv1/payment_alipay_open
+sms/alisms|./plugin-demo/pluginv1/sms_alisms_mock
+sms/tencent_sms|./plugin-demo/pluginv1/sms_tencent_mock
+sms/duanxinbao|./plugin-demo/pluginv1/sms_duanxinbao
+kyc/aliyun_kyc|./plugin-demo/pluginv1/kyc_aliyun_mock
+kyc/tencent_kyc|./plugin-demo/pluginv1/kyc_tencent_mock
+kyc/mangzhu_realname|./plugin-demo/pluginv1/kyc_mangzhu_realname
+automation/lightboat|./plugin-demo/pluginv1/automation_lightboat
+automation/xiaohei_proxy|./plugin-demo/pluginv1/automation_xiaohei_proxy
+automation/mofang_openapi|./plugin-demo/pluginv1/automation_mofang_openapi
+automation/openidc_default|./plugin-demo/pluginv1/automation_openidc

@@ -50,7 +50,9 @@ type HTTPLogEntry struct {
 
 func NewClient(baseURL, account, apiPassword string, productID int64, billingCycle, cancelType, cancelReason string, configOptionTmpl any, customFieldTmpl any, osTmpl any, enableCatalog, enableCreateHost bool, timeout time.Duration) *Client {
 	if timeout <= 0 {
-		timeout = 12 * time.Second
+		// At least the host long-op RPC budget (120s): a shorter client timeout
+		// would abort a long create/provision call the host is still waiting on.
+		timeout = 120 * time.Second
 	}
 	billingCycle = strings.TrimSpace(billingCycle)
 	if billingCycle == "" {
@@ -669,11 +671,22 @@ func shouldRelogin(parsed map[string]any) bool {
 	if parsed == nil {
 		return false
 	}
-	if toInt64(parsed["status"]) == 405 {
+	// 401 (HTTP unauthorized) is the common JWT-expiry response; 405 was the
+	// only status previously matched.
+	switch toInt64(parsed["status"]) {
+	case 401, 405:
 		return true
 	}
 	msg := strings.ToLower(toString(parsed["msg"]))
-	return strings.Contains(msg, "登陆") || strings.Contains(msg, "login")
+	// "登录" is the correct simplified-Chinese form for login (the old check
+	// used "登陆", which means "to land").
+	return strings.Contains(msg, "登录") ||
+		strings.Contains(msg, "登陆") ||
+		strings.Contains(msg, "login") ||
+		strings.Contains(msg, "expired") ||
+		strings.Contains(msg, "token") ||
+		strings.Contains(msg, "jwt") ||
+		strings.Contains(msg, "unauthorized")
 }
 
 func isSuccess(status any) bool {

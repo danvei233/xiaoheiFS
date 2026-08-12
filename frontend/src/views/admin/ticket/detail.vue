@@ -189,16 +189,18 @@
   const canReply = computed(() => hasAuth('tickets.messages'))
   const hasOpenableResource = computed(() => resources.value.some((item) => canOpenResource(item)))
 
-  onMounted(() => {
-    fetchData()
-  })
+  let detailRequestId = 0
 
-  async function fetchData() {
-    loading.value = true
+  async function fetchData(options: { silent?: boolean } = {}) {
+    const id = String(route.params.id || '')
+    const requestId = ++detailRequestId
+    const showPageLoading = !options.silent && !detail.value
+    if (!id) return
+    if (showPageLoading) loading.value = true
 
     try {
-      const id = String(route.params.id || '')
       const payload = await fetchAdminTicketDetail(id)
+      if (requestId !== detailRequestId || String(route.params.id || '') !== id) return
       detail.value = payload
       newStatus.value = canUpdate.value
         ? payload.ticket?.status === 'open'
@@ -206,14 +208,15 @@
           : payload.ticket?.status || 'waiting_user'
         : payload.ticket?.status || 'waiting_user'
     } catch (error: any) {
+      if (requestId !== detailRequestId || String(route.params.id || '') !== id) return
       if (error?.code === 404 || error?.response?.status === 404) {
         ElMessage.error('工单不存在或已被删除')
-        router.push({ name: 'TicketList' })
+        void router.push({ name: 'TicketList' })
       } else {
         ElMessage.error(error?.message || '加载工单失败')
       }
     } finally {
-      loading.value = false
+      if (requestId === detailRequestId && showPageLoading) loading.value = false
     }
   }
 
@@ -316,7 +319,7 @@
     try {
       await updateAdminTicket(id, { status: 'open' })
       ElMessage.success('工单已重新打开')
-      await fetchData()
+      await fetchData({ silent: true })
     } finally {
       replying.value = false
     }
@@ -353,7 +356,7 @@
 
       ElMessage.success('回复成功')
       replyContent.value = ''
-      await fetchData()
+      await fetchData({ silent: true })
     } finally {
       replying.value = false
     }
@@ -390,6 +393,20 @@
     const qq = String(message.sender_qq || '').trim()
     return qq ? `https://q1.qlogo.cn/g?b=qq&nk=${qq}&s=100` : ''
   }
+
+  watch(
+    () => route.params.id,
+    () => {
+      detail.value = null
+      replyContent.value = ''
+      void fetchData()
+    },
+    { immediate: true }
+  )
+
+  onBeforeUnmount(() => {
+    detailRequestId++
+  })
 </script>
 
 <style scoped lang="scss">

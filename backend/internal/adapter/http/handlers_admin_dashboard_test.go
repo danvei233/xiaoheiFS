@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/testutil"
 	"xiaoheiplay/internal/testutilhttp"
@@ -42,7 +43,7 @@ func TestHandlers_AdminRevenueAnalyticsAuthAndValidation(t *testing.T) {
 		t.Fatalf("expected 200/400 for admin request, got %d", rec.Code)
 	}
 
-	logs, total, err := env.Repo.ListAuditLogs(context.Background(), 50, 0)
+	logs, total, err := env.Repo.ListAuditLogs(context.Background(), appshared.AuditLogFilter{}, 50, 0)
 	if err != nil {
 		t.Fatalf("list audit logs: %v", err)
 	}

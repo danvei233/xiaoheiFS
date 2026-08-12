@@ -26,7 +26,9 @@ class _LoginScreenState extends State<LoginScreen>
   final _apiKeyFormKey = GlobalKey<FormState>();
   final _passwordFormKey = GlobalKey<FormState>();
 
-  final _apiUrlController = TextEditingController(text: 'https://api.example.com');
+  final _apiUrlController = TextEditingController(
+    text: 'https://api.example.com',
+  );
   final _apiKeyController = TextEditingController();
   final _usernameController = TextEditingController(text: 'Admin');
 
@@ -86,13 +88,16 @@ class _LoginScreenState extends State<LoginScreen>
         versionCode: buildNumber,
       );
       if (!mounted || update == null || !update.hasUpdate) return;
-      await _showUpdateDialog(update);
+      await _showUpdateDialog(update, packageName: info.packageName);
     } catch (_) {
       // Keep login flow unaffected if update check fails.
     }
   }
 
-  Future<void> _showUpdateDialog(AppUpdateInfo update) async {
+  Future<void> _showUpdateDialog(
+    AppUpdateInfo update, {
+    required String packageName,
+  }) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: !update.forceUpdate,
@@ -122,7 +127,21 @@ class _LoginScreenState extends State<LoginScreen>
                 ),
               FilledButton(
                 onPressed: () async {
-                  await _updateService.openUpdateLink(update.apkUrl);
+                  // Launch the update link FIRST and record consent only after
+                  // the OS successfully takes over. A failed launch must not
+                  // write the record — otherwise a same-version forced update
+                  // whose link fails to open would be permanently suppressed on
+                  // every later launch (see update_service.dart
+                  // consentAndLaunchUpdate).
+                  final launched = await _updateService.consentAndLaunchUpdate(
+                    update,
+                    packageName: packageName,
+                  );
+                  if (!launched && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('无法打开下载链接，请检查系统设置后重试')),
+                    );
+                  }
                 },
                 child: Text(update.forceUpdate ? '立即更新(必需)' : '立即更新'),
               ),
@@ -138,9 +157,9 @@ class _LoginScreenState extends State<LoginScreen>
     final apiUrl = _apiUrlController.text.trim();
     if (apiUrl.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在右上角设置 API 地址')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先在右上角设置 API 地址')));
       return;
     }
     final ok = await _confirmBeforeLogin(mode: 'API Key');
@@ -176,9 +195,9 @@ class _LoginScreenState extends State<LoginScreen>
     final apiUrl = _apiUrlController.text.trim();
     if (apiUrl.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请先在右上角设置 API 地址')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请先在右上角设置 API 地址')));
       return;
     }
     final ok = await _confirmBeforeLogin(mode: '密码');
@@ -255,8 +274,14 @@ class _LoginScreenState extends State<LoginScreen>
         title: const Text('确认登录'),
         content: Text('确认使用$mode方式登录当前后台吗？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('确认')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
         ],
       ),
     );
@@ -276,8 +301,14 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('保存')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
@@ -285,13 +316,17 @@ class _LoginScreenState extends State<LoginScreen>
     final url = ctl.text.trim();
     if (url.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('API 地址不能为空')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('API 地址不能为空')));
       return;
     }
     setState(() => _apiUrlController.text = url);
     await _storage.saveApiUrl(url);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('API 地址已保存')));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('API 地址已保存')));
   }
 
   void _goHomeAfterLogin() {
@@ -429,10 +464,11 @@ class _LoginScreenState extends State<LoginScreen>
                                 children: [
                                   Text(
                                     '小黑财务后台管理系统',
-                                    style: theme.textTheme.headlineSmall?.copyWith(
-                                      fontWeight: FontWeight.w800,
-                                      letterSpacing: 0.3,
-                                    ),
+                                    style: theme.textTheme.headlineSmall
+                                        ?.copyWith(
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: 0.3,
+                                        ),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
@@ -454,7 +490,9 @@ class _LoginScreenState extends State<LoginScreen>
                         const SizedBox(height: 24),
                         Text(
                           'API: ${_apiUrlController.text.trim().isEmpty ? '未配置（点右上角设置）' : _apiUrlController.text.trim()}',
-                          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Container(
@@ -502,45 +540,58 @@ class _LoginScreenState extends State<LoginScreen>
                                   padding: const EdgeInsets.only(top: 10),
                                   child: Column(
                                     children: [
-                                    TextFormField(
-                                      controller: _loginUserController,
-                                      decoration: const InputDecoration(labelText: '用户名'),
-                                      validator: (value) {
-                                        if (value == null || value.trim().isEmpty) {
-                                          return '请输入用户名';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: _loginPasswordController,
-                                      obscureText: true,
-                                      decoration: const InputDecoration(labelText: '密码'),
-                                      validator: (value) {
-                                        if (value == null || value.trim().isEmpty) {
-                                          return '请输入密码';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const Spacer(),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: FilledButton(
-                                        onPressed: _saving ? null : _loginWithPassword,
-                                        style: FilledButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(vertical: 13),
+                                      TextFormField(
+                                        controller: _loginUserController,
+                                        decoration: const InputDecoration(
+                                          labelText: '用户名',
                                         ),
-                                        child: _saving
-                                            ? const SizedBox(
-                                                height: 20,
-                                                width: 20,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
-                                              )
-                                            : const Text('登录'),
+                                        validator: (value) {
+                                          if (value == null ||
+                                              value.trim().isEmpty) {
+                                            return '请输入用户名';
+                                          }
+                                          return null;
+                                        },
                                       ),
-                                    ),
+                                      const SizedBox(height: 12),
+                                      TextFormField(
+                                        controller: _loginPasswordController,
+                                        obscureText: true,
+                                        decoration: const InputDecoration(
+                                          labelText: '密码',
+                                        ),
+                                        validator: (value) {
+                                          if (value == null ||
+                                              value.trim().isEmpty) {
+                                            return '请输入密码';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                      const Spacer(),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: FilledButton(
+                                          onPressed: _saving
+                                              ? null
+                                              : _loginWithPassword,
+                                          style: FilledButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 13,
+                                            ),
+                                          ),
+                                          child: _saving
+                                              ? const SizedBox(
+                                                  height: 20,
+                                                  width: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Text('登录'),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
@@ -551,44 +602,53 @@ class _LoginScreenState extends State<LoginScreen>
                                   padding: const EdgeInsets.only(top: 10),
                                   child: Column(
                                     children: [
-                                    TextFormField(
-                                      controller: _apiKeyController,
-                                      decoration: const InputDecoration(
-                                        labelText: 'API Key',
-                                        hintText: 'ak_live_xxx',
-                                      ),
-                                      validator: (value) {
-                                        if (value == null || value.trim().isEmpty) {
-                                          return '请输入 API Key';
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                    const SizedBox(height: 12),
-                                    TextFormField(
-                                      controller: _usernameController,
-                                      decoration: const InputDecoration(
-                                        labelText: '展示名称',
-                                        hintText: '管理员',
-                                      ),
-                                    ),
-                                    const Spacer(),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: FilledButton(
-                                        onPressed: _saving ? null : _loginWithApiKey,
-                                        style: FilledButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(vertical: 13),
+                                      TextFormField(
+                                        controller: _apiKeyController,
+                                        obscureText: true,
+                                        decoration: const InputDecoration(
+                                          labelText: 'API Key',
+                                          hintText: 'ak_live_xxx',
                                         ),
-                                        child: _saving
-                                            ? const SizedBox(
-                                                height: 20,
-                                                width: 20,
-                                                child: CircularProgressIndicator(strokeWidth: 2),
-                                              )
-                                            : const Text('登录'),
+                                        validator: (value) {
+                                          if (value == null ||
+                                              value.trim().isEmpty) {
+                                            return '请输入 API Key';
+                                          }
+                                          return null;
+                                        },
                                       ),
-                                    ),
+                                      const SizedBox(height: 12),
+                                      TextFormField(
+                                        controller: _usernameController,
+                                        decoration: const InputDecoration(
+                                          labelText: '展示名称',
+                                          hintText: '管理员',
+                                        ),
+                                      ),
+                                      const Spacer(),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: FilledButton(
+                                          onPressed: _saving
+                                              ? null
+                                              : _loginWithApiKey,
+                                          style: FilledButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 13,
+                                            ),
+                                          ),
+                                          child: _saving
+                                              ? const SizedBox(
+                                                  height: 20,
+                                                  width: 20,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                      ),
+                                                )
+                                              : const Text('登录'),
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),

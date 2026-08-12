@@ -3,6 +3,7 @@ package shared
 import (
 	"bytes"
 	"html/template"
+	"log"
 	"strings"
 	texttmpl "text/template"
 )
@@ -29,21 +30,40 @@ func RenderTemplate(content string, vars any, html bool) string {
 	if html {
 		t, err := template.New("html").Parse(content)
 		if err != nil {
+			log.Printf("render template: html parse error: %v", err)
 			return content
 		}
 		if err := t.Execute(&buf, data); err != nil {
+			log.Printf("render template: html execute error: %v", err)
 			return content
 		}
 		return buf.String()
 	}
 	t, err := texttmpl.New("text").Parse(content)
 	if err != nil {
+		log.Printf("render template: text parse error: %v", err)
 		return content
 	}
 	if err := t.Execute(&buf, data); err != nil {
+		log.Printf("render template: text execute error: %v", err)
 		return content
 	}
-	return buf.String()
+	// Strip CR/LF from plain-text output so template-driven subject fields can
+	// never carry SMTP header injection into the mailer.
+	return stripCRLF(buf.String())
+}
+
+// stripCRLF removes carriage-return and line-feed bytes from plain-text output.
+func stripCRLF(value string) string {
+	if !strings.ContainsAny(value, "\r\n") {
+		return value
+	}
+	return strings.Map(func(r rune) rune {
+		if r == '\r' || r == '\n' {
+			return -1
+		}
+		return r
+	}, value)
 }
 
 func IsHTMLContent(content string) bool {

@@ -119,6 +119,7 @@
   import type { Component } from 'vue'
   import type { RouteLocationRaw } from 'vue-router'
   import { useDashboardStore } from '@/stores/dashboard'
+  import { formatMoney as formatMoneyUtil } from '@/utils/money'
 
   defineOptions({ name: 'ConsoleDashboard' })
 
@@ -174,10 +175,7 @@
   const loading = ref(false)
 
   const currency = computed(() => String(dashboard.metrics.currency || 'CNY'))
-  const formatMoney = (amount: unknown) => {
-    const value = Number(amount ?? 0)
-    return Number.isFinite(value) ? `¥${value.toFixed(2)}` : '-'
-  }
+  const formatMoney = (amount: unknown) => formatMoneyUtil(amount, currency.value)
 
   const realnameLabel = computed(() => {
     const labels: Record<string, string> = {

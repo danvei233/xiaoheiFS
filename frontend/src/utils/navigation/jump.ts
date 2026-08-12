@@ -16,12 +16,21 @@
  */
 import { AppRouteRecord } from '@/types/router'
 import { router } from '@/router'
+import { openExternalUrl } from '@/utils/urlPolicy'
 import { isNavigableMenuItem } from './route'
 
-// 打开外部链接
-export const openExternalLink = (link: string) => {
-  window.open(link, '_blank')
-}
+/**
+ * 打开外部链接。
+ *
+ * H9：`meta.link` 是后台可配置（后端返回）的数据，直接 `window.open(link)`
+ * 可被 `javascript:` / `data:` 注入（新窗口继承 opener origin 时可执行同源
+ * 脚本），且旧实现漏了 `noopener,noreferrer`。这里统一过 `openExternalUrl`：
+ * 只接受 https（dev localhost http），新窗口强制 `noopener,noreferrer`。
+ */
+export const openExternalLink = (link: string): boolean =>
+  openExternalUrl(link, {
+    onInvalid: () => console.warn('[Navigation] blocked external link')
+  })
 
 /**
  * 菜单跳转

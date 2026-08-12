@@ -14,6 +14,7 @@
 
 # Node
 node_modules
+.vite-cache
 npm-debug.log
 yarn-error.log
 .npm
@@ -51,5 +52,50 @@ build
 *.zip
 
 # Platform specific
+# Never send .env / .env.* to the Docker daemon: compose guides users to keep
+# passwords in a root .env file, which would otherwise leak into the build
+# context and the builder layer cache.
+.env
+.env.*
+!.env.example
 .env.local
 .env.*.local
+
+# Deployment secrets (Issue #51 P0-24): the build context must never carry
+# config files, databases or private keys that would leak into the image layer
+# cache or the registry. These are matched at any depth.
+# - app.config.yaml: the live deployment config (DB DSN, secrets, keys).
+app.config.yaml
+**/app.config.yaml
+config.yaml
+**/config.yaml
+# - SQLite databases (any depth), including WAL/journal sidecars.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+**/*.db
+**/*.sqlite*
+# - Private keys / keystores / certificates with private material.
+*.key
+*.pem
+*.jks
+*.p12
+*.pfx
+*.keystore
+*.crt
+**/*.key
+**/*.pem
+**/*.jks
+**/*.p12
+**/*.pfx
+**/*.keystore
+**/*.crt
+# - Generic secret/token files.
+*.secret
+*.token
+**/*.secret
+**/*.token

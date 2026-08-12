@@ -48,6 +48,10 @@ func TestHTTPAdapterDependencyBoundary(t *testing.T) {
 		"xiaoheiplay/internal/adapter/email",
 		"xiaoheiplay/internal/adapter/robot",
 		"xiaoheiplay/internal/adapter/push",
+		"xiaoheiplay/internal/adapter/plugins",
+		"xiaoheiplay/internal/pkg/db",
+		"gorm.io/",
+		"database/sql",
 	})
 	violations = dropViolationsWithPrefix(violations, "install.go:")
 	if len(violations) > 0 {

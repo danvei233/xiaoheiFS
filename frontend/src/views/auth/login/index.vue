@@ -111,6 +111,7 @@
   import { getAuthSettings, getCaptcha } from '@/services/user'
   import { useAuthStore } from '@/stores/auth'
   import { INPUT_LIMITS } from '@/constants/inputLimits'
+  import { resolveUserRedirect } from '@/utils/auth'
 
   defineOptions({ name: 'Login' })
 
@@ -364,7 +365,9 @@
       // A 401 clears the token in the HTTP interceptor; transient profile failures keep it for retry.
       await auth.fetchMe()
       ElMessage.success('登录成功')
-      await router.replace(String(route.query.redirect || '/console'))
+      // redirect query 是 URL 可控数据，与 admin 域一致走白名单校验，防止将来
+      // 改成 location.href 时变成开放重定向（web_auth_surface F4）。
+      await router.replace(resolveUserRedirect(route.query.redirect))
     } catch (error) {
       const responseError = error as {
         response?: { data?: { error?: string; message?: string } }

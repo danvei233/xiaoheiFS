@@ -19,6 +19,9 @@ components:
       in: header
       name: Authorization
       description: Bearer <api_key> or X-API-Key
+    # qz legacy `/api/cloud/*` 端点使用 `apikey` 请求头 + config/web.php 的
+    # cloud_credentials（多租户散列凭据，可撤销、带作用域）；旧单一 web.apikey
+    # 仅作迁移兼容。详见 qz-override/cloud.yml 的 ApiKeyAuth 描述。
   schemas:
     ErrorResponse:
       type: object
@@ -1322,7 +1325,14 @@ paths:
   /api/cloud/state_host:
     get:
       summary: Cloud API - Get real-time VM state
-      description: Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+      description: |
+        Legacy Cloud endpoint kept for reference. This Go server does NOT implement any
+        `/api/cloud/*` route (calls return 404). The endpoint is served by the legacy PHP
+        qz-override backend at `/index.php/api/cloud/state_host` and requires the `apikey`
+        request header — a per-tenant scoped credential from config/web.php
+        `cloud_credentials` (see qz-override/cloud.yml); the `ApiKeyAuth` scheme declared below
+        (Authorization / X-API-Key) does NOT match that contract. Response wrapper uses
+        `code=1` for success and `code=0` for failure.
       parameters:
         - name: host_id
           in: query
@@ -1354,7 +1364,14 @@ paths:
   /api/cloud/snapshot_list:
     get:
       summary: Cloud API - List snapshots
-      description: Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+      description: |
+        Legacy Cloud endpoint kept for reference. This Go server does NOT implement any
+        `/api/cloud/*` route (calls return 404). The endpoint is served by the legacy PHP
+        qz-override backend at `/index.php/api/cloud/snapshot_list` and requires the `apikey`
+        request header — a per-tenant scoped credential from config/web.php
+        `cloud_credentials` (see qz-override/cloud.yml); the `ApiKeyAuth` scheme declared below
+        (Authorization / X-API-Key) does NOT match that contract. Response wrapper uses
+        `code=1` for success and `code=0` for failure.
       parameters:
         - name: host_id
           in: query
@@ -1393,7 +1410,14 @@ paths:
   /api/cloud/backups_list:
     get:
       summary: Cloud API - List backups
-      description: Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+      description: |
+        Legacy Cloud endpoint kept for reference. This Go server does NOT implement any
+        `/api/cloud/*` route (calls return 404). The endpoint is served by the legacy PHP
+        qz-override backend at `/index.php/api/cloud/backups_list` and requires the `apikey`
+        request header — a per-tenant scoped credential from config/web.php
+        `cloud_credentials` (see qz-override/cloud.yml); the `ApiKeyAuth` scheme declared below
+        (Authorization / X-API-Key) does NOT match that contract. Response wrapper uses
+        `code=1` for success and `code=0` for failure.
       parameters:
         - name: host_id
           in: query
@@ -1433,7 +1457,13 @@ paths:
     post:
       summary: Cloud API - Add firewall ACL
       description: |
-        Legacy Cloud endpoint. Response wrapper uses `code=1` for success and `code=0` for failure.
+        Legacy Cloud endpoint kept for reference. This Go server does NOT implement any
+        `/api/cloud/*` route (calls return 404). The endpoint is served by the legacy PHP
+        qz-override backend at `/index.php/api/cloud/security_acl_add` and requires the
+        `apikey` request header — a per-tenant scoped credential from config/web.php
+        `cloud_credentials` (see qz-override/cloud.yml); the `ApiKeyAuth` scheme declared
+        below (Authorization / X-API-Key) does NOT match that contract. Response wrapper uses
+        `code=1` for success and `code=0` for failure.
         The server accepts either `hostid` or `host_id`, and also accepts aliases:
         `start_port` -> `port`, `start_ip` -> `ip`, `orientation` -> `direction`.
       requestBody:
@@ -2469,20 +2499,20 @@ paths:
         summary: Wallet transactions
         security:
           - AdminJWT: []
-      parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-            type: integer
-        - in: query
-          name: limit
-          schema:
-            type: integer
-        - in: query
-          name: offset
-          schema:
-            type: integer
+        parameters:
+          - in: path
+            name: user_id
+            required: true
+            schema:
+              type: integer
+          - in: query
+            name: limit
+            schema:
+              type: integer
+          - in: query
+            name: offset
+            schema:
+              type: integer
         responses:
           '200':
             description: OK

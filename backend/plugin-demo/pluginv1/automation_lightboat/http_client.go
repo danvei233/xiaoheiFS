@@ -26,7 +26,9 @@ type Client struct {
 
 func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
 	if timeout <= 0 {
-		timeout = 12 * time.Second
+		// At least the host long-op RPC budget (120s): a shorter client timeout
+		// would abort a long create/provision call the host is still waiting on.
+		timeout = 120 * time.Second
 	}
 	return &Client{
 		baseURL: normalizeBaseURL(baseURL),
@@ -130,35 +132,38 @@ type monitorResp struct {
 }
 
 func (c *Client) CreateHost(ctx context.Context, req appshared.AutomationCreateHostRequest) (appshared.AutomationCreateHostResult, error) {
-	params := url.Values{}
-	params.Set("line_id", strconv.FormatInt(req.LineID, 10))
-	params.Set("os", req.OS)
-	params.Set("cpu", strconv.Itoa(req.CPU))
-	params.Set("memory", strconv.Itoa(req.MemoryGB))
-	params.Set("hard_disks", strconv.Itoa(req.DiskGB))
-	params.Set("bandwidth", strconv.Itoa(req.Bandwidth))
-	params.Set("expire_time", req.ExpireTime.Format("2006-01-02 15:04:05"))
+	// All parameters, including sys_pwd/vnc_pwd, travel in the POST form body,
+	// never in the URL query: query parameters leak into access logs, proxies
+	// and browser history.
+	form := url.Values{}
+	form.Set("line_id", strconv.FormatInt(req.LineID, 10))
+	form.Set("os", req.OS)
+	form.Set("cpu", strconv.Itoa(req.CPU))
+	form.Set("memory", strconv.Itoa(req.MemoryGB))
+	form.Set("hard_disks", strconv.Itoa(req.DiskGB))
+	form.Set("bandwidth", strconv.Itoa(req.Bandwidth))
+	form.Set("expire_time", req.ExpireTime.Format("2006-01-02 15:04:05"))
 	if req.HostName != "" {
-		params.Set("host_name", req.HostName)
+		form.Set("host_name", req.HostName)
 	}
 	if req.SysPwd != "" {
-		params.Set("sys_pwd", req.SysPwd)
+		form.Set("sys_pwd", req.SysPwd)
 	}
 	if req.VNCPwd != "" {
-		params.Set("vnc_pwd", req.VNCPwd)
+		form.Set("vnc_pwd", req.VNCPwd)
 	}
 	if req.PortNum > 0 {
-		params.Set("port_num", strconv.Itoa(req.PortNum))
+		form.Set("port_num", strconv.Itoa(req.PortNum))
 	}
 	if req.Snapshot > 0 {
-		params.Set("snapshot", strconv.Itoa(req.Snapshot))
+		form.Set("snapshot", strconv.Itoa(req.Snapshot))
 	}
 	if req.Backups > 0 {
-		params.Set("backups", strconv.Itoa(req.Backups))
+		form.Set("backups", strconv.Itoa(req.Backups))
 	}
 
-	endpoint := c.baseURL + "/create_host?" + params.Encode()
-	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, nil, "")
+	endpoint := c.baseURL + "/create_host"
+	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
 		return appshared.AutomationCreateHostResult{}, err
 	}
@@ -184,7 +189,11 @@ func (c *Client) GetHostInfo(ctx context.Context, hostID int64) (appshared.Autom
 	form := url.Values{}
 	// automation endpoints are inconsistent about host_id vs hostid
 	setHostID(form, hostID)
-	endpoint := c.baseURL + "/hostinfo"
+	// The public hostinfo endpoint is redacted (A3: node secrets are no longer
+	// returned there). The automation flow needs the panel/OS/VNC credentials,
+	// so it calls the dedicated scoped endpoint. The credential configured for
+	// this plugin must include the "credentials" scope.
+	endpoint := c.baseURL + "/hostinfo_credentials"
 	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
 		return appshared.AutomationHostInfo{}, err
@@ -1012,35 +1021,39 @@ func (c *Client) GetVNCURL(ctx context.Context, hostID int64) (string, error) {
 	form := url.Values{}
 	setHostID(form, hostID)
 	endpoint := c.baseURL + "/vnc_view"
-	client := &http.Client{
-		Timeout: c.http.Timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	// /vnc_view now returns a short-lived single-use ticket (JSON body) instead
+	// of a 302 redirect whose Location carried the vnc_password. The caller
+	// follows the same-origin consume_url, where the server injects the
+	// password; no secret ever appears in a URL.
+	resp, err := c.doRequest(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("apikey", c.apiKey)
-	start := time.Now()
-	resp, err := client.Do(req)
+	if resp.Code != 1 {
+		return "", fmt.Errorf("automation vnc failed: %s", resp.Msg)
+	}
+	var data struct {
+		Ticket     string `json:"ticket"`
+		ConsumeURL string `json:"consume_url"`
+	}
+	if err := json.Unmarshal(resp.Data, &data); err != nil {
+		return "", fmt.Errorf("automation vnc: parse ticket: %w", err)
+	}
+	if data.Ticket == "" || data.ConsumeURL == "" {
+		return "", fmt.Errorf("automation vnc: missing ticket in response")
+	}
+	// The consume_url is a same-origin URL that exchanges the ticket for the
+	// server-side VNC session; validate it is HTTPS or same-origin before use.
+	consume := resolveRedirectURL(c.baseURL, data.ConsumeURL)
+	u, err := url.Parse(consume)
 	if err != nil {
-		c.emitLog(ctx, http.MethodPost, endpoint, req.Header, form.Encode(), nil, nil, time.Since(start), err)
-		return "", err
+		return "", fmt.Errorf("automation vnc: bad consume url: %w", err)
 	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	c.emitLog(ctx, http.MethodPost, endpoint, req.Header, form.Encode(), resp, body, time.Since(start), nil)
-	if resp.StatusCode != http.StatusFound && resp.StatusCode != http.StatusTemporaryRedirect {
-		return "", fmt.Errorf("automation vnc failed: %d", resp.StatusCode)
+	base, _ := url.Parse(c.baseURL)
+	if u.Scheme != "https" && !(u.Scheme == "http" && u.Host == base.Host) {
+		return "", fmt.Errorf("automation vnc: consume url must be https or same-origin")
 	}
-	loc := resp.Header.Get("Location")
-	if loc == "" {
-		return "", fmt.Errorf("missing vnc location")
-	}
-	return resolveRedirectURL(c.baseURL, loc), nil
+	return consume, nil
 }
 
 func resolveRedirectURL(baseURL, location string) string {
@@ -1216,9 +1229,9 @@ func (c *Client) emitLog(ctx context.Context, method, endpoint string, headers h
 	action := actionFromEndpoint(method, endpoint)
 	reqPayload := map[string]any{
 		"method":  method,
-		"url":     endpoint,
+		"url":     sanitizeEndpoint(endpoint),
 		"headers": headerMap(headers),
-		"body":    body,
+		"body":    sanitizeFormBody(body),
 	}
 	var respPayload map[string]any
 	if resp != nil {
@@ -1254,6 +1267,76 @@ func (c *Client) emitLog(ctx context.Context, method, endpoint string, headers h
 		Success:  success,
 		Message:  message,
 	})
+}
+
+// sensitiveURLParams lists query/form parameter names whose values must be
+// masked when a request URL or form body is recorded (H4). create_host sends
+// sys_pwd/vnc_pwd, GetPanelURL sends panel_password, and the reset endpoints
+// send password; the sanitized values are what lands in http_trace.
+var sensitiveURLParams = map[string]bool{
+	"sys_pwd":         true,
+	"vnc_pwd":         true,
+	"panel_password":  true,
+	"vnc_password":    true,
+	"os_password":     true,
+	"password":        true,
+	"passwd":          true,
+	"pwd":             true,
+	"key":             true,
+	"api_key":         true,
+	"apikey":          true,
+	"token":           true,
+	"secret":          true,
+	"access_key":      true,
+}
+
+// sanitizeEndpoint masks sensitive query parameter values in a URL before it
+// is recorded. Unparseable strings are returned unchanged.
+func sanitizeEndpoint(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint
+	}
+	q := u.Query()
+	masked := false
+	for k := range q {
+		if sensitiveURLParams[strings.ToLower(strings.TrimSpace(k))] {
+			q.Set(k, "***")
+			masked = true
+		}
+	}
+	if !masked {
+		// Nothing sensitive to redact: return the original string so URLs
+		// without query params (and non-URL strings) pass through untouched.
+		return endpoint
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// sanitizeFormBody masks sensitive keys in an application/x-www-form-urlencoded
+// request body (e.g. sys_pwd=SECRET&vnc_pwd=SECRET) before the body is recorded
+// in the http_trace. It only rewrites the string when at least one sensitive key
+// is present, so plain text and non-sensitive form bodies pass through untouched.
+func sanitizeFormBody(body string) string {
+	if body == "" || !strings.Contains(body, "=") {
+		return body
+	}
+	q, err := url.ParseQuery(body)
+	if err != nil {
+		return body
+	}
+	masked := false
+	for k := range q {
+		if sensitiveURLParams[strings.ToLower(strings.TrimSpace(k))] {
+			q.Set(k, "***")
+			masked = true
+		}
+	}
+	if !masked {
+		return body
+	}
+	return q.Encode()
 }
 
 func actionFromEndpoint(method, endpoint string) string {

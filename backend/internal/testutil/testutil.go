@@ -94,14 +94,34 @@ func CreateAdmin(t *testing.T, repo *repo.GormRepo, username, email, password st
 
 func IssueJWT(t *testing.T, secret string, userID int64, role string, ttl time.Duration) string {
 	t.Helper()
+	return issueJWT(t, secret, userID, role, 0, ttl)
+}
+
+// IssueJWTWithPVV mints an access token carrying the given password version.
+// Tokens issued before a password change must not carry a stale version or the
+// account's current version, so tests that modify a password use this helper
+// rather than IssueJWT (which omits pvv and is only valid for version-0 users).
+func IssueJWTWithPVV(t *testing.T, secret string, userID int64, role string, pvv int64, ttl time.Duration) string {
+	t.Helper()
+	return issueJWT(t, secret, userID, role, pvv, ttl)
+}
+
+func issueJWT(t *testing.T, secret string, userID int64, role string, pvv int64, ttl time.Duration) string {
+	t.Helper()
 	now := time.Now()
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    role,
 		"type":    "access",
-		"iat":     float64(now.UnixNano()) / 1e9,
+		"iss":     "xiaoheiplay",
+		"aud":     "xiaoheiplay",
+		"iat":     now.Unix(),
 		"exp":     now.Add(ttl).Unix(),
-	})
+	}
+	if pvv > 0 {
+		claims["pvv"] = pvv
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString([]byte(secret))
 	if err != nil {
 		t.Fatalf("sign jwt: %v", err)
@@ -110,6 +130,14 @@ func IssueJWT(t *testing.T, secret string, userID int64, role string, ttl time.D
 }
 
 func DoJSON(t *testing.T, router http.Handler, method, path string, body any, token string) *httptest.ResponseRecorder {
+	t.Helper()
+	return DoJSONRemoteAddr(t, router, method, path, body, token, "")
+}
+
+// DoJSONRemoteAddr is DoJSON with a caller-controlled RemoteAddr, used when a
+// test must appear to come from distinct source IPs (e.g. to stay under a
+// durable per-IP rate limit while firing concurrent requests).
+func DoJSONRemoteAddr(t *testing.T, router http.Handler, method, path string, body any, token, remoteAddr string) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -123,6 +151,9 @@ func DoJSON(t *testing.T, router http.Handler, method, path string, body any, to
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if remoteAddr != "" {
+		req.RemoteAddr = remoteAddr
 	}
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

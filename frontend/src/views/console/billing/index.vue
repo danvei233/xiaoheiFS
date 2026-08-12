@@ -205,12 +205,14 @@
     createWalletRecharge,
     createWalletWithdraw,
     getWallet,
+    getWalletOrderSummary,
     listPaymentProviders,
     listWalletOrders,
     payWalletOrder
   } from '@/services/user'
   import type { PaymentProvider, WalletOrder } from '@/services/types'
   import { normalizeWallet } from '@/utils/wallet'
+  import { openPaymentUrl } from '@/utils/paymentUrl'
 
   defineOptions({ name: 'ConsoleBilling' })
 
@@ -246,7 +248,6 @@
   const rechargeFormRef = ref<FormInstance>()
   const withdrawFormRef = ref<FormInstance>()
   const rechargeMethods = ref<PaymentProvider[]>([])
-  const overviewOrders = ref<WalletOrderRow[]>([])
   const wallet = ref<WalletModel>({ balance: 0, currency: 'CNY' })
   const recharge = reactive<{ method: string; amount: number | null; note: string }>({
     method: 'approval',
@@ -283,24 +284,45 @@
     createdAt: String(item.created_at ?? item.CreatedAt ?? '')
   })
 
-  const fetchWalletOrderPage = async ({ current, size, status, type }: WalletSearchParams) => {
-    const response = await listWalletOrders({
-      limit: 100,
-      offset: 0
-    })
+  const fetchWalletOrderPage = async (
+    { current, size, status, type }: WalletSearchParams,
+    signal?: AbortSignal
+  ) => {
+    // cross-module residual：后端 /wallet/orders 现支持 status/type 服务端过滤
+    // 与真实分页；前端按页拉取并展示后端 total，不再整批 500 条后本地切片
+    // 伪装完整结果（P3-42 / m059 F4 契约缺口本轮闭环）。
+    const response = await listWalletOrders(
+      {
+        limit: size,
+        offset: (current - 1) * size,
+        status: status || undefined,
+        type: type || undefined
+      },
+      signal
+    )
     const orders = (response.data?.items ?? []).map((item) =>
       normalizeOrder(item as WalletOrder & CompatibleRecord)
     )
-    overviewOrders.value = orders
-    const filtered = orders.filter(
-      (item) => (!status || item.status === status) && (!type || item.type === type)
-    )
-    const start = (current - 1) * size
     return {
-      records: filtered.slice(start, start + size),
+      records: orders,
       current,
       size,
-      total: filtered.length
+      total: Number(response.data?.total ?? orders.length)
+    }
+  }
+
+  const loadOverview = async () => {
+    try {
+      const response = await getWalletOrderSummary()
+      const summary = response.data
+      monthStats.value = {
+        recharge: Number(summary.recharge || 0),
+        withdraw: Number(summary.withdraw || 0),
+        pending: Number(summary.pending || 0),
+        total: Number(summary.total || 0)
+      }
+    } catch {
+      // 概览失败不阻塞明细表
     }
   }
 
@@ -336,25 +358,7 @@
     }
   })
 
-  const monthStats = computed(() => {
-    const now = new Date()
-    const monthOrders = overviewOrders.value.filter((item) => {
-      const date = new Date(item.createdAt)
-      return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear()
-    })
-    return {
-      recharge: monthOrders
-        .filter((item) => item.type === 'recharge' && item.status === 'approved')
-        .reduce((sum, item) => sum + item.amount, 0),
-      withdraw: monthOrders
-        .filter((item) => item.type === 'withdraw' && item.status === 'approved')
-        .reduce((sum, item) => sum + item.amount, 0),
-      pending: overviewOrders.value.filter((item) =>
-        ['pending', 'pending_review'].includes(item.status)
-      ).length,
-      total: overviewOrders.value.length
-    }
-  })
+  const monthStats = ref({ recharge: 0, withdraw: 0, pending: 0, total: 0 })
 
   const formatMoney = (amount: number, currency = 'CNY') => {
     try {
@@ -418,8 +422,8 @@
     const payment = (payload.payment ?? payload) as CompatibleRecord
     const url = String(payment.pay_url ?? payment.payURL ?? '')
     if (!url) return false
-    window.open(url, '_blank')
-    return true
+    // H2：pay_url 是外部可控数据，统一过 URL 安全策略，非法值不导航。
+    return openPaymentUrl(url, { onInvalid: () => ElMessage.error('支付链接无效，请重试') })
   }
   const fetchRechargeMethods = async () => {
     try {
@@ -452,7 +456,7 @@
     }
   }
   const refreshAll = async () => {
-    await Promise.all([refreshData(), fetchOverview()])
+    await Promise.all([refreshData(), fetchOverview(), loadOverview()])
   }
 
   const openRechargeDialog = () => {
@@ -543,7 +547,10 @@
     }
   }
 
-  onMounted(fetchOverview)
+  onMounted(() => {
+    void fetchOverview()
+    void loadOverview()
+  })
 </script>
 
 <style lang="scss" scoped>

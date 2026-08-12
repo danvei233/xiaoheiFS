@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -243,7 +244,6 @@ func SeedIfEmpty(gdb *gorm.DB) error {
 }
 
 func EnsureSettings(gdb *gorm.DB) error {
-	defaultPluginUploadPassword := generateSecureSeedPassword()
 	settings := map[string]string{
 		"default_line_id":                          "0",
 		"default_port_num":                         "30",
@@ -251,7 +251,6 @@ func EnsureSettings(gdb *gorm.DB) error {
 		"payment_providers_config":                 `{}`,
 		"payment_plugins":                          "[]",
 		"payment_plugin_dir":                       "plugins/payment",
-		"payment_plugin_upload_password":           defaultPluginUploadPassword,
 		"robot_webhook_url":                        "",
 		"robot_webhook_secret":                     "",
 		"robot_webhook_enabled":                    "false",
@@ -408,12 +407,12 @@ func EnsureSettings(gdb *gorm.DB) error {
 	return EnsureMessageTemplateDefaults(gdb)
 }
 
-func generateSecureSeedPassword() string {
+func generateSecureSeedPassword() (string, error) {
 	secret := make([]byte, 48)
 	if _, err := rand.Read(secret); err != nil {
-		return "w6jW0pWj7Dq9Wq2BY8ahb0gNZXf3vLQ1-rg4r_4pKjv9Sm7ESe8B6y6M-R3qp9tH"
+		return "", fmt.Errorf("failed to generate secure seed password: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(secret)
+	return base64.RawURLEncoding.EncodeToString(secret), nil
 }
 
 func ensureSettingNotBlank(gdb *gorm.DB, key, defaultValue string) error {
@@ -749,18 +748,37 @@ func EnsurePermissionGroups(gdb *gorm.DB) error {
 
 	for i := range groups {
 		group := groups[i]
-		if err := gdb.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "name"}},
-			DoUpdates: clause.Assignments(map[string]any{
-				"description":      group.Description,
-				"permissions_json": group.PermissionsJSON,
+		var existing permissionGroupSeedRow
+		err := gdb.Where("name = ?", group.Name).Take(&existing).Error
+		switch {
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			// Fresh install: create the built-in group as-is.
+			if err := gdb.Create(&group).Error; err != nil {
+				return err
+			}
+			if err := syncPermissionGroupPermissionRows(gdb, group.ID, group.PermissionsJSON); err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		default:
+			// Existing group: merge the default permissions in without removing
+			// administrator customizations, and keep a non-blank custom
+			// description. Overwriting every startup would discard admin edits.
+			merged := mergePermissionsJSON(existing.PermissionsJSON, group.PermissionsJSON)
+			updates := map[string]any{
+				"permissions_json": merged,
 				"updated_at":       time.Now(),
-			}),
-		}).Create(&group).Error; err != nil {
-			return err
-		}
-		if err := syncPermissionGroupPermissionRows(gdb, group.ID, group.PermissionsJSON); err != nil {
-			return err
+			}
+			if strings.TrimSpace(existing.Description) == "" {
+				updates["description"] = group.Description
+			}
+			if err := gdb.Model(&permissionGroupSeedRow{}).Where("id = ?", existing.ID).Updates(updates).Error; err != nil {
+				return err
+			}
+			if err := syncPermissionGroupPermissionRows(gdb, existing.ID, merged); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -817,6 +835,41 @@ func EnsurePermissionGroups(gdb *gorm.DB) error {
 	return gdb.Model(&userSeedRow{}).
 		Where("id = ?", primaryAdmin.ID).
 		Update("permission_group_id", superAdminGroupID).Error
+}
+
+// mergePermissionsJSON unions the default permission set with an existing
+// group's permissions, preserving custom entries while ensuring the defaults
+// are present. Defaults come first, custom extras are appended in order.
+func mergePermissionsJSON(existingJSON, defaultJSON string) string {
+	var existingPerms, defaultPerms []string
+	_ = json.Unmarshal([]byte(strings.TrimSpace(existingJSON)), &existingPerms)
+	_ = json.Unmarshal([]byte(strings.TrimSpace(defaultJSON)), &defaultPerms)
+	merged := make([]string, 0, len(defaultPerms)+len(existingPerms))
+	seen := make(map[string]struct{}, len(defaultPerms)+len(existingPerms))
+	for _, p := range defaultPerms {
+		v := strings.TrimSpace(p)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		merged = append(merged, v)
+	}
+	for _, p := range existingPerms {
+		v := strings.TrimSpace(p)
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		merged = append(merged, v)
+	}
+	out, _ := json.Marshal(merged)
+	return string(out)
 }
 
 func syncPermissionGroupPermissionRows(gdb *gorm.DB, groupID int64, permissionsJSON string) error {

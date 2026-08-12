@@ -147,15 +147,19 @@
   })
 
   async function fetchAuditLogs(
-    params: AuditTableParams
+    params: AuditTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<AuditRow>> {
-    const response = await listAuditLogs({
-      limit: params.size,
-      offset: (params.current - 1) * params.size,
-      keyword: params.keyword,
-      action: params.action,
-      user: params.user
-    })
+    const response = await listAuditLogs(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size,
+        keyword: params.keyword,
+        action: params.action,
+        user: params.user
+      },
+      signal
+    )
     const records = (response.data?.items || []).map(normalizeRow)
 
     return {

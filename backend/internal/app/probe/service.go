@@ -2,11 +2,11 @@ package probe
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +14,8 @@ import (
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/pkg/cryptox"
+	"xiaoheiplay/internal/pkg/safego"
 )
 
 type ProbeSLA struct {
@@ -31,6 +33,8 @@ type Service struct {
 	events   appports.ProbeStatusEventRepository
 	sessions appports.ProbeLogSessionRepository
 	settings appports.SettingsRepository
+	hub      *Hub
+	logger   *slog.Logger
 }
 
 func NewService(nodes appports.ProbeNodeRepository, tokens appports.ProbeEnrollTokenRepository, events appports.ProbeStatusEventRepository, sessions appports.ProbeLogSessionRepository, settings appports.SettingsRepository) *Service {
@@ -40,7 +44,35 @@ func NewService(nodes appports.ProbeNodeRepository, tokens appports.ProbeEnrollT
 		events:   events,
 		sessions: sessions,
 		settings: settings,
+		logger:   slog.Default(),
 	}
+}
+
+// SetHub attaches the WS connection hub so the offline scan can exclude probes
+// that are currently connected. A probe with a configured heartbeat interval
+// longer than the offline grace is still alive while its WS connection is up.
+func (s *Service) SetHub(hub *Hub) {
+	s.hub = hub
+}
+
+// logError emits a structured error log; failures that used to be swallowed are
+// observable without exposing sensitive data.
+func (s *Service) logError(msg string, err error) {
+	if s.logger != nil {
+		s.logger.Error(msg, "err", err)
+	}
+}
+
+// logInfo emits a structured informational log with the given key/value fields.
+func (s *Service) logInfo(msg string, fields map[string]any) {
+	if s.logger == nil {
+		return
+	}
+	attrs := make([]any, 0, len(fields)*2)
+	for k, v := range fields {
+		attrs = append(attrs, k, v)
+	}
+	s.logger.Info(msg, attrs...)
 }
 
 func NewHub() *Hub {
@@ -140,11 +172,22 @@ func (s *Service) Enroll(ctx context.Context, enrollToken, agentID, name, osType
 	if trimmed := strings.TrimSpace(osType); trimmed != "" {
 		node.OSType = trimmed
 	}
-	if err := s.nodes.UpdateProbeNode(ctx, node); err != nil {
+	// Claim the enroll token and apply the node binding/secret update in one
+	// atomic repository transaction, so a failed node update rolls the claim
+	// back (the token is never burned) and two concurrent enrollments have a
+	// single winner who cannot be overwritten by the loser (P2-33 follow-up).
+	claimed, err := s.tokens.ConsumeProbeEnrollTokenAndUpdateNode(ctx, token.ID, node.ID, map[string]any{
+		"name":        node.Name,
+		"agent_id":    node.AgentID,
+		"secret_hash": node.SecretHash,
+		"os_type":     node.OSType,
+		"tags_json":   node.TagsJSON,
+	}, time.Now())
+	if err != nil {
 		return domain.ProbeNode{}, "", err
 	}
-	if err := s.tokens.MarkProbeEnrollTokenUsed(ctx, token.ID, time.Now()); err != nil {
-		return domain.ProbeNode{}, "", err
+	if !claimed {
+		return domain.ProbeNode{}, "", appshared.ErrConflict
 	}
 	return node, secret, nil
 }
@@ -181,10 +224,25 @@ func (s *Service) MarkOffline(ctx context.Context, probeID int64, reason string)
 	return s.events.CreateProbeStatusEvent(ctx, ev)
 }
 
+// clampClientTime bounds client-controlled timestamps to a small future
+// tolerance and a 24h past window. Without clamping a probe could report a far
+// future heartbeat and never be considered offline.
+func clampClientTime(at time.Time) time.Time {
+	now := time.Now()
+	if at.After(now.Add(5 * time.Minute)) {
+		return now
+	}
+	if at.Before(now.Add(-24 * time.Hour)) {
+		return now
+	}
+	return at
+}
+
 func (s *Service) HandleHeartbeat(ctx context.Context, probeID int64, at time.Time) error {
 	if at.IsZero() {
 		at = time.Now()
 	}
+	at = clampClientTime(at)
 	if err := s.nodes.UpdateProbeNodeHeartbeat(ctx, probeID, at); err != nil {
 		return err
 	}
@@ -202,6 +260,7 @@ func (s *Service) HandleSnapshot(ctx context.Context, probeID int64, at time.Tim
 	if at.IsZero() {
 		at = time.Now()
 	}
+	at = clampClientTime(at)
 	snapshotJSON = normalizeJSON(snapshotJSON, "{}")
 	return s.nodes.UpdateProbeNodeSnapshot(ctx, probeID, at, snapshotJSON, strings.TrimSpace(osType))
 }
@@ -269,7 +328,7 @@ func (s *Service) StartOfflineWatcher(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			s.scanOffline(ctx)
+			safego.Run("probe offline watcher tick", func() { s.scanOffline(ctx) })
 		}
 	}
 }
@@ -279,25 +338,59 @@ func (s *Service) scanOffline(ctx context.Context) {
 	if grace <= 0 {
 		grace = 90
 	}
-	retentionDays := s.getIntSetting(ctx, "probe_sla_window_days", 7)
-	if retentionDays <= 0 {
-		retentionDays = 7
-	}
-	now := time.Now()
-	nodes, _, err := s.nodes.ListProbeNodes(ctx, appshared.ProbeNodeFilter{}, 1000, 0)
-	if err != nil {
-		return
-	}
-	cutoff := now.Add(-time.Duration(grace) * time.Second)
-	for _, node := range nodes {
-		if node.LastHeartbeatAt == nil || node.Status == domain.ProbeStatusOffline {
-			continue
+	cutoff := time.Now().Add(-time.Duration(grace) * time.Second)
+	// Page the whole table with a stable id cursor so nodes beyond the first
+	// 500 are scanned too (ListProbeNodes caps at 500 and orders id DESC, which
+	// would permanently miss the oldest nodes). Each batch is bounded and the
+	// cursor advances monotonically, so nodes inserted/deleted mid-scan neither
+	// cause an infinite loop nor skip surviving nodes.
+	var afterID int64
+	scanned := 0
+	marked := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
 		}
-		if node.LastHeartbeatAt.Before(cutoff) {
-			_ = s.MarkOffline(ctx, node.ID, "heartbeat_timeout")
+		nodes, err := s.nodes.ListProbeNodesByCursor(ctx, afterID, probeScanBatchSize)
+		if err != nil {
+			s.logError("probe offline scan failed", err)
+			return
+		}
+		if len(nodes) == 0 {
+			break
+		}
+		for _, node := range nodes {
+			scanned++
+			if node.LastHeartbeatAt == nil || node.Status == domain.ProbeStatusOffline {
+				continue
+			}
+			// A node with a live WS connection is online even when its heartbeat
+			// interval is longer than the offline grace; never mark it offline.
+			if s.hub != nil && s.hub.IsOnline(node.ID) {
+				continue
+			}
+			if node.LastHeartbeatAt.Before(cutoff) {
+				if err := s.MarkOffline(ctx, node.ID, "heartbeat_timeout"); err != nil {
+					// Structured, observable failure: do not silently drop the
+					// offline transition.
+					s.logError("mark probe offline failed", err)
+					continue
+				}
+				marked++
+			}
+		}
+		afterID = nodes[len(nodes)-1].ID
+		if len(nodes) < probeScanBatchSize {
+			break
 		}
 	}
-	_ = s.events.DeleteProbeStatusEventsBefore(ctx, now.Add(-time.Duration(retentionDays+1)*24*time.Hour))
+	if scanned > 0 || marked > 0 {
+		s.logInfo("probe offline scan completed", map[string]any{"scanned": scanned, "marked_offline": marked})
+	}
+	// Note: status-event retention is owned exclusively by the log cleanup
+	// service. Deleting events here would destroy SLA history.
 }
 
 func (s *Service) CreateLogSession(ctx context.Context, probeID int64, operatorID int64, source string) (domain.ProbeLogSession, error) {
@@ -344,14 +437,26 @@ func (s *Service) getIntSetting(ctx context.Context, key string, def int) int {
 	return v
 }
 
+const (
+	// probeScanBatchSize is the bounded batch size used to page the full probe
+	// node table with an id cursor (see scanOffline).
+	probeScanBatchSize = 200
+	tokenAlphabet      = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+)
+
+// randomToken generates a token using a uniform draw (crypto/rand.Int) so every
+// alphabet byte is exactly equally likely (no modulo bias). It is used for
+// secrets, so biased sampling would measurably reduce entropy.
 func randomToken(n int) string {
-	letters := []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-	buf := make([]byte, n)
-	_, _ = rand.Read(buf)
-	for i := range buf {
-		buf[i] = letters[int(buf[i])%len(letters)]
+	// crypto/rand.Int based uniform draw avoids the modulo bias of a
+	// byte%len(charset) mapping (F5). A failure is unrecoverable here (the
+	// caller cannot proceed with a guessable secret), so panic loudly.
+	const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	v, err := cryptox.RandomAlphabet(alphabet, n)
+	if err != nil {
+		panic("probe: random token generation failed: " + err.Error())
 	}
-	return string(buf)
+	return v
 }
 
 func hashRawToken(raw string) string {

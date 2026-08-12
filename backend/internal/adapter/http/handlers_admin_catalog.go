@@ -1,15 +1,32 @@
 package http
 
 import (
-	"github.com/gin-gonic/gin"
 	"net/http"
 	"sort"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
 
 func (h *Handler) AdminAuditLogs(c *gin.Context) {
 	limit, offset := paging(c)
-	items, total, err := h.adminSvc.ListAuditLogs(c, limit, offset)
+	// The frontend sends keyword/action/user filter params; previously the
+	// backend silently ignored them so audit search was a no-op. Bind and push
+	// them to the service layer (web_api_contract F1).
+	var query struct {
+		Keyword string `form:"keyword"`
+		Action  string `form:"action"`
+		User    string `form:"user"`
+	}
+	_ = c.ShouldBindQuery(&query)
+	filter := appshared.AuditLogFilter{
+		Keyword: strings.TrimSpace(query.Keyword),
+		Action:  strings.TrimSpace(query.Action),
+		User:    strings.TrimSpace(query.User),
+	}
+	items, total, err := h.adminSvc.ListAuditLogs(c.Request.Context(), filter, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -31,7 +48,7 @@ func (h *Handler) AdminSystemImages(c *gin.Context) {
 		lineID = *query.LineID
 	}
 	if query.PlanGroupID != nil {
-		plan, err := h.catalogSvc.GetPlanGroup(c, *query.PlanGroupID)
+		plan, err := h.catalogSvc.GetPlanGroup(c.Request.Context(), *query.PlanGroupID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPlanGroupNotFound.Error()})
 			return
@@ -42,7 +59,7 @@ func (h *Handler) AdminSystemImages(c *gin.Context) {
 		}
 		lineID = plan.LineID
 	}
-	items, err := h.catalogSvc.ListSystemImages(c, lineID)
+	items, err := h.catalogSvc.ListSystemImages(c.Request.Context(), lineID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -53,7 +70,7 @@ func (h *Handler) AdminSystemImages(c *gin.Context) {
 		for _, it := range items {
 			imageIDs = append(imageIDs, it.ID)
 		}
-		if lineNames, err := h.catalogSvc.ListImageLineNames(c, imageIDs); err == nil {
+		if lineNames, err := h.catalogSvc.ListImageLineNames(c.Request.Context(), imageIDs); err == nil {
 			for i := range dtos {
 				dtos[i].LineNames = lineNames[dtos[i].ID]
 			}
@@ -74,7 +91,7 @@ func (h *Handler) AdminRegions(c *gin.Context) {
 	if query.GoodsTypeID != nil {
 		goodsTypeID = *query.GoodsTypeID
 	}
-	items, err := h.catalogSvc.ListRegions(c)
+	items, err := h.catalogSvc.ListRegions(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -94,14 +111,14 @@ func (h *Handler) AdminRegions(c *gin.Context) {
 func (h *Handler) AdminRegionCreate(c *gin.Context) {
 	var payload RegionDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	region := regionDTOToDomain(payload)
 	if region.GoodsTypeID <= 0 {
-		region.GoodsTypeID = h.defaultGoodsTypeID(c)
+		region.GoodsTypeID = h.defaultGoodsTypeID(c.Request.Context())
 	}
-	if err := h.catalogSvc.CreateRegion(c, &region); err != nil {
+	if err := h.catalogSvc.CreateRegion(c.Request.Context(), &region); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -116,17 +133,17 @@ func (h *Handler) AdminRegionUpdate(c *gin.Context) {
 	}
 	var payload RegionDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	payload.ID = uri.ID
 	region := regionDTOToDomain(payload)
 	if region.GoodsTypeID <= 0 {
-		if current, err := h.catalogSvc.GetRegion(c, uri.ID); err == nil && current.GoodsTypeID > 0 {
+		if current, err := h.catalogSvc.GetRegion(c.Request.Context(), uri.ID); err == nil && current.GoodsTypeID > 0 {
 			region.GoodsTypeID = current.GoodsTypeID
 		}
 	}
-	if err := h.catalogSvc.UpdateRegion(c, region); err != nil {
+	if err := h.catalogSvc.UpdateRegion(c.Request.Context(), region); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -139,7 +156,7 @@ func (h *Handler) AdminRegionDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.catalogSvc.DeleteRegion(c, uri.ID); err != nil {
+	if err := h.catalogSvc.DeleteRegion(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -160,18 +177,50 @@ func (h *Handler) AdminRegionSetActive(c *gin.Context) {
 		Active *bool `json:"active"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.Active == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
-	if err := h.catalogSvc.SetRegionActive(c, uri.ID, *payload.Active); err != nil {
+	if err := h.catalogSvc.SetRegionActive(c.Request.Context(), uri.ID, *payload.Active); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// maxBulkDeleteIDs bounds a single bulk-delete request. Above this the batch
+// is rejected: an unbounded id list is a cheap amplification and leaves no way
+// to surface a partial failure coherently (P2-16).
+const maxBulkDeleteIDs = 200
+
+// dedupeAndBoundIDs validates, bounds and deduplicates a bulk-delete id list so
+// repeated ids cannot double-delete and a huge list cannot amplify work.
+func dedupeAndBoundIDs(ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, domain.ErrIdsRequired
+	}
+	if len(ids) > maxBulkDeleteIDs {
+		return nil, domain.ErrTooManyRequests
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	out := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return nil, domain.ErrInvalidInput
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	if len(out) == 0 {
+		return nil, domain.ErrIdsRequired
+	}
+	return out, nil
 }
 
 func (h *Handler) AdminRegionBulkDelete(c *gin.Context) {
@@ -179,18 +228,17 @@ func (h *Handler) AdminRegionBulkDelete(c *gin.Context) {
 		IDs []int64 `json:"ids"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if len(payload.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrIdsRequired.Error()})
+	ids, err := dedupeAndBoundIDs(payload.IDs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	for _, id := range payload.IDs {
-		if err := h.catalogSvc.DeleteRegion(c, id); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+	if err := h.catalogSvc.BulkDeleteRegions(c.Request.Context(), ids); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -207,7 +255,7 @@ func (h *Handler) AdminPlanGroups(c *gin.Context) {
 	if query.GoodsTypeID != nil {
 		goodsTypeID = *query.GoodsTypeID
 	}
-	items, err := h.catalogSvc.ListPlanGroups(c)
+	items, err := h.catalogSvc.ListPlanGroups(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -231,7 +279,7 @@ func (h *Handler) AdminLines(c *gin.Context) {
 func (h *Handler) AdminPlanGroupCreate(c *gin.Context) {
 	var payload PlanGroupDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	plan := planGroupDTOToDomain(payload)
@@ -239,13 +287,13 @@ func (h *Handler) AdminPlanGroupCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidRegionId.Error()})
 		return
 	}
-	if region, err := h.catalogSvc.GetRegion(c, plan.RegionID); err == nil {
+	if region, err := h.catalogSvc.GetRegion(c.Request.Context(), plan.RegionID); err == nil {
 		plan.GoodsTypeID = region.GoodsTypeID
 	}
 	if plan.GoodsTypeID <= 0 {
-		plan.GoodsTypeID = h.defaultGoodsTypeID(c)
+		plan.GoodsTypeID = h.defaultGoodsTypeID(c.Request.Context())
 	}
-	if err := h.catalogSvc.CreatePlanGroup(c, &plan); err != nil {
+	if err := h.catalogSvc.CreatePlanGroup(c.Request.Context(), &plan); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -288,17 +336,17 @@ func (h *Handler) AdminPlanGroupUpdate(c *gin.Context) {
 		SortOrder         *int     `json:"sort_order"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	plan, err := h.catalogSvc.GetPlanGroup(c, uri.ID)
+	plan, err := h.catalogSvc.GetPlanGroup(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
 	if payload.RegionID != nil {
 		plan.RegionID = *payload.RegionID
-		if region, err := h.catalogSvc.GetRegion(c, plan.RegionID); err == nil && region.GoodsTypeID > 0 {
+		if region, err := h.catalogSvc.GetRegion(c.Request.Context(), plan.RegionID); err == nil && region.GoodsTypeID > 0 {
 			plan.GoodsTypeID = region.GoodsTypeID
 		}
 	}
@@ -368,7 +416,7 @@ func (h *Handler) AdminPlanGroupUpdate(c *gin.Context) {
 	if payload.SortOrder != nil {
 		plan.SortOrder = *payload.SortOrder
 	}
-	if err := h.catalogSvc.UpdatePlanGroup(c, plan); err != nil {
+	if err := h.catalogSvc.UpdatePlanGroup(c.Request.Context(), plan); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -389,10 +437,10 @@ func (h *Handler) AdminLineSystemImages(c *gin.Context) {
 		ImageIDs []int64 `json:"image_ids"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	plan, err := h.catalogSvc.GetPlanGroup(c, uri.ID)
+	plan, err := h.catalogSvc.GetPlanGroup(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -401,7 +449,7 @@ func (h *Handler) AdminLineSystemImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrLineIdRequired.Error()})
 		return
 	}
-	if err := h.catalogSvc.SetLineSystemImages(c, plan.LineID, payload.ImageIDs); err != nil {
+	if err := h.catalogSvc.SetLineSystemImages(c.Request.Context(), plan.LineID, payload.ImageIDs); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -414,7 +462,7 @@ func (h *Handler) AdminPlanGroupDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.catalogSvc.DeletePlanGroup(c, uri.ID); err != nil {
+	if err := h.catalogSvc.DeletePlanGroup(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -426,18 +474,17 @@ func (h *Handler) AdminPlanGroupBulkDelete(c *gin.Context) {
 		IDs []int64 `json:"ids"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if len(payload.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrIdsRequired.Error()})
+	ids, derr := dedupeAndBoundIDs(payload.IDs)
+	if derr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": derr.Error()})
 		return
 	}
-	for _, id := range payload.IDs {
-		if err := h.catalogSvc.DeletePlanGroup(c, id); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+	if err := h.catalogSvc.BulkDeletePlanGroups(c.Request.Context(), ids); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -463,7 +510,7 @@ func (h *Handler) AdminPackages(c *gin.Context) {
 	if query.GoodsTypeID != nil {
 		goodsTypeID = *query.GoodsTypeID
 	}
-	items, err := h.catalogSvc.ListPackages(c)
+	items, err := h.catalogSvc.ListPackages(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -496,7 +543,7 @@ func (h *Handler) AdminProducts(c *gin.Context) {
 func (h *Handler) AdminPackageCreate(c *gin.Context) {
 	var payload PackageDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	pkg := packageDTOToDomain(payload)
@@ -504,13 +551,13 @@ func (h *Handler) AdminPackageCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidPlanGroupId.Error()})
 		return
 	}
-	if plan, err := h.catalogSvc.GetPlanGroup(c, pkg.PlanGroupID); err == nil {
+	if plan, err := h.catalogSvc.GetPlanGroup(c.Request.Context(), pkg.PlanGroupID); err == nil {
 		pkg.GoodsTypeID = plan.GoodsTypeID
 	}
 	if pkg.GoodsTypeID <= 0 {
-		pkg.GoodsTypeID = h.defaultGoodsTypeID(c)
+		pkg.GoodsTypeID = h.defaultGoodsTypeID(c.Request.Context())
 	}
-	if err := h.catalogSvc.CreatePackage(c, &pkg); err != nil {
+	if err := h.catalogSvc.CreatePackage(c.Request.Context(), &pkg); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -545,10 +592,10 @@ func (h *Handler) AdminPackageUpdate(c *gin.Context) {
 		CapacityRemaining    *int     `json:"capacity_remaining"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	pkg, err := h.catalogSvc.GetPackage(c, uri.ID)
+	pkg, err := h.catalogSvc.GetPackage(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
@@ -559,7 +606,7 @@ func (h *Handler) AdminPackageUpdate(c *gin.Context) {
 			return
 		}
 		pkg.PlanGroupID = *payload.PlanGroupID
-		if plan, err := h.catalogSvc.GetPlanGroup(c, pkg.PlanGroupID); err == nil && plan.GoodsTypeID > 0 {
+		if plan, err := h.catalogSvc.GetPlanGroup(c.Request.Context(), pkg.PlanGroupID); err == nil && plan.GoodsTypeID > 0 {
 			pkg.GoodsTypeID = plan.GoodsTypeID
 		}
 	}
@@ -605,7 +652,7 @@ func (h *Handler) AdminPackageUpdate(c *gin.Context) {
 	if payload.CapacityRemaining != nil {
 		pkg.CapacityRemaining = *payload.CapacityRemaining
 	}
-	if err := h.catalogSvc.UpdatePackage(c, pkg); err != nil {
+	if err := h.catalogSvc.UpdatePackage(c.Request.Context(), pkg); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -622,7 +669,7 @@ func (h *Handler) AdminPackageDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.catalogSvc.DeletePackage(c, uri.ID); err != nil {
+	if err := h.catalogSvc.DeletePackage(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -635,13 +682,13 @@ func (h *Handler) AdminPackageCapabilitiesGet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if _, err := h.catalogSvc.GetPackage(c, uri.ID); err != nil {
+	if _, err := h.catalogSvc.GetPackage(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
 	resizeEnabled, resizeSource := h.packageCapabilityResolvedValue(c, uri.ID, "resize", "resize_enabled", true)
 	refundEnabled, refundSource := h.packageCapabilityResolvedValue(c, uri.ID, "refund", "refund_enabled", true)
-	raw := h.getPackageCapabilityPolicy(c, uri.ID)
+	raw := h.getPackageCapabilityPolicy(c.Request.Context(), uri.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"package_id":             uri.ID,
 		"resize_enabled":         resizeEnabled,
@@ -659,7 +706,7 @@ func (h *Handler) AdminPackageCapabilitiesUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if _, err := h.catalogSvc.GetPackage(c, uri.ID); err != nil {
+	if _, err := h.catalogSvc.GetPackage(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
@@ -668,7 +715,7 @@ func (h *Handler) AdminPackageCapabilitiesUpdate(c *gin.Context) {
 		RefundEnabled *bool `json:"refund_enabled"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if err := h.savePackageCapabilityPolicy(c, uri.ID, packageCapabilityPolicy{
@@ -686,18 +733,17 @@ func (h *Handler) AdminPackageBulkDelete(c *gin.Context) {
 		IDs []int64 `json:"ids"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if len(payload.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrIdsRequired.Error()})
+	ids, derr := dedupeAndBoundIDs(payload.IDs)
+	if derr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": derr.Error()})
 		return
 	}
-	for _, id := range payload.IDs {
-		if err := h.catalogSvc.DeletePackage(c, id); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+	if err := h.catalogSvc.BulkDeletePackages(c.Request.Context(), ids); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -706,7 +752,7 @@ func (h *Handler) AdminProductDelete(c *gin.Context) {
 	h.AdminPackageDelete(c)
 }
 func (h *Handler) AdminBillingCycles(c *gin.Context) {
-	items, err := h.catalogSvc.ListBillingCycles(c)
+	items, err := h.catalogSvc.ListBillingCycles(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -717,11 +763,11 @@ func (h *Handler) AdminBillingCycles(c *gin.Context) {
 func (h *Handler) AdminBillingCycleCreate(c *gin.Context) {
 	var payload BillingCycleDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	cycle := billingCycleDTOToDomain(payload)
-	if err := h.catalogSvc.CreateBillingCycle(c, &cycle); err != nil {
+	if err := h.catalogSvc.CreateBillingCycle(c.Request.Context(), &cycle); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -736,12 +782,12 @@ func (h *Handler) AdminBillingCycleUpdate(c *gin.Context) {
 	}
 	var payload BillingCycleDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	payload.ID = uri.ID
 	cycle := billingCycleDTOToDomain(payload)
-	if err := h.catalogSvc.UpdateBillingCycle(c, cycle); err != nil {
+	if err := h.catalogSvc.UpdateBillingCycle(c.Request.Context(), cycle); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -754,7 +800,7 @@ func (h *Handler) AdminBillingCycleDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.catalogSvc.DeleteBillingCycle(c, uri.ID); err != nil {
+	if err := h.catalogSvc.DeleteBillingCycle(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -766,18 +812,17 @@ func (h *Handler) AdminBillingCycleBulkDelete(c *gin.Context) {
 		IDs []int64 `json:"ids"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if len(payload.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrIdsRequired.Error()})
+	ids, derr := dedupeAndBoundIDs(payload.IDs)
+	if derr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": derr.Error()})
 		return
 	}
-	for _, id := range payload.IDs {
-		if err := h.catalogSvc.DeleteBillingCycle(c, id); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+	if err := h.catalogSvc.BulkDeleteBillingCycles(c.Request.Context(), ids); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -785,11 +830,11 @@ func (h *Handler) AdminBillingCycleBulkDelete(c *gin.Context) {
 func (h *Handler) AdminSystemImageCreate(c *gin.Context) {
 	var payload SystemImageDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	img := systemImageDTOToDomain(payload)
-	if err := h.catalogSvc.CreateSystemImage(c, &img); err != nil {
+	if err := h.catalogSvc.CreateSystemImage(c.Request.Context(), &img); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -804,12 +849,12 @@ func (h *Handler) AdminSystemImageUpdate(c *gin.Context) {
 	}
 	var payload SystemImageDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	payload.ID = uri.ID
 	img := systemImageDTOToDomain(payload)
-	if err := h.catalogSvc.UpdateSystemImage(c, img); err != nil {
+	if err := h.catalogSvc.UpdateSystemImage(c.Request.Context(), img); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -822,7 +867,7 @@ func (h *Handler) AdminSystemImageDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.catalogSvc.DeleteSystemImage(c, uri.ID); err != nil {
+	if err := h.catalogSvc.DeleteSystemImage(c.Request.Context(), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -834,18 +879,17 @@ func (h *Handler) AdminSystemImageBulkDelete(c *gin.Context) {
 		IDs []int64 `json:"ids"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if len(payload.IDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrIdsRequired.Error()})
+	ids, derr := dedupeAndBoundIDs(payload.IDs)
+	if derr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": derr.Error()})
 		return
 	}
-	for _, id := range payload.IDs {
-		if err := h.catalogSvc.DeleteSystemImage(c, id); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
+	if err := h.catalogSvc.BulkDeleteSystemImages(c.Request.Context(), ids); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -870,7 +914,7 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 		lineID = *query.LineID
 	}
 	if query.PlanGroupID != nil {
-		plan, err := h.catalogSvc.GetPlanGroup(c, *query.PlanGroupID)
+		plan, err := h.catalogSvc.GetPlanGroup(c.Request.Context(), *query.PlanGroupID)
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrPlanGroupNotFound.Error()})
 			return
@@ -883,7 +927,7 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 	}
 
 	if lineID > 0 {
-		count, err := h.integration.SyncAutomationImagesForLine(c, lineID, "merge")
+		count, err := h.integration.SyncAutomationImagesForLine(c.Request.Context(), lineID, "merge")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -892,7 +936,7 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 			"count":   count,
 			"line_id": lineID,
 		}
-		if images, lerr := h.catalogSvc.ListSystemImages(c, lineID); lerr == nil {
+		if images, lerr := h.catalogSvc.ListSystemImages(c.Request.Context(), lineID); lerr == nil {
 			resp["line_image_count"] = len(images)
 		}
 		c.JSON(http.StatusOK, resp)
@@ -908,7 +952,7 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrGoodsTypeIdRequired.Error()})
 			return
 		}
-		items, err := h.goodsTypes.List(c)
+		items, err := h.goodsTypes.List(c.Request.Context())
 		if err != nil || len(items) == 0 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrGoodsTypeIdRequired.Error()})
 			return
@@ -921,7 +965,7 @@ func (h *Handler) AdminSystemImageSync(c *gin.Context) {
 		})
 		goodsTypeID = items[0].ID
 	}
-	result, err := h.integration.SyncAutomationForGoodsType(c, goodsTypeID, "merge")
+	result, err := h.integration.SyncAutomationForGoodsType(c.Request.Context(), goodsTypeID, "merge")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

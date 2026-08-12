@@ -26,6 +26,70 @@ import (
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
 
+// TestMapWechatTradeState_SurfacesTransactionID covers M3: QueryPayment must
+// return the WeChat transaction_id so the host can refund by it.
+func TestMapWechatTradeState_SurfacesTransactionID(t *testing.T) {
+	state := "SUCCESS"
+	transactionID := "42000012022022200000000000000000"
+	amount := int64(1234)
+	txn := &payments.Transaction{
+		TradeState:    &state,
+		TransactionId: &transactionID,
+		Amount:        &payments.TransactionAmount{Total: &amount},
+	}
+	ps, gotAmount, gotTradeNo, raw := mapWechatTradeState(txn)
+	if gotTradeNo != transactionID {
+		t.Fatalf("trade_no = %q, want %q", gotTradeNo, transactionID)
+	}
+	if gotAmount != amount {
+		t.Fatalf("amount = %d, want %d", gotAmount, amount)
+	}
+	if ps == pluginv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED {
+		t.Fatalf("status should be mapped")
+	}
+	if raw == "" {
+		t.Fatalf("raw_json empty")
+	}
+	// nil transaction must not panic and must return empty trade_no.
+	_, _, gotTradeNo2, _ := mapWechatTradeState(nil)
+	if gotTradeNo2 != "" {
+		t.Fatalf("mapWechatTradeState(nil) trade_no = %q, want empty", gotTradeNo2)
+	}
+}
+
+// TestValidateNotifyIdentity covers L6: a signed WeChat notify must belong to
+// the configured appid/mchid when the transaction carries them, so a notify
+// for a different app under the same merchant cannot be accepted.
+func TestValidateNotifyIdentity(t *testing.T) {
+	appid := "wx-app-1"
+	mchid := "1234567890"
+	cfg := config{AppID: appid, MchID: mchid}
+
+	// Matching identity is accepted.
+	txn := &payments.Transaction{Appid: core.String(appid), Mchid: core.String(mchid)}
+	if err := validateNotifyIdentity(txn, cfg); err != nil {
+		t.Fatalf("validateNotifyIdentity(match) = %v", err)
+	}
+
+	// Mismatched appid is rejected.
+	txn2 := &payments.Transaction{Appid: core.String("wx-app-other"), Mchid: core.String(mchid)}
+	if err := validateNotifyIdentity(txn2, cfg); err == nil {
+		t.Fatalf("expected appid mismatch error")
+	}
+
+	// Mismatched mchid is rejected.
+	txn3 := &payments.Transaction{Appid: core.String(appid), Mchid: core.String("0000000000")}
+	if err := validateNotifyIdentity(txn3, cfg); err == nil {
+		t.Fatalf("expected mchid mismatch error")
+	}
+
+	// Missing fields are skipped (backward compatible).
+	txn4 := &payments.Transaction{}
+	if err := validateNotifyIdentity(txn4, cfg); err != nil {
+		t.Fatalf("validateNotifyIdentity(empty) = %v", err)
+	}
+}
+
 func TestWeChatPayV3_VerifyNotify_Success(t *testing.T) {
 	// platform cert for signature verification (test-only)
 	platPriv, err := rsa.GenerateKey(rand.Reader, 2048)

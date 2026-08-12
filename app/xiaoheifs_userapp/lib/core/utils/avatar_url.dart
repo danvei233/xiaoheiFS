@@ -14,8 +14,8 @@ String resolveUserAvatarUrl({
 
   final qqValue = (qq ?? '').trim();
   if (qqValue.isNotEmpty) {
-    // 使用 QQ 官方头像 API
-    return 'http://q1.qlogo.cn/g?b=qq&nk=$qqValue&s=100';
+    // 使用 QQ 官方头像 API（走 HTTPS，避免明文暴露 QQ 号）
+    return 'https://q1.qlogo.cn/g?b=qq&nk=$qqValue&s=100';
   }
 
   final direct = (avatarUrl ?? avatar ?? '').trim();

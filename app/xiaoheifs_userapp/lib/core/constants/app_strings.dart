@@ -31,7 +31,7 @@ class AppStrings {
   static const String login = '登录';
   static const String logout = '退出登录';
   static const String username = '用户名';
-  static const String password = '<REDACTED>';
+  static const String password = '密码';
   static const String apiUrl = 'API 地址';
   static const String rememberMe = '记住我';
   static const String loginSuccess = '登录成功';

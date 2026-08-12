@@ -31,11 +31,36 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // 生产构建默认禁止明文 HTTP；debug 构建放开以支持本地开发联调。
+        manifestPlaceholders["usesCleartextTraffic"] = "false"
+    }
+
+    signingConfigs {
+        create("release") {
+            // Release 签名完全来自 CI/构建环境注入，绝不回退到 debug keystore。
+            val keystorePath = System.getenv("ANDROID_RELEASE_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("ANDROID_RELEASE_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("ANDROID_RELEASE_KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("ANDROID_RELEASE_KEY_PASSWORD") ?: ""
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
+        }
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            manifestPlaceholders["usesCleartextTraffic"] = "false"
+            val keystorePath = System.getenv("ANDROID_RELEASE_KEYSTORE_PATH")
+            if (!keystorePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            // 未注入 keystore 时保持未签名（unsigned APK 无法安装/上架），
+            // 拒绝静默使用 debug 签名。CI 在 release 构建前强制校验该环境变量。
         }
     }
 }

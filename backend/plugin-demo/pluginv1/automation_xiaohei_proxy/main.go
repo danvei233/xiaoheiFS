@@ -69,7 +69,7 @@ func (s *coreServer) GetConfigSchema(ctx context.Context, _ *pluginv1.Empty) (*p
     "admin_api_key": { "type": "string", "title": "Admin API Key", "format": "password", "description": "for catalog sync and admin lifecycle actions" },
     "price_rate": { "type": "number", "title": "Price Rate", "default": 1.0, "minimum": 0.1, "maximum": 10.0 },
     "goods_type_id": { "type": "integer", "title": "Upstream Goods Type ID", "description": "Must be upstream goods_type_id, not local ID", "default": 0, "minimum": 0 },
-    "timeout_sec": { "type": "integer", "title": "Timeout (sec)", "default": 12, "minimum": 1, "maximum": 60 },
+    "timeout_sec": { "type": "integer", "title": "Timeout (sec)", "default": 120, "minimum": 1, "maximum": 120 },
     "retry": { "type": "integer", "title": "Retry", "default": 1, "minimum": 0, "maximum": 5 },
     "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
   },
@@ -99,7 +99,7 @@ func (s *coreServer) ValidateConfig(ctx context.Context, req *pluginv1.ValidateC
 	if cfg.GoodsTypeID <= 0 {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "goods_type_id required"}, nil
 	}
-	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 60 {
+	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 120 {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "timeout_sec out of range"}, nil
 	}
 	if cfg.PriceRate < 0 {

@@ -129,6 +129,7 @@
   import { useCartStore, type CartStoreItem } from '@/stores/cart'
   import { useCatalogStore } from '@/stores/catalog'
   import { createOrderFromCartWithCoupon, previewCoupon } from '@/services/user'
+  import { IdempotentRequest } from '@/utils/idempotentRequest'
   import type { CouponPreviewResponse, Package, SystemImage } from '@/services/types'
 
   defineOptions({ name: 'PublicCart' })
@@ -147,6 +148,7 @@
   const couponCode = ref('')
   const couponLoading = ref(false)
   const couponPreview = ref<CouponPreviewResponse | null>(null)
+  const orderRequest = new IdempotentRequest<{ coupon_code?: string } | undefined>('order')
   const findPackage = (packageId: number) =>
     (catalog.packages as Package[]).find((item) => String(item.id) === String(packageId))
   const findSystem = (systemId?: number) =>
@@ -267,6 +269,7 @@
     }
 
     submitting.value = true
+    let request: ReturnType<typeof orderRequest.prepare> | undefined
     try {
       const mergeResult = await cart.mergeGuestCart()
       if (mergeResult.failed > 0) {
@@ -274,15 +277,16 @@
         return
       }
       const coupon = couponCode.value.trim()
-      const response = await createOrderFromCartWithCoupon(
-        coupon ? { coupon_code: coupon } : undefined,
-        `order-${Date.now()}`
-      )
+      request = orderRequest.prepare(() => (coupon ? { coupon_code: coupon } : undefined))
+      const response = await createOrderFromCartWithCoupon(request.payload, request.key)
+      orderRequest.resolve()
       const payload = response.data as Record<string, any>
       const orderId = payload.order?.id ?? payload.order?.ID ?? payload.id ?? payload.ID
       ElMessage.success('订单已创建')
       await cart.fetchCart()
       if (orderId) await router.push({ name: 'ConsoleOrderDetail', params: { id: orderId } })
+    } catch (error) {
+      if (request) orderRequest.reject(error)
     } finally {
       submitting.value = false
     }

@@ -19,6 +19,11 @@ type Service struct {
 
 type CartSpec = appshared.CartSpec
 
+// maxCartQty bounds a single cart line. Order creation expands qty into one
+// order item per unit, so an unbounded qty would exhaust memory and bloat the
+// orders table.
+const maxCartQty = 999
+
 func NewService(cart appports.CartRepository, catalog appports.CatalogRepository, billing appports.BillingCycleRepository) *Service {
 	return &Service{cart: cart, catalog: catalog, billing: billing}
 }
@@ -39,6 +44,9 @@ func (s *Service) Add(ctx context.Context, userID int64, packageID int64, system
 	if qty <= 0 {
 		qty = 1
 	}
+	if qty > maxCartQty {
+		return domain.CartItem{}, appshared.ErrInvalidInput
+	}
 	if err := normalizeCartSpec(&spec); err != nil {
 		return domain.CartItem{}, err
 	}
@@ -48,6 +56,9 @@ func (s *Service) Add(ctx context.Context, userID int64, packageID int64, system
 	}
 	plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
 	if err != nil {
+		return domain.CartItem{}, err
+	}
+	if err := ensureOnSale(pkg, plan); err != nil {
 		return domain.CartItem{}, err
 	}
 	if err := validateAddonSpec(spec, plan); err != nil {
@@ -72,8 +83,7 @@ func (s *Service) Add(ctx context.Context, userID int64, packageID int64, system
 			unitBW = pricing.UnitBW
 		}
 	}
-	addonMonthly := int64(spec.AddCores)*unitCore + int64(spec.AddMemGB)*unitMem + int64(spec.AddDiskGB)*unitDisk + int64(spec.AddBWMbps)*unitBW
-	unitAmount := int64(math.Round(float64(baseMonthly+addonMonthly) * multiplier))
+	unitAmount := priceUnitAmount(baseMonthly, unitCore, unitMem, unitDisk, unitBW, spec, multiplier)
 	specJSON := mustJSON(spec)
 	item := domain.CartItem{
 		UserID:    userID,
@@ -92,6 +102,9 @@ func (s *Service) Add(ctx context.Context, userID int64, packageID int64, system
 func (s *Service) Update(ctx context.Context, userID int64, itemID int64, spec CartSpec, qty int) (domain.CartItem, error) {
 	if qty <= 0 {
 		qty = 1
+	}
+	if qty > maxCartQty {
+		return domain.CartItem{}, appshared.ErrInvalidInput
 	}
 	if err := normalizeCartSpec(&spec); err != nil {
 		return domain.CartItem{}, err
@@ -118,6 +131,9 @@ func (s *Service) Update(ctx context.Context, userID int64, itemID int64, spec C
 	if err != nil {
 		return domain.CartItem{}, err
 	}
+	if err := ensureOnSale(pkg, plan); err != nil {
+		return domain.CartItem{}, err
+	}
 	if err := validateAddonSpec(spec, plan); err != nil {
 		return domain.CartItem{}, err
 	}
@@ -140,8 +156,7 @@ func (s *Service) Update(ctx context.Context, userID int64, itemID int64, spec C
 			unitBW = pricing.UnitBW
 		}
 	}
-	addonMonthly := int64(spec.AddCores)*unitCore + int64(spec.AddMemGB)*unitMem + int64(spec.AddDiskGB)*unitDisk + int64(spec.AddBWMbps)*unitBW
-	unitAmount := int64(math.Round(float64(baseMonthly+addonMonthly) * multiplier))
+	unitAmount := priceUnitAmount(baseMonthly, unitCore, unitMem, unitDisk, unitBW, spec, multiplier)
 	updated := domain.CartItem{
 		ID:        itemID,
 		UserID:    userID,
@@ -163,6 +178,35 @@ func (s *Service) Remove(ctx context.Context, userID int64, itemID int64) error 
 
 func (s *Service) Clear(ctx context.Context, userID int64) error {
 	return s.cart.ClearCart(ctx, userID)
+}
+
+// priceUnitAmount prices one unit of a package the same way the order path
+// does: each component (base and every addon dimension) is rounded separately
+// after applying the billing-cycle multiplier, then summed. Rounding the
+// aggregate once instead would diverge from the order total whenever the
+// multiplier is non-integer.
+func priceUnitAmount(baseMonthly, unitCore, unitMem, unitDisk, unitBW int64, spec CartSpec, multiplier float64) int64 {
+	coreMonthly := int64(spec.AddCores) * unitCore
+	memMonthly := int64(spec.AddMemGB) * unitMem
+	diskMonthly := int64(spec.AddDiskGB) * unitDisk
+	bwMonthly := int64(spec.AddBWMbps) * unitBW
+	baseAmount := int64(math.Round(float64(baseMonthly) * multiplier))
+	coreAmount := int64(math.Round(float64(coreMonthly) * multiplier))
+	memAmount := int64(math.Round(float64(memMonthly) * multiplier))
+	diskAmount := int64(math.Round(float64(diskMonthly) * multiplier))
+	bwAmount := int64(math.Round(float64(bwMonthly) * multiplier))
+	return baseAmount + coreAmount + memAmount + diskAmount + bwAmount
+}
+
+// ensureOnSale rejects packages/plan groups that have been taken off sale or
+// hidden from the storefront. A cart item is only meaningful while the product
+// it references can still be purchased; otherwise the item would be re-priced
+// and ordered against a discontinued listing.
+func ensureOnSale(pkg domain.Package, plan domain.PlanGroup) error {
+	if !pkg.Active || !pkg.Visible || !plan.Active || !plan.Visible {
+		return appshared.ErrInvalidInput
+	}
+	return nil
 }
 
 func (s *Service) resolveBilling(ctx context.Context, spec CartSpec) (int, float64, error) {

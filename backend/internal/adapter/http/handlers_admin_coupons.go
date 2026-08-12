@@ -16,7 +16,7 @@ func (h *Handler) AdminCouponProductGroups(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	items, err := h.couponSvc.ListProductGroups(c)
+	items, err := h.couponSvc.ListProductGroups(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -31,7 +31,7 @@ func (h *Handler) AdminCouponProductGroupCreate(c *gin.Context) {
 	}
 	var payload CouponProductGroupDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	group := domain.CouponProductGroup{
@@ -47,7 +47,7 @@ func (h *Handler) AdminCouponProductGroupCreate(c *gin.Context) {
 		AddonBWMbps: payload.AddonBWMbps,
 	}
 	applyCouponGroupRulesPayload(&group, payload.Rules)
-	if err := h.couponSvc.CreateProductGroup(c, getUserID(c), &group); err != nil {
+	if err := h.couponSvc.CreateProductGroup(c.Request.Context(), getUserID(c), &group); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -66,7 +66,7 @@ func (h *Handler) AdminCouponProductGroupUpdate(c *gin.Context) {
 	}
 	var payload CouponProductGroupDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	group := domain.CouponProductGroup{
@@ -83,7 +83,7 @@ func (h *Handler) AdminCouponProductGroupUpdate(c *gin.Context) {
 		AddonBWMbps: payload.AddonBWMbps,
 	}
 	applyCouponGroupRulesPayload(&group, payload.Rules)
-	if err := h.couponSvc.UpdateProductGroup(c, getUserID(c), group); err != nil {
+	if err := h.couponSvc.UpdateProductGroup(c.Request.Context(), getUserID(c), group); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -100,7 +100,7 @@ func (h *Handler) AdminCouponProductGroupDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.couponSvc.DeleteProductGroup(c, getUserID(c), uri.ID); err != nil {
+	if err := h.couponSvc.DeleteProductGroup(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -134,7 +134,7 @@ func (h *Handler) AdminCoupons(c *gin.Context) {
 		v := activeRaw == "1" || strings.EqualFold(activeRaw, "true")
 		active = &v
 	}
-	items, total, err := h.couponSvc.ListCoupons(c, appshared.CouponFilter{
+	items, total, err := h.couponSvc.ListCoupons(c.Request.Context(), appshared.CouponFilter{
 		Keyword:        strings.TrimSpace(query.Keyword),
 		ProductGroupID: query.GroupID,
 		Active:         active,
@@ -153,7 +153,7 @@ func (h *Handler) AdminCouponCreate(c *gin.Context) {
 	}
 	var payload CouponDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	item := domain.Coupon{
@@ -168,7 +168,7 @@ func (h *Handler) AdminCouponCreate(c *gin.Context) {
 		Active:           payload.Active,
 		Note:             payload.Note,
 	}
-	if err := h.couponSvc.CreateCoupon(c, getUserID(c), &item); err != nil {
+	if err := h.couponSvc.CreateCoupon(c.Request.Context(), getUserID(c), &item); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -187,7 +187,7 @@ func (h *Handler) AdminCouponUpdate(c *gin.Context) {
 	}
 	var payload CouponDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	item := domain.Coupon{
@@ -203,7 +203,7 @@ func (h *Handler) AdminCouponUpdate(c *gin.Context) {
 		Active:           payload.Active,
 		Note:             payload.Note,
 	}
-	if err := h.couponSvc.UpdateCoupon(c, getUserID(c), item); err != nil {
+	if err := h.couponSvc.UpdateCoupon(c.Request.Context(), getUserID(c), item); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -220,7 +220,7 @@ func (h *Handler) AdminCouponDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.couponSvc.DeleteCoupon(c, getUserID(c), uri.ID); err != nil {
+	if err := h.couponSvc.DeleteCoupon(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -247,7 +247,7 @@ func (h *Handler) AdminCouponBatchGenerate(c *gin.Context) {
 		Note             string  `json:"note"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	parseTime := func(raw *string) (*time.Time, error) {
@@ -281,7 +281,7 @@ func (h *Handler) AdminCouponBatchGenerate(c *gin.Context) {
 		Active:           payload.Active,
 		Note:             payload.Note,
 	}
-	items, err := h.couponSvc.BatchGenerateCoupons(c, getUserID(c), payload.Prefix, payload.Count, payload.Length, base)
+	items, err := h.couponSvc.BatchGenerateCoupons(c.Request.Context(), getUserID(c), payload.Prefix, payload.Count, payload.Length, base)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

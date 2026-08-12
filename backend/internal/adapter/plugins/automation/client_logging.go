@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -12,42 +13,65 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	"xiaoheiplay/internal/adapter/plugins/core"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
 
-type automationLogConfig struct {
-	debugEnabled  bool
-	retentionDays int
+const (
+	// maxHTTPTraceBytes caps the plugin-supplied http_trace payload decoded for
+	// automation logs so a rogue/oversized trace cannot bloat log rows.
+	maxHTTPTraceBytes = 256 << 10
+	// maxLogMessageBytes caps the persisted error/action text so a single
+	// automation_log row stays bounded regardless of upstream message size.
+	maxLogMessageBytes = 16 << 10
+)
+
+func (c *PluginInstanceClient) debugEnabled(ctx context.Context) bool {
+	if c.settings == nil {
+		return false
+	}
+	setting, err := c.settings.GetSetting(ctx, "debug_enabled")
+	if err != nil || setting.ValueJSON == "" {
+		return false
+	}
+	return strings.ToLower(setting.ValueJSON) == "true"
 }
 
-func (c *PluginInstanceClient) loadLogConfig(ctx context.Context) automationLogConfig {
-	cfg := automationLogConfig{}
+func (c *PluginInstanceClient) logRetentionDays(ctx context.Context) int {
 	if c.settings == nil {
-		return cfg
+		return 0
 	}
-	if setting, err := c.settings.GetSetting(ctx, "debug_enabled"); err == nil && setting.ValueJSON != "" {
-		cfg.debugEnabled = strings.ToLower(setting.ValueJSON) == "true"
+	setting, err := c.settings.GetSetting(ctx, "automation_log_retention_days")
+	if err != nil || setting.ValueJSON == "" {
+		return 0
 	}
-	if setting, err := c.settings.GetSetting(ctx, "automation_log_retention_days"); err == nil && setting.ValueJSON != "" {
-		if v, err := strconv.Atoi(setting.ValueJSON); err == nil && v > 0 {
-			cfg.retentionDays = v
-		}
+	if v, err := strconv.Atoi(setting.ValueJSON); err == nil && v > 0 {
+		return v
 	}
-	return cfg
+	return 0
+}
+
+func truncateLogText(s string) string {
+	if len(s) <= maxLogMessageBytes {
+		return s
+	}
+	return s[:maxLogMessageBytes] + "..."
 }
 
 func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req any, resp any, duration time.Duration, err error) {
 	if c.autoLogs == nil {
 		return
 	}
-	cfg := c.loadLogConfig(ctx)
-	if !cfg.debugEnabled && err == nil {
+	// Fast path: when debug logging is disabled and the RPC succeeded there is
+	// nothing to record. Read only the debug flag here instead of the whole
+	// config so the hot path does not pay for the retention setting read too.
+	if !c.debugEnabled(ctx) && err == nil {
 		return
 	}
 	trace, _ := appshared.GetAutomationLogContext(ctx)
-	if cfg.retentionDays > 0 {
-		before := time.Now().AddDate(0, 0, -cfg.retentionDays)
+	if retentionDays := c.logRetentionDays(ctx); retentionDays > 0 {
+		before := time.Now().AddDate(0, 0, -retentionDays)
 		_ = c.autoLogs.PurgeAutomationLogs(ctx, before)
 	}
 	requestMeta := c.grpcRequestMeta(action)
@@ -64,7 +88,11 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 	}
 	if err != nil {
 		respPayload["status"] = 500
-		respPayload["body"] = err.Error()
+		// Never persist the raw error verbatim: a plugin error can carry a full
+		// http_trace= payload (base64 request/response trace), upstream URLs, IPs,
+		// paths or long tokens. Strip the trace marker and scrub the remainder so
+		// an unparseable/unsanitized trace cannot leak secrets into automation_logs.
+		respPayload["body"] = truncateLogText(plugins.SanitizePluginMessage(messageWithoutHTTPTrace(err.Error())))
 		respPayload["format"] = "text"
 		if traceReq, traceResp, traceAction, traceMsg, ok := extractHTTPTrace(err); ok {
 			if traceReq != nil {
@@ -75,11 +103,24 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 				respPayload = traceResp
 			}
 			if strings.TrimSpace(traceAction) != "" {
-				action = traceAction
+				// The action is an operational label ("GET /api/items"), so keep
+				// its path for debuggability but scrub any secret-bearing query
+				// parameters it may carry.
+				action = scrubURLQuery(traceAction)
 			}
 			if strings.TrimSpace(traceMsg) != "" {
-				err = fmt.Errorf("%s", traceMsg)
+				cleanMsg := plugins.SanitizePluginMessage(traceMsg)
+				if cleanMsg == "" {
+					cleanMsg = "upstream request failed"
+				}
+				err = fmt.Errorf("%s", truncateLogText(cleanMsg))
+			} else {
+				err = fmt.Errorf("%s", messageWithoutHTTPTrace(err.Error()))
 			}
+		} else {
+			// Trace marker present but unparseable (bad base64 / bad JSON): never
+			// persist the raw http_trace= payload in the Message/body fields.
+			err = fmt.Errorf("%s", messageWithoutHTTPTrace(err.Error()))
 		}
 	} else {
 		body := sanitizePayload(toLogPayload(resp))
@@ -87,14 +128,16 @@ func (c *PluginInstanceClient) logRPC(ctx context.Context, action string, req an
 		respPayload["format"] = "json"
 		respPayload["body_json"] = body
 	}
+	reqPayload = sanitizePayload(reqPayload).(map[string]any)
+	respPayload = sanitizePayload(respPayload).(map[string]any)
 	logEntry := domain.AutomationLog{
 		OrderID:      trace.OrderID,
 		OrderItemID:  trace.OrderItemID,
-		Action:       action,
+		Action:       truncateLogText(action),
 		RequestJSON:  mustJSON(reqPayload),
 		ResponseJSON: mustJSON(respPayload),
 		Success:      err == nil,
-		Message:      messageFromErr(err),
+		Message:      truncateLogText(messageFromErr(err)),
 	}
 	_ = c.autoLogs.CreateAutomationLog(ctx, &logEntry)
 }
@@ -179,6 +222,10 @@ func extractHTTPTrace(err error) (map[string]any, map[string]any, string, string
 	if decoded, decodeErr := base64.StdEncoding.DecodeString(raw); decodeErr == nil && len(decoded) > 0 {
 		raw = string(decoded)
 	}
+	if len(raw) > maxHTTPTraceBytes {
+		// Reject oversized traces instead of persisting a multi-hundred-KB body.
+		return nil, nil, "", "", false
+	}
 	var trace struct {
 		Action   string         `json:"action"`
 		Request  map[string]any `json:"request"`
@@ -197,6 +244,17 @@ func messageFromErr(err error) string {
 		return "ok"
 	}
 	return err.Error()
+}
+
+func messageWithoutHTTPTrace(message string) string {
+	const marker = "http_trace="
+	if index := strings.LastIndex(message, marker); index >= 0 {
+		message = strings.TrimSpace(message[:index])
+	}
+	if message == "" {
+		return "upstream request failed"
+	}
+	return message
 }
 
 func mustJSON(payload any) string {
@@ -240,23 +298,113 @@ func sanitizePayload(payload any) any {
 			out[key] = sanitizePayload(val)
 		}
 		return out
+	case map[string]string:
+		// mergeRequestMeta normalizes trace headers into map[string]string;
+		// sensitive header keys must be redacted there too.
+		out := make(map[string]string, len(v))
+		for key, val := range v {
+			if isSensitiveKey(key) {
+				out[key] = "***"
+				continue
+			}
+			out[key] = val
+		}
+		return out
 	case []any:
 		out := make([]any, 0, len(v))
 		for _, item := range v {
 			out = append(out, sanitizePayload(item))
 		}
 		return out
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if (strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}")) ||
+			(strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]")) {
+			var nested any
+			if json.Unmarshal([]byte(trimmed), &nested) == nil {
+				return sanitizePayload(nested)
+			}
+		}
+		// A URL/query string can carry credentials in its query parameters even
+		// though the string is not JSON; scrub sensitive query keys so e.g.
+		// https://api.example.com?token=SECRET is persisted as token=***.
+		if scrubbed := scrubURLQuery(trimmed); scrubbed != trimmed {
+			return scrubbed
+		}
+		// A raw application/x-www-form-urlencoded body (no "?" prefix) carries
+		// credentials as form keys, e.g. sys_pwd=SECRET&vnc_pwd=SECRET. Parse it
+		// as a form and mask the sensitive keys; non-form strings (and forms with
+		// no sensitive keys) pass through unchanged.
+		if scrubbed := scrubFormBody(trimmed); scrubbed != trimmed {
+			return scrubbed
+		}
+		return trimmed
 	default:
 		return payload
 	}
 }
 
+// scrubURLQuery replaces the values of sensitive query parameters in a
+// URL-looking string with "***". Non-URL strings and URLs without a query are
+// returned unchanged.
+func scrubURLQuery(s string) string {
+	if !strings.Contains(s, "?") {
+		return s
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.RawQuery == "" {
+		return s
+	}
+	q := u.Query()
+	changed := false
+	for key := range q {
+		if isSensitiveKey(key) {
+			q.Set(key, "***")
+			changed = true
+		}
+	}
+	if !changed {
+		return s
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// scrubFormBody replaces the values of sensitive form-urlencoded keys in a
+// request body string with "***". It only rewrites the string when at least one
+// sensitive key is present, so plain text and non-sensitive form bodies are
+// returned unchanged. A form body does not carry the "?" that scrubURLQuery
+// requires, so this is the fallback that masks e.g. sys_pwd=SECRET&vnc_pwd=SECRET
+// persisted from a application/x-www-form-urlencoded POST.
+func scrubFormBody(s string) string {
+	if s == "" || !strings.Contains(s, "=") {
+		return s
+	}
+	q, err := url.ParseQuery(s)
+	if err != nil {
+		return s
+	}
+	changed := false
+	for key := range q {
+		if isSensitiveKey(key) {
+			q.Set(key, "***")
+			changed = true
+		}
+	}
+	if !changed {
+		return s
+	}
+	return q.Encode()
+}
+
 func isSensitiveKey(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
 	switch normalized {
-	case "api_key", "apikey", "secret", "token", "access_key", "access_key_id", "access_key_secret":
+	case "api_key", "apikey", "secret", "token", "access_key", "access_key_id", "access_key_secret",
+		"access_token", "refresh_token", "auth_token", "id_token", "session_token",
+		"authorization", "x-api-key", "private_key", "jwt", "cookie":
 		return true
 	default:
-		return strings.Contains(normalized, "secret")
+		return strings.Contains(normalized, "secret") || strings.Contains(normalized, "password") || strings.Contains(normalized, "pwd")
 	}
 }

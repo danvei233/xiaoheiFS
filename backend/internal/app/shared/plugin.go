@@ -77,6 +77,33 @@ type PluginDiscoverItem struct {
 	Entry           PluginEntryInfo              `json:"entry"`
 }
 
+// PluginInstallVerifyResult is the pre-commit result of validating an uploaded
+// plugin archive. It carries the signature status so the caller can enforce a
+// trust gate before any files are written into the plugin base directory, and
+// the archive digest that the trust confirmation is bound to (the commit must
+// re-hash to the same digest).
+type PluginInstallVerifyResult struct {
+	Category        string                       `json:"category"`
+	PluginID        string                       `json:"plugin_id"`
+	Name            string                       `json:"name"`
+	Version         string                       `json:"version"`
+	SignatureStatus domain.PluginSignatureStatus `json:"signature_status"`
+	Digest          string                       `json:"digest"`
+}
+
+// PluginImportPreview is the result of inspecting an on-disk plugin before
+// import. It carries the signature status (so the handler can require a second
+// factor for untrusted content) and the content digest that the authorization is
+// bound to: the final ImportFromDisk re-inspects the directory and requires the
+// digest to be unchanged, so a directory swap between the trust decision and the
+// commit is refused as a conflict.
+type PluginImportPreview struct {
+	Category        string                       `json:"category"`
+	PluginID        string                       `json:"plugin_id"`
+	SignatureStatus domain.PluginSignatureStatus `json:"signature_status"`
+	ContentDigest   string                       `json:"content_digest"`
+}
+
 type PluginPaymentMethodState struct {
 	Method  string `json:"method"`
 	Enabled bool   `json:"enabled"`

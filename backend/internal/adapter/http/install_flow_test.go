@@ -3,6 +3,7 @@ package http_test
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 
 	adapterhttp "xiaoheiplay/internal/adapter/http"
 	"xiaoheiplay/internal/adapter/repo/core"
+	"xiaoheiplay/internal/domain"
 	"xiaoheiplay/internal/pkg/config"
 	"xiaoheiplay/internal/pkg/db"
 	"xiaoheiplay/internal/testutil"
@@ -123,6 +125,59 @@ func TestInstallRun_SQLite_FullFlow(t *testing.T) {
 	}
 	if !statusResp.Installed {
 		t.Fatalf("expected installed=true")
+	}
+}
+
+// TestInstallDBCheckHidesRawDriverError verifies the unauthenticated installer
+// never echoes the raw DB driver error (which can expose the DB host, username
+// or DSN) to the client; the stable domain error is returned instead.
+func TestInstallDBCheckHidesRawDriverError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	lockPath := filepath.Join(t.TempDir(), "install.lock")
+	adapterhttp.SetInstallLockPathForTest(lockPath)
+	t.Cleanup(func() { adapterhttp.SetInstallLockPathForTest("") })
+	server := adapterhttp.NewInstallBootstrapServer("test-secret")
+	rec := testutil.DoJSON(t, server.Engine, "POST", "/api/v1/install/db/check", map[string]any{
+		"db": map[string]any{
+			"type": "mysql",
+			"dsn":  "root:supersecret@tcp(127.0.0.1:1)/xiaohei?parseTime=true",
+		},
+	}, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("db check status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, leaked := range []string{"127.0.0.1", "root", "supersecret", "xiaohei", "tcp(", "dial tcp"} {
+		if strings.Contains(body, leaked) {
+			t.Fatalf("raw driver detail leaked into install db check: %q in %s", leaked, body)
+		}
+	}
+	if !strings.Contains(body, domain.ErrDbConnectFailed.Error()) {
+		t.Fatalf("expected stable db connect error, got %s", body)
+	}
+}
+
+func TestInstallDBCheck_RejectsAfterInstalled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tmp := chdirTemp(t)
+	lockPath := filepath.Join(tmp, "install.lock")
+	if err := os.WriteFile(lockPath, []byte("installed"), 0o600); err != nil {
+		t.Fatalf("write install lock: %v", err)
+	}
+
+	adapterhttp.SetInstallLockPathForTest(lockPath)
+	t.Cleanup(func() { adapterhttp.SetInstallLockPathForTest("") })
+
+	target := filepath.Join(tmp, "data", "must-not-exist.db")
+	server := adapterhttp.NewInstallBootstrapServer("test-secret")
+	rec := testutil.DoJSON(t, server.Engine, http.MethodPost, "/api/v1/install/db/check", map[string]any{
+		"db": map[string]any{"type": "sqlite", "path": target},
+	}, "")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected installed db check to return 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("installed db check must not create the sqlite file, stat err=%v", err)
 	}
 }
 

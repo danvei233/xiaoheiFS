@@ -21,9 +21,10 @@
     "timeout_sec": {
       "type": "integer",
       "title": "超时时间（秒）",
-      "default": 15,
+      "description": "HTTP 请求超时，会覆盖 CreateVM 等长耗时接口。建议 >= 180 以覆盖虚拟机创建（importdisk + resize + boot）最慢场景。",
+      "default": 60,
       "minimum": 1,
-      "maximum": 60
+      "maximum": 600
     },
     "retry": {
       "type": "integer",
@@ -37,6 +38,13 @@
       "title": "Dry Run（演练模式）",
       "default": false,
       "description": "开启后所有写操作不会真正执行"
+    },
+    "default_nic_type": {
+      "type": "string",
+      "title": "默认网卡类型",
+      "description": "创建虚拟机时默认分配的网卡类型。HostAgent 在 Token 登录路径不会自动补网卡，必须由插件显式下发。nat=内网NAT网卡，pub=公网网卡，none=不分配（运维自行管理）。",
+      "enum": ["nat", "pub", "none"],
+      "default": "nat"
     }
   },
   "required": ["base_url", "api_key"]

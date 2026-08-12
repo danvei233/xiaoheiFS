@@ -126,3 +126,25 @@ func TestFakeRegistriesAndNotifiers(t *testing.T) {
 		t.Fatalf("realname verify: %v", err)
 	}
 }
+
+// TestFakeAutomationClient_StrictFailsClosed locks P2-60: the fake automation
+// client must not fabricate a successful, ready host by default when Strict is
+// set — a test that forgets to configure results must fail, not silently pass.
+func TestFakeAutomationClient_StrictFailsClosed(t *testing.T) {
+	f := &FakeAutomationClient{Strict: true}
+	if _, err := f.GetHostInfo(context.Background(), 1); err == nil {
+		t.Fatal("strict fake GetHostInfo must return an error for an unconfigured host")
+	}
+	res, err := f.CreateHost(context.Background(), shared.AutomationCreateHostRequest{})
+	if err != nil {
+		t.Fatalf("create host: %v", err)
+	}
+	if res.HostID != 0 {
+		t.Fatalf("strict fake must not fabricate HostID, got %d", res.HostID)
+	}
+	// Non-strict default keeps the historical optimistic behavior for existing tests.
+	relaxed := &FakeAutomationClient{}
+	if _, err := relaxed.GetHostInfo(context.Background(), 1); err != nil {
+		t.Fatalf("relaxed fake GetHostInfo must default to a ready host, got %v", err)
+	}
+}

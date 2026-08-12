@@ -675,6 +675,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
               context,
               () => ref.read(vpsRepositoryProvider).shutdown(widget.id),
               '已触发关机',
+              confirmTitle: '确认关机',
+              confirmMessage: '关机将中断该实例上运行的服务，确认继续？',
             ),
             icon: const Icon(Icons.power_settings_new),
             label: const Text('关机'),
@@ -693,6 +695,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
               context,
               () => ref.read(vpsRepositoryProvider).reboot(widget.id),
               '已触发重启',
+              confirmTitle: '确认重启',
+              confirmMessage: '重启将短暂中断该实例上的服务，确认继续？',
             ),
             icon: const Icon(Icons.restart_alt),
             label: const Text('重启'),
@@ -1173,6 +1177,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                                         int.parse('${rule['id']}'),
                                       ),
                                   '已删除',
+                                  confirmTitle: '确认删除',
+                                  confirmMessage: '确认删除该防火墙规则？',
                                 );
                                 ref.invalidate(vpsFirewallProvider(widget.id));
                               },
@@ -1247,6 +1253,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                                         int.parse('${item['id']}'),
                                       ),
                                   '已删除',
+                                  confirmTitle: '确认删除',
+                                  confirmMessage: '确认删除该端口映射？',
                                 );
                                 ref.invalidate(vpsPortsProvider(widget.id));
                               },
@@ -1308,6 +1316,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                                             int.parse('${item['id']}'),
                                           ),
                                       '已提交恢复',
+                                      confirmTitle: '确认恢复',
+                                      confirmMessage: '恢复快照将覆盖当前系统数据，确认继续？',
                                     );
                                   },
                             child: const Text('恢复'),
@@ -1325,6 +1335,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                                             int.parse('${item['id']}'),
                                           ),
                                       '已删除',
+                                      confirmTitle: '确认删除',
+                                      confirmMessage: '确认删除该快照？',
                                     );
                                     ref.invalidate(
                                       vpsSnapshotsProvider(widget.id),
@@ -1401,6 +1413,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                                             int.parse('${item['id']}'),
                                           ),
                                       '已提交恢复',
+                                      confirmTitle: '确认恢复',
+                                      confirmMessage: '恢复备份将覆盖当前系统数据，确认继续？',
                                     );
                                   },
                             child: const Text('恢复'),
@@ -1418,6 +1432,8 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                                             int.parse('${item['id']}'),
                                           ),
                                       '已删除',
+                                      confirmTitle: '确认删除',
+                                      confirmMessage: '确认删除该备份？',
                                     );
                                     ref.invalidate(
                                       vpsBackupsProvider(widget.id),
@@ -3108,20 +3124,54 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
                 );
                 return;
               }
-              final res = await ref.read(vpsRepositoryProvider).requestRefund(
-                widget.id,
-                {'reason': reason},
+              // 退款是资金敏感动作，提交前需二次确认。
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) => AlertDialog(
+                  title: const Text('确认提交退款申请'),
+                  content: const Text(
+                    '退款将停止该实例并进入人工审核，审核通过前可能无法继续使用。确认提交？',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      child: const Text(AppStrings.cancel),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      child: const Text(AppStrings.confirm),
+                    ),
+                  ],
+                ),
               );
-              final orderId =
-                  res['order']?['id'] ?? res['order_id'] ?? res['orderId'];
-              if (context.mounted) {
-                Navigator.pop(context);
-                final message = orderId != null
-                    ? '已提交退款申请，订单ID: $orderId'
-                    : '已提交退款申请';
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text(message)));
+              if (confirmed != true || !context.mounted) return;
+              try {
+                final res = await ref.read(vpsRepositoryProvider).requestRefund(
+                  widget.id,
+                  {'reason': reason},
+                );
+                final orderId =
+                    res['order']?['id'] ?? res['order_id'] ?? res['orderId'];
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  final message = orderId != null
+                      ? '已提交退款申请，订单ID: $orderId'
+                      : '已提交退款申请';
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(message)));
+                }
+              } catch (e) {
+                // 退款失败必须有可见反馈，避免未处理异步异常卡住弹窗。
+                if (context.mounted) {
+                  final msg = e.toString().replaceAll('Exception: ', '').trim();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(msg.isEmpty ? '退款申请提交失败' : msg),
+                      backgroundColor: AppColors.danger,
+                    ),
+                  );
+                }
               }
             },
             child: const Text(AppStrings.confirm),
@@ -3129,6 +3179,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
         ],
       ),
     );
+    reasonController.dispose();
   }
 
   Future<void> _submitEmergencyRenew() async {
@@ -3166,8 +3217,30 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
   Future<void> _operate(
     BuildContext context,
     Future<void> Function() action,
-    String successMessage,
-  ) async {
+    String successMessage, {
+    String? confirmTitle,
+    String? confirmMessage,
+  }) async {
+    if (confirmMessage != null && confirmMessage.isNotEmpty) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(confirmTitle ?? '确认操作'),
+          content: Text(confirmMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text(AppStrings.cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text(AppStrings.confirm),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !context.mounted) return;
+    }
     try {
       await action();
       if (context.mounted) {
@@ -3276,13 +3349,15 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     final platform = getPlatformUtils();
 
     if (platform.isMobile) {
-      if (password.trim().isNotEmpty) {
-        await Clipboard.setData(ClipboardData(text: password));
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('已复制系统密码')));
-        }
+      if (password.trim().isNotEmpty && mounted) {
+        // 不把 VPS 系统密码静默写入共享剪贴板（后台应用/输入法可读），
+        // 仅提示用户通过连接信息中的复制按钮显式获取。
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('如需系统密码，请回到连接信息使用复制按钮'),
+            duration: Duration(seconds: 3),
+          ),
+        );
       }
       await _openRedirectInBrowser('vnc', actionLabel: '远程连接');
       return;
@@ -3292,26 +3367,36 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
       if (isWindows) {
         _downloadRdpFile(remote.host, remote.port, username);
       } else {
-        _downloadSshFile(remote.host, remote.port, username, password);
+        _downloadSshFile(remote.host, remote.port, username);
       }
       return;
     }
 
     if (platform.isWindows) {
       final launcher = getDesktopLauncher();
-      if (isWindows) {
-        await launcher.launchWindowsRdp(
-          host: remote.host,
-          port: remote.port,
-          username: username,
-          password: password,
-        );
-      } else {
-        await launcher.launchWindowsSsh(
-          host: remote.host,
-          port: remote.port,
-          username: username,
-        );
+      try {
+        if (isWindows) {
+          await launcher.launchWindowsRdp(
+            host: remote.host,
+            port: remote.port,
+            username: username,
+            password: password,
+          );
+        } else {
+          await launcher.launchWindowsSsh(
+            host: remote.host,
+            port: remote.port,
+            username: username,
+          );
+        }
+      } catch (e) {
+        // launchWindowsSsh/Rdp 对非法 host/username/port 抛 ArgumentError，
+        // 这里捕获并提示，避免成为未处理的异步异常。
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('远程连接参数不合法，无法启动客户端')),
+          );
+        }
       }
       return;
     }
@@ -3319,7 +3404,7 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     if (isWindows) {
       _downloadRdpFile(remote.host, remote.port, username);
     } else {
-      _downloadSshFile(remote.host, remote.port, username, password);
+      _downloadSshFile(remote.host, remote.port, username);
     }
   }
 
@@ -3404,16 +3489,11 @@ class _VpsDetailPageState extends ConsumerState<VpsDetailPage>
     _downloadTextFile('connection.rdp', content, 'application/rdp');
   }
 
-  void _downloadSshFile(
-    String host,
-    String port,
-    String username,
-    String password,
-  ) {
+  void _downloadSshFile(String host, String port, String username) {
+    // 不在下载的 .bat 中明文写入系统密码；ssh 会交互式提示输入密码。
     final content = [
       '@echo off',
       'ssh $username@$host -p $port',
-      'plink -ssh $username@$host -P $port -pw $password',
       'pause',
     ].join('\r\n');
     _downloadTextFile('connection.bat', content, 'application/bat');

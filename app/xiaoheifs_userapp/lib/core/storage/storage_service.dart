@@ -1,11 +1,21 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/storage_keys.dart';
 
 /// 存储服务
-/// 封装SharedPreferences，提供类型安全的存储操作
+///
+/// 分层存储：
+/// - 敏感数据（access/refresh token、用户信息、用户 ID）使用
+///   `flutter_secure_storage`（Android Keystore / iOS Keychain 加密存储），
+///   不再明文落 SharedPreferences。
+/// - 非敏感偏好（主题、语言、API Base URL）继续使用 SharedPreferences。
+///
+/// 启动时会把历史明文 SharedPreferences 中的凭据迁移进安全存储并删除明文。
 class StorageService {
   static StorageService? _instance;
   static SharedPreferences? _prefs;
+
+  static const FlutterSecureStorage _secure = FlutterSecureStorage();
 
   StorageService._();
 
@@ -18,9 +28,29 @@ class StorageService {
   /// 初始化
   static Future<void> init() async {
     _prefs ??= await SharedPreferences.getInstance();
+    await _migrateLegacySensitiveData();
   }
 
-  // ==================== 通用方法 ====================
+  /// 把历史明文 SharedPreferences 中的凭据迁移到安全存储后删除明文，
+  /// 避免旧版本留下的 token/userInfo 继续以明文驻留。
+  static Future<void> _migrateLegacySensitiveData() async {
+    final prefs = _prefs;
+    if (prefs == null) return;
+    Future<void> move(String key) async {
+      final value = prefs.getString(key);
+      if (value != null && value.isNotEmpty) {
+        await _secure.write(key: key, value: value);
+        await prefs.remove(key);
+      }
+    }
+
+    await move(StorageKeys.accessToken);
+    await move(StorageKeys.refreshToken);
+    await move(StorageKeys.userId);
+    await move(StorageKeys.userInfo);
+  }
+
+  // ==================== 非敏感偏好（SharedPreferences） ====================
 
   /// 保存字符串
   Future<bool> setString(String key, String value) async {
@@ -77,7 +107,7 @@ class StorageService {
     return await _prefs!.remove(key);
   }
 
-  /// 清空所有数据
+  /// 清空所有非敏感偏好数据
   Future<bool> clear() async {
     return await _prefs!.clear();
   }
@@ -87,39 +117,39 @@ class StorageService {
     return _prefs!.containsKey(key);
   }
 
-  // ==================== Token相关 ====================
+  // ==================== Token / 用户信息（安全存储） ====================
 
   /// 保存访问令牌
-  Future<bool> setAccessToken(String token) async {
-    return await setString(StorageKeys.accessToken, token);
+  Future<void> setAccessToken(String token) async {
+    await _secure.write(key: StorageKeys.accessToken, value: token);
   }
 
   /// 获取访问令牌
-  String? getAccessToken() {
-    return getString(StorageKeys.accessToken);
+  Future<String?> getAccessToken() async {
+    return await _secure.read(key: StorageKeys.accessToken);
   }
 
   /// 删除访问令牌
-  Future<bool> clearAccessToken() async {
-    return await remove(StorageKeys.accessToken);
+  Future<void> clearAccessToken() async {
+    await _secure.delete(key: StorageKeys.accessToken);
   }
 
   /// 保存刷新令牌
-  Future<bool> setRefreshToken(String token) async {
-    return await setString(StorageKeys.refreshToken, token);
+  Future<void> setRefreshToken(String token) async {
+    await _secure.write(key: StorageKeys.refreshToken, value: token);
   }
 
   /// 获取刷新令牌
-  String? getRefreshToken() {
-    return getString(StorageKeys.refreshToken);
+  Future<String?> getRefreshToken() async {
+    return await _secure.read(key: StorageKeys.refreshToken);
   }
 
   /// 清除所有认证信息
   Future<void> clearAuthData() async {
-    await remove(StorageKeys.accessToken);
-    await remove(StorageKeys.refreshToken);
-    await remove(StorageKeys.userId);
-    await remove(StorageKeys.userInfo);
+    await _secure.delete(key: StorageKeys.accessToken);
+    await _secure.delete(key: StorageKeys.refreshToken);
+    await _secure.delete(key: StorageKeys.userId);
+    await _secure.delete(key: StorageKeys.userInfo);
   }
 
   // ==================== API配置相关 ====================
@@ -137,23 +167,24 @@ class StorageService {
   // ==================== 用户信息相关 ====================
 
   /// 保存用户ID
-  Future<bool> setUserId(int userId) async {
-    return await setInt(StorageKeys.userId, userId);
+  Future<void> setUserId(int userId) async {
+    await _secure.write(key: StorageKeys.userId, value: '$userId');
   }
 
   /// 获取用户ID
-  int? getUserId() {
-    return getInt(StorageKeys.userId);
+  Future<int?> getUserId() async {
+    final value = await _secure.read(key: StorageKeys.userId);
+    return value == null ? null : int.tryParse(value);
   }
 
   /// 保存用户信息(JSON字符串)
-  Future<bool> setUserInfo(String userInfo) async {
-    return await setString(StorageKeys.userInfo, userInfo);
+  Future<void> setUserInfo(String userInfo) async {
+    await _secure.write(key: StorageKeys.userInfo, value: userInfo);
   }
 
   /// 获取用户信息(JSON字符串)
-  String? getUserInfo() {
-    return getString(StorageKeys.userInfo);
+  Future<String?> getUserInfo() async {
+    return await _secure.read(key: StorageKeys.userInfo);
   }
 
   // ==================== 主题和语言相关 ====================

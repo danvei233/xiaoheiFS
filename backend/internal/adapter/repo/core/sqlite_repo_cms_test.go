@@ -74,3 +74,38 @@ func TestSQLiteRepo_CMSCrud(t *testing.T) {
 		t.Fatalf("delete category: %v", err)
 	}
 }
+
+func TestSQLiteRepo_ListCMSPostsPublishedOnlyHidesHiddenCategory(t *testing.T) {
+	_, repo := testutil.NewTestDB(t, false)
+	ctx := context.Background()
+
+	visCat := domain.CMSCategory{Key: "visible-news", Name: "Visible", Lang: "zh-CN", Visible: true}
+	if err := repo.CreateCMSCategory(ctx, &visCat); err != nil {
+		t.Fatalf("create visible category: %v", err)
+	}
+	hiddenCat := domain.CMSCategory{Key: "hidden-news", Name: "Hidden", Lang: "zh-CN", Visible: false}
+	if err := repo.CreateCMSCategory(ctx, &hiddenCat); err != nil {
+		t.Fatalf("create hidden category: %v", err)
+	}
+	for _, c := range []domain.CMSPost{
+		{CategoryID: visCat.ID, Title: "vis", Slug: "vis-1", Lang: "zh-CN", Status: "published"},
+		{CategoryID: hiddenCat.ID, Title: "hidden", Slug: "hidden-1", Lang: "zh-CN", Status: "published"},
+	} {
+		if err := repo.CreateCMSPost(ctx, &c); err != nil {
+			t.Fatalf("create post: %v", err)
+		}
+	}
+
+	items, total, err := repo.ListCMSPosts(ctx, shared.CMSPostFilter{PublishedOnly: true, Lang: "zh-CN", Limit: 20})
+	if err != nil {
+		t.Fatalf("list published: %v", err)
+	}
+	if total != 1 {
+		t.Fatalf("expected only 1 visible published post, got %d", total)
+	}
+	for _, p := range items {
+		if p.Slug == "hidden-1" {
+			t.Fatalf("post under hidden category leaked into published list")
+		}
+	}
+}
