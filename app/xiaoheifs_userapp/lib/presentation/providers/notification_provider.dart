@@ -124,6 +124,12 @@ class NotificationNotifier extends StateNotifier<NotificationState> {
 
   String _cacheKey(String? status, int limit, int offset) =>
       '${status ?? 'all'}|$limit|$offset';
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    _cache.clear();
+    state = const NotificationState();
+  }
 }
 
 class _NotificationCacheEntry {

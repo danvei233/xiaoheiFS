@@ -23,6 +23,26 @@ import (
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
 
+// cstZone is Asia/Shanghai (UTC+8), the timezone Alipay uses for the
+// gmt_payment / gmt_create notification fields. Parsing these with the host's
+// local timezone (time.Local) would shift paid_at_unix by the host's UTC
+// offset.
+var cstZone = time.FixedZone("Asia/Shanghai", 8*60*60)
+
+// parseGMTTime parses an Alipay wall-clock timestamp (2006-01-02 15:04:05,
+// Asia/Shanghai) into a Unix timestamp. Invalid/empty input returns 0.
+func parseGMTTime(v string) int64 {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	t, err := time.ParseInLocation("2006-01-02 15:04:05", v, cstZone)
+	if err != nil {
+		return 0
+	}
+	return t.Unix()
+}
+
 type config struct {
 	AppID         string `json:"app_id"`
 	PrivateKey    string `json:"app_private_key"`
@@ -48,13 +68,24 @@ func normalizeKeyPEMOrBase64(raw string) string {
 	if s == "" {
 		return ""
 	}
-	// Keep PEM headers if provided; gopay will format/parse.
-	if strings.Contains(s, "BEGIN") {
-		return strings.ReplaceAll(s, "\r", "")
-	}
-	// Base64 body only.
+	// Always return the bare base64 body (no PEM headers). gopay's
+	// xrsa.FormatAlipayPrivateKey/FormatAlipayPublicKey unconditionally wraps
+	// the key in a PEM block; if we pass a key that already carries PEM headers
+	// it gets wrapped a second time and xpem.Decode* cannot parse it (only the
+	// first PEM block is decoded, and its content is not valid DER). Stripping
+	// the headers here makes both the PKCS1/PKCS8 private-key path and the
+	// VerifySign public-key path work with either PEM or bare base64 input.
 	s = strings.ReplaceAll(s, "\r", "")
-	s = strings.ReplaceAll(s, "\n", "")
+	lines := strings.Split(s, "\n")
+	var b strings.Builder
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "-----BEGIN") || strings.HasPrefix(line, "-----END") {
+			continue
+		}
+		b.WriteString(line)
+	}
+	s = b.String()
 	s = strings.ReplaceAll(s, "\t", "")
 	s = strings.ReplaceAll(s, " ", "")
 	return s
@@ -420,12 +451,7 @@ func (p *payServer) VerifyNotify(ctx context.Context, req *pluginv1.VerifyNotify
 	if v, err := money.ParseAmountToCents(params["total_amount"]); err == nil {
 		amount = v
 	}
-	var paidAtUnix int64
-	if v := strings.TrimSpace(params["gmt_payment"]); v != "" {
-		if t, err := time.ParseInLocation("2006-01-02 15:04:05", v, time.Local); err == nil {
-			paidAtUnix = t.Unix()
-		}
-	}
+	paidAtUnix := parseGMTTime(params["gmt_payment"])
 	payer := strings.TrimSpace(params["buyer_logon_id"])
 	if payer == "" {
 		payer = strings.TrimSpace(params["buyer_id"])

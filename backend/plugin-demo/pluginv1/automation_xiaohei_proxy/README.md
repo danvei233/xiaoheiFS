@@ -12,7 +12,7 @@ Xiaohei-to-Xiaohei proxy automation plugin.
   "admin_api_key": "<optional but recommended>",
   "price_rate": 1.0,
   "goods_type_id": 0,
-  "timeout_sec": 12,
+  "timeout_sec": 120,
   "retry": 1,
   "dry_run": false
 }

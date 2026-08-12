@@ -73,6 +73,9 @@ class AppInput extends StatelessWidget {
         TextFormField(
           controller: controller,
           obscureText: obscureText,
+          // 密码框关闭 autocorrect / 输入联想，防止第三方键盘学习口令片段。
+          autocorrect: !obscureText,
+          enableSuggestions: !obscureText,
           enabled: enabled,
           maxLines: maxLines,
           minLines: minLines,

@@ -157,7 +157,16 @@
       <ElDescriptions :column="1" border>
         <ElDescriptionsItem label="主题">{{ previewSubject }}</ElDescriptionsItem>
         <ElDescriptionsItem label="正文">
-          <div v-if="previewIsHtml" class="preview-body" v-html="previewBody" />
+          <!-- 存储型 XSS 防护（P2-77 / m062 H1）：邮件模板 HTML 来自数据库/管理员
+               输入，不能 v-html 进主文档。用无 sandbox 权限的 iframe srcdoc 渲染，
+               脚本/事件处理器被惰性化，同源能力被移除。 -->
+          <iframe
+            v-if="previewIsHtml"
+            class="preview-frame"
+            sandbox=""
+            :srcdoc="previewBody"
+            title="邮件模板预览"
+          />
           <pre v-else class="preview-text">{{ previewBody }}</pre>
         </ElDescriptionsItem>
         <ElDescriptionsItem label="Mock 数据">
@@ -169,7 +178,6 @@
 </template>
 
 <script setup lang="ts">
-  import EmailTemplateEditor from '@/components/business/email-template-editor/index.vue'
   import {
     deleteEmailTemplate,
     getSmtpConfig,
@@ -192,6 +200,13 @@
   } from '../_shared/settings'
 
   defineOptions({ name: 'AdminSettingsEmail' })
+
+  // web_bundle_mobile F4：wangeditor 831kB/280kB gzip 只在真正打开模板编辑器
+  // 时按需拉取，不让"进入邮件设置页"就整块加载（EmailTemplateEditor 只在
+  // 模板编辑弹窗里渲染）。
+  const EmailTemplateEditor = defineAsyncComponent(
+    () => import('@/components/business/email-template-editor/index.vue')
+  )
 
   interface EmailTemplateRow {
     id: number | null
@@ -502,6 +517,16 @@
 
   async function saveConfig(): Promise<void> {
     if (!canUpdateSettings.value && !canUpdateSmtp.value) return
+    // fail-closed：只有 smtp.update 而没有 smtp.view 时，前端拿不到现有密码；
+    // 后端 AdminSMTPConfigUpdate 会无条件把 smtp_pass 写成本次提交值。如果这里
+    // 留空提交，会把现有 SMTP 密码静默清空（verify-r2 R-6 / m062 M1）。因此要求
+    // 这类管理员保存 SMTP 时必须显式填写新密码，否则阻止保存。
+    if (canUpdateSmtp.value && !canViewSmtp.value && !configForm.smtp_pass) {
+      ElMessage.error(
+        '你没有 smtp.view 权限，保存 SMTP 配置前必须填写新的 SMTP 密码（否则现有密码会被清空）'
+      )
+      return
+    }
     configSaving.value = true
     try {
       if (canUpdateSmtp.value) {

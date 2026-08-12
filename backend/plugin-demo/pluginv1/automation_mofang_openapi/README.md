@@ -24,7 +24,7 @@ Automation plugin for Mofang (ZJMF) OpenAPI.
   "os_template": {
     "101": "{{os}}"
   },
-  "timeout_sec": 12,
+  "timeout_sec": 120,
   "retry": 1,
   "dry_run": false
 }

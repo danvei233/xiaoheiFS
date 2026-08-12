@@ -15,16 +15,34 @@ import (
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
 
+// defaultKYCRequestTimeout bounds each KYC RPC (Start, QueryResult) individually.
+const defaultKYCRequestTimeout = 10 * time.Second
+
 type Provider struct {
 	mgr        *plugins.Manager
 	pluginID   string
 	instanceID string
 	name       string
 	canQuery   bool
+	timeout    time.Duration
 }
 
 func NewProvider(mgr *plugins.Manager, pluginID, instanceID, name string, canQuery bool) *Provider {
-	return &Provider{mgr: mgr, pluginID: strings.TrimSpace(pluginID), instanceID: strings.TrimSpace(instanceID), name: strings.TrimSpace(name), canQuery: canQuery}
+	return &Provider{
+		mgr:        mgr,
+		pluginID:   strings.TrimSpace(pluginID),
+		instanceID: strings.TrimSpace(instanceID),
+		name:       strings.TrimSpace(name),
+		canQuery:   canQuery,
+		timeout:    defaultKYCRequestTimeout,
+	}
+}
+
+func (p *Provider) requestTimeout() time.Duration {
+	if p.timeout > 0 {
+		return p.timeout
+	}
+	return defaultKYCRequestTimeout
 }
 
 func (p *Provider) Key() string {
@@ -44,12 +62,18 @@ func (p *Provider) Verify(ctx context.Context, realName string, idNumber string)
 
 func (p *Provider) VerifyWithInput(ctx context.Context, in appshared.RealNameVerifyInput) (bool, string, error) {
 	if p.mgr == nil {
-		return false, "plugin manager missing", nil
+		// Return an error rather than a (false, reason, nil) so the service does
+		// not persist a permanent failed record for a transient condition.
+		return false, "", fmt.Errorf("kyc plugin error: plugin manager missing")
 	}
 	client, ok := p.mgr.GetKYCClient("kyc", p.pluginID, p.instanceID)
 	if !ok || client == nil {
-		return false, "plugin not loaded", nil
+		return false, "", fmt.Errorf("kyc plugin error: plugin not loaded")
 	}
+	return p.verifyWithClient(ctx, client, in)
+}
+
+func (p *Provider) verifyWithClient(ctx context.Context, client pluginv1.KycServiceClient, in appshared.RealNameVerifyInput) (bool, string, error) {
 	params := map[string]string{
 		"name":      strings.TrimSpace(in.RealName),
 		"real_name": strings.TrimSpace(in.RealName),
@@ -60,13 +84,16 @@ func (p *Provider) VerifyWithInput(ctx context.Context, in appshared.RealNameVer
 	if callbackURL := strings.TrimSpace(in.CallbackURL); callbackURL != "" {
 		params["callback_url"] = callbackURL
 	}
-	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	cctx, cancel := context.WithTimeout(ctx, p.requestTimeout())
 	defer cancel()
 	start, err := client.Start(cctx, &pluginv1.KycStartRequest{UserId: "", Params: params})
 	if err != nil {
 		return false, "", mapKycRPCError(err)
 	}
-	if start != nil && !start.Ok {
+	if start == nil {
+		return false, "", fmt.Errorf("kyc plugin error: empty start response")
+	}
+	if !start.Ok {
 		reason := strings.TrimSpace(start.Error)
 		code := strings.TrimSpace(start.ErrorCode)
 		if code != "" {
@@ -77,33 +104,38 @@ func (p *Provider) VerifyWithInput(ctx context.Context, in appshared.RealNameVer
 		}
 		return false, reason, nil
 	}
-	token := ""
-	if start != nil {
-		token = strings.TrimSpace(start.Token)
+	token := strings.TrimSpace(start.Token)
+	nextStep := strings.ToLower(strings.TrimSpace(start.GetNextStep()))
+	redirectURL := strings.TrimSpace(start.GetUrl())
+	// A redirect/face-flow answer is only resolvable by polling when it carries a
+	// token; without one it must not be treated as verified nor as a pending we
+	// can later poll, so it falls through to the empty-token error below.
+	if (nextStep == "redirect" || redirectURL != "") && token != "" {
+		reason := "pending_face:baidu:" + token
+		if redirectURL != "" {
+			encoded := base64.RawURLEncoding.EncodeToString([]byte(redirectURL))
+			reason += ":" + encoded
+		}
+		return false, reason, nil
 	}
 	if token == "" {
-		return true, "", nil
-	}
-	if start != nil {
-		nextStep := strings.ToLower(strings.TrimSpace(start.GetNextStep()))
-		redirectURL := strings.TrimSpace(start.GetUrl())
-		if nextStep == "redirect" || redirectURL != "" {
-			reason := "pending_face:baidu:" + token
-			if redirectURL != "" {
-				encoded := base64.RawURLEncoding.EncodeToString([]byte(redirectURL))
-				reason += ":" + encoded
-			}
-			return false, reason, nil
-		}
+		return false, "", fmt.Errorf("kyc plugin error: empty token")
 	}
 	if !p.canQuery {
 		return false, "pending:" + token, nil
 	}
-	query, qerr := client.QueryResult(cctx, &pluginv1.KycQueryRequest{Token: token})
+	// QueryResult gets its own budget: a Start that consumed the whole Start
+	// timeout must not starve the follow-up query of an already expired context.
+	qctx, qcancel := context.WithTimeout(ctx, p.requestTimeout())
+	defer qcancel()
+	query, qerr := client.QueryResult(qctx, &pluginv1.KycQueryRequest{Token: token})
 	if qerr != nil {
 		return false, "", mapKycRPCError(qerr)
 	}
-	if query != nil && !query.Ok {
+	if query == nil {
+		return false, "", fmt.Errorf("kyc plugin error: empty query response")
+	}
+	if !query.Ok {
 		reason := strings.TrimSpace(query.Error)
 		code := strings.TrimSpace(query.ErrorCode)
 		if reason == "" {
@@ -133,6 +165,11 @@ func (p *Provider) VerifyWithInput(ctx context.Context, in appshared.RealNameVer
 }
 
 func (p *Provider) QueryPending(ctx context.Context, token string, provider string) (string, string, error) {
+	// A provider that cannot QueryResult can never resolve its own pending
+	// records; resolve them to failed so polling does not leave them pending forever.
+	if !p.canQuery {
+		return "failed", "provider does not support result querying", nil
+	}
 	if p.mgr == nil {
 		return "", "plugin manager missing", nil
 	}
@@ -140,13 +177,20 @@ func (p *Provider) QueryPending(ctx context.Context, token string, provider stri
 	if !ok || client == nil {
 		return "", "plugin not loaded", nil
 	}
-	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	return p.queryPendingWithClient(ctx, client, token)
+}
+
+func (p *Provider) queryPendingWithClient(ctx context.Context, client pluginv1.KycServiceClient, token string) (string, string, error) {
+	cctx, cancel := context.WithTimeout(ctx, p.requestTimeout())
 	defer cancel()
 	query, err := client.QueryResult(cctx, &pluginv1.KycQueryRequest{Token: strings.TrimSpace(token)})
 	if err != nil {
 		return "", "", mapKycRPCError(err)
 	}
-	if query != nil && !query.Ok {
+	if query == nil {
+		return "", "", fmt.Errorf("kyc plugin error: empty query response")
+	}
+	if !query.Ok {
 		reason := strings.TrimSpace(query.Error)
 		code := strings.TrimSpace(query.ErrorCode)
 		if reason == "" {

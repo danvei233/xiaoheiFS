@@ -20,7 +20,7 @@ URL地址：https://pay.mangzhuyun.com/submit.php
 | 商品名称     | name           | 是   | String | VIP会员                            | 如超过127个字节会自动截取 |
 | 商品金额     | money          | 是   | String | 1.00                               | 单位：元，最大2位小数     |
 | 业务扩展参数 | param          | 否   | String | 没有请留空                         | 支付后原样返回            |
-| 签名字符串   | sign           | 是   | String | 202cb962ac59075b964b07152d234b70   | 签名算法[点此查看](#pay3) |
+| 签名字符串   | sign           | 是   | String | 00000000000000000000000000000000   | 签名算法[点此查看](#pay3) |
 | 签名类型     | sign\_type     | 是   | String | MD5                                | 默认为MD5                 |
 
 支付方式（type）不传会跳转到收银台支付
@@ -50,7 +50,7 @@ URL地址：https://pay.mangzhuyun.com/mapi.php
 | 或设备类型，默认为pc   |                |      |        |                                    |                           |
 | [设备类型列表](#pay5)  |                |      |        |                                    |                           |
 | 业务扩展参数           | param          | 否   | String | 没有请留空                         | 支付后原样返回            |
-| 签名字符串             | sign           | 是   | String | 202cb962ac59075b964b07152d234b70   | 签名算法[点此查看](#pay3) |
+| 签名字符串             | sign           | 是   | String | 00000000000000000000000000000000   | 签名算法[点此查看](#pay3) |
 | 签名类型               | sign\_type     | 是   | String | MD5                                | 默认为MD5                 |
 
 返回结果（json）：
@@ -84,7 +84,7 @@ URL地址：https://pay.mangzhuyun.com/mapi.php
 | 商品金额     | money          | 是   | String | 1.00                             |                           |
 | 支付状态     | trade\_status  | 是   | String | TRADE\_SUCCESS                   | 只有TRADE\_SUCCESS是成功  |
 | 业务扩展参数 | param          | 否   | String |                                  |                           |
-| 签名字符串   | sign           | 是   | String | 202cb962ac59075b964b07152d234b70 | 签名算法[点此查看](#pay3) |
+| 签名字符串   | sign           | 是   | String | 00000000000000000000000000000000 | 签名算法[点此查看](#pay3) |
 | 签名类型     | sign\_type     | 是   | String | MD5                              | 默认为MD5                 |
 
 收到异步通知后，需返回success以表示服务器接收到了订单通知
@@ -119,7 +119,7 @@ URL地址：https://pay.mangzhuyun.com/api.php?act=query&pid={商户ID}&key={商
 | -------- | ------ | ---- | ------ | -------------------------------- | ----------- |
 | 操作类型 | act    | 是   | String | query                            | 此API固定值 |
 | 商户ID   | pid    | 是   | Int    | 1001                             |             |
-| 商户密钥 | key    | 是   | String | 89unJUB8HZ54Hj7x4nUj56HN4nUzUJ8i |             |
+| 商户密钥 | key    | 是   | String | CHANGE_ME_MERCHANT_KEY_32CHARS |             |
 
 返回结果：
 
@@ -127,11 +127,11 @@ URL地址：https://pay.mangzhuyun.com/api.php?act=query&pid={商户ID}&key={商
 | ---------- | -------------- | ---------- | -------------------------------- | ----------------------------- |
 | 返回状态码 | code           | Int        | 1                                | 1为成功，其它值为失败         |
 | 商户ID     | pid            | Int        | 1001                             | 商户ID                        |
-| 商户密钥   | key            | String(32) | 89unJUB8HZ54Hj7x4nUj56HN4nUzUJ8i | 商户密钥                      |
+| 商户密钥   | key            | String(32) | CHANGE_ME_MERCHANT_KEY_32CHARS | 商户密钥                      |
 | 商户状态   | active         | Int        | 1                                | 1为正常，0为封禁              |
 | 商户余额   | money          | String     | 0.00                             | 商户所拥有的余额              |
 | 结算方式   | type           | Int        | 1                                | 1:支付宝,2:微信,3:QQ,4:银行卡 |
-| 结算账号   | account        | String     | admin@pay.com                    | 结算的支付宝账号              |
+| 结算账号   | account        | String     | CHANGE_ME@example.com                    | 结算的支付宝账号              |
 | 结算姓名   | username       | String     | 张三                             | 结算的支付宝姓名              |
 | 订单总数   | orders         | Int        | 30                               | 订单总数统计                  |
 | 今日订单   | order\_today   | Int        | 15                               | 今日订单数量                  |
@@ -147,7 +147,7 @@ URL地址：https://pay.mangzhuyun.com/api.php?act=settle&pid={商户ID}&key={�
 | -------- | ------ | ---- | ------ | -------------------------------- | ----------- |
 | 操作类型 | act    | 是   | String | settle                           | 此API固定值 |
 | 商户ID   | pid    | 是   | Int    | 1001                             |             |
-| 商户密钥 | key    | 是   | String | 89unJUB8HZ54Hj7x4nUj56HN4nUzUJ8i |             |
+| 商户密钥 | key    | 是   | String | CHANGE_ME_MERCHANT_KEY_32CHARS |             |
 
 返回结果：
 
@@ -167,7 +167,7 @@ URL地址：https://pay.mangzhuyun.com/api.php?act=order&pid={商户ID}&key={商
 | ---------- | -------------- | ---- | ------ | -------------------------------- | ----------- |
 | 操作类型   | act            | 是   | String | order                            | 此API固定值 |
 | 商户ID     | pid            | 是   | Int    | 1001                             |             |
-| 商户密钥   | key            | 是   | String | 89unJUB8HZ54Hj7x4nUj56HN4nUzUJ8i |             |
+| 商户密钥   | key            | 是   | String | CHANGE_ME_MERCHANT_KEY_32CHARS |             |
 | 系统订单号 | trade\_no      | 选择 | String | 20160806151343312                |             |
 | 商户订单号 | out\_trade\_no | 选择 | String | 20160806151343349                |             |
 
@@ -202,7 +202,7 @@ URL地址：https://pay.mangzhuyun.com/api.php?act=orders&pid={商户ID}&key={�
 | ------------ | ------ | ---- | ------ | -------------------------------- | ---------------------- |
 | 操作类型     | act    | 是   | String | orders                           | 此API固定值            |
 | 商户ID       | pid    | 是   | Int    | 1001                             |                        |
-| 商户密钥     | key    | 是   | String | 89unJUB8HZ54Hj7x4nUj56HN4nUzUJ8i |                        |
+| 商户密钥     | key    | 是   | String | CHANGE_ME_MERCHANT_KEY_32CHARS |                        |
 | 查询订单数量 | limit  | 否   | Int    | 20                               | 返回的订单数量，最大50 |
 | 页码         | page   | 否   | Int    | 1                                | 当前查询的页码         |
 
@@ -227,7 +227,7 @@ URL地址：https://pay.mangzhuyun.com/api.php?act=refund
 | 字段名       | 变量名         | 必填     | 类型   | 示例值                           | 描述                                                       |
 | ------------ | -------------- | -------- | ------ | -------------------------------- | ---------------------------------------------------------- |
 | 商户ID       | pid            | 是       | Int    | 1001                             |                                                            |
-| 商户密钥     | key            | 是       | String | 89unJUB8HZ54Hj7x4nUj56HN4nUzUJ8i |                                                            |
+| 商户密钥     | key            | 是       | String | CHANGE_ME_MERCHANT_KEY_32CHARS |                                                            |
 | 易支付订单号 | trade\_no      | 特殊可选 | String | 20160806151343349021             | 易支付订单号                                               |
 | 商户订单号   | out\_trade\_no | 特殊可选 | String | 20160806151343349                | 订单支付时传入的商户订单号，商家自定义且保证商家系统中唯一 |
 | 退款金额     | money          | 是       | String | 1.50                             | 少数通道需要与原订单金额一致                               |

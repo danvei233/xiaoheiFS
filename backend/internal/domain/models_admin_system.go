@@ -28,6 +28,20 @@ type Setting struct {
 	UpdatedAt time.Time
 }
 
+type CapabilityPolicyScope string
+
+const (
+	CapabilityPolicyScopePackage   CapabilityPolicyScope = "package"
+	CapabilityPolicyScopeGoodsType CapabilityPolicyScope = "goods_type"
+)
+
+// CapabilityPolicy contains only explicit overrides. A nil field inherits the
+// next broader policy (package -> goods type -> site default).
+type CapabilityPolicy struct {
+	ResizeEnabled *bool `json:"resize_enabled,omitempty"`
+	RefundEnabled *bool `json:"refund_enabled,omitempty"`
+}
+
 type AutomationLog struct {
 	ID           int64
 	OrderID      int64
@@ -49,6 +63,17 @@ type ScheduledTaskRun struct {
 	DurationSec int
 	Message     string
 	CreatedAt   time.Time
+}
+
+// ScheduledTaskLease is a database-backed exclusive lease for a scheduled task.
+// Only the lease holder (owner) may execute the task; fencing_token is rotated
+// on every acquisition so a worker that lost its lease cannot commit results
+// (see ScheduledTaskRunRepository.CompleteTaskRun).
+type ScheduledTaskLease struct {
+	TaskKey      string
+	Owner        string
+	LeaseUntil   time.Time
+	FencingToken int64
 }
 
 type IntegrationSyncLog struct {

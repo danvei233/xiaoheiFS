@@ -29,9 +29,9 @@ func (h *Handler) AdminAdmins(c *gin.Context) {
 	if status == "" {
 		status = "active"
 	}
-	admins, total, err := h.adminSvc.ListAdmins(c, status, limit, offset)
+	admins, total, err := h.adminSvc.ListAdmins(c.Request.Context(), status, limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": admins, "total": total})
@@ -46,14 +46,14 @@ func (h *Handler) AdminAdminCreate(c *gin.Context) {
 		PermissionGroupID *int64 `json:"permission_group_id"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.QQ != "" && !isDigits(payload.QQ) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrQqMustBeNumeric.Error()})
 		return
 	}
-	admin, err := h.adminSvc.CreateAdmin(c, getUserID(c), payload.Username, payload.Email, payload.QQ, payload.Password, payload.PermissionGroupID)
+	admin, err := h.adminSvc.CreateAdmin(c.Request.Context(), getUserID(c), payload.Username, payload.Email, payload.QQ, payload.Password, payload.PermissionGroupID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -74,7 +74,7 @@ func (h *Handler) AdminAdminUpdate(c *gin.Context) {
 		PermissionGroupID *int64 `json:"permission_group_id"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	if payload.QQ != "" && !isDigits(payload.QQ) {
@@ -82,7 +82,7 @@ func (h *Handler) AdminAdminUpdate(c *gin.Context) {
 		return
 	}
 	if uri.ID == getUserID(c) {
-		existing, err := h.adminSvc.GetUser(c, uri.ID)
+		existing, err := h.adminSvc.GetUser(c.Request.Context(), uri.ID)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -101,7 +101,7 @@ func (h *Handler) AdminAdminUpdate(c *gin.Context) {
 		}
 		payload.PermissionGroupID = existing.PermissionGroupID
 	}
-	if err := h.adminSvc.UpdateAdmin(c, getUserID(c), uri.ID, payload.Username, payload.Email, payload.QQ, payload.PermissionGroupID); err != nil {
+	if err := h.adminSvc.UpdateAdmin(c.Request.Context(), getUserID(c), uri.ID, payload.Username, payload.Email, payload.QQ, payload.PermissionGroupID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -115,22 +115,21 @@ func (h *Handler) AdminAdminStatus(c *gin.Context) {
 		return
 	}
 	var payload struct {
-		Status string `json:"status"`
+		Status string `json:"status" binding:"required,oneof=active disabled"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		// The enum is enforced declaratively by the validator above; report an
+		// invalid status rather than the raw binding error (Issue #51 P2-11
+		// validator-first).
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidStatus.Error()})
 		return
 	}
 	if uri.ID == getUserID(c) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrCannotUpdateSelfStatus.Error()})
 		return
 	}
-	status := strings.TrimSpace(payload.Status)
-	if status != string(domain.UserStatusActive) && status != string(domain.UserStatusDisabled) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidStatus.Error()})
-		return
-	}
-	if err := h.adminSvc.UpdateAdminStatus(c, getUserID(c), uri.ID, domain.UserStatus(status)); err != nil {
+	status := domain.UserStatus(strings.TrimSpace(payload.Status))
+	if err := h.adminSvc.UpdateAdminStatus(c.Request.Context(), getUserID(c), uri.ID, status); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -143,7 +142,7 @@ func (h *Handler) AdminAdminDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.adminSvc.DeleteAdmin(c, getUserID(c), uri.ID); err != nil {
+	if err := h.adminSvc.DeleteAdmin(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -151,9 +150,9 @@ func (h *Handler) AdminAdminDelete(c *gin.Context) {
 }
 
 func (h *Handler) AdminPermissionGroups(c *gin.Context) {
-	groups, err := h.adminSvc.ListPermissionGroups(c)
+	groups, err := h.adminSvc.ListPermissionGroups(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": groups})
@@ -166,7 +165,7 @@ func (h *Handler) AdminPermissionGroupCreate(c *gin.Context) {
 		Permissions []string `json:"permissions" binding:"required"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	permJSON := mustJSON(payload.Permissions)
@@ -175,7 +174,7 @@ func (h *Handler) AdminPermissionGroupCreate(c *gin.Context) {
 		Description:     payload.Description,
 		PermissionsJSON: permJSON,
 	}
-	if err := h.adminSvc.CreatePermissionGroup(c, getUserID(c), group); err != nil {
+	if err := h.adminSvc.CreatePermissionGroup(c.Request.Context(), getUserID(c), group); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -194,7 +193,7 @@ func (h *Handler) AdminPermissionGroupUpdate(c *gin.Context) {
 		Permissions []string `json:"permissions" binding:"required"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	permJSON := mustJSON(payload.Permissions)
@@ -204,7 +203,7 @@ func (h *Handler) AdminPermissionGroupUpdate(c *gin.Context) {
 		Description:     payload.Description,
 		PermissionsJSON: permJSON,
 	}
-	if err := h.adminSvc.UpdatePermissionGroup(c, getUserID(c), group); err != nil {
+	if err := h.adminSvc.UpdatePermissionGroup(c.Request.Context(), getUserID(c), group); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -217,7 +216,7 @@ func (h *Handler) AdminPermissionGroupDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.adminSvc.DeletePermissionGroup(c, getUserID(c), uri.ID); err != nil {
+	if err := h.adminSvc.DeletePermissionGroup(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -226,19 +225,19 @@ func (h *Handler) AdminPermissionGroupDelete(c *gin.Context) {
 
 func (h *Handler) AdminProfile(c *gin.Context) {
 	userID := getUserID(c)
-	user, err := h.adminSvc.GetUser(c, userID)
+	user, err := h.adminSvc.GetUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
 	dto := toUserDTO(user)
 	if h.permissionSvc != nil {
-		if isPrimary, err := h.permissionSvc.IsPrimaryAdmin(c, userID); err == nil && isPrimary {
+		if isPrimary, err := h.permissionSvc.IsPrimaryAdmin(c.Request.Context(), userID); err == nil && isPrimary {
 			dto.Permissions = []string{"*"}
 			c.JSON(http.StatusOK, dto)
 			return
 		}
-		perms, err := h.permissionSvc.GetUserPermissions(c, userID)
+		perms, err := h.permissionSvc.GetUserPermissions(c.Request.Context(), userID)
 		if err == nil {
 			dto.Permissions = perms
 		}
@@ -252,10 +251,10 @@ func (h *Handler) AdminProfileUpdate(c *gin.Context) {
 		QQ    string `json:"qq"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.adminSvc.UpdateProfile(c, getUserID(c), payload.Email, payload.QQ); err != nil {
+	if err := h.adminSvc.UpdateProfile(c.Request.Context(), getUserID(c), payload.Email, payload.QQ); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -268,10 +267,10 @@ func (h *Handler) AdminProfileChangePassword(c *gin.Context) {
 		NewPassword string `json:"new_password" binding:"required,min=6"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.adminSvc.ChangePassword(c, getUserID(c), payload.OldPassword, payload.NewPassword); err != nil {
+	if err := h.adminSvc.ChangePassword(c.Request.Context(), getUserID(c), payload.OldPassword, payload.NewPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -283,15 +282,15 @@ func (h *Handler) AdminForgotPassword(c *gin.Context) {
 		Email string `json:"email" binding:"required,email"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	ip := strings.TrimSpace(c.ClientIP())
 	if ip == "" {
 		ip = "unknown"
 	}
-	if !forgotPwdLimiter.Allow("admin_forgot_password:ip:"+ip, 5, 15*time.Minute) ||
-		!forgotPwdLimiter.Allow("admin_forgot_password:email:"+strings.ToLower(strings.TrimSpace(payload.Email)), 3, 15*time.Minute) {
+	if !h.durableAllow(c.Request.Context(), "admin_forgot_password:ip:"+ip, 5, 15*time.Minute) ||
+		!h.durableAllow(c.Request.Context(), "admin_forgot_password:email:"+strings.ToLower(strings.TrimSpace(payload.Email)), 3, 15*time.Minute) {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 		return
 	}
@@ -299,7 +298,7 @@ func (h *Handler) AdminForgotPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	if err := h.passwordReset.RequestReset(c, payload.Email); err != nil {
+	if err := h.passwordReset.RequestReset(c.Request.Context(), payload.Email); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -312,14 +311,24 @@ func (h *Handler) AdminResetPassword(c *gin.Context) {
 		NewPassword string `json:"new_password" binding:"required,min=6"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
+		return
+	}
+	// Bound token-oracle probing: the endpoint leaks whether a token is valid,
+	// so an attacker must not be able to brute-force it (P2-10).
+	ip := strings.TrimSpace(c.ClientIP())
+	if ip == "" {
+		ip = "unknown"
+	}
+	if !h.durableAllow(c.Request.Context(), "admin_reset_password:ip:"+ip, 10, 10*time.Minute) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
 		return
 	}
 	if h.passwordReset == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	if err := h.passwordReset.ResetPassword(c, payload.Token, payload.NewPassword); err != nil {
+	if err := h.passwordReset.ResetPassword(c.Request.Context(), payload.Token, payload.NewPassword); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

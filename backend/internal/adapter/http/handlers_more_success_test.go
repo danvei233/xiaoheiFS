@@ -253,3 +253,26 @@ func TestHandlers_RealNameVerify_MangzhuProviderWithoutPhoneRejectedEarly(t *tes
 		t.Fatalf("expected phone required error, got=%v", body["error"])
 	}
 }
+
+// TestHandlers_CaptchaRateLimitDurable verifies the captcha issuance limiter is
+// backed by the durable cross-instance budget (P1-1 residual): hammering the
+// endpoint from one IP must eventually return 429, and the counter lives in the
+// shared budget table so N replicas cannot each issue 30 captchas for one source.
+func TestHandlers_CaptchaRateLimitDurable(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	ip := "198.51.100.77"
+	limited := false
+	for i := 0; i < 60; i++ {
+		rec := doJSONWithIP(t, env.Router, http.MethodGet, "/api/v1/captcha", nil, "", ip)
+		if rec.Code == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("captcha request %d: expected 200 or 429, got %d: %s", i+1, rec.Code, rec.Body.String())
+		}
+	}
+	if !limited {
+		t.Fatal("captcha endpoint must enforce a per-IP issuance limit")
+	}
+}

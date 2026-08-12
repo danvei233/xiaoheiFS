@@ -76,7 +76,9 @@
       props: {
         clearable: true,
         placeholder: '按用户 ID 搜索',
-        onInput: (value: string) => triggerFilter('user_id', value)
+        // F8：逐键 onInput 直接 getData 会每键发一次请求（前一个被 Abort 但后端
+        // 已执行 SQL）。输入走 300ms 防抖，状态下拉是单选事件保持即时。
+        onInput: (value: string) => triggerFilterDebounced('user_id', value)
       }
     },
     {
@@ -95,14 +97,17 @@
     }
   ])
 
-  const fetchRecords = async (params: TableParams) => {
+  const fetchRecords = async (params: TableParams, signal?: AbortSignal) => {
     const userId = String(params.user_id ?? '').trim()
-    const response = await listRealNameRecords({
-      limit: params.size,
-      offset: (params.current - 1) * params.size,
-      user_id: userId || undefined,
-      status: params.status || undefined
-    })
+    const response = await listRealNameRecords(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size,
+        user_id: userId || undefined,
+        status: params.status || undefined
+      },
+      signal
+    )
     const rows = (response.data?.items ?? []).map(normalizeRecord)
     return { records: rows, total: Number(response.data?.total ?? rows.length) }
   }
@@ -114,6 +119,7 @@
     loading,
     pagination,
     getData,
+    getDataDebounced,
     searchParams,
     resetSearchParams,
     handleSizeChange,
@@ -156,6 +162,12 @@
     searchForm.value[key] = value
     Object.assign(searchParams, searchForm.value, { current: 1 })
     getData()
+  }
+
+  function triggerFilterDebounced(key: keyof SearchForm, value?: string): void {
+    searchForm.value[key] = value
+    Object.assign(searchParams, searchForm.value, { current: 1 })
+    getDataDebounced()
   }
 
   function maskName(name: string): string {

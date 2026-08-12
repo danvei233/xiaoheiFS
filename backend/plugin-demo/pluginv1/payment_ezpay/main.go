@@ -151,6 +151,12 @@ type payServer struct {
 	core      *coreServer
 	mu        sync.RWMutex
 	linkCache map[string]cachedPayment
+	// orderNoToTrade maps the host order_no to the exact out_trade_no used at
+	// creation (which embeds a time-window token). QueryPayment must reuse it
+	// instead of rebuilding with the current window token (P2-82) — otherwise a
+	// query in a later window looks for a different out_trade_no and never finds
+	// the order.
+	orderNoToTrade map[string]string
 }
 
 type cachedPayment struct {
@@ -229,7 +235,13 @@ func (p *payServer) QueryPayment(ctx context.Context, req *pluginv1.QueryPayment
 		if tradeNo != "" {
 			q.Set("trade_no", tradeNo)
 		} else {
-			q.Set("out_trade_no", buildMethodOrderNo(orderNo, method, cfg, time.Now()))
+			// P2-82: reuse the exact out_trade_no from creation (which embeds the
+			// creation-window token). Rebuilding with the current window token
+			// would miss orders created in an earlier window. Fall back to the
+			// current-window token only when the plugin never created this order
+			// in-process (e.g. after a restart, where the host should pass
+			// trade_no).
+			q.Set("out_trade_no", p.lookupOutTradeNo(orderNo, method, cfg))
 		}
 		u.RawQuery = q.Encode()
 		httpReq, _ = http.NewRequestWithContext(cctx, http.MethodGet, u.String(), nil)
@@ -296,7 +308,14 @@ func (p *payServer) createEZPay(method string, in *pluginv1.PaymentCreateRequest
 
 	hostOrderNo := strings.TrimSpace(in.GetOrderNo())
 	outTradeNo := buildMethodOrderNo(hostOrderNo, method, cfg, time.Now())
-	if cached := p.getCachedPayment(outTradeNo, cfg); cached != nil {
+	// Remember the exact out_trade_no for QueryPayment (P2-82): the query must
+	// use the same creation-window token, not rebuild with the current one.
+	p.rememberOutTradeNo(hostOrderNo, outTradeNo)
+	// The cache key includes amount and subject so that a host changing the
+	// order amount within the reuse window does not get served the stale
+	// old-amount payment link (M5).
+	cacheKey := buildEZPayCacheKey(outTradeNo, moneyStr, strings.TrimSpace(in.GetSubject()))
+	if cached := p.getCachedPayment(cacheKey, cfg); cached != nil {
 		return cached, nil
 	}
 
@@ -350,7 +369,7 @@ func (p *payServer) createEZPay(method string, in *pluginv1.PaymentCreateRequest
 		if err != nil {
 			return nil, err
 		}
-		p.setCachedPayment(outTradeNo, resp)
+		p.setCachedPayment(cacheKey, resp)
 		return resp, nil
 	}
 	formHTML := buildAutoSubmitFormHTML(submitURL, params)
@@ -364,7 +383,7 @@ func (p *payServer) createEZPay(method string, in *pluginv1.PaymentCreateRequest
 			"out_trade_no": outTradeNo,
 		},
 	}
-	p.setCachedPayment(outTradeNo, resp)
+	p.setCachedPayment(cacheKey, resp)
 	return resp, nil
 }
 
@@ -508,6 +527,46 @@ func restoreHostOrderNo(outTradeNo string) string {
 	}
 	return outTradeNo
 }
+
+// buildEZPayCacheKey keys the in-window payment-link cache on the exact pay
+// parameters (out_trade_no + amount + goods name). Reusing the same order in
+// the same window with a different amount must produce a fresh link instead of
+// returning a stale old-amount form/URL (M5).
+func buildEZPayCacheKey(outTradeNo, moneyStr, subject string) string {
+	return outTradeNo + "|" + moneyStr + "|" + simplifyGoodsName(strings.TrimSpace(subject))
+}
+
+// rememberOutTradeNo records the exact out_trade_no used at creation so a later
+// QueryPayment (which only carries the host order_no) can reuse it.
+func (p *payServer) rememberOutTradeNo(orderNo, outTradeNo string) {
+	if orderNo == "" {
+		return
+	}
+	p.mu.Lock()
+	if p.orderNoToTrade == nil {
+		p.orderNoToTrade = map[string]string{}
+	}
+	p.orderNoToTrade[orderNo] = outTradeNo
+	p.mu.Unlock()
+}
+
+// lookupOutTradeNo returns the creation-time out_trade_no for orderNo, or a
+// current-window best-effort fallback when the plugin never created it here.
+func (p *payServer) lookupOutTradeNo(orderNo, method string, cfg config) string {
+	if orderNo == "" {
+		return ""
+	}
+	p.mu.RLock()
+	out := p.orderNoToTrade[orderNo]
+	p.mu.RUnlock()
+	if out != "" {
+		return out
+	}
+	// Not created in-process (e.g. after a restart): best-effort current-window
+	// token. Hosts that need a reliable cross-window query must pass trade_no.
+	return buildMethodOrderNo(orderNo, method, cfg, time.Now())
+}
+
 
 func buildMethodOrderNo(hostOrderNo, method string, cfg config, now time.Time) string {
 	hostOrderNo = strings.TrimSpace(hostOrderNo)

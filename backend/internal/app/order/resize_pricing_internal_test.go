@@ -2,6 +2,7 @@ package order
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -54,5 +55,19 @@ func TestResizePricingPolicySettings(t *testing.T) {
 	policy := svc.resizePricingPolicy(context.Background())
 	if policy.RefundRatio != 0.5 || policy.MinCharge != 100 || policy.MinRefund != 200 || policy.RefundToWallet {
 		t.Fatalf("unexpected policy: %+v", policy)
+	}
+}
+
+func TestResizePricingPolicyNaNRefundRatio(t *testing.T) {
+	repo := &fakeSettingRepo{values: map[string]string{
+		"resize_refund_ratio": "NaN",
+	}}
+	svc := &OrderService{settings: repo}
+	policy := svc.resizePricingPolicy(context.Background())
+	if math.IsNaN(policy.RefundRatio) {
+		t.Fatalf("expected NaN refund ratio to fall back to the default, got NaN")
+	}
+	if policy.RefundRatio != 1 {
+		t.Fatalf("expected default refund ratio 1 for invalid setting, got %v", policy.RefundRatio)
 	}
 }

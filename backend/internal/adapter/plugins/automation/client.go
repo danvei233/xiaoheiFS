@@ -18,7 +18,6 @@ type PluginInstanceClient struct {
 	mgr        *plugins.Manager
 	pluginID   string
 	instanceID string
-	timeout    time.Duration
 	settings   appports.SettingsRepository
 	autoLogs   appports.AutomationLogRepository
 }
@@ -28,17 +27,16 @@ func NewPluginInstanceClient(mgr *plugins.Manager, pluginID, instanceID string, 
 		mgr:        mgr,
 		pluginID:   strings.TrimSpace(pluginID),
 		instanceID: strings.TrimSpace(instanceID),
-		timeout:    12 * time.Second,
 		settings:   settings,
 		autoLogs:   autoLogs,
 	}
 }
 
-func (c *PluginInstanceClient) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	if c.timeout <= 0 {
+func (c *PluginInstanceClient) withTimeout(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	if d <= 0 {
 		return context.WithCancel(ctx)
 	}
-	return context.WithTimeout(ctx, c.timeout)
+	return context.WithTimeout(ctx, d)
 }
 
 func (c *PluginInstanceClient) client(ctx context.Context) (pluginv1.AutomationServiceClient, error) {
@@ -50,34 +48,53 @@ func (c *PluginInstanceClient) client(ctx context.Context) (pluginv1.AutomationS
 }
 
 func (c *PluginInstanceClient) call(ctx context.Context, action string, req proto.Message, fn func(context.Context, pluginv1.AutomationServiceClient) (proto.Message, error)) (proto.Message, error) {
-	cli, err := c.client(ctx)
+	// P2-43: per-action-category timeout/retry policy instead of one fixed 12s.
+	// Idempotent reads may retry a bounded number of times on transient errors;
+	// long operations get a generous timeout; destructive RPCs never retry.
+	policy := c.policyFor(ctx, action)
+	cctx, cancel := c.withTimeout(ctx, policy.timeout)
+	defer cancel()
+
+	cli, err := c.client(cctx)
 	if err != nil {
 		c.logRPC(ctx, action, req, nil, 0, err)
 		return nil, err
 	}
-	cctx, cancel := c.withTimeout(ctx)
-	defer cancel()
 	start := time.Now()
 	resp, err := fn(cctx, cli)
+
+	// Bounded auto-retry for idempotent reads only.
+	for attempt := 0; err != nil && attempt < policy.maxRetries && isTransientAutomationError(err); attempt++ {
+		// A fresh client + context so a dead plugin can be restarted.
+		if cli2, err2 := c.client(cctx); err2 == nil {
+			cli = cli2
+			resp, err = fn(cctx, cli2)
+		} else {
+			err = err2
+		}
+	}
+
 	err = mapUnimplemented(err)
 	err = mapRPCBusinessError(err)
+	// logRPC keeps the FULL error (including http_trace=) for the audit log; the
+	// error returned to the caller is scrubbed so upstream URLs/IPs/paths/tokens
+	// and the raw base64 trace never reach user-visible HTTP/SSE responses.
 	c.logRPC(ctx, action, req, resp, time.Since(start), err)
-	return resp, err
+	return resp, sanitizeReturnError(err)
 }
 
 func ensureOpOK(resp proto.Message) error {
 	if op, ok := resp.(*pluginv1.OperationResult); ok && op != nil {
-		// Backward compatibility: old plugins may return legacy Empty payload and
-		// decode into zero-value OperationResult on the host side.
-		if !op.GetOk() && strings.TrimSpace(op.GetErrorCode()) == "" && strings.TrimSpace(op.GetErrorMessage()) == "" {
-			return nil
-		}
 		if op.GetOk() {
 			return nil
 		}
 		msg := strings.TrimSpace(op.GetErrorMessage())
 		if msg == "" {
-			msg = "operation failed"
+			// A non-ok OperationResult without error details is a protocol
+			// violation: it can silently swallow destructive operations
+			// (destroy/delete/resize/renew). Fail loudly instead of treating
+			// the all-zero result as success.
+			msg = "operation failed (plugin returned no error details)"
 		}
 		code := strings.TrimSpace(op.GetErrorCode())
 		if code != "" {

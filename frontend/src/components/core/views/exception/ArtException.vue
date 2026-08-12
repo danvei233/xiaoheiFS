@@ -14,10 +14,8 @@
 
 <script setup lang="ts">
   import { useCommon } from '@/hooks/core/useCommon'
-  import { useUserStore } from '@/store/modules/user'
 
   const router = useRouter()
-  const userStore = useUserStore()
 
   interface ExceptionData {
     /** 标题 */
@@ -39,17 +37,32 @@
 
   const { homePath } = useCommon()
 
-  const backHome = () => {
-    const targetHomePath = homePath.value || '/'
-
-    if (!userStore.isLogin) {
-      router.push({
-        name: 'Login',
-        query: { redirect: targetHomePath }
-      })
-      return
+  /**
+   * 返回按钮的目标：
+   *  1. 菜单 store 已算好的 homePath（控制台/后台菜单加载过时）；
+   *  2. 否则当前 URL 落在 admin 前缀 → 后台首页；
+   *  3. 否则回公开首页 `/`。
+   *
+   * P3-48：不再因 `userStore.isLogin` 恒 false 把匿名访客/管理员一律踢去登录页。
+   */
+  const resolveHomePath = (): string => {
+    const menuHome = homePath.value
+    if (menuHome && menuHome !== '/') return menuHome
+    try {
+      const adminPath = (localStorage.getItem('admin_path_cache') || 'admin')
+        .trim()
+        .replace(/^\/+|\/+$/g, '')
+      const p = window.location.pathname
+      if (adminPath && (p === `/${adminPath}` || p.startsWith(`/${adminPath}/`))) {
+        return `/${adminPath}`
+      }
+    } catch {
+      // ignore
     }
+    return '/'
+  }
 
-    router.push(targetHomePath)
+  const backHome = () => {
+    router.push(resolveHomePath())
   }
 </script>

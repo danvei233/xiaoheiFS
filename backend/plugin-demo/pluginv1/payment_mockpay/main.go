@@ -13,9 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -482,48 +480,19 @@ func ensurePublicBaseURL(localBase string) (string, error) {
 	return publicURL, nil
 }
 
+// cloudflaredLookPath is exec.LookPath, overridable in tests.
+var cloudflaredLookPath = exec.LookPath
+
+// ensureCloudflaredBinary resolves the cloudflared binary. It deliberately
+// does NOT auto-download and execute a remote binary (M7): downloading an
+// unverified executable from GitHub and chmod +x it is a supply-chain risk and
+// http.Get had no timeout. Operators must either install cloudflared on PATH or
+// set MOCKPAY_PUBLIC_BASE_URL.
 func ensureCloudflaredBinary() (string, error) {
-	if bin, err := exec.LookPath("cloudflared"); err == nil && strings.TrimSpace(bin) != "" {
+	if bin, err := cloudflaredLookPath("cloudflared"); err == nil && strings.TrimSpace(bin) != "" {
 		return bin, nil
 	}
-	var name, dl string
-	switch runtime.GOOS + "_" + runtime.GOARCH {
-	case "windows_amd64":
-		name = "cloudflared.exe"
-		dl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe"
-	case "linux_amd64":
-		name = "cloudflared"
-		dl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
-	default:
-		return "", fmt.Errorf("cloudflared auto download not supported on %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
-	dir := filepath.Join(os.TempDir(), "mockpay-cloudflared")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", fmt.Errorf("create cloudflared dir failed: %w", err)
-	}
-	out := filepath.Join(dir, name)
-	if st, err := os.Stat(out); err == nil && st.Size() > 1024*1024 {
-		return out, nil
-	}
-	resp, err := http.Get(dl)
-	if err != nil {
-		return "", fmt.Errorf("download cloudflared failed: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return "", fmt.Errorf("download cloudflared failed: status=%d", resp.StatusCode)
-	}
-	f, err := os.Create(out)
-	if err != nil {
-		return "", fmt.Errorf("create cloudflared file failed: %w", err)
-	}
-	if _, err := io.Copy(f, resp.Body); err != nil {
-		_ = f.Close()
-		return "", fmt.Errorf("save cloudflared failed: %w", err)
-	}
-	_ = f.Close()
-	_ = os.Chmod(out, 0o755)
-	return out, nil
+	return "", fmt.Errorf("cloudflared not found on PATH; refusing to auto-download a remote binary — install cloudflared or set MOCKPAY_PUBLIC_BASE_URL")
 }
 
 func startCloudflaredTunnel(bin, localBase string) (string, error) {

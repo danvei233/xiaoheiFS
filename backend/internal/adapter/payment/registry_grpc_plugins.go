@@ -11,8 +11,15 @@ import (
 	pluginv1 "xiaoheiplay/plugin/v1"
 )
 
+// grpcPluginManager is the subset of plugins.Manager the payment registry needs,
+// so tests can inject a fake without launching real plugin processes.
+type grpcPluginManager interface {
+	List(ctx context.Context) ([]plugins.ListItem, error)
+	GetPaymentClient(category, pluginID, instanceID string) (pluginv1.PaymentServiceClient, bool)
+}
+
 type grpcPaymentProvider struct {
-	mgr      *plugins.Manager
+	mgr      grpcPluginManager
 	category string
 	pluginID string
 	method   string
@@ -127,7 +134,7 @@ func (p *grpcPaymentProvider) VerifyNotify(ctx context.Context, req appshared.Ra
 	}, nil
 }
 
-func (r *Registry) grpcProviders(ctx context.Context) []appshared.PaymentProvider {
+func (r *Registry) grpcProviders(ctx context.Context, includeDisabled bool) []appshared.PaymentProvider {
 	items, err := r.grpcPlugins.List(ctx)
 	if err != nil {
 		return nil
@@ -137,14 +144,20 @@ func (r *Registry) grpcProviders(ctx context.Context) []appshared.PaymentProvide
 		if !it.Enabled || !it.Loaded || it.InstanceID != plugins.DefaultInstanceID || it.Capabilities.Capabilities.Payment == nil {
 			continue
 		}
-		enabledMap := r.pluginPaymentMethodEnabledMap(ctx, it.Category, it.PluginID, it.InstanceID)
+		enabledMap, authoritative := r.pluginPaymentMethodEnabledMap(ctx, it.Category, it.PluginID, it.InstanceID)
 		methods := it.Capabilities.Capabilities.Payment.Methods
 		for _, m := range methods {
 			m = strings.TrimSpace(m)
 			if m == "" || strings.Contains(m, ".") {
 				continue
 			}
-			if ok, exists := enabledMap[m]; exists && !ok {
+			if !authoritative {
+				// Method enablement state could not be loaded; only the admin
+				// "include disabled" listing may surface them, and as disabled.
+				if !includeDisabled {
+					continue
+				}
+			} else if ok, exists := enabledMap[m]; exists && !ok && !includeDisabled {
 				continue
 			}
 			if _, ok := r.grpcPlugins.GetPaymentClient(it.Category, it.PluginID, it.InstanceID); !ok {
@@ -180,39 +193,48 @@ func (r *Registry) grpcProviderByKey(ctx context.Context, key string) appshared.
 		if !it.Enabled || !it.Loaded || it.InstanceID != plugins.DefaultInstanceID || it.PluginID != pluginID || it.Capabilities.Capabilities.Payment == nil {
 			continue
 		}
-		enabledMap := r.pluginPaymentMethodEnabledMap(ctx, it.Category, it.PluginID, it.InstanceID)
+		enabledMap, authoritative := r.pluginPaymentMethodEnabledMap(ctx, it.Category, it.PluginID, it.InstanceID)
 		for _, m := range it.Capabilities.Capabilities.Payment.Methods {
-			if m == method {
-				if ok, exists := enabledMap[method]; exists && !ok {
-					return nil
-				}
-				if _, ok := r.grpcPlugins.GetPaymentClient(it.Category, it.PluginID, it.InstanceID); !ok {
-					return nil
-				}
-				return &grpcPaymentProvider{
-					mgr:      r.grpcPlugins,
-					category: it.Category,
-					pluginID: it.PluginID,
-					method:   method,
-					name:     it.Name,
-				}
+			if strings.TrimSpace(m) != method {
+				continue
+			}
+			if !authoritative {
+				// Cannot verify enablement state; fail closed.
+				return nil
+			}
+			if ok, exists := enabledMap[method]; exists && !ok {
+				return nil
+			}
+			if _, ok := r.grpcPlugins.GetPaymentClient(it.Category, it.PluginID, it.InstanceID); !ok {
+				return nil
+			}
+			return &grpcPaymentProvider{
+				mgr:      r.grpcPlugins,
+				category: it.Category,
+				pluginID: it.PluginID,
+				method:   method,
+				name:     it.Name,
 			}
 		}
 	}
 	return nil
 }
 
-func (r *Registry) pluginPaymentMethodEnabledMap(ctx context.Context, category, pluginID, instanceID string) map[string]bool {
+// pluginPaymentMethodEnabledMap returns the per-method enablement state and
+// whether that state is authoritative. It is not authoritative when the method
+// repository is missing or the query fails; callers must fail closed in that
+// case instead of silently treating methods as enabled.
+func (r *Registry) pluginPaymentMethodEnabledMap(ctx context.Context, category, pluginID, instanceID string) (map[string]bool, bool) {
 	if r.methodRepo == nil {
-		return nil
+		return nil, false
 	}
 	items, err := r.methodRepo.ListPluginPaymentMethods(ctx, category, pluginID, instanceID)
-	if err != nil || len(items) == 0 {
-		return nil
+	if err != nil {
+		return nil, false
 	}
 	out := make(map[string]bool, len(items))
 	for _, it := range items {
 		out[it.Method] = it.Enabled
 	}
-	return out
+	return out, true
 }

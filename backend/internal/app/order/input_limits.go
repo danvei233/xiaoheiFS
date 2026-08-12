@@ -27,6 +27,15 @@ const (
 	maxLenReviewReason    = 1000
 	maxLenRefundReason    = 1000
 	maxLenPortMappingName = 64
+
+	// maxOrderItemQty caps the quantity of a single order line. Prices are
+	// server-computed, but qty comes from client/cart input and is expanded
+	// into one OrderItem per unit, so an unbounded value is a memory- and
+	// DB-write amplification vector.
+	maxOrderItemQty = 100
+	// maxOrderTotalItems caps the total number of expanded order items across
+	// all lines of one order (defense in depth against oversized line counts).
+	maxOrderTotalItems = 1000
 )
 
 var orderFieldValidator = validator.New()

@@ -59,7 +59,7 @@ func (s *coreServer) GetConfigSchema(ctx context.Context, _ *pluginv1.Empty) (*p
   "properties": {
     "base_url": { "type": "string", "title": "Base URL", "description": "e.g. https://panel.example.com/index.php/api/cloud" },
     "api_key": { "type": "string", "title": "API Key", "format": "password" },
-    "timeout_sec": { "type": "integer", "title": "Timeout (sec)", "default": 12, "minimum": 1, "maximum": 60 },
+    "timeout_sec": { "type": "integer", "title": "Timeout (sec)", "default": 120, "minimum": 1, "maximum": 120 },
     "retry": { "type": "integer", "title": "Retry", "default": 1, "minimum": 0, "maximum": 5 },
     "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
   },
@@ -80,7 +80,7 @@ func (s *coreServer) ValidateConfig(ctx context.Context, req *pluginv1.ValidateC
 	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.APIKey) == "" {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "base_url/api_key required"}, nil
 	}
-	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 60 {
+	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 120 {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "timeout_sec out of range"}, nil
 	}
 	if cfg.Retry < 0 || cfg.Retry > 5 {

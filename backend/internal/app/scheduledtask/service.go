@@ -3,13 +3,22 @@ package scheduledtask
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/pkg/safego"
 )
+
+// taskLeaseDuration bounds the DB execution lease for a scheduled task. The
+// lease is renewed by a heartbeat while the task runs, so it only matters on
+// crash: after lease_until a crashed worker's lease can be reclaimed.
+const taskLeaseDuration = 2 * time.Minute
 
 type TaskStrategy string
 
@@ -88,6 +97,10 @@ type Service struct {
 	runs        appports.ScheduledTaskRunRepository
 	mu          sync.Mutex
 	runtime     map[string]*taskRuntime
+	// leaseFor is the DB execution lease duration. It defaults to
+	// taskLeaseDuration and is shortened in tests so lease-loss paths can be
+	// exercised without waiting minutes.
+	leaseFor time.Duration
 }
 
 func NewService(settings appports.SettingsRepository, vps vpsTaskService, orders orderTaskService, notify notificationTaskService, runs appports.ScheduledTaskRunRepository, realname ...realnameTaskService) *Service {
@@ -103,6 +116,7 @@ func NewService(settings appports.SettingsRepository, vps vpsTaskService, orders
 		realname: rn,
 		runs:     runs,
 		runtime:  make(map[string]*taskRuntime),
+		leaseFor: taskLeaseDuration,
 	}
 }
 
@@ -119,15 +133,42 @@ func (s *Service) SetLogRetentionCleaner(svc logRetentionCleaner) {
 }
 
 func (s *Service) Start(ctx context.Context) {
+	safego.Run("scheduled task state hydrate", func() { s.hydrateLastRuns(ctx) })
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	for {
-		s.runOnce(ctx)
+		safego.Run("scheduled task coordinator tick", func() { s.runOnce(ctx) })
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
+	}
+}
+
+// hydrateLastRuns restores the in-memory last-run timestamps from persisted
+// runs so that after a restart daily tasks do not re-trigger on the same day.
+// Runs left "running" by a crashed worker are ignored: their lease has expired
+// (or will expire), so the task must be allowed to run again.
+func (s *Service) hydrateLastRuns(ctx context.Context) {
+	if s.runs == nil {
+		return
+	}
+	for _, def := range defaultTaskDefinitions() {
+		runs, err := s.runs.ListTaskRuns(ctx, def.Key, 1)
+		if err != nil || len(runs) == 0 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(runs[0].Status), "running") {
+			continue
+		}
+		last := runs[0].StartedAt
+		s.mu.Lock()
+		rt := s.ensureRuntime(def.Key)
+		rt.lastRun = last
+		rt.lastStatus = runs[0].Status
+		rt.lastError = runs[0].Message
+		s.mu.Unlock()
 	}
 }
 
@@ -215,14 +256,49 @@ func (s *Service) shouldRun(cfg ScheduledTaskConfig) bool {
 	if cfg.Strategy == TaskStrategyDaily {
 		return shouldRunDaily(now, last, cfg.DailyAt)
 	}
-	interval := time.Duration(cfg.IntervalSec) * time.Second
-	if interval <= 0 {
-		interval = 60 * time.Second
-	}
+	interval := intervalDuration(cfg)
 	if last.IsZero() {
 		return true
 	}
 	return now.Sub(last) >= interval
+}
+
+// shouldRunUnderLease re-evaluates whether the task still needs to run in this
+// period while the caller holds the DB execution lease, using the persisted run
+// history rather than the process-local lastRun. It returns true when the task
+// must run.
+//
+// A replica's in-memory lastRun is only hydrated at startup, so after another
+// instance completes a run in this period the replica would still see a stale
+// lastRun and want to run again. Because this check runs under the lease, the
+// decision is serialized: exactly one instance reaches it per period. A run a
+// crashed worker left "running" does not suppress a retry (its side effects
+// were never completed). A query failure fails closed (returns false) so a
+// task is never run twice because the history could not be read.
+func (s *Service) shouldRunUnderLease(ctx context.Context, cfg ScheduledTaskConfig) (bool, error) {
+	runs, err := s.runs.ListTaskRuns(ctx, cfg.Key, 1)
+	if err != nil {
+		return false, err
+	}
+	if len(runs) == 0 {
+		return true, nil
+	}
+	last := runs[0]
+	if strings.EqualFold(strings.TrimSpace(last.Status), "running") {
+		return true, nil
+	}
+	now := time.Now()
+	if cfg.Strategy == TaskStrategyDaily {
+		hour, minute, ok := parseDailyAt(cfg.DailyAt)
+		if !ok {
+			return false, nil
+		}
+		target := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, now.Location())
+		// Skip when the latest completed run started at/after today's target.
+		return last.StartedAt.Before(target), nil
+	}
+	interval := intervalDuration(cfg)
+	return now.Sub(last.StartedAt) >= interval, nil
 }
 
 func (s *Service) executeTask(ctx context.Context, cfg ScheduledTaskConfig) {
@@ -232,91 +308,181 @@ func (s *Service) executeTask(ctx context.Context, cfg ScheduledTaskConfig) {
 		s.mu.Unlock()
 		return
 	}
+	s.mu.Unlock()
+
+	// Multi-instance exclusivity: only the DB lease winner may run the task.
+	// A nil runs repo falls back to process-local behaviour (tests / single node).
+	var lease domain.ScheduledTaskLease
+	var leaseAcquired bool
+	if s.runs != nil {
+		owner := s.instanceOwner()
+		var err error
+		lease, leaseAcquired, err = s.runs.AcquireTaskLease(ctx, cfg.Key, owner, s.leaseFor)
+		if err != nil {
+			return
+		}
+		if !leaseAcquired {
+			return // another instance owns the lease
+		}
+		// Per-period dedup while holding the lease: the in-memory lastRun is
+		// only hydrated at startup, so a replica that started before this period
+		// would otherwise re-run a task another instance already completed in
+		// the same period. Re-checking against the persisted run history under
+		// the lease closes that window without a check-then-act race.
+		needsRun, err := s.shouldRunUnderLease(ctx, cfg)
+		if err != nil {
+			_ = s.runs.ReleaseTaskLease(ctx, cfg.Key, s.instanceOwner(), lease.FencingToken)
+			return
+		}
+		if !needsRun {
+			_ = s.runs.ReleaseTaskLease(ctx, cfg.Key, s.instanceOwner(), lease.FencingToken)
+			return
+		}
+	}
+
+	s.mu.Lock()
+	if rt.running {
+		s.mu.Unlock()
+		if s.runs != nil {
+			_ = s.runs.ReleaseTaskLease(ctx, cfg.Key, s.instanceOwner(), lease.FencingToken)
+		}
+		return
+	}
 	rt.running = true
 	s.mu.Unlock()
 
-	go func() {
+	safego.Go("scheduled task worker", func() {
 		start := time.Now()
 		run := &domain.ScheduledTaskRun{TaskKey: cfg.Key, Status: "running", StartedAt: start}
 		if s.runs != nil {
 			_ = s.runs.CreateTaskRun(ctx, run)
 		}
+		// The task runs on its own cancellable context. Heartbeat renewal keeps
+		// the lease owned; when the lease is lost (another instance reclaimed it
+		// after a crash, or the DB rejects a renew), the context is cancelled so
+		// external side effects stop as soon as the task next observes the
+		// context, instead of running to completion and only being blocked at the
+		// fenced final status write. The run row is still written (and fenced)
+		// below.
+		taskCtx, cancelTask := context.WithCancel(ctx)
+		defer cancelTask()
+		stopHeartbeat := make(chan struct{})
+		defer close(stopHeartbeat)
+		if s.runs != nil {
+			go func() {
+				if safego.Run("scheduled task lease heartbeat", func() {
+					ticker := time.NewTicker(s.leaseFor / 3)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-stopHeartbeat:
+							return
+						case <-ticker.C:
+							ok, _ := s.runs.RenewTaskLease(ctx, cfg.Key, s.instanceOwner(), lease.FencingToken, s.leaseFor)
+							if !ok {
+								cancelTask()
+								return
+							}
+						}
+					}
+				}) {
+					cancelTask()
+				}
+			}()
+		}
 		var runErr error
+		var panicVal any
 		defer func() {
+			if p := recover(); p != nil {
+				panicVal = p
+				safego.LogPanic("scheduled task execution", p)
+				runErr = domain.ErrTaskPanic
+			}
 			elapsed := int(time.Since(start).Seconds())
 			if elapsed < 0 {
 				elapsed = 0
 			}
-			s.mu.Lock()
-			rt.running = false
-			rt.lastRun = time.Now()
-			rt.lastElapsed = elapsed
-			s.mu.Unlock()
 			status := "success"
 			msg := ""
 			if runErr != nil {
 				status = "failed"
 				msg = runErr.Error()
 			}
-			s.mu.Lock()
-			rt.lastStatus = status
-			rt.lastError = msg
-			s.mu.Unlock()
 			if s.runs != nil {
 				finish := time.Now()
 				run.Status = status
 				run.Message = msg
 				run.FinishedAt = &finish
 				run.DurationSec = elapsed
-				_ = s.runs.UpdateTaskRun(ctx, *run)
+				// Fenced write: no-op when this worker lost the lease.
+				_, _ = s.runs.CompleteTaskRun(ctx, *run, cfg.Key, s.instanceOwner(), lease.FencingToken)
+				_ = s.runs.ReleaseTaskLease(ctx, cfg.Key, s.instanceOwner(), lease.FencingToken)
 			}
+			s.mu.Lock()
+			rt.running = false
+			rt.lastRun = time.Now()
+			rt.lastElapsed = elapsed
+			rt.lastStatus = status
+			rt.lastError = msg
+			s.mu.Unlock()
 		}()
+		_ = panicVal
 		switch cfg.Key {
 		case "vps_refresh":
 			if s.vps != nil {
-				_, runErr = s.vps.RefreshAll(ctx, 200)
+				_, runErr = s.vps.RefreshAll(taskCtx, 200)
 				if runErr == nil && s.orders != nil {
-					_, _ = s.orders.ReconcileProvisioningOrders(ctx, 50)
+					_, _ = s.orders.ReconcileProvisioningOrders(taskCtx, 50)
 				}
 			}
 		case "order_provision_watchdog":
 			if s.orders != nil {
-				runErr = s.orders.ProcessProvisionJobs(ctx, 50)
+				runErr = s.orders.ProcessProvisionJobs(taskCtx, 50)
 			}
 		case "resize_task_runner":
 			if s.orders != nil {
-				runErr = s.orders.ProcessResizeTasks(ctx, 50)
+				runErr = s.orders.ProcessResizeTasks(taskCtx, 50)
 			}
 		case "expire_reminder":
 			if s.notify != nil {
-				runErr = s.notify.SendExpireReminders(ctx)
+				runErr = s.notify.SendExpireReminders(taskCtx)
 			}
 		case "vps_expire_cleanup":
 			if s.vps != nil {
-				runErr = s.vps.AutoDeleteExpired(ctx)
+				runErr = s.vps.AutoDeleteExpired(taskCtx)
 			}
 		case "vps_expire_lock":
 			if s.vps != nil {
-				runErr = s.vps.AutoLockExpired(ctx)
+				runErr = s.vps.AutoLockExpired(taskCtx)
 			}
 		case "plugin_schedule":
 			if s.realname != nil {
-				_, runErr = s.realname.PollPending(ctx, 200)
+				_, runErr = s.realname.PollPending(taskCtx, 200)
 			}
 		case "user_tier_expire_reconcile":
 			if s.userTier != nil {
-				_, runErr = s.userTier.ReconcileExpired(ctx, 500)
+				_, runErr = s.userTier.ReconcileExpired(taskCtx, 500)
 			}
 		case "integration_inventory_sync":
 			if s.integration != nil {
-				_, runErr = s.integration.SyncAutomationInventoryForGoodsType(ctx, 0)
+				_, runErr = s.integration.SyncAutomationInventoryForGoodsType(taskCtx, 0)
 			}
 		case "log_retention_cleanup":
 			if s.logCleaner != nil {
-				_, runErr = s.logCleaner.Cleanup(ctx)
+				_, runErr = s.logCleaner.Cleanup(taskCtx)
 			}
 		}
-	}()
+	})
+}
+
+// instanceOwner identifies this server instance for lease ownership. It is
+// stable per process, so restarts are distinguishable from concurrent replicas.
+func (s *Service) instanceOwner() string {
+	host, _ := os.Hostname()
+	if strings.TrimSpace(host) == "" {
+		host = "unknown"
+	}
+	return "scheduledtask:" + strings.TrimSpace(host) + ":" + strconv.Itoa(os.Getpid())
 }
 
 func (s *Service) ensureRuntime(key string) *taskRuntime {
@@ -361,6 +527,21 @@ func (s *Service) loadTaskConfig(ctx context.Context, def ScheduledTaskConfig) S
 	return cfg
 }
 
+// maxIntervalSec is the largest IntervalSec value that fits in a time.Duration.
+const maxIntervalSec = int64(^uint64(0)>>1) / int64(time.Second)
+
+// intervalDuration converts an interval_sec setting into a duration, rejecting
+// overflow and non-positive values by falling back to 60s.
+func intervalDuration(cfg ScheduledTaskConfig) time.Duration {
+	if cfg.IntervalSec <= 0 {
+		return 60 * time.Second
+	}
+	if int64(cfg.IntervalSec) > maxIntervalSec {
+		return 60 * time.Second
+	}
+	return time.Duration(cfg.IntervalSec) * time.Second
+}
+
 func (s *Service) computeRunTimes(cfg ScheduledTaskConfig) (*time.Time, *time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -379,10 +560,7 @@ func (s *Service) computeRunTimes(cfg ScheduledTaskConfig) (*time.Time, *time.Ti
 		}
 		return last, next
 	}
-	interval := time.Duration(cfg.IntervalSec) * time.Second
-	if interval <= 0 {
-		interval = 60 * time.Second
-	}
+	interval := intervalDuration(cfg)
 	if rt.lastRun.IsZero() {
 		n := now
 		next = &n
@@ -397,6 +575,9 @@ func validateTaskConfig(cfg ScheduledTaskConfig) error {
 	switch cfg.Strategy {
 	case "", TaskStrategyInterval:
 		if cfg.IntervalSec <= 0 {
+			return appshared.ErrInvalidInput
+		}
+		if int64(cfg.IntervalSec) > maxIntervalSec {
 			return appshared.ErrInvalidInput
 		}
 		return nil

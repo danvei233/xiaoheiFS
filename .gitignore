@@ -69,6 +69,23 @@ app.config.yaml
 app.config.yml
 config.local.yaml
 
+# Local runtime config — may contain probe_secret / enroll_token.
+/pingbot/config.yaml
+
+# ============================================
+# Private keys / keystores / certificates
+# ============================================
+# Private-key material, keystores and certificates must never be committed
+# (mirrors the .dockerignore P0-24 contract). Test fixtures that must stay
+# tracked should be allowlisted explicitly with "!..." below.
+*.key
+*.pem
+*.jks
+*.p12
+*.pfx
+*.crt
+*.keystore
+
 # ============================================
 # IDE
 # ============================================

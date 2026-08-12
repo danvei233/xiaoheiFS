@@ -224,6 +224,8 @@ func moduleFromSegments(segments []string) string {
 		return "admin"
 	case "orders":
 		return "order"
+	case "regions":
+		return "region"
 	case "cms":
 		if len(segments) > 1 {
 			switch segments[1] {
@@ -470,6 +472,38 @@ func actionFromSegments(method string, segments []string) (string, bool) {
 	}
 	if segments[0] == "audit-logs" && method == "GET" {
 		return "view", true
+	}
+	if segments[0] == "cms" {
+		// /cms/categories, /cms/posts, /cms/blocks — sub-resource selects the
+		// action; CRUD verbs map to list/create/view/update/delete.
+		if len(segments) == 1 && method == "GET" {
+			return "list", true
+		}
+		if len(segments) > 1 {
+			switch segments[1] {
+			case "categories", "posts", "blocks":
+				if len(segments) == 2 {
+					switch method {
+					case "GET":
+						return "list", true
+					case "POST":
+						return "create", true
+					}
+					return "", false
+				}
+				if strings.HasPrefix(segments[2], ":") {
+					switch method {
+					case "GET":
+						return "view", true
+					case "PATCH", "PUT":
+						return "update", true
+					case "DELETE":
+						return "delete", true
+					}
+				}
+			}
+		}
+		return "", false
 	}
 	if len(segments) == 1 {
 		switch method {

@@ -16,6 +16,7 @@ import '../../../core/update/update_service.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../core/utils/validators.dart';
 import '../../providers/auth_provider.dart';
+import '../../routes/redirect_guard.dart';
 import '../../widgets/common/app_button.dart';
 import '../../widgets/common/app_input.dart';
 import 'gt4_helper.dart';
@@ -116,13 +117,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         versionCode: buildNumber,
       );
       if (!mounted || update == null || !update.hasUpdate) return;
-      await _showUpdateDialog(update);
+      await _showUpdateDialog(update, packageName: info.packageName);
     } catch (_) {
       // Keep login flow unaffected if update check fails.
     }
   }
 
-  Future<void> _showUpdateDialog(AppUpdateInfo update) async {
+  Future<void> _showUpdateDialog(
+    AppUpdateInfo update, {
+    required String packageName,
+  }) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: !update.forceUpdate,
@@ -152,7 +156,19 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 ),
               FilledButton(
                 onPressed: () async {
-                  await _updateService.openUpdateLink(update.apkUrl);
+                  // 先启动更新链接，**成功交接后**才记录「已接受」。启动失败
+                  // （无浏览器/系统拒绝）不写记录——同版本强更下次启动仍会
+                  // 再次提示，不会因一次失败的交接被永久抑制
+                  // （见 update_service.dart consentAndLaunchUpdate）。
+                  final launched = await _updateService.consentAndLaunchUpdate(
+                    update,
+                    packageName: packageName,
+                  );
+                  if (!launched && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('无法打开下载链接，请检查系统设置后重试')),
+                    );
+                  }
                 },
                 child: Text(update.forceUpdate ? '立即更新(必需)' : '立即更新'),
               ),
@@ -317,14 +333,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           );
 
       if (!mounted) return;
-      final redirect = GoRouterState.of(
-        context,
-      ).uri.queryParameters['redirect'];
-      if (redirect != null && redirect.isNotEmpty) {
-        context.go(Uri.decodeComponent(redirect));
-      } else {
-        context.go('/console');
-      }
+      final redirect = sanitizeRedirectParam(
+        GoRouterState.of(context).uri.queryParameters['redirect'],
+      );
+      context.go(redirect ?? '/console');
     } catch (_) {
       if (_loginCaptchaEnabled) {
         await _refreshCaptcha();
@@ -486,9 +498,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   Widget _buildModeTabs() {
     final cs = Theme.of(context).colorScheme;
     final isLight = cs.brightness == Brightness.light;
-    final bg = isLight
-        ? const Color(0xFFF2F4F7)
-        : AppColors.gray800;
+    final bg = isLight ? const Color(0xFFF2F4F7) : AppColors.gray800;
 
     Widget segment({required String keyValue, required String label}) {
       final selected = _loginMode == keyValue;

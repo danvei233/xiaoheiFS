@@ -2,11 +2,13 @@ package http
 
 import (
 	"fmt"
-	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
+
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 
@@ -34,7 +36,7 @@ func (h *Handler) WalletInfo(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrWalletDisabled.Error()})
 		return
 	}
-	wallet, err := h.walletSvc.GetWallet(c, getUserID(c))
+	wallet, err := h.walletSvc.GetWallet(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -48,7 +50,7 @@ func (h *Handler) WalletTransactions(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	items, total, err := h.walletSvc.ListTransactions(c, getUserID(c), limit, offset)
+	items, total, err := h.walletSvc.ListTransactions(c.Request.Context(), getUserID(c), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -70,7 +72,7 @@ func (h *Handler) WalletRecharge(c *gin.Context) {
 		Extra    map[string]string `json:"extra"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	amount, err := parseAmountCents(payload.Amount)
@@ -83,7 +85,7 @@ func (h *Handler) WalletRecharge(c *gin.Context) {
 		method = "approval"
 	}
 	if h.paymentSvc != nil {
-		methods, err := h.paymentSvc.ListUserMethodsByScene(c, getUserID(c), "wallet")
+		methods, err := h.paymentSvc.ListUserMethodsByScene(c.Request.Context(), getUserID(c), "wallet")
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -111,7 +113,7 @@ func (h *Handler) WalletRecharge(c *gin.Context) {
 	meta["payment_method"] = method
 	resp := gin.H{}
 	// Create the wallet order first so we have a stable ID for deterministic order no.
-	order, err := h.walletOrder.CreateRecharge(c, getUserID(c), appshared.WalletOrderCreateInput{
+	order, err := h.walletOrder.CreateRecharge(c.Request.Context(), getUserID(c), appshared.WalletOrderCreateInput{
 		Amount:   amount,
 		Currency: payload.Currency,
 		Note:     payload.Note,
@@ -125,12 +127,15 @@ func (h *Handler) WalletRecharge(c *gin.Context) {
 		if payload.Extra == nil {
 			payload.Extra = map[string]string{}
 		}
-		if strings.TrimSpace(payload.Extra["client_ip"]) == "" {
-			payload.Extra["client_ip"] = strings.TrimSpace(c.ClientIP())
+		// The payment gateway receives Extra verbatim; derive client_ip/device
+		// from the trusted request context instead of trusting client input.
+		if ip := strings.TrimSpace(c.ClientIP()); ip != "" {
+			payload.Extra["client_ip"] = ip
 		}
+		payload.Extra["device"] = detectEZPayDeviceFromUA(c.GetHeader("User-Agent"))
 		returnURL, notifyURL := h.defaultWalletPaymentCallbackURLs(c, method)
 		walletOrderNo := walletPaymentOrderNo(order.ID)
-		payRes, err := h.paymentSvc.CreateProviderPaymentByScene(c, "wallet", method, appshared.PaymentCreateRequest{
+		payRes, err := h.paymentSvc.CreateProviderPaymentByScene(c.Request.Context(), "wallet", method, appshared.PaymentCreateRequest{
 			OrderNo:   walletOrderNo,
 			UserID:    getUserID(c),
 			Amount:    amount,
@@ -155,7 +160,12 @@ func (h *Handler) WalletRecharge(c *gin.Context) {
 			meta["payment_extra"] = payRes.Extra
 		}
 		if metaBytes, merr := encodeMapJSON(meta); merr == nil {
-			_ = h.walletOrder.UpdateOrderMeta(c, order.ID, string(metaBytes))
+			if uerr := h.walletOrder.UpdateOrderMeta(c.Request.Context(), order.ID, string(metaBytes)); uerr != nil {
+				// The provider payment already exists; do not fail the request
+				// (the client would retry and duplicate it). Log so operators
+				// can notice the missing payment_order_no/payment_trade_no.
+				log.Printf("wallet recharge meta persist failed order_id=%d err=%v", order.ID, uerr)
+			}
 			order.MetaJSON = string(metaBytes)
 		}
 		resp["payment"] = toPaymentSelectDTO(appshared.PaymentSelectResult{
@@ -182,7 +192,7 @@ func (h *Handler) WalletWithdraw(c *gin.Context) {
 		Meta     map[string]any `json:"meta"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	amount, err := parseAmountCents(payload.Amount)
@@ -190,7 +200,7 @@ func (h *Handler) WalletWithdraw(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidAmount.Error()})
 		return
 	}
-	order, err := h.walletOrder.CreateWithdraw(c, getUserID(c), appshared.WalletOrderCreateInput{
+	order, err := h.walletOrder.CreateWithdraw(c.Request.Context(), getUserID(c), appshared.WalletOrderCreateInput{
 		Amount:   amount,
 		Currency: payload.Currency,
 		Note:     payload.Note,
@@ -213,12 +223,40 @@ func (h *Handler) WalletOrders(c *gin.Context) {
 		return
 	}
 	limit, offset := paging(c)
-	items, total, err := h.walletOrder.ListUserOrders(c, getUserID(c), limit, offset)
+	var query struct {
+		Status string `form:"status"`
+		Type   string `form:"type"`
+	}
+	if err := c.ShouldBindQuery(&query); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	// P3-42: status/type server-side filter; the frontend pages by API instead
+	// of pulling 500 rows and slicing locally.
+	items, total, err := h.walletOrder.ListUserOrdersFiltered(c.Request.Context(), getUserID(c), strings.TrimSpace(query.Status), strings.TrimSpace(query.Type), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toWalletOrderDTOs(items), "total": total})
+}
+
+func (h *Handler) WalletOrderSummary(c *gin.Context) {
+	if h.walletOrder == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrWalletOrdersDisabled.Error()})
+		return
+	}
+	summary, err := h.walletOrder.SummarizeUserOrders(c.Request.Context(), getUserID(c), time.Now())
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"recharge": centsToFloat(summary.MonthRecharge),
+		"withdraw": centsToFloat(summary.MonthWithdraw),
+		"pending":  summary.Pending,
+		"total":    summary.Total,
+	})
 }
 
 func (h *Handler) WalletOrderPay(c *gin.Context) {
@@ -235,7 +273,7 @@ func (h *Handler) WalletOrderPay(c *gin.Context) {
 		Extra map[string]string `json:"extra"`
 	}
 	_ = bindJSONOptional(c, &payload)
-	order, err := h.walletOrder.GetUserOrder(c, getUserID(c), uri.ID)
+	order, err := h.walletOrder.GetUserOrder(c.Request.Context(), getUserID(c), uri.ID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrForbidden {
@@ -254,7 +292,7 @@ func (h *Handler) WalletOrderPay(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": appshared.ErrInvalidInput.Error()})
 		return
 	}
-	methods, err := h.paymentSvc.ListUserMethodsByScene(c, getUserID(c), "wallet")
+	methods, err := h.paymentSvc.ListUserMethodsByScene(c.Request.Context(), getUserID(c), "wallet")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -273,16 +311,19 @@ func (h *Handler) WalletOrderPay(c *gin.Context) {
 	if payload.Extra == nil {
 		payload.Extra = map[string]string{}
 	}
-	if strings.TrimSpace(payload.Extra["client_ip"]) == "" {
-		payload.Extra["client_ip"] = strings.TrimSpace(c.ClientIP())
+	// The payment gateway receives Extra verbatim; derive client_ip/device
+	// from the trusted request context instead of trusting client input.
+	if ip := strings.TrimSpace(c.ClientIP()); ip != "" {
+		payload.Extra["client_ip"] = ip
 	}
+	payload.Extra["device"] = detectEZPayDeviceFromUA(c.GetHeader("User-Agent"))
 	walletOrderNo := strings.TrimSpace(fmt.Sprint(meta["payment_order_no"]))
 	if walletOrderNo == "" {
 		// Deterministic order no derived from wallet order id.
 		walletOrderNo = walletPaymentOrderNo(order.ID)
 	}
 	returnURL, notifyURL := h.defaultWalletPaymentCallbackURLs(c, method)
-	payRes, err := h.paymentSvc.CreateProviderPaymentByScene(c, "wallet", method, appshared.PaymentCreateRequest{
+	payRes, err := h.paymentSvc.CreateProviderPaymentByScene(c.Request.Context(), "wallet", method, appshared.PaymentCreateRequest{
 		OrderNo:   walletOrderNo,
 		UserID:    getUserID(c),
 		Amount:    order.Amount,
@@ -308,7 +349,11 @@ func (h *Handler) WalletOrderPay(c *gin.Context) {
 		meta["payment_extra"] = payRes.Extra
 	}
 	if metaBytes, merr := encodeMapJSON(meta); merr == nil {
-		_ = h.walletOrder.UpdateOrderMeta(c, order.ID, string(metaBytes))
+		if uerr := h.walletOrder.UpdateOrderMeta(c.Request.Context(), order.ID, string(metaBytes)); uerr != nil {
+			// The provider payment already exists; failing the request would
+			// make the client retry and create a duplicate payment.
+			log.Printf("wallet order pay meta persist failed order_id=%d err=%v", order.ID, uerr)
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"payment": toPaymentSelectDTO(appshared.PaymentSelectResult{
@@ -335,7 +380,7 @@ func (h *Handler) WalletOrderCancel(c *gin.Context) {
 		Reason string `json:"reason"`
 	}
 	_ = bindJSONOptional(c, &payload)
-	order, err := h.walletOrder.CancelByUser(c, getUserID(c), uri.ID, payload.Reason)
+	order, err := h.walletOrder.CancelByUser(c.Request.Context(), getUserID(c), uri.ID, payload.Reason)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err == appshared.ErrForbidden {
@@ -395,6 +440,20 @@ func walletPaymentOrderNo(orderID int64) string {
 	return fmt.Sprintf("WALLET-ORDER-%d", orderID)
 }
 
+// walletOrderIDFromOrderNo extracts the wallet order id from the server-derived
+// "WALLET-ORDER-<id>" payment order number, or 0 when the string is not of that
+// shape.
+func walletOrderIDFromOrderNo(orderNo string) int64 {
+	if !strings.HasPrefix(orderNo, "WALLET-ORDER-") {
+		return 0
+	}
+	id, err := strconv.ParseInt(strings.TrimPrefix(orderNo, "WALLET-ORDER-"), 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
 func walletPaymentMatched(item domain.WalletOrder, provider, orderNo, tradeNo string) bool {
 	meta := parseMapJSON(item.MetaJSON)
 	metaMethod := strings.TrimSpace(fmt.Sprint(meta["payment_method"]))
@@ -423,20 +482,12 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 		return
 	}
 	provider := strings.TrimSpace(uri.Provider)
-	body, _ := io.ReadAll(c.Request.Body)
-	headers := map[string][]string{}
-	for k, v := range c.Request.Header {
-		copied := make([]string, len(v))
-		copy(copied, v)
-		headers[k] = copied
+	rawRequest, err := readPaymentCallbackRequest(c)
+	if err != nil {
+		writePaymentCallbackReadError(c, err)
+		return
 	}
-	result, err := h.paymentSvc.VerifyNotify(c, provider, appshared.RawHTTPRequest{
-		Method:   c.Request.Method,
-		Path:     c.Request.URL.Path,
-		RawQuery: c.Request.URL.RawQuery,
-		Headers:  headers,
-		Body:     body,
-	})
+	result, err := h.paymentSvc.VerifyNotify(c.Request.Context(), provider, rawRequest)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -447,14 +498,71 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": appshared.ErrInvalidInput.Error()})
 		return
 	}
+	// Fast path: the payment order number is server-derived as
+	// WALLET-ORDER-<id>, so resolve the wallet order by id directly instead of
+	// scanning paginated lists (which was O(N) and truncated at 4000 rows per
+	// status, so a deep recharge was never acknowledged and the gateway retried
+	// forever).
+	if id := walletOrderIDFromOrderNo(orderNo); id > 0 {
+		if item, err := h.walletOrder.GetOrderByID(c.Request.Context(), id); err == nil &&
+			item.Type == domain.WalletOrderRecharge && walletPaymentMatched(item, provider, orderNo, tradeNo) {
+			if amountErr := h.paymentSvc.ValidateNotifyAmount(item.Amount, result.Amount); amountErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": amountErr.Error()})
+				return
+			}
+			if item.Status == domain.WalletOrderApproved {
+				c.JSON(http.StatusOK, gin.H{"ok": true, "trade_no": result.TradeNo})
+				return
+			}
+			_, _, approveErr := h.walletOrder.Approve(c.Request.Context(), 0, item.ID)
+			if approveErr != nil {
+				if approveErr == appshared.ErrConflict {
+					c.JSON(http.StatusConflict, gin.H{"error": appshared.ErrConflict.Error()})
+					return
+				}
+				c.JSON(http.StatusBadRequest, gin.H{"error": approveErr.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"ok": true, "trade_no": result.TradeNo})
+			return
+		}
+	}
+	// Slow-path direct lookup by provider trade_no (P1-4): the gateway may echo
+	// a rewritten out_trade_no, so match by the trade_no stored in the wallet
+	// order meta instead of scanning bounded pages that truncate deep orders.
+	if strings.TrimSpace(tradeNo) != "" {
+		if item, err := h.walletOrder.GetOrderByPaymentTradeNo(c.Request.Context(), tradeNo); err == nil &&
+			item.Type == domain.WalletOrderRecharge && walletPaymentMatched(item, provider, orderNo, tradeNo) {
+			if amountErr := h.paymentSvc.ValidateNotifyAmount(item.Amount, result.Amount); amountErr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": amountErr.Error()})
+				return
+			}
+			if item.Status == domain.WalletOrderApproved {
+				c.JSON(http.StatusOK, gin.H{"ok": true, "trade_no": result.TradeNo})
+				return
+			}
+			_, _, approveErr := h.walletOrder.Approve(c.Request.Context(), 0, item.ID)
+			if approveErr != nil {
+				if approveErr == appshared.ErrConflict {
+					c.JSON(http.StatusConflict, gin.H{"error": appshared.ErrConflict.Error()})
+					return
+				}
+				c.JSON(http.StatusBadRequest, gin.H{"error": approveErr.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"ok": true, "trade_no": result.TradeNo})
+			return
+		}
+	}
 	limit := 200
+	approvalConflict := false
 	for _, statusFilter := range []string{
 		string(domain.WalletOrderPendingReview),
 		string(domain.WalletOrderApproved),
 	} {
 		offset := 0
 		for i := 0; i < 20; i++ {
-			items, total, listErr := h.walletOrder.ListAllOrders(c, statusFilter, limit, offset)
+			items, total, listErr := h.walletOrder.ListAllOrders(c.Request.Context(), statusFilter, limit, offset)
 			if listErr != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": listErr.Error()})
 				return
@@ -466,16 +574,20 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 				if !walletPaymentMatched(item, provider, orderNo, tradeNo) {
 					continue
 				}
+				if amountErr := h.paymentSvc.ValidateNotifyAmount(item.Amount, result.Amount); amountErr != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": amountErr.Error()})
+					return
+				}
 				// Idempotent ack: already approved recharge should always return success.
 				if item.Status == domain.WalletOrderApproved {
 					c.JSON(http.StatusOK, gin.H{"ok": true, "trade_no": result.TradeNo})
 					return
 				}
-				_, _, approveErr := h.walletOrder.Approve(c, 0, item.ID)
+				_, _, approveErr := h.walletOrder.Approve(c.Request.Context(), 0, item.ID)
 				if approveErr != nil {
 					if approveErr == appshared.ErrConflict {
-						c.JSON(http.StatusOK, gin.H{"ok": true, "trade_no": result.TradeNo})
-						return
+						approvalConflict = true
+						continue
 					}
 					c.JSON(http.StatusBadRequest, gin.H{"error": approveErr.Error()})
 					return
@@ -488,6 +600,10 @@ func (h *Handler) WalletPaymentNotify(c *gin.Context) {
 				break
 			}
 		}
+	}
+	if approvalConflict {
+		c.JSON(http.StatusConflict, gin.H{"error": appshared.ErrConflict.Error()})
+		return
 	}
 	c.JSON(http.StatusBadRequest, gin.H{"error": appshared.ErrInvalidInput.Error()})
 }
@@ -504,7 +620,7 @@ func (h *Handler) Notifications(c *gin.Context) {
 	}
 	status := strings.TrimSpace(query.Status)
 	limit, offset := paging(c)
-	items, total, err := h.messageSvc.List(c, getUserID(c), status, limit, offset)
+	items, total, err := h.messageSvc.List(c.Request.Context(), getUserID(c), status, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -521,7 +637,7 @@ func (h *Handler) NotificationsUnreadCount(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrMessageCenterDisabled.Error()})
 		return
 	}
-	count, err := h.messageSvc.UnreadCount(c, getUserID(c))
+	count, err := h.messageSvc.UnreadCount(c.Request.Context(), getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -539,7 +655,7 @@ func (h *Handler) NotificationRead(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.messageSvc.MarkRead(c, getUserID(c), uri.ID); err != nil {
+	if err := h.messageSvc.MarkRead(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -551,7 +667,7 @@ func (h *Handler) NotificationReadAll(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrMessageCenterDisabled.Error()})
 		return
 	}
-	if err := h.messageSvc.MarkAllRead(c, getUserID(c)); err != nil {
+	if err := h.messageSvc.MarkAllRead(c.Request.Context(), getUserID(c)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -564,7 +680,7 @@ func (h *Handler) OrderCancel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.orderSvc.CancelOrder(c, getUserID(c), uri.ID); err != nil {
+	if err := h.orderSvc.CancelOrder(c.Request.Context(), getUserID(c), uri.ID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -583,7 +699,7 @@ func (h *Handler) OrderList(c *gin.Context) {
 		status = ""
 	}
 	filter := appshared.OrderFilter{UserID: getUserID(c), Status: status}
-	orders, total, err := h.orderSvc.ListOrders(c, filter, limit, offset)
+	orders, total, err := h.orderSvc.ListOrders(c.Request.Context(), filter, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -597,14 +713,14 @@ func (h *Handler) OrderDetail(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	order, items, err := h.orderSvc.GetOrder(c, uri.ID, getUserID(c))
+	order, items, err := h.orderSvc.GetOrder(c.Request.Context(), uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrOrderNotFound.Error()})
 		return
 	}
 	var payments []domain.OrderPayment
 	if h.orderSvc != nil {
-		payments, _ = h.orderSvc.ListPaymentsForOrder(c, getUserID(c), uri.ID)
+		payments, _ = h.orderSvc.ListPaymentsForOrder(c.Request.Context(), getUserID(c), uri.ID)
 	}
 	c.JSON(http.StatusOK, gin.H{"order": toOrderDTO(order), "items": toOrderItemDTOs(items), "payments": toOrderPaymentDTOs(payments)})
 }
@@ -615,7 +731,7 @@ func (h *Handler) OrderEvents(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	_, _, err := h.orderSvc.GetOrder(c, uri.ID, getUserID(c))
+	_, _, err := h.orderSvc.GetOrder(c.Request.Context(), uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrOrderNotFound.Error()})
 		return
@@ -625,7 +741,8 @@ func (h *Handler) OrderEvents(c *gin.Context) {
 	if last != "" {
 		lastSeq, _ = strconv.ParseInt(last, 10, 64)
 	}
-	_ = h.broker.Stream(c, c.Writer, uri.ID, lastSeq)
+	clearWriteDeadline(c.Writer)
+	_ = h.broker.Stream(c.Request.Context(), c.Writer, uri.ID, lastSeq)
 }
 
 func (h *Handler) OrderRefresh(c *gin.Context) {
@@ -634,10 +751,13 @@ func (h *Handler) OrderRefresh(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	instances, err := h.orderSvc.RefreshOrder(c, getUserID(c), uri.ID)
+	instances, err := h.orderSvc.RefreshOrder(c.Request.Context(), getUserID(c), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"items": h.toVPSInstanceDTOsWithLifecycle(c, instances)})
+	// User-facing DTO variant (P2-4): this endpoint must not echo panel/VNC/OS
+	// passwords. Credentials are only served by the explicit, audited
+	// GET /api/v1/vps/:id/credentials endpoint.
+	c.JSON(http.StatusOK, gin.H{"items": h.toUserVPSInstanceDTOsWithLifecycle(c, instances)})
 }

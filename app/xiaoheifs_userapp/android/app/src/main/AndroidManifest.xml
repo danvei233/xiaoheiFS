@@ -4,7 +4,7 @@
         android:label="云享互联"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="${usesCleartextTraffic}"
         android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
@@ -27,6 +27,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 受控更新：把已验证的 APK 以 content:// 交给系统安装器（FileProvider
+             读取 temp 目录下的临时 APK；绝不直接暴露 file:// 给第三方 intent）。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
     <queries>
         <package android:name="com.android.chrome"/>

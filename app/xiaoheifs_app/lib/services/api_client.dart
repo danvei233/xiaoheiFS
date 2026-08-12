@@ -10,6 +10,8 @@ class ApiClient {
   final String? apiKey;
   final Future<AuthTokens?> Function()? refreshAuth;
   final void Function(AuthTokens tokens)? onTokens;
+  final void Function()? onAuthExpired;
+  final http.Client _client;
 
   ApiClient({
     required this.baseUrl,
@@ -17,7 +19,9 @@ class ApiClient {
     this.apiKey,
     this.refreshAuth,
     this.onTokens,
-  });
+    this.onAuthExpired,
+    http.Client? client,
+  }) : _client = client ?? http.Client();
 
   Uri _buildUri(String path, [Map<String, String>? query]) {
     final normalizedBase = baseUrl.endsWith('/')
@@ -96,6 +100,11 @@ class ApiClient {
         token = tokens.accessToken;
         onTokens?.call(tokens);
         resp = await _send(method, uri, payload);
+      } else {
+        // Session can no longer be refreshed (refresh token revoked/expired);
+        // let the owner clear the stale session instead of keeping a dead
+        // login state alive.
+        onAuthExpired?.call();
       }
     }
     return _decode(resp);
@@ -109,22 +118,32 @@ class ApiClient {
     final headers = _headers();
     switch (method) {
       case 'POST':
-        return http.post(uri, headers: headers, body: payload);
+        return _client.post(uri, headers: headers, body: payload);
       case 'PATCH':
-        return http.patch(uri, headers: headers, body: payload);
+        return _client.patch(uri, headers: headers, body: payload);
       case 'PUT':
-        return http.put(uri, headers: headers, body: payload);
+        return _client.put(uri, headers: headers, body: payload);
       case 'DELETE':
-        return http.delete(uri, headers: headers, body: payload);
+        return _client.delete(uri, headers: headers, body: payload);
       default:
-        return http.get(uri, headers: headers);
+        return _client.get(uri, headers: headers);
     }
   }
 
   Map<String, dynamic> _decode(http.Response resp) {
     final status = resp.statusCode;
     final body = resp.body.isEmpty ? '{}' : resp.body;
-    final decoded = jsonDecode(body);
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(body);
+    } on FormatException {
+      // Proxy/gateway HTML or empty bodies must surface as ApiException,
+      // not an uncaught FormatException that escapes request handling.
+      throw ApiException(
+        status: status,
+        message: status >= 200 && status < 300 ? '响应格式错误' : '请求失败',
+      );
+    }
     if (status >= 200 && status < 300) {
       if (decoded is Map<String, dynamic>) {
         return decoded;

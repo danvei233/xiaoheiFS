@@ -118,6 +118,106 @@ func TestSeedIfEmptySkip(t *testing.T) {
 	}
 }
 
+// TestEnsurePermissionGroupsPreservesCustomPermissions guards F13: re-running
+// the seed on an existing install must backfill default permissions without
+// wiping administrator customizations (permissions or description).
+func TestEnsurePermissionGroupsPreservesCustomPermissions(t *testing.T) {
+	gdb := newSeedDB(t)
+	now := time.Now()
+	if err := gdb.Table("permission_groups").Create(map[string]any{
+		"name":             "运维管理员",
+		"description":      "custom description",
+		"permissions_json": `["custom.perm","user.list"]`,
+		"created_at":       now,
+		"updated_at":       now,
+	}).Error; err != nil {
+		t.Fatalf("insert ops group: %v", err)
+	}
+
+	if err := EnsurePermissionGroups(gdb); err != nil {
+		t.Fatalf("ensure permission groups: %v", err)
+	}
+
+	var rawPerms string
+	if err := gdb.Table("permission_groups").
+		Select("permissions_json").
+		Where("name = ?", "运维管理员").
+		Scan(&rawPerms).Error; err != nil {
+		t.Fatalf("select perms: %v", err)
+	}
+	var perms []string
+	if err := json.Unmarshal([]byte(rawPerms), &perms); err != nil {
+		t.Fatalf("unmarshal perms: %v", err)
+	}
+	foundCustom, foundRevenue := false, false
+	for _, p := range perms {
+		if p == "custom.perm" {
+			foundCustom = true
+		}
+		if p == "dashboard.revenue" {
+			foundRevenue = true
+		}
+	}
+	if !foundCustom {
+		t.Fatalf("custom permission lost after reseed: %v", perms)
+	}
+	if !foundRevenue {
+		t.Fatalf("default permission missing after reseed: %v", perms)
+	}
+
+	var desc string
+	if err := gdb.Table("permission_groups").
+		Select("description").
+		Where("name = ?", "运维管理员").
+		Scan(&desc).Error; err != nil {
+		t.Fatalf("select description: %v", err)
+	}
+	if desc != "custom description" {
+		t.Fatalf("custom description overwritten: %q", desc)
+	}
+}
+
+// TestEnsurePermissionGroupsAllRowsValidGroupIDs guards F13's ID-backfill
+// concern: after repeated runs every permission_group_permissions row must
+// reference a real group.
+func TestEnsurePermissionGroupsAllRowsValidGroupIDs(t *testing.T) {
+	gdb := newSeedDB(t)
+	if err := EnsurePermissionGroups(gdb); err != nil {
+		t.Fatalf("first ensure: %v", err)
+	}
+	if err := EnsurePermissionGroups(gdb); err != nil {
+		t.Fatalf("second ensure: %v", err)
+	}
+	var orphanCount int64
+	if err := gdb.Table("permission_group_permissions").
+		Where("permission_group_id = 0 OR permission_group_id NOT IN (SELECT id FROM permission_groups)").
+		Count(&orphanCount).Error; err != nil {
+		t.Fatalf("count orphans: %v", err)
+	}
+	if orphanCount > 0 {
+		t.Fatalf("found %d orphan permission_group_permissions rows", orphanCount)
+	}
+}
+
+// TestGenerateSecureSeedPassword guards F14: the seed password generator must
+// return distinct random values and must not fall back to a hardcoded secret.
+func TestGenerateSecureSeedPassword(t *testing.T) {
+	p1, err := generateSecureSeedPassword()
+	if err != nil {
+		t.Fatalf("generate p1: %v", err)
+	}
+	p2, err := generateSecureSeedPassword()
+	if err != nil {
+		t.Fatalf("generate p2: %v", err)
+	}
+	if p1 == "" || p2 == "" {
+		t.Fatalf("expected non-empty passwords")
+	}
+	if p1 == p2 {
+		t.Fatalf("expected distinct passwords")
+	}
+}
+
 func TestEnsurePermissionGroupsBackfillDashboardRevenue(t *testing.T) {
 	gdb := newSeedDB(t)
 

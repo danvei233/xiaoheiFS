@@ -1,15 +1,18 @@
-﻿/// 验证器工具类
+﻿import '../constants/input_limits.dart';
+
+/// 验证器工具类
 class Validators {
   Validators._();
 
   /// 验证用户名
-  /// 长度 3-20 字符，只能包含字母、数字、下划线
+  /// 长度 3-InputLimits.username 字符，只能包含字母、数字、下划线；
+  /// 上限与后端 auth 服务 maxLenUsername 保持一致。
   static String? validateUsername(String? value) {
     if (value == null || value.isEmpty) {
       return '请输入用户名';
     }
-    if (value.length < 3 || value.length > 20) {
-      return '用户名长度应为 3-20 个字符';
+    if (value.length < 3 || value.length > InputLimits.username) {
+      return '用户名长度应为 3-${InputLimits.username} 个字符';
     }
     if (!RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(value)) {
       return '用户名只能包含字母、数字和下划线';
@@ -18,12 +21,16 @@ class Validators {
   }
 
   /// 验证密码
+  /// 下限与后端 auth_password_min_len 一致，上限与 maxLenPassword 一致。
   static String? validatePassword(String? value) {
     if (value == null || value.isEmpty) {
       return '请输入密码';
     }
     if (value.length < 6) {
       return '密码长度至少 6 位';
+    }
+    if (value.length > InputLimits.password) {
+      return '密码长度不能超过 ${InputLimits.password} 位';
     }
     return null;
   }

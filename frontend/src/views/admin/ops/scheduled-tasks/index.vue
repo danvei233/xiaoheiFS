@@ -185,10 +185,11 @@
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN')
   }
 
-  async function fetchScheduledTaskTable(): Promise<
-    Api.Common.PaginatedResponse<ScheduledTaskTableRow>
-  > {
-    const payload = await fetchAdminScheduledTasks()
+  async function fetchScheduledTaskTable(
+    _params?: unknown,
+    signal?: AbortSignal
+  ): Promise<Api.Common.PaginatedResponse<ScheduledTaskTableRow>> {
+    const payload = await fetchAdminScheduledTasks(signal)
     const allRows = (payload.items || []).map(normalizeTask)
     return {
       records: allRows,

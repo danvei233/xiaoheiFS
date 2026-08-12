@@ -17,9 +17,11 @@ type Manager interface {
 	List(ctx context.Context) ([]appshared.PluginListItem, error)
 	DiscoverOnDisk(ctx context.Context) ([]appshared.PluginDiscoverItem, error)
 	Install(ctx context.Context, filename string, r io.Reader) (domain.PluginInstallation, error)
+	InstallVerified(ctx context.Context, filename string, r io.Reader, expectedDigest string) (domain.PluginInstallation, error)
+	VerifyInstallPackage(ctx context.Context, filename string, r io.Reader) (appshared.PluginInstallVerifyResult, error)
 	Uninstall(ctx context.Context, category, pluginID string) error
-	SignatureStatusOnDisk(category, pluginID string) (domain.PluginSignatureStatus, error)
-	ImportFromDisk(ctx context.Context, category, pluginID string) (domain.PluginInstallation, error)
+	PreviewImportFromDisk(ctx context.Context, category, pluginID string) (appshared.PluginImportPreview, error)
+	ImportFromDisk(ctx context.Context, category, pluginID, expectedDigest string) (domain.PluginInstallation, error)
 	EnableInstance(ctx context.Context, category, pluginID, instanceID string) error
 	DisableInstance(ctx context.Context, category, pluginID, instanceID string) error
 	DeleteInstance(ctx context.Context, category, pluginID, instanceID string) error
@@ -61,6 +63,20 @@ func (s *Service) Install(ctx context.Context, filename string, r io.Reader) (do
 	return s.manager.Install(ctx, filename, r)
 }
 
+func (s *Service) InstallVerified(ctx context.Context, filename string, r io.Reader, expectedDigest string) (domain.PluginInstallation, error) {
+	if s.manager == nil {
+		return domain.PluginInstallation{}, domain.ErrPluginsDisabled
+	}
+	return s.manager.InstallVerified(ctx, filename, r, expectedDigest)
+}
+
+func (s *Service) VerifyInstallPackage(ctx context.Context, filename string, r io.Reader) (appshared.PluginInstallVerifyResult, error) {
+	if s.manager == nil {
+		return appshared.PluginInstallVerifyResult{}, domain.ErrPluginsDisabled
+	}
+	return s.manager.VerifyInstallPackage(ctx, filename, r)
+}
+
 func (s *Service) Uninstall(ctx context.Context, category, pluginID string) error {
 	if s.manager == nil {
 		return domain.ErrPluginsDisabled
@@ -68,18 +84,18 @@ func (s *Service) Uninstall(ctx context.Context, category, pluginID string) erro
 	return s.manager.Uninstall(ctx, category, pluginID)
 }
 
-func (s *Service) SignatureStatusOnDisk(category, pluginID string) (domain.PluginSignatureStatus, error) {
+func (s *Service) PreviewImportFromDisk(ctx context.Context, category, pluginID string) (appshared.PluginImportPreview, error) {
 	if s.manager == nil {
-		return domain.PluginSignatureUntrusted, domain.ErrPluginsDisabled
+		return appshared.PluginImportPreview{}, domain.ErrPluginsDisabled
 	}
-	return s.manager.SignatureStatusOnDisk(category, pluginID)
+	return s.manager.PreviewImportFromDisk(ctx, category, pluginID)
 }
 
-func (s *Service) ImportFromDisk(ctx context.Context, category, pluginID string) (domain.PluginInstallation, error) {
+func (s *Service) ImportFromDisk(ctx context.Context, category, pluginID, expectedDigest string) (domain.PluginInstallation, error) {
 	if s.manager == nil {
 		return domain.PluginInstallation{}, domain.ErrPluginsDisabled
 	}
-	return s.manager.ImportFromDisk(ctx, category, pluginID)
+	return s.manager.ImportFromDisk(ctx, category, pluginID, expectedDigest)
 }
 
 func (s *Service) EnableInstance(ctx context.Context, category, pluginID, instanceID string) error {
@@ -263,20 +279,6 @@ func (s *Service) UpdatePaymentMethod(ctx context.Context, category, pluginID, i
 		return domain.ErrPluginInstanceNotFound
 	}
 	return s.UpsertPaymentMethod(ctx, category, pluginID, instanceID, method, enabled)
-}
-
-func (s *Service) ResolveUploadPassword(ctx context.Context, configuredPassword string) string {
-	if v := strings.TrimSpace(configuredPassword); v != "" {
-		return v
-	}
-	if s.settings != nil {
-		if setting, err := s.settings.GetSetting(ctx, "payment_plugin_upload_password"); err == nil {
-			if v := strings.TrimSpace(setting.ValueJSON); v != "" {
-				return v
-			}
-		}
-	}
-	return ""
 }
 
 func (s *Service) ResolveUploadDir(ctx context.Context, configuredDir string) string {

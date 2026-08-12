@@ -24,6 +24,7 @@ import '../pages/notifications/notifications_page.dart';
 import '../pages/api_keys/api_keys_page.dart';
 import '../../core/navigation/app_navigator.dart';
 import '../providers/auth_provider.dart';
+import 'redirect_guard.dart';
 
 /// 路由配置 Provider
 final routerProvider = Provider<GoRouter>((ref) {
@@ -44,11 +45,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       if (isAuthenticated && isPublicRoute) {
-        final redirect = state.uri.queryParameters['redirect'];
-        if (redirect != null && redirect.isNotEmpty) {
-          return Uri.decodeComponent(redirect);
-        }
-        return '/console';
+        final redirect = sanitizeRedirectParam(
+          state.uri.queryParameters['redirect'],
+        );
+        return redirect ?? '/console';
       }
 
       return null;

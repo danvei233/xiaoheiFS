@@ -25,17 +25,74 @@ type messageCenter interface {
 	NotifyUser(ctx context.Context, userID int64, typ, title, content string) error
 }
 
+// fieldPermissionChecker is the subset of the permission service the admin VPS
+// service needs to gate field-level writes (P1-20). It is injected so the
+// service itself enforces that a sub-admin cannot change prices, credentials or
+// admin status through the generic update endpoint, independent of route-level
+// middleware.
+type fieldPermissionChecker interface {
+	IsPrimaryAdmin(ctx context.Context, userID int64) (bool, error)
+	HasPermission(ctx context.Context, userID int64, permission string) (bool, error)
+}
+
 type Service struct {
-	vps        appports.VPSRepository
-	automation appports.AutomationClientResolver
-	settings   appports.SettingsRepository
-	audit      appports.AuditRepository
-	users      appports.UserRepository
-	messages   messageCenter
+	vps         appports.VPSRepository
+	automation  appports.AutomationClientResolver
+	settings    appports.SettingsRepository
+	audit       appports.AuditRepository
+	users       appports.UserRepository
+	messages    messageCenter
+	permissions fieldPermissionChecker
+}
+
+// validVPSStatus reports whether the value is a known VPS status enum.
+func validVPSStatus(status domain.VPSStatus) bool {
+	switch status {
+	case domain.VPSStatusProvisioning, domain.VPSStatusRunning, domain.VPSStatusStopped,
+		domain.VPSStatusReinstalling, domain.VPSStatusReinstallFailed, domain.VPSStatusExpiredLocked,
+		domain.VPSStatusRescue, domain.VPSStatusCrackingPassword, domain.VPSStatusLocked,
+		domain.VPSStatusFailed, domain.VPSStatusDeleting,
+		domain.VPSStatusUnknown:
+		return true
+	default:
+		return false
+	}
 }
 
 func NewService(vps appports.VPSRepository, automation appports.AutomationClientResolver, settings appports.SettingsRepository, audit appports.AuditRepository, users appports.UserRepository, messages messageCenter) *Service {
 	return &Service{vps: vps, automation: automation, settings: settings, audit: audit, users: users, messages: messages}
+}
+
+// SetPermissionChecker injects the field-level permission checker used to gate
+// price/credential/admin-status/spec writes on the generic update endpoint
+// (P1-20). When nil (default), field-level writes are allowed — the HTTP layer
+// still enforces the route-level vps.update permission via middleware.
+func (s *Service) SetPermissionChecker(p fieldPermissionChecker) {
+	s.permissions = p
+}
+
+// requireFieldPermission reports whether the actor may write a field guarded by
+// the named permission. Primary admins (and deployments without an injected
+// checker) are always allowed; sub-admins need the specific permission.
+func (s *Service) requireFieldPermission(ctx context.Context, adminID int64, permission string) error {
+	if s.permissions == nil {
+		return nil
+	}
+	isPrimary, err := s.permissions.IsPrimaryAdmin(ctx, adminID)
+	if err != nil {
+		return err
+	}
+	if isPrimary {
+		return nil
+	}
+	has, err := s.permissions.HasPermission(ctx, adminID, permission)
+	if err != nil {
+		return err
+	}
+	if !has {
+		return domain.ErrForbidden
+	}
+	return nil
 }
 
 func (s *Service) Get(ctx context.Context, vpsID int64) (domain.VPSInstance, error) {
@@ -153,8 +210,11 @@ func (s *Service) Create(ctx context.Context, adminID int64, input AdminVPSCreat
 						break
 					}
 				}
+				// Never fall back to an arbitrary host from the list: linking a
+				// non-matching host could hand another customer's machine to
+				// this user. If hosts exist but none matches, fail loudly.
 				if hostID == 0 && len(hosts) > 0 {
-					hostID = hosts[0].ID
+					return domain.VPSInstance{}, domain.ErrHostIDNotFound
 				}
 				if hostID > 0 {
 					input.AutomationInstanceID = fmt.Sprintf("%d", hostID)
@@ -284,6 +344,15 @@ func (s *Service) SetAdminStatus(ctx context.Context, adminID int64, vpsID int64
 	if err := s.vps.UpdateInstanceAdminStatus(ctx, inst.ID, status); err != nil {
 		return err
 	}
+	// P3-28: a lock/abuse/fraud admin status must surface to the user as the
+	// locked user-visible status; otherwise the user-facing DTO keeps reporting a
+	// normal lifecycle status for a frozen instance. "normal" deliberately leaves
+	// the lifecycle status untouched (the instance may legitimately be stopped).
+	if status == domain.VPSAdminStatusAbuse || status == domain.VPSAdminStatusFraud || status == domain.VPSAdminStatusLocked {
+		if err := s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusLocked, inst.AutomationState); err != nil {
+			return err
+		}
+	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "vps.admin_status", TargetType: "vps", TargetID: fmt.Sprintf("%d", inst.ID), DetailJSON: mustJSON(map[string]any{"status": status, "reason": reason})})
 	}
@@ -316,7 +385,14 @@ func (s *Service) EmergencyRenew(ctx context.Context, adminID int64, vpsID int64
 		return domain.VPSInstance{}, err
 	}
 	now := time.Now()
-	expire := now.Add(time.Duration(policy.RenewDays) * 24 * time.Hour)
+	// Never shorten an existing lease: anchor the renewal at the later of the
+	// current time and the current expiry (an instance within the emergency
+	// window may still have time left), then add the renewal duration.
+	base := now
+	if inst.ExpireAt != nil && inst.ExpireAt.After(now) {
+		base = *inst.ExpireAt
+	}
+	expire := base.Add(time.Duration(policy.RenewDays) * 24 * time.Hour)
 	if err := cli.UnlockHost(ctx, hostID); err != nil {
 		return domain.VPSInstance{}, err
 	}
@@ -326,7 +402,9 @@ func (s *Service) EmergencyRenew(ctx context.Context, adminID int64, vpsID int64
 	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, expire); err != nil {
 		return domain.VPSInstance{}, err
 	}
-	_ = s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now)
+	if err := s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now); err != nil {
+		return domain.VPSInstance{}, err
+	}
 	if s.audit != nil {
 		_ = s.audit.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: adminID, Action: "vps.emergency_renew", TargetType: "vps", TargetID: fmt.Sprintf("%d", inst.ID), DetailJSON: mustJSON(map[string]any{"days": policy.RenewDays})})
 	}
@@ -371,7 +449,11 @@ func (s *Service) Delete(ctx context.Context, adminID int64, vpsID int64) error 
 	if err != nil {
 		return err
 	}
-	if err := cli.DeleteHost(ctx, hostID); err != nil {
+	// A DeleteHost reporting the host is already gone is an idempotent success:
+	// a retry after a crash between DeleteHost and DeleteInstance must converge
+	// on removing the local row instead of being permanently blocked by the
+	// "instance does not exist" error the provider returns for a destroyed host.
+	if err := cli.DeleteHost(ctx, hostID); err != nil && !appshared.IsHostNotFoundError(err) {
 		return err
 	}
 	if err := s.vps.DeleteInstance(ctx, inst.ID); err != nil {
@@ -390,6 +472,11 @@ func (s *Service) UpdateExpireAt(ctx context.Context, adminID int64, vpsID int64
 	inst, err := s.vps.GetInstance(ctx, vpsID)
 	if err != nil {
 		return domain.VPSInstance{}, err
+	}
+	// P3-28: a lease must never be set into the past — that would immediately
+	// expire the instance (or be interpreted as an already-expired lease).
+	if expireAt.Before(time.Now()) {
+		return domain.VPSInstance{}, domain.ErrInvalidExpireAt
 	}
 	hostID := parseHostID(inst.AutomationInstanceID)
 	if hostID == 0 {
@@ -422,40 +509,69 @@ func (s *Service) Update(ctx context.Context, adminID int64, vpsID int64, input 
 	if input.PackageName != nil {
 		inst.PackageName = strings.TrimSpace(*input.PackageName)
 	}
+	// P1-20: field-level permission gating. A sub-admin holding only vps.update
+	// must not be able to change the price, read/write credentials, lock the
+	// instance, or resize it through the generic update endpoint. Each sensitive
+	// field requires its own permission (primary admins bypass via
+	// requireFieldPermission).
 	if input.MonthlyPrice != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.price"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.MonthlyPrice = *input.MonthlyPrice
 	}
 	if input.SystemID != nil {
 		inst.SystemID = *input.SystemID
 	}
 	if input.SpecJSON != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.resize"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.SpecJSON = *input.SpecJSON
 	}
 	if input.PanelURLCache != nil {
 		inst.PanelURLCache = strings.TrimSpace(*input.PanelURLCache)
 	}
 	if input.AccessInfoJSON != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.credentials"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.AccessInfoJSON = *input.AccessInfoJSON
 	}
 	if input.Status != nil {
+		if !validVPSStatus(*input.Status) {
+			return domain.VPSInstance{}, appshared.ErrInvalidInput
+		}
 		inst.Status = *input.Status
 	}
-	if input.AdminStatus != nil {
-		inst.AdminStatus = *input.AdminStatus
-	}
 	if input.CPU != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.resize"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.CPU = *input.CPU
 	}
 	if input.MemoryGB != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.resize"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.MemoryGB = *input.MemoryGB
 	}
 	if input.DiskGB != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.resize"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.DiskGB = *input.DiskGB
 	}
 	if input.BandwidthMB != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.resize"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.BandwidthMB = *input.BandwidthMB
 	}
 	if input.PortNum != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.resize"); err != nil {
+			return domain.VPSInstance{}, err
+		}
 		inst.PortNum = *input.PortNum
 	}
 	if strings.TrimSpace(input.SyncMode) == "automation" {
@@ -491,11 +607,21 @@ func (s *Service) Update(ctx context.Context, adminID int64, vpsID int64, input 
 				return domain.VPSInstance{}, err
 			}
 		}
-		if input.AdminStatus != nil {
-			if err := s.SetAdminStatus(ctx, adminID, inst.ID, *input.AdminStatus, "sync"); err != nil {
-				return domain.VPSInstance{}, err
-			}
+	}
+	// An admin_status change must always go through SetAdminStatus so the
+	// automation lock/unlock side effect and the audit trail apply regardless of
+	// sync mode; the local write below only mirrors the value for the response.
+	// P1-20: it additionally requires the dedicated vps.admin_status permission,
+	// so holding only vps.update cannot lock/unlock an instance via the update
+	// endpoint.
+	if input.AdminStatus != nil {
+		if err := s.requireFieldPermission(ctx, adminID, "vps.admin_status"); err != nil {
+			return domain.VPSInstance{}, err
 		}
+		if err := s.SetAdminStatus(ctx, adminID, inst.ID, *input.AdminStatus, "admin_update"); err != nil {
+			return domain.VPSInstance{}, err
+		}
+		inst.AdminStatus = *input.AdminStatus
 	}
 	if err := s.vps.UpdateInstanceLocal(ctx, inst); err != nil {
 		return domain.VPSInstance{}, err
@@ -535,8 +661,11 @@ func loadEmergencyRenewPolicy(ctx context.Context, settings appports.SettingsRep
 	if v, ok := getSettingInt(ctx, settings, "emergency_renew_interval_hours"); ok {
 		policy.IntervalHours = v
 	}
-	if policy.WindowDays < 0 {
-		policy.WindowDays = 0
+	// A non-positive window must never silently mean "always inside the window"
+	// (P3-27): clamp to the smallest sensible window so a misconfigured value
+	// cannot open the emergency renew door for every instance.
+	if policy.WindowDays <= 0 {
+		policy.WindowDays = 1
 	}
 	if policy.RenewDays <= 0 {
 		policy.RenewDays = 1
@@ -554,8 +683,11 @@ func emergencyRenewInWindow(now time.Time, expireAt *time.Time, windowDays int) 
 	if now.After(*expireAt) {
 		return false
 	}
+	// Defensive: a non-positive window means "never allowed", never "always
+	// allowed". loadEmergencyRenewPolicy clamps the stored value to >=1, but this
+	// guard keeps a caller passing <=0 from opening the window for every instance.
 	if windowDays <= 0 {
-		return true
+		return false
 	}
 	windowStart := expireAt.Add(-time.Duration(windowDays) * 24 * time.Hour)
 	return !now.Before(windowStart)
@@ -617,6 +749,10 @@ func mapAutomationState(state int) domain.VPSStatus {
 		return domain.VPSStatusReinstallFailed
 	case 10:
 		return domain.VPSStatusLocked
+	case 11:
+		return domain.VPSStatusFailed
+	case 12:
+		return domain.VPSStatusDeleting
 	default:
 		return domain.VPSStatusUnknown
 	}

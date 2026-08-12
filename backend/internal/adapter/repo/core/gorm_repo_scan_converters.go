@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"encoding/json"
 	"strings"
 
 	"xiaoheiplay/internal/domain"
@@ -33,6 +34,7 @@ func toUserRow(u domain.User) userRow {
 		UserTierExpireAt:     u.UserTierExpireAt,
 		PasswordHash:         u.PasswordHash,
 		PasswordChangedAt:    u.PasswordChangedAt,
+		PasswordVersion:      u.PasswordVersion,
 		Role:                 string(u.Role),
 		Status:               string(u.Status),
 		CreatedAt:            u.CreatedAt,
@@ -66,6 +68,7 @@ func fromUserRow(r userRow) domain.User {
 		UserTierExpireAt:     r.UserTierExpireAt,
 		PasswordHash:         r.PasswordHash,
 		PasswordChangedAt:    r.PasswordChangedAt,
+		PasswordVersion:      r.PasswordVersion,
 		Role:                 domain.UserRole(r.Role),
 		Status:               domain.UserStatus(r.Status),
 		CreatedAt:            r.CreatedAt,
@@ -109,7 +112,7 @@ func toOrderRow(order domain.Order) orderRow {
 	}
 	source := strings.TrimSpace(order.Source)
 	if source == "" {
-		source = "user_ui"
+		source = domain.OrderSourceUserUI
 	}
 	return orderRow{
 		ID:             order.ID,
@@ -158,6 +161,13 @@ func fromOrderRow(r orderRow) domain.Order {
 }
 
 func toOrderItemRow(item domain.OrderItem) orderItemRow {
+	// The normalized vps_id column is the indexable mirror of spec_json.vps_id
+	// for exclusive lifecycle operations. Populate it from the spec so every
+	// creation path is covered even when the caller does not set it explicitly.
+	vpsID := item.VPSID
+	if vpsID == 0 {
+		vpsID = orderItemVPSIDFromSpec(item.SpecJSON)
+	}
 	return orderItemRow{
 		ID:                   item.ID,
 		OrderID:              item.OrderID,
@@ -169,6 +179,7 @@ func toOrderItemRow(item domain.OrderItem) orderItemRow {
 		Status:               string(item.Status),
 		GoodsTypeID:          item.GoodsTypeID,
 		AutomationInstanceID: item.AutomationInstanceID,
+		VPSID:                vpsID,
 		Action:               item.Action,
 		DurationMonths:       item.DurationMonths,
 		CreatedAt:            item.CreatedAt,
@@ -188,6 +199,7 @@ func fromOrderItemRow(r orderItemRow) domain.OrderItem {
 		Status:               domain.OrderItemStatus(r.Status),
 		GoodsTypeID:          r.GoodsTypeID,
 		AutomationInstanceID: r.AutomationInstanceID,
+		VPSID:                r.VPSID,
 		Action:               r.Action,
 		DurationMonths:       r.DurationMonths,
 		CreatedAt:            r.CreatedAt,
@@ -195,11 +207,29 @@ func fromOrderItemRow(r orderItemRow) domain.OrderItem {
 	}
 }
 
+func orderItemVPSIDFromSpec(specJSON string) int64 {
+	if strings.TrimSpace(specJSON) == "" {
+		return 0
+	}
+	var payload struct {
+		VPSID int64 `json:"vps_id"`
+	}
+	if err := json.Unmarshal([]byte(specJSON), &payload); err != nil {
+		return 0
+	}
+	return payload.VPSID
+}
+
 func toVPSInstanceRow(inst domain.VPSInstance) vpsInstanceRow {
+	var orderItemID *int64
+	if inst.OrderItemID > 0 {
+		value := inst.OrderItemID
+		orderItemID = &value
+	}
 	return vpsInstanceRow{
 		ID:                   inst.ID,
 		UserID:               inst.UserID,
-		OrderItemID:          inst.OrderItemID,
+		OrderItemID:          orderItemID,
 		AutomationInstanceID: inst.AutomationInstanceID,
 		GoodsTypeID:          inst.GoodsTypeID,
 		Name:                 inst.Name,
@@ -229,10 +259,14 @@ func toVPSInstanceRow(inst domain.VPSInstance) vpsInstanceRow {
 }
 
 func fromVPSInstanceRow(r vpsInstanceRow) domain.VPSInstance {
+	var orderItemID int64
+	if r.OrderItemID != nil {
+		orderItemID = *r.OrderItemID
+	}
 	return domain.VPSInstance{
 		ID:                   r.ID,
 		UserID:               r.UserID,
-		OrderItemID:          r.OrderItemID,
+		OrderItemID:          orderItemID,
 		AutomationInstanceID: r.AutomationInstanceID,
 		GoodsTypeID:          r.GoodsTypeID,
 		Name:                 r.Name,

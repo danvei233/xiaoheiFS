@@ -4,14 +4,21 @@ import time
 
 from .interfaces import AutomationService, CoreService
 from .models import (
+    FEATURE_BACKUP,
+    FEATURE_CATALOG_SYNC,
+    FEATURE_FIREWALL,
+    FEATURE_LIFECYCLE,
+    FEATURE_PORT_MAPPING,
+    FEATURE_SNAPSHOT,
+    HEALTH_STATUS_OK,
     AutomationCapability,
     ConfigSchema,
     CreateInstanceResponse,
-    EmptyResponse,
     GetURLResponse,
     HealthCheckResponse,
     InitResponse,
     Manifest,
+    OperationResult,
     RawJSONResponse,
     ReloadConfigResponse,
     ValidateConfigResponse,
@@ -27,12 +34,12 @@ class NoopAutomationPlugin(CoreService, AutomationService):
             description="No-op python automation plugin scaffold",
             automation=AutomationCapability(
                 features=[
-                    "catalog_sync",
-                    "lifecycle",
-                    "port_mapping",
-                    "backup",
-                    "snapshot",
-                    "firewall",
+                    FEATURE_CATALOG_SYNC,
+                    FEATURE_LIFECYCLE,
+                    FEATURE_PORT_MAPPING,
+                    FEATURE_BACKUP,
+                    FEATURE_SNAPSHOT,
+                    FEATURE_FIREWALL,
                 ]
             ),
         )
@@ -58,7 +65,7 @@ class NoopAutomationPlugin(CoreService, AutomationService):
 
     def health(self, instance_id: str) -> HealthCheckResponse:
         _ = instance_id
-        return HealthCheckResponse(status="HEALTH_STATUS_OK", message="ok", unix_millis=int(time.time() * 1000))
+        return HealthCheckResponse(status=HEALTH_STATUS_OK, message="ok", unix_millis=int(time.time() * 1000))
 
     def list_areas(self) -> list[dict]:
         return []
@@ -74,6 +81,32 @@ class NoopAutomationPlugin(CoreService, AutomationService):
         _ = line_id
         return []
 
+    def upsert_package(
+        self,
+        line_id: int,
+        package_name: str,
+        cpu: int = 0,
+        memory_gb: int = 0,
+        disk_gb: int = 0,
+        bandwidth_mbps: int = 0,
+        traffic_gb: int = 0,
+        gpu_mem_gb: int = 0,
+    ) -> OperationResult:
+        _ = line_id
+        _ = package_name
+        _ = cpu
+        _ = memory_gb
+        _ = disk_gb
+        _ = bandwidth_mbps
+        _ = traffic_gb
+        _ = gpu_mem_gb
+        return OperationResult(ok=True)
+
+    def delete_package(self, line_id: int, package_name: str) -> OperationResult:
+        _ = line_id
+        _ = package_name
+        return OperationResult(ok=True)
+
     def create_instance(self, payload: dict) -> CreateInstanceResponse:
         _ = payload
         return CreateInstanceResponse(instance_id=0)
@@ -86,47 +119,47 @@ class NoopAutomationPlugin(CoreService, AutomationService):
         _ = search_tag
         return []
 
-    def start(self, instance_id: int) -> EmptyResponse:
+    def start(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def shutdown(self, instance_id: int) -> EmptyResponse:
+    def shutdown(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def reboot(self, instance_id: int) -> EmptyResponse:
+    def reboot(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def rebuild(self, payload: dict) -> EmptyResponse:
+    def rebuild(self, payload: dict) -> OperationResult:
         _ = payload
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def reset_password(self, instance_id: int, password: str) -> EmptyResponse:
+    def reset_password(self, instance_id: int, password: str) -> OperationResult:
         _ = instance_id
         _ = password
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def elastic_update(self, payload: dict) -> EmptyResponse:
+    def elastic_update(self, payload: dict) -> OperationResult:
         _ = payload
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def lock(self, instance_id: int) -> EmptyResponse:
+    def lock(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def unlock(self, instance_id: int) -> EmptyResponse:
+    def unlock(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def renew(self, instance_id: int, next_due_at_unix: int) -> EmptyResponse:
+    def renew(self, instance_id: int, next_due_at_unix: int) -> OperationResult:
         _ = instance_id
         _ = next_due_at_unix
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def destroy(self, instance_id: int) -> EmptyResponse:
+    def destroy(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
     def get_panel_url(self, instance_name: str, panel_password: str) -> GetURLResponse:
         _ = instance_name
@@ -145,14 +178,14 @@ class NoopAutomationPlugin(CoreService, AutomationService):
         _ = instance_id
         return []
 
-    def add_port_mapping(self, payload: dict) -> EmptyResponse:
+    def add_port_mapping(self, payload: dict) -> OperationResult:
         _ = payload
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def delete_port_mapping(self, instance_id: int, mapping_id: int) -> EmptyResponse:
+    def delete_port_mapping(self, instance_id: int, mapping_id: int) -> OperationResult:
         _ = instance_id
         _ = mapping_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
     def find_port_candidates(self, instance_id: int, keywords: str) -> list[int]:
         _ = instance_id
@@ -163,48 +196,48 @@ class NoopAutomationPlugin(CoreService, AutomationService):
         _ = instance_id
         return []
 
-    def create_backup(self, instance_id: int) -> EmptyResponse:
+    def create_backup(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def delete_backup(self, instance_id: int, backup_id: int) -> EmptyResponse:
+    def delete_backup(self, instance_id: int, backup_id: int) -> OperationResult:
         _ = instance_id
         _ = backup_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def restore_backup(self, instance_id: int, backup_id: int) -> EmptyResponse:
+    def restore_backup(self, instance_id: int, backup_id: int) -> OperationResult:
         _ = instance_id
         _ = backup_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
     def list_snapshots(self, instance_id: int) -> list[dict]:
         _ = instance_id
         return []
 
-    def create_snapshot(self, instance_id: int) -> EmptyResponse:
+    def create_snapshot(self, instance_id: int) -> OperationResult:
         _ = instance_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def delete_snapshot(self, instance_id: int, snapshot_id: int) -> EmptyResponse:
+    def delete_snapshot(self, instance_id: int, snapshot_id: int) -> OperationResult:
         _ = instance_id
         _ = snapshot_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def restore_snapshot(self, instance_id: int, snapshot_id: int) -> EmptyResponse:
+    def restore_snapshot(self, instance_id: int, snapshot_id: int) -> OperationResult:
         _ = instance_id
         _ = snapshot_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
     def list_firewall_rules(self, instance_id: int) -> list[dict]:
         _ = instance_id
         return []
 
-    def add_firewall_rule(self, payload: dict) -> EmptyResponse:
+    def add_firewall_rule(self, payload: dict) -> OperationResult:
         _ = payload
-        return EmptyResponse()
+        return OperationResult(ok=True)
 
-    def delete_firewall_rule(self, instance_id: int, rule_id: int) -> EmptyResponse:
+    def delete_firewall_rule(self, instance_id: int, rule_id: int) -> OperationResult:
         _ = instance_id
         _ = rule_id
-        return EmptyResponse()
+        return OperationResult(ok=True)
 

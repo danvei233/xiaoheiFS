@@ -112,6 +112,7 @@
   import { useI18n } from 'vue-i18n'
   import CryptoJS from 'crypto-js'
   import { useUserStore } from '@/store/modules/user'
+  import { clearSession, currentSessionRealm, loginRouteFor } from '@/router/session'
   import { mittBus } from '@/utils/sys'
 
   // 国际化
@@ -122,6 +123,7 @@
 
   // Store
   const userStore = useUserStore()
+  const router = useRouter()
   const { info: userInfo, lockPassword, isLock } = storeToRefs(userStore)
 
   // 响应式数据
@@ -399,8 +401,10 @@
     })
   }
 
-  const toLogin = () => {
-    userStore.logOut()
+  const toLogin = async () => {
+    const realm = currentSessionRealm(router.currentRoute.value.path)
+    clearSession(realm)
+    await router.push(loginRouteFor(realm))
   }
 
   const openLockScreen = () => {

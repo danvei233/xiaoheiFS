@@ -484,18 +484,22 @@
   }
 
   async function fetchPostTable(
-    params: PostTableParams
+    params: PostTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<PostRow>> {
     if (!canView.value) {
       return { records: [], current: params.current, size: params.size, total: 0 }
     }
 
-    const payload = await fetchCMSPosts({
-      limit: params.size,
-      offset: (params.current - 1) * params.size,
-      category_id: params.category_id || undefined,
-      status: params.status || undefined
-    })
+    const payload = await fetchCMSPosts(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size,
+        category_id: params.category_id || undefined,
+        status: params.status || undefined
+      },
+      signal
+    )
 
     const records = (payload.items || []).map((item) => normalizePost(item))
     return {

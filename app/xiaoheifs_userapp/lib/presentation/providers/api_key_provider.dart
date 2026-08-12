@@ -108,6 +108,12 @@ class ApiKeyNotifier extends StateNotifier<ApiKeyState> {
     await _repo.deleteApiKey(id);
     _cache.clear();
   }
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    _cache.clear();
+    state = const ApiKeyState();
+  }
 }
 
 class _ApiKeyCacheEntry {

@@ -1,9 +1,30 @@
-Map<String, String> avatarHeaders({String? token, String? apiKey}) {
+Map<String, String> avatarHeaders({
+  String? token,
+  String? apiKey,
+  String? baseUrl,
+  String? url,
+}) {
   final auth = token?.isNotEmpty == true
       ? token
       : (apiKey?.isNotEmpty == true ? apiKey : null);
   if (auth == null) return {};
+  // On native platforms Image.network does not enforce CORS, so a
+  // user-controlled absolute avatar_url would otherwise exfiltrate the admin
+  // token to an arbitrary host. Only same-origin avatars (relative paths or
+  // the backend /admin/api/v1/avatar/qq proxy) may carry credentials.
+  if (baseUrl == null || baseUrl.isEmpty) return {};
+  if (url == null || url.isEmpty) return {};
+  if (!_isSameOrigin(baseUrl, url)) return {};
   return {'Authorization': 'Bearer $auth'};
+}
+
+bool _isSameOrigin(String baseUrl, String url) {
+  final base = Uri.tryParse(baseUrl);
+  final target = Uri.tryParse(url);
+  if (base == null || target == null) return false;
+  if (!base.hasScheme || !base.hasAuthority) return false;
+  if (!target.hasScheme || !target.hasAuthority) return false;
+  return base.scheme == target.scheme && base.authority == target.authority;
 }
 
 String resolveAvatarUrl({

@@ -40,8 +40,8 @@ func (s *Service) Create(ctx context.Context, userID int64, subject, content str
 	senderQQ := ""
 	if s.users != nil {
 		if user, err := s.users.GetUserByID(ctx, userID); err == nil {
-			senderName = user.Username
-			senderQQ = user.QQ
+			senderName = appshared.SanitizePlainText(user.Username)
+			senderQQ = appshared.SanitizePlainText(user.QQ)
 		}
 	}
 	now := time.Now()
@@ -60,8 +60,14 @@ func (s *Service) Create(ctx context.Context, userID int64, subject, content str
 		SenderQQ:   senderQQ,
 		Content:    content,
 	}
+	if len(resources) > maxTicketResources {
+		return domain.Ticket{}, nil, nil, appshared.ErrInvalidInput
+	}
 	for i := range resources {
 		resources[i].ResourceType = strings.TrimSpace(resources[i].ResourceType)
+		if len(resources[i].ResourceType) > maxLenTicketResType {
+			return domain.Ticket{}, nil, nil, appshared.ErrInvalidInput
+		}
 		resources[i].ResourceName, err = trimAndValidateOptional(resources[i].ResourceName, maxLenTicketResName)
 		if err != nil {
 			return domain.Ticket{}, nil, nil, appshared.ErrInvalidInput
@@ -106,16 +112,20 @@ func (s *Service) AddMessage(ctx context.Context, ticket domain.Ticket, senderID
 	if ticket.Status == "closed" && senderRole == "user" {
 		return domain.TicketMessage{}, appshared.ErrForbidden
 	}
+	// A user may only reply to their own ticket.
+	if senderRole == "user" && ticket.UserID != senderID {
+		return domain.TicketMessage{}, appshared.ErrForbidden
+	}
 	senderName := ""
 	senderQQ := ""
 	if senderRole == "user" && s.users != nil {
 		if user, err := s.users.GetUserByID(ctx, senderID); err == nil {
-			senderName = user.Username
-			senderQQ = user.QQ
+			senderName = appshared.SanitizePlainText(user.Username)
+			senderQQ = appshared.SanitizePlainText(user.QQ)
 		}
 	} else if senderRole == "admin" && s.settings != nil {
 		if qqSetting, err := s.settings.GetSetting(ctx, "admin_qq"); err == nil && qqSetting.ValueJSON != "" {
-			senderQQ = qqSetting.ValueJSON
+			senderQQ = appshared.SanitizePlainText(qqSetting.ValueJSON)
 			senderName = "Technical Support"
 		}
 	}
@@ -149,7 +159,14 @@ func (s *Service) Close(ctx context.Context, ticket domain.Ticket, userID int64)
 	return s.repo.UpdateTicket(ctx, ticket)
 }
 
+var validTicketStatuses = map[string]bool{
+	"open": true, "waiting_user": true, "waiting_admin": true, "closed": true,
+}
+
 func (s *Service) AdminUpdate(ctx context.Context, ticket domain.Ticket) error {
+	if status := strings.TrimSpace(ticket.Status); status != "" && !validTicketStatuses[status] {
+		return appshared.ErrInvalidInput
+	}
 	subject, err := trimAndValidateRequired(ticket.Subject, maxLenTicketSubject)
 	if err != nil {
 		return appshared.ErrInvalidInput

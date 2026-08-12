@@ -81,6 +81,11 @@ func (s *Service) Update(ctx context.Context, gt domain.GoodsType) error {
 			return domain.ErrAutomationPluginInstanceNotFound
 		}
 	}
+	// The repo's UpdateGoodsType is a no-op on missing rows (GORM Updates does
+	// not report zero affected), so make Update fail loudly like Get does.
+	if _, err := s.repo.GetGoodsType(ctx, gt.ID); err != nil {
+		return err
+	}
 	return s.repo.UpdateGoodsType(ctx, gt)
 }
 

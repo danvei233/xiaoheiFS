@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -28,10 +29,18 @@ type Service struct {
 	vps        appports.VPSRepository
 	automation appports.AutomationClientResolver
 	settings   appports.SettingsRepository
+	orderItems appports.OrderItemRepository
 }
 
 func NewService(vps appports.VPSRepository, automation appports.AutomationClientResolver, settings appports.SettingsRepository) *Service {
 	return &Service{vps: vps, automation: automation, settings: settings}
+}
+
+// SetOrderItemRepository wires the order-item repository so expiry lifecycle
+// jobs can check for in-flight renewal/resize orders before destroying or
+// locking an instance.
+func (s *Service) SetOrderItemRepository(repo appports.OrderItemRepository) {
+	s.orderItems = repo
 }
 
 func (s *Service) client(ctx context.Context, goodsTypeID int64) (AutomationClient, error) {
@@ -39,6 +48,12 @@ func (s *Service) client(ctx context.Context, goodsTypeID int64) (AutomationClie
 		return nil, appshared.ErrInvalidInput
 	}
 	return s.automation.ClientForGoodsType(ctx, goodsTypeID)
+}
+
+// ListByUserFiltered pages a user's VPS instances with a server-side status
+// filter (P3-43).
+func (s *Service) ListByUserFiltered(ctx context.Context, userID int64, filter appports.VPSUserInstanceFilter, limit, offset int) ([]domain.VPSInstance, int, error) {
+	return s.vps.ListInstancesByUserFiltered(ctx, userID, filter, limit, offset)
 }
 
 func (s *Service) ListByUser(ctx context.Context, userID int64) ([]domain.VPSInstance, error) {
@@ -172,6 +187,12 @@ func (s *Service) RenewNow(ctx context.Context, inst domain.VPSInstance, days in
 	}
 	if inst.AdminStatus != domain.VPSAdminStatusNormal || inst.Status == domain.VPSStatusExpiredLocked {
 		_ = cli.UnlockHost(ctx, hostID)
+		// Reset the local billing-lock markers so a re-expired instance is
+		// auto-locked again instead of being permanently skipped.
+		_ = s.vps.UpdateInstanceAdminStatus(ctx, inst.ID, domain.VPSAdminStatusNormal)
+		if inst.Status == domain.VPSStatusExpiredLocked {
+			_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, inst.AutomationState)
+		}
 	}
 	return s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next)
 }
@@ -560,10 +581,20 @@ func (s *Service) EmergencyRenew(ctx context.Context, inst domain.VPSInstance) (
 	}
 	if inst.AdminStatus != domain.VPSAdminStatusNormal || inst.Status == domain.VPSStatusExpiredLocked {
 		_ = cli.UnlockHost(ctx, hostID)
+		// Reset the local billing-lock markers so a re-expired instance is
+		// auto-locked again instead of being permanently skipped.
+		_ = s.vps.UpdateInstanceAdminStatus(ctx, inst.ID, domain.VPSAdminStatusNormal)
+		if inst.Status == domain.VPSStatusExpiredLocked {
+			_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, domain.VPSStatusUnknown, inst.AutomationState)
+		}
 	}
 	now := time.Now()
-	_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next)
-	_ = s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now)
+	if err := s.vps.UpdateInstanceExpireAt(ctx, inst.ID, next); err != nil {
+		return domain.VPSInstance{}, err
+	}
+	if err := s.vps.UpdateInstanceEmergencyRenewAt(ctx, inst.ID, now); err != nil {
+		return domain.VPSInstance{}, err
+	}
 	return s.vps.GetInstance(ctx, inst.ID)
 }
 
@@ -591,6 +622,19 @@ func (s *Service) AutoDeleteExpired(ctx context.Context) error {
 		if inst.ExpireAt == nil || inst.ExpireAt.After(cutoff) {
 			continue
 		}
+		// Preserve evidence: never auto-destroy instances an administrator has
+		// flagged for abuse or fraud.
+		if inst.AdminStatus == domain.VPSAdminStatusAbuse || inst.AdminStatus == domain.VPSAdminStatusFraud {
+			continue
+		}
+		// An approved-but-not-yet-executed renewal (or resize/emergency-renew)
+		// for this VPS will extend it moments after this cycle. Deleting the
+		// host now would destroy a freshly renewed instance (P1-8 TOCTOU).
+		if s.orderItems != nil {
+			if pending, err := s.orderItems.HasPendingRenewOrder(ctx, inst.UserID, inst.ID); err == nil && pending {
+				continue
+			}
+		}
 		hostID := parseHostID(inst.AutomationInstanceID)
 		if hostID == 0 {
 			continue
@@ -599,10 +643,20 @@ func (s *Service) AutoDeleteExpired(ctx context.Context) error {
 		if err != nil {
 			continue
 		}
-		if err := cli.DeleteHost(ctx, hostID); err != nil {
+		// A DeleteHost reporting the host is already gone is an idempotent
+		// success: the remote host is destroyed, and the local row must be
+		// cleaned up rather than being stranded because the provider reports
+		// "instance does not exist" on every retry.
+		if err := cli.DeleteHost(ctx, hostID); err != nil && !appshared.IsHostNotFoundError(err) {
 			continue
 		}
-		_ = s.vps.DeleteInstance(ctx, inst.ID)
+		if err := s.vps.DeleteInstance(ctx, inst.ID); err != nil {
+			// Do not swallow the local cleanup error: the row remains and the
+			// next sweep cycle re-runs DeleteHost (an idempotent no-op or
+			// host-not-found) and retries the local delete, converging instead
+			// of silently leaving a phantom VPS the user can still see.
+			log.Printf("vps_expire_cleanup: DeleteInstance failed for vps_id=%d: %v", inst.ID, err)
+		}
 	}
 	return nil
 }
@@ -620,10 +674,18 @@ func (s *Service) AutoLockExpired(ctx context.Context) error {
 		if inst.ExpireAt == nil || inst.ExpireAt.After(now) {
 			continue
 		}
-		if inst.Status == domain.VPSStatusLocked || inst.Status == domain.VPSStatusExpiredLocked {
+		// Only skip instances the automation genuinely reports as locked
+		// (state 10). Do not skip on the local auto-lock markers
+		// (status=expired_locked / admin_status=locked): a renewed instance
+		// keeps those stale markers until the next refresh, and skipping them
+		// here would let a re-expired instance stay unlocked forever.
+		if inst.Status == domain.VPSStatusLocked {
 			continue
 		}
-		if inst.AdminStatus != "" && inst.AdminStatus != domain.VPSAdminStatusNormal {
+		// Respect manual admin overrides (abuse/fraud). The auto-lock marker
+		// "locked" must not permanently exempt an expired instance from being
+		// re-locked.
+		if inst.AdminStatus != "" && inst.AdminStatus != domain.VPSAdminStatusNormal && inst.AdminStatus != domain.VPSAdminStatusLocked {
 			continue
 		}
 		hostID := parseHostID(inst.AutomationInstanceID)

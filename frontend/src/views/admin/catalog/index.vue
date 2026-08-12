@@ -171,7 +171,7 @@
                   <ElSwitch
                     :model-value="Boolean(row.active)"
                     :loading="Boolean(regionActiveBusy[row.id])"
-                    :disabled="!row.id || !hasPermission('region.set_active')"
+                    :disabled="!row.id || !hasPermission('region.active')"
                     :width="54"
                     inline-prompt
                     active-text="启用"
@@ -715,6 +715,7 @@
   } from '@/services/admin'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTable } from '@/hooks/core/useTable'
+  import { openExternalUrl } from '@/utils/urlPolicy'
   import BillingCycleDialog from './modules/billing-cycle-dialog.vue'
   import GoodsTypeDialog from './modules/goods-type-dialog.vue'
   import PackageBatchDialog from './modules/package-batch-dialog.vue'
@@ -1793,7 +1794,11 @@
       ElMessage.warning('插件管理地址未配置')
       return
     }
-    window.open(row.plugin_base_url, '_blank', 'noopener')
+    // H9：plugin_base_url 是后台/插件返回的数据，统一过 URL 安全策略
+    // （https 校验 + 拒绝 javascript/data/userinfo/控制字符）。
+    openExternalUrl(row.plugin_base_url, {
+      onInvalid: () => ElMessage.error('插件管理地址无效，无法打开')
+    })
   }
 
   async function syncCurrentGoodsType() {
@@ -1922,11 +1927,11 @@
       ElMessage.warning('HostAgent 管理地址未配置')
       return
     }
-    window.open(
-      `${hostAgentBaseURL.value}/hosts/${encodeURIComponent(hostName)}/vms`,
-      '_blank',
-      'noopener'
-    )
+    // H9：hostAgentBaseURL 来自 plugin_base_url（后台数据），拼出的地址
+    // 可能携带 javascript:/userinfo 等危险内容，打开前统一过 URL 安全策略。
+    openExternalUrl(`${hostAgentBaseURL.value}/hosts/${encodeURIComponent(hostName)}/vms`, {
+      onInvalid: () => ElMessage.error('HostAgent 地址无效，无法打开')
+    })
   }
 
   function openLineHost(row: PlanGroupRow) {
@@ -1935,11 +1940,9 @@
       ElMessage.warning('HostAgent 管理地址未配置')
       return
     }
-    window.open(
-      `${hostAgentBaseURL.value}/hosts/${encodeURIComponent(hostName)}`,
-      '_blank',
-      'noopener'
-    )
+    openExternalUrl(`${hostAgentBaseURL.value}/hosts/${encodeURIComponent(hostName)}`, {
+      onInvalid: () => ElMessage.error('HostAgent 地址无效，无法打开')
+    })
   }
 
   async function removePlanGroup(row: PlanGroupRow) {

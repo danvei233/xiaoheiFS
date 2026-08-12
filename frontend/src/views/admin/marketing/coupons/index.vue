@@ -667,12 +667,16 @@
   }
 
   async function fetchCouponTable(
-    params: CouponTableParams
+    params: CouponTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<CouponRow>> {
-    const payload = await fetchAdminCoupons({
-      limit: 200,
-      offset: 0
-    })
+    const payload = await fetchAdminCoupons(
+      {
+        limit: 200,
+        offset: 0
+      },
+      signal
+    )
     const records = (payload.items || []).map((item) =>
       normalizeCoupon(item as Record<string, unknown>)
     )

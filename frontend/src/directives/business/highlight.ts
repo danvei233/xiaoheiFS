@@ -42,12 +42,57 @@
  */
 
 import { App, Directive } from 'vue'
-import hljs from 'highlight.js'
+import type { LanguageFn } from 'highlight.js'
 
 export type HighlightDirective = Directive<HTMLElement>
 
-// 高亮代码
-function highlightCode(block: HTMLElement) {
+const processingBlocks = new WeakSet<HTMLElement>()
+
+// web_bundle_mobile F3：只引入 highlight.js core + 白名单语言。
+// `import('highlight.js')` 会带全量 ~190 种语言（963kB/307kB gzip 单块），
+// 且无法被 tree-shake。改用 `highlight.js/lib/core` 并只注册实际会用到的
+// 语言，未注册的语言降级为纯文本。
+const IMPORTED_LANGUAGES = [
+  ['bash', () => import('highlight.js/lib/languages/bash')],
+  ['shell', () => import('highlight.js/lib/languages/shell')],
+  ['javascript', () => import('highlight.js/lib/languages/javascript')],
+  ['typescript', () => import('highlight.js/lib/languages/typescript')],
+  ['go', () => import('highlight.js/lib/languages/go')],
+  ['json', () => import('highlight.js/lib/languages/json')],
+  ['yaml', () => import('highlight.js/lib/languages/yaml')],
+  ['sql', () => import('highlight.js/lib/languages/sql')],
+  ['xml', () => import('highlight.js/lib/languages/xml')],
+  ['html', () => import('highlight.js/lib/languages/xml')],
+  ['python', () => import('highlight.js/lib/languages/python')],
+  ['css', () => import('highlight.js/lib/languages/css')]
+] as const
+
+const importHighlighter = () =>
+  import('highlight.js/lib/core').then(async (module) => {
+    const core = module.default
+    for (const [name, loader] of IMPORTED_LANGUAGES) {
+      try {
+        const langModule = (await loader()) as { default?: LanguageFn }
+        const lang = (langModule.default || langModule) as LanguageFn
+        core.registerLanguage(name, lang)
+      } catch {
+        // 语言模块缺失时跳过，该语言降级为纯文本。
+      }
+    }
+    return core
+  })
+let highlighterRequest: ReturnType<typeof importHighlighter> | null = null
+
+const loadHighlighter = () => {
+  highlighterRequest ??= importHighlighter().catch((error) => {
+    highlighterRequest = null
+    throw error
+  })
+  return highlighterRequest
+}
+
+async function highlightCode(block: HTMLElement) {
+  const hljs = await loadHighlighter()
   hljs.highlightElement(block)
 }
 
@@ -108,18 +153,22 @@ function markBlockAsProcessed(block: HTMLElement) {
 }
 
 // 处理单个代码块
-function processBlock(block: HTMLElement) {
-  if (isBlockProcessed(block)) {
+async function processBlock(block: HTMLElement) {
+  if (isBlockProcessed(block) || processingBlocks.has(block)) {
     return
   }
 
+  processingBlocks.add(block)
   try {
-    highlightCode(block)
+    await highlightCode(block)
+    if (!block.isConnected || isBlockProcessed(block)) return
     insertLineNumbers(block)
     addCopyButton(block)
     markBlockAsProcessed(block)
   } catch (error) {
     console.warn('处理代码块时出错:', error)
+  } finally {
+    processingBlocks.delete(block)
   }
 }
 
@@ -134,7 +183,7 @@ function processAllCodeBlocks(el: HTMLElement) {
 
   if (unprocessedBlocks.length <= 10) {
     // 如果代码块数量少于等于10，直接处理所有代码块
-    unprocessedBlocks.forEach((block) => processBlock(block))
+    unprocessedBlocks.forEach((block) => void processBlock(block))
   } else {
     // 定义每次处理的代码块数
     const batchSize = 10
@@ -144,7 +193,7 @@ function processAllCodeBlocks(el: HTMLElement) {
       const batch = unprocessedBlocks.slice(currentIndex, currentIndex + batchSize)
 
       batch.forEach((block) => {
-        processBlock(block)
+        void processBlock(block)
       })
 
       // 更新索引并继续处理下一批

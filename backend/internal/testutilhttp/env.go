@@ -2,6 +2,7 @@ package testutilhttp
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -12,6 +13,7 @@ import (
 	"xiaoheiplay/internal/adapter/sse"
 	appadmin "xiaoheiplay/internal/app/admin"
 	appadminvps "xiaoheiplay/internal/app/adminvps"
+	appapikey "xiaoheiplay/internal/app/apikey"
 	appauth "xiaoheiplay/internal/app/auth"
 	appautomationlog "xiaoheiplay/internal/app/automationlog"
 	appcart "xiaoheiplay/internal/app/cart"
@@ -21,6 +23,7 @@ import (
 	appintegration "xiaoheiplay/internal/app/integration"
 	appmessage "xiaoheiplay/internal/app/message"
 	appnotification "xiaoheiplay/internal/app/notification"
+	appopenapi "xiaoheiplay/internal/app/openapi"
 	apporder "xiaoheiplay/internal/app/order"
 	apporderevent "xiaoheiplay/internal/app/orderevent"
 	apppayment "xiaoheiplay/internal/app/payment"
@@ -31,6 +34,7 @@ import (
 	appsettings "xiaoheiplay/internal/app/settings"
 	appticket "xiaoheiplay/internal/app/ticket"
 	appupload "xiaoheiplay/internal/app/upload"
+	appuserapikey "xiaoheiplay/internal/app/userapikey"
 	appvps "xiaoheiplay/internal/app/vps"
 	appwallet "xiaoheiplay/internal/app/wallet"
 	appwalletorder "xiaoheiplay/internal/app/walletorder"
@@ -40,6 +44,7 @@ import (
 
 type Env struct {
 	Repo          *repo.GormRepo
+	SQLDB         *sql.DB
 	JWTSecret     string
 	Automation    *testutil.FakeAutomationClient
 	PaymentReg    *testutil.FakePaymentRegistry
@@ -67,7 +72,7 @@ type Env struct {
 func NewTestEnv(t *testing.T, withCMS bool) *Env {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	_, repoSQLite := testutil.NewTestDB(t, withCMS)
+	sqliteSQLDB, repoSQLite := testutil.NewTestDB(t, withCMS)
 	// Keep test flows deterministic: disable register verification unless tests opt in.
 	_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "auth_register_verify_type", ValueJSON: "none"})
 	_ = repoSQLite.UpsertSetting(context.Background(), domain.Setting{Key: "auth_register_verify_channels", ValueJSON: `[]`})
@@ -89,9 +94,17 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 	vpsSvc := appvps.NewService(repoSQLite, automationResolver, repoSQLite)
 	adminSvc := appadmin.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite)
 	adminVPSSvc := appadminvps.NewService(repoSQLite, automationResolver, repoSQLite, repoSQLite, repoSQLite, messageSvc)
-	authSvc := appauth.NewService(repoSQLite, repoSQLite, repoSQLite)
+	authSvc := appauth.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, "test-totp-encryption-key")
 	permissionSvc := apppermission.NewService(repoSQLite, repoSQLite, repoSQLite)
+	// P1-20: field-level permission gating on the generic VPS update endpoint.
+	adminVPSSvc.SetPermissionChecker(permissionSvc)
 	paymentSvc := apppayment.NewService(repoSQLite, repoSQLite, repoSQLite, paymentReg, repoSQLite, orderSvc, broker)
+	userAPIKeySvc, err := appuserapikey.NewService(repoSQLite, "test-apikey-encryption-key")
+	if err != nil {
+		t.Fatalf("build user api key service: %v", err)
+	}
+	adminAPIKeySvc := appapikey.NewService(repoSQLite)
+	openAPISvc := appopenapi.NewService(orderSvc, paymentSvc, repoSQLite)
 	walletSvc := appwallet.NewService(repoSQLite, repoSQLite)
 	walletOrderSvc := appwalletorder.NewService(repoSQLite, repoSQLite, repoSQLite, repoSQLite, repoSQLite, automationResolver, repoSQLite)
 	uploadSvc := appupload.NewService(repoSQLite)
@@ -108,38 +121,43 @@ func NewTestEnv(t *testing.T, withCMS bool) *Env {
 
 	jwtSecret := "test-secret"
 	handler := http.NewHandler(http.HandlerDeps{
-		AuthSvc:           authSvc,
-		CatalogSvc:        catalogSvc,
-		GoodsTypes:        goodsTypeSvc,
-		CartSvc:           cartSvc,
-		OrderSvc:          orderSvc,
-		VPSSvc:            vpsSvc,
-		AdminSvc:          adminSvc,
-		AdminVPS:          adminVPSSvc,
-		Integration:       integrationSvc,
-		ReportSvc:         reportSvc,
-		CMSSvc:            cmsSvc,
-		TicketSvc:         ticketSvc,
-		WalletSvc:         walletSvc,
-		WalletOrder:       walletOrderSvc,
-		PaymentSvc:        paymentSvc,
-		MessageSvc:        messageSvc,
-		RealNameSvc:       realnameSvc,
-		OrderEventSvc:     orderEventSvc,
-		AutoLogSvc:        autoLogSvc,
-		SettingsSvc:       settingsSvc,
-		UploadSvc:         uploadSvc,
-		Broker:            broker,
-		JWTSecret:         jwtSecret,
-		SecurityTicketSvc: securityTicketSvc,
-		PermissionSvc:     permissionSvc,
-		EmailSender:       adapteremail.NewSender(repoSQLite),
+		AuthSvc:            authSvc,
+		CatalogSvc:         catalogSvc,
+		GoodsTypes:         goodsTypeSvc,
+		CartSvc:            cartSvc,
+		OrderSvc:           orderSvc,
+		VPSSvc:             vpsSvc,
+		AdminSvc:           adminSvc,
+		AdminVPS:           adminVPSSvc,
+		Integration:        integrationSvc,
+		ReportSvc:          reportSvc,
+		CMSSvc:             cmsSvc,
+		TicketSvc:          ticketSvc,
+		WalletSvc:          walletSvc,
+		WalletOrder:        walletOrderSvc,
+		PaymentSvc:         paymentSvc,
+		MessageSvc:         messageSvc,
+		RealNameSvc:        realnameSvc,
+		OrderEventSvc:      orderEventSvc,
+		AutoLogSvc:         autoLogSvc,
+		SettingsSvc:        settingsSvc,
+		UploadSvc:          uploadSvc,
+		Broker:             broker,
+		JWTSecret:          jwtSecret,
+		SecurityTicketSvc:  securityTicketSvc,
+		PermissionSvc:      permissionSvc,
+		EmailSender:        adapteremail.NewSender(repoSQLite),
+		UserAPIKeySvc:      userAPIKeySvc,
+		OpenAPISvc:         openAPISvc,
+		RobotWebhookReplay: repoSQLite,
+		AuthFailureBudget:  repoSQLite,
 	})
-	middleware := http.NewMiddleware(jwtSecret, nil, nil, permissionSvc, authSvc, settingsSvc)
+	middleware := http.NewMiddleware(jwtSecret, adminAPIKeySvc, userAPIKeySvc, permissionSvc, authSvc, settingsSvc, adminSvc)
 	server := http.NewServer(handler, middleware)
 
 	return &Env{
 		Repo:          repoSQLite,
+		SQLDB:         sqliteSQLDB,
 		JWTSecret:     jwtSecret,
 		Automation:    automation,
 		PaymentReg:    paymentReg,

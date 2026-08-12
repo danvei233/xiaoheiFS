@@ -75,6 +75,18 @@ func (h *Handler) SiteSettings(c *gin.Context) {
 
 func (h *Handler) toVPSInstanceDTOWithLifecycle(c *gin.Context, inst domain.VPSInstance) VPSInstanceDTO {
 	dto := toVPSInstanceDTO(inst)
+	allowed := false
+	if h.permissionSvc != nil {
+		actorID := getUserID(c)
+		if primary, err := h.permissionSvc.IsPrimaryAdmin(c.Request.Context(), actorID); err == nil && primary {
+			allowed = true
+		} else if has, err := h.permissionSvc.HasPermission(c.Request.Context(), actorID, "vps.credentials"); err == nil && has {
+			allowed = true
+		}
+	}
+	if !allowed {
+		dto.AccessInfo = nil
+	}
 	destroyAt, destroyInDays := h.lifecycleDestroyInfo(c, inst.ExpireAt)
 	dto.DestroyAt = destroyAt
 	dto.DestroyInDays = destroyInDays
@@ -83,11 +95,211 @@ func (h *Handler) toVPSInstanceDTOWithLifecycle(c *gin.Context, inst domain.VPSI
 }
 
 func (h *Handler) toVPSInstanceDTOsWithLifecycle(c *gin.Context, items []domain.VPSInstance) []VPSInstanceDTO {
+	ctx := c.Request.Context()
+	settings := map[string]domain.Setting{}
+	if all, err := h.listSettings(c); err == nil {
+		for _, item := range all {
+			settings[item.Key] = item
+		}
+	}
+	goodsTypes := map[int64]domain.GoodsType{}
+	if h.goodsTypes != nil {
+		if all, err := h.goodsTypes.List(ctx); err == nil {
+			for _, item := range all {
+				goodsTypes[item.ID] = item
+			}
+		}
+	}
+	plugins := map[string]appshared.PluginListItem{}
+	if h.pluginAdmin != nil {
+		if all, err := h.pluginAdmin.List(ctx); err == nil {
+			for _, item := range all {
+				plugins[pluginCapabilityKey(item.Category, item.PluginID, item.InstanceID)] = item
+			}
+		}
+	}
+	goodsTypePolicies := h.loadAllGoodsTypeCapabilityPolicies(ctx)
+	packagePolicies := h.loadAllPackageCapabilityPolicies(ctx)
+	packageGoodsTypes := map[int64]int64{}
+	if h.catalogSvc != nil {
+		if all, err := h.catalogSvc.ListPackages(ctx); err == nil {
+			for _, item := range all {
+				packageGoodsTypes[item.ID] = item.GoodsTypeID
+			}
+		}
+	}
 	out := make([]VPSInstanceDTO, 0, len(items))
 	for _, item := range items {
-		out = append(out, h.toVPSInstanceDTOWithLifecycle(c, item))
+		// Inventory lists are always redacted. Do not run the per-request
+		// credential permission checks here: besides being unnecessary, doing so
+		// turns a page of VPS rows into one or two permission queries per row.
+		dto := toVPSInstanceDTO(item)
+		destroyAt, destroyInDays := lifecycleDestroyInfoFromSettings(settings, item.ExpireAt)
+		dto.DestroyAt = destroyAt
+		dto.DestroyInDays = destroyInDays
+		dto.Capabilities = resolveVPSCapabilitiesFromSnapshot(item, goodsTypes, plugins, packagePolicies, goodsTypePolicies, packageGoodsTypes, settings)
+		// List endpoints are for inventory scanning, not secret retrieval. Even
+		// privileged operators reveal credentials only on a single VPS detail.
+		dto.AccessInfo = nil
+		out = append(out, dto)
 	}
 	return out
+}
+
+func pluginCapabilityKey(category, pluginID, instanceID string) string {
+	return strings.ToLower(strings.TrimSpace(category)) + "\x00" + strings.TrimSpace(pluginID) + "\x00" + strings.TrimSpace(instanceID)
+}
+
+func lifecycleDestroyInfoFromSettings(settings map[string]domain.Setting, expireAt *time.Time) (*time.Time, *int) {
+	if expireAt == nil || !settingBool(settings, "auto_delete_enabled", false) {
+		return nil, nil
+	}
+	days := settingInt(settings, "auto_delete_days", 0)
+	if days < 0 {
+		days = 0
+	}
+	destroyAt := expireAt.Add(time.Duration(days) * 24 * time.Hour)
+	inDays := int(math.Ceil(destroyAt.Sub(time.Now()).Hours() / 24))
+	return &destroyAt, &inDays
+}
+
+func settingBool(settings map[string]domain.Setting, key string, fallback bool) bool {
+	item, ok := settings[key]
+	if !ok {
+		return fallback
+	}
+	switch strings.ToLower(strings.TrimSpace(item.ValueJSON)) {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func settingInt(settings map[string]domain.Setting, key string, fallback int) int {
+	item, ok := settings[key]
+	if !ok {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(item.ValueJSON))
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func resolveVPSCapabilitiesFromSnapshot(
+	inst domain.VPSInstance,
+	goodsTypes map[int64]domain.GoodsType,
+	plugins map[string]appshared.PluginListItem,
+	packagePolicies map[string]packageCapabilityPolicy,
+	goodsTypePolicies map[string]packageCapabilityPolicy,
+	packageGoodsTypes map[int64]int64,
+	settings map[string]domain.Setting,
+) *VPSCapabilitiesDTO {
+	var staticCap *VPSAutomationCapabilityDTO
+	goodsTypeID := inst.GoodsTypeID
+	if goodsTypeID <= 0 {
+		goodsTypeID = packageGoodsTypes[inst.PackageID]
+	}
+	if goodsType, ok := goodsTypes[goodsTypeID]; ok {
+		category := strings.ToLower(strings.TrimSpace(goodsType.AutomationCategory))
+		if category == "" {
+			category = "automation"
+		}
+		if plugin, ok := plugins[pluginCapabilityKey(category, goodsType.AutomationPluginID, goodsType.AutomationInstanceID)]; ok {
+			staticCap = toVPSAutomationCapabilityDTO(plugin.Capabilities.Capabilities.Automation)
+		}
+	}
+	merged := mergeAutomationCapabilities(staticCap, parseDynamicAutomationCapability(inst.AccessInfoJSON))
+	if merged == nil {
+		merged = &VPSAutomationCapabilityDTO{Features: []string{}}
+	}
+	featureSet := make(map[string]struct{}, len(merged.Features))
+	for _, feature := range normalizeFeatureList(merged.Features) {
+		featureSet[normalizeFeatureKey(feature)] = struct{}{}
+	}
+	reasons := normalizeReasons(merged.NotSupportedReasons)
+	if reasons == nil {
+		reasons = map[string]string{}
+	}
+	packagePolicy := packagePolicies[strconv.FormatInt(inst.PackageID, 10)]
+	goodsTypePolicy := goodsTypePolicies[strconv.FormatInt(goodsTypeID, 10)]
+	policy := mergeHTTPPolicies(packagePolicy, goodsTypePolicy)
+	apply := func(feature, settingKey, pluginReason, policyReason, siteReason string, override *bool) {
+		allowed := settingBool(settings, settingKey, true)
+		if override != nil {
+			allowed = *override
+		}
+		if allowed {
+			if _, ok := featureSet[feature]; !ok && strings.TrimSpace(reasons[feature]) == "" {
+				reasons[feature] = pluginReason
+			}
+			return
+		}
+		delete(featureSet, feature)
+		if strings.TrimSpace(reasons[feature]) == "" {
+			if override != nil {
+				reasons[feature] = policyReason
+			} else {
+				reasons[feature] = siteReason
+			}
+		}
+	}
+	resizePolicyReason := "商品类型未开启升降配"
+	if packagePolicy.ResizeEnabled != nil {
+		resizePolicyReason = "套餐未开启升降配"
+	}
+	refundPolicyReason := "商品类型未开启退款"
+	if packagePolicy.RefundEnabled != nil {
+		refundPolicyReason = "套餐未开启退款"
+	}
+	apply("resize", "resize_enabled", "插件未声明支持升降配", resizePolicyReason, "站点未开启升降配", policy.ResizeEnabled)
+	apply("refund", "refund_enabled", "插件未声明支持退款", refundPolicyReason, "站点未开启退款", policy.RefundEnabled)
+	features := make([]string, 0, len(featureSet))
+	for feature := range featureSet {
+		features = append(features, feature)
+	}
+	sort.Strings(features)
+	automation := &VPSAutomationCapabilityDTO{Features: features}
+	if len(reasons) > 0 {
+		automation.NotSupportedReasons = reasons
+	}
+	return &VPSCapabilitiesDTO{Automation: automation}
+}
+
+// toUserVPSInstanceDTOWithLifecycle / toUserVPSInstanceDTOsWithLifecycle are the
+// user-facing variants (P2-4): they never include AccessInfo credentials.
+func (h *Handler) toUserVPSInstanceDTOWithLifecycle(c *gin.Context, inst domain.VPSInstance) VPSInstanceDTO {
+	dto := toUserVPSInstanceDTO(inst)
+	dto.Status = userVisibleVPSStatus(inst, time.Now())
+	destroyAt, destroyInDays := h.lifecycleDestroyInfo(c, inst.ExpireAt)
+	dto.DestroyAt = destroyAt
+	dto.DestroyInDays = destroyInDays
+	dto.Capabilities = h.resolveVPSCapabilities(c, inst)
+	return dto
+}
+
+func (h *Handler) toUserVPSInstanceDTOsWithLifecycle(c *gin.Context, items []domain.VPSInstance) []VPSInstanceDTO {
+	// Both inventory variants are credential-free. Reuse the request-snapshot
+	// implementation so user lists also avoid per-row settings/plugin/catalog
+	// lookups.
+	out := h.toVPSInstanceDTOsWithLifecycle(c, items)
+	now := time.Now()
+	for i, item := range items {
+		out[i].Status = userVisibleVPSStatus(item, now)
+	}
+	return out
+}
+
+func userVisibleVPSStatus(inst domain.VPSInstance, now time.Time) string {
+	if inst.ExpireAt != nil && !inst.ExpireAt.After(now) &&
+		(inst.Status == domain.VPSStatusLocked || inst.Status == domain.VPSStatusExpiredLocked) {
+		return string(domain.VPSStatusExpiredLocked)
+	}
+	return string(inst.Status)
 }
 
 func (h *Handler) lifecycleDestroyInfo(c *gin.Context, expireAt *time.Time) (*time.Time, *int) {
@@ -171,7 +383,7 @@ func (h *Handler) resolveVPSAutomationCapabilityStatic(c *gin.Context, inst doma
 	if h.goodsTypes == nil || h.pluginAdmin == nil || inst.GoodsTypeID <= 0 {
 		return nil
 	}
-	gt, err := h.goodsTypes.Get(c, inst.GoodsTypeID)
+	gt, err := h.goodsTypes.Get(c.Request.Context(), inst.GoodsTypeID)
 	if err != nil {
 		return nil
 	}
@@ -185,7 +397,7 @@ func (h *Handler) resolveVPSAutomationCapabilityStatic(c *gin.Context, inst doma
 		return nil
 	}
 
-	items, err := h.pluginAdmin.List(c)
+	items, err := h.pluginAdmin.List(c.Request.Context())
 	if err != nil {
 		return nil
 	}
@@ -349,7 +561,10 @@ func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSIn
 		reasons = map[string]string{}
 	}
 
-	policy := h.getGoodsTypeCapabilityPolicy(c, h.capabilityPolicyGoodsTypeID(c, inst))
+	ctx := c.Request.Context()
+	goodsTypePolicy := h.getGoodsTypeCapabilityPolicy(ctx, h.capabilityPolicyGoodsTypeID(ctx, inst))
+	packagePolicy := h.getPackageCapabilityPolicy(ctx, inst.PackageID)
+	policy := mergeHTTPPolicies(packagePolicy, goodsTypePolicy)
 
 	resizeAllowed := true
 	if v, ok := h.getSettingBool(c, "resize_enabled"); ok {
@@ -365,7 +580,9 @@ func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSIn
 	} else {
 		delete(featureSet, "resize")
 		if strings.TrimSpace(reasons["resize"]) == "" {
-			if policy.ResizeEnabled != nil {
+			if packagePolicy.ResizeEnabled != nil {
+				reasons["resize"] = "套餐未开启升降配"
+			} else if goodsTypePolicy.ResizeEnabled != nil {
 				reasons["resize"] = "商品类型未开启升降配"
 			} else {
 				reasons["resize"] = "站点未开启升降配"
@@ -387,7 +604,9 @@ func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSIn
 	} else {
 		delete(featureSet, "refund")
 		if strings.TrimSpace(reasons["refund"]) == "" {
-			if policy.RefundEnabled != nil {
+			if packagePolicy.RefundEnabled != nil {
+				reasons["refund"] = "套餐未开启退款"
+			} else if goodsTypePolicy.RefundEnabled != nil {
 				reasons["refund"] = "商品类型未开启退款"
 			} else {
 				reasons["refund"] = "站点未开启退款"

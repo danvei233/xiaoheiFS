@@ -1271,7 +1271,10 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body any) (
 		bodyReader = bytes.NewReader(reqBody)
 	}
 
-	pluginLog.Printf("HTTP %s %s body=%s", method, endpoint, string(reqBody))
+	// Never log the raw request body: it carries os_pass/vc_pass/password
+	// (H2). The redacted copy is also what emitLog embeds in http_trace (H3).
+	logBody := redactSensitiveJSON(reqBody)
+	pluginLog.Printf("HTTP %s %s body=%s", method, endpoint, logBody)
 
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bodyReader)
 	if err != nil {
@@ -1288,7 +1291,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body any) (
 	duration := time.Since(start)
 	if err != nil {
 		pluginLog.Printf("HTTP %s %s request failed (%dms): %v", method, endpoint, duration.Milliseconds(), err)
-		c.emitLog(ctx, method, endpoint, string(reqBody), nil, nil, duration, err)
+		c.emitLog(ctx, method, endpoint, logBody, nil, nil, duration, err)
 		return apiResponse{}, fmt.Errorf("http request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -1296,7 +1299,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body any) (
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		pluginLog.Printf("HTTP %s %s read response error (%dms): %v", method, endpoint, duration.Milliseconds(), err)
-		c.emitLog(ctx, method, endpoint, string(reqBody), resp, nil, duration, err)
+		c.emitLog(ctx, method, endpoint, logBody, resp, nil, duration, err)
 		return apiResponse{}, fmt.Errorf("read response: %w", err)
 	}
 
@@ -1304,14 +1307,14 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body any) (
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		pluginLog.Printf("HTTP %s %s decode error (%dms) status=%d body=%s err=%v",
 			method, endpoint, duration.Milliseconds(), resp.StatusCode, string(respBody), err)
-		c.emitLog(ctx, method, endpoint, string(reqBody), resp, respBody, duration, err)
+		c.emitLog(ctx, method, endpoint, logBody, resp, respBody, duration, err)
 		return apiResponse{}, fmt.Errorf("decode response: %w", err)
 	}
 
 	pluginLog.Printf("HTTP %s %s => status=%d code=%d msg=%q (%dms)",
 		method, endpoint, resp.StatusCode, parsed.Code, parsed.Msg, duration.Milliseconds())
 
-	c.emitLog(ctx, method, endpoint, string(reqBody), resp, respBody, duration, nil)
+	c.emitLog(ctx, method, endpoint, logBody, resp, respBody, duration, nil)
 
 	if parsed.Code != 200 {
 		msg := strings.TrimSpace(parsed.Msg)
@@ -1331,7 +1334,7 @@ func (c *Client) emitLog(ctx context.Context, method, endpoint, reqBody string, 
 	reqPayload := map[string]any{
 		"method": method,
 		"url":    endpoint,
-		"body":   reqBody,
+		"body":   redactSensitiveJSON([]byte(reqBody)),
 	}
 	var respPayload map[string]any
 	if resp != nil {

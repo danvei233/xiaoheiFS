@@ -13,7 +13,7 @@ func WeChatTradeStateToStatus(tradeState string) pluginv1.PaymentStatus {
 	case "NOTPAY", "USERPAYING":
 		return pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING
 	case "REFUND":
-		return pluginv1.PaymentStatus_PAYMENT_STATUS_REFUNDING
+		return pluginv1.PaymentStatus_PAYMENT_STATUS_REFUNDED
 	case "CLOSED", "REVOKED":
 		return pluginv1.PaymentStatus_PAYMENT_STATUS_CLOSED
 	case "PAYERROR":
@@ -31,21 +31,6 @@ func AlipayTradeStatusToStatus(tradeStatus string) pluginv1.PaymentStatus {
 		return pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING
 	case "TRADE_CLOSED":
 		return pluginv1.PaymentStatus_PAYMENT_STATUS_CLOSED
-	default:
-		return pluginv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED
-	}
-}
-
-func EZPayStatusToStatus(status string) pluginv1.PaymentStatus {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "trade_success", "success":
-		return pluginv1.PaymentStatus_PAYMENT_STATUS_PAID
-	case "notpay", "wait", "pending", "userpaying":
-		return pluginv1.PaymentStatus_PAYMENT_STATUS_PENDING
-	case "closed":
-		return pluginv1.PaymentStatus_PAYMENT_STATUS_CLOSED
-	case "fail", "failed":
-		return pluginv1.PaymentStatus_PAYMENT_STATUS_FAILED
 	default:
 		return pluginv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED
 	}

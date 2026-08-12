@@ -57,7 +57,12 @@
           </template>
 
           <template #name="{ row }">
-            <a :href="row.url" target="_blank" rel="noopener noreferrer" class="upload-link">
+            <a
+              :href="safeHref(row.url)"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="upload-link"
+            >
               {{ row.name || row.url || '-' }}
             </a>
           </template>
@@ -92,6 +97,7 @@
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTable } from '@/hooks/core/useTable'
   import { ElMessage, type UploadFile } from 'element-plus'
+  import { openExternalUrl, safeHref } from '@/utils/urlPolicy'
 
   defineOptions({ name: 'CmsUploadsPage' })
 
@@ -243,20 +249,31 @@
       return
     }
 
-    window.open(text, '_blank', 'noopener')
+    // H9：文件 URL 来自后端列表数据，直接 window.open 可被 javascript:/
+    // data: 注入；统一过 URL 安全策略，新窗口强制 noopener,noreferrer。
+    // allowRelative：素材 URL 是后端生成的同源相对路径（/uploads/...），
+    // 不做相对路径放行的话"打开"按钮对每个素材都判无效（web_url_content F3）。
+    openExternalUrl(text, {
+      allowRelative: true,
+      onInvalid: () => ElMessage.error('链接无效，无法打开')
+    })
   }
 
   async function fetchUploadTable(
-    params: UploadTableParams
+    params: UploadTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<UploadRow>> {
     if (!canView.value) {
       return { records: [], current: params.current, size: params.size, total: 0 }
     }
 
-    const payload = await fetchAdminUploads({
-      limit: params.size,
-      offset: (params.current - 1) * params.size
-    })
+    const payload = await fetchAdminUploads(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size
+      },
+      signal
+    )
     const records = (payload.items || []).map((item) => normalizeRow(item))
 
     return {

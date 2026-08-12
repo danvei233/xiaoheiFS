@@ -37,6 +37,39 @@ func (r *GormRepo) ListSystemImages(ctx context.Context, lineID int64) ([]domain
 
 }
 
+// ListSystemImagesByLineIDs returns the enabled system images linked to any of
+// the given lines, deduplicated, in one JOIN query (no N+1). An empty line list
+// yields no images.
+func (r *GormRepo) ListSystemImagesByLineIDs(ctx context.Context, lineIDs []int64) ([]domain.SystemImage, error) {
+	out := make([]domain.SystemImage, 0)
+	if len(lineIDs) == 0 {
+		return out, nil
+	}
+	var rows []systemImageRow
+	if err := r.gdb.WithContext(ctx).
+		Table("system_images si").
+		Select("si.id, si.image_id, si.name, si.type, si.enabled, si.created_at, si.updated_at").
+		Joins("JOIN line_system_images lsi ON lsi.system_image_id = si.id").
+		Where("lsi.line_id IN ? AND si.enabled = 1", lineIDs).
+		Group("si.id").
+		Order("si.id DESC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out = append(out, domain.SystemImage{
+			ID:        row.ID,
+			ImageID:   row.ImageID,
+			Name:      row.Name,
+			Type:      row.Type,
+			Enabled:   row.Enabled == 1,
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+		})
+	}
+	return out, nil
+}
+
 func (r *GormRepo) ListAllSystemImages(ctx context.Context) ([]domain.SystemImage, error) {
 
 	var rows []systemImageRow
@@ -162,7 +195,7 @@ func (r *GormRepo) ListImageLineNames(ctx context.Context, imageIDs []int64) (ma
 		Select("lsi.system_image_id, pg.name AS line_name").
 		Joins("JOIN plan_groups pg ON pg.line_id = lsi.line_id").
 		Where("lsi.system_image_id IN ?", imageIDs).
-		Group("lsi.system_image_id, lsi.line_id").
+		Group("lsi.system_image_id, pg.name").
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}

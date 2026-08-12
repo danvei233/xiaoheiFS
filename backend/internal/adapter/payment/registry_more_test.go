@@ -1,6 +1,7 @@
 package payment
 
 import (
+	"gorm.io/gorm"
 	"context"
 	"errors"
 	"testing"
@@ -15,6 +16,21 @@ type failingSettingsRepo struct {
 	value  string
 }
 
+func (f *failingSettingsRepo) UpdateSettingAtomic(ctx context.Context, key string, mutate func(current string) (string, error)) error {
+	current, err := f.GetSetting(ctx, key)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			current = domain.Setting{}
+		} else {
+			return err
+		}
+	}
+	next, err := mutate(current.ValueJSON)
+	if err != nil {
+		return err
+	}
+	return f.UpsertSetting(ctx, domain.Setting{Key: key, ValueJSON: next})
+}
 func (f *failingSettingsRepo) GetSetting(ctx context.Context, key string) (domain.Setting, error) {
 	if f.getErr != nil {
 		return domain.Setting{}, f.getErr
@@ -23,6 +39,10 @@ func (f *failingSettingsRepo) GetSetting(ctx context.Context, key string) (domai
 }
 
 func (f *failingSettingsRepo) UpsertSetting(ctx context.Context, setting domain.Setting) error {
+	return nil
+}
+
+func (f *failingSettingsRepo) UpsertSettings(ctx context.Context, settings []domain.Setting) error {
 	return nil
 }
 

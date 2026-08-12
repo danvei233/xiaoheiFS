@@ -11,6 +11,7 @@ type pluginInstallationRow struct {
 	InstanceID      string    `gorm:"size:191;column:instance_id;not null;uniqueIndex:idx_plugin_installations_cat_id_instance"`
 	Enabled         int       `gorm:"column:enabled;not null;default:0"`
 	SignatureStatus string    `gorm:"column:signature_status;not null;default:unsigned"`
+	ContentDigest   string    `gorm:"column:content_digest;not null;default:''"`
 	ConfigCipher    string    `gorm:"column:config_cipher;not null"`
 	CreatedAt       time.Time `gorm:"column:created_at;not null;autoCreateTime"`
 	UpdatedAt       time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`

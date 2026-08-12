@@ -1,10 +1,16 @@
 package permissions
 
 import (
+	"sync"
+
 	"xiaoheiplay/internal/domain"
 )
 
 var (
+	// regMu guards every read/write of the registry so concurrent registration
+	// and inspection never race (Issue #51 P2-56 follow-up). Registration is
+	// effectively init-only in production, but the guard keeps the API safe.
+	regMu       sync.RWMutex
 	definitions []domain.PermissionDefinition
 )
 
@@ -24,6 +30,23 @@ func RegisterWithParentFriendlyName(code, name, friendlyName, category, parentCo
 	if friendlyName == "" {
 		friendlyName = name
 	}
+	regMu.Lock()
+	defer regMu.Unlock()
+	// De-duplicate by code: a repeated registration must not create a second
+	// definition with the same code (P2-56).
+	for i, d := range definitions {
+		if d.Code == code {
+			definitions[i] = domain.PermissionDefinition{
+				Code:         code,
+				Name:         name,
+				FriendlyName: friendlyName,
+				Category:     category,
+				ParentCode:   parentCode,
+				SortOrder:    sortOrder,
+			}
+			return
+		}
+	}
 	definitions = append(definitions, domain.PermissionDefinition{
 		Code:         code,
 		Name:         name,
@@ -35,15 +58,26 @@ func RegisterWithParentFriendlyName(code, name, friendlyName, category, parentCo
 }
 
 func GetDefinitions() []domain.PermissionDefinition {
-	return definitions
+	// Return a defensive copy so callers cannot mutate the global store through
+	// it, and guard the read against concurrent registration.
+	regMu.RLock()
+	defer regMu.RUnlock()
+	return append([]domain.PermissionDefinition(nil), definitions...)
 }
 
 func SetDefinitions(defs []domain.PermissionDefinition) {
-	definitions = defs
+	regMu.Lock()
+	defer regMu.Unlock()
+	// Defensive copy: the caller's slice must never become the live store.
+	definitions = append([]domain.PermissionDefinition(nil), defs...)
 }
 
 func InitRegistry() {
+	// Reset under the lock, then register below (each Register takes the lock
+	// itself; a RWMutex is not reentrant).
+	regMu.Lock()
 	definitions = []domain.PermissionDefinition{}
+	regMu.Unlock()
 
 	Register("user.view", "查看用户详情", "用户管理", 1)
 	Register("user.list", "查看用户列表", "用户管理", 2)
@@ -66,6 +100,8 @@ func InitRegistry() {
 	Register("vps.resize", "调整VPS配置", "VPS管理", 6)
 	Register("vps.renew", "续费VPS", "VPS管理", 7)
 	Register("vps.admin_status", "设置VPS管理员状态", "VPS管理", 8)
+	Register("vps.price", "调整VPS价格", "VPS管理", 9)
+	Register("vps.credentials", "管理VPS登录凭据", "VPS管理", 10)
 
 	Register("settings.view", "查看系统设置", "系统设置", 1)
 	Register("settings.update", "更新系统设置", "系统设置", 2)
@@ -109,7 +145,7 @@ func InitRegistry() {
 	Register("region.create", "创建区域", "区域管理", 3)
 	Register("region.update", "更新区域", "区域管理", 4)
 	Register("region.delete", "删除区域", "区域管理", 5)
-	Register("region.set_active", "设置区域启用状态", "区域管理", 6)
+	Register("region.active", "设置区域启用状态", "区域管理", 6)
 
 	Register("billing_cycle.view", "查看计费周期详情", "计费周期", 1)
 	Register("billing_cycle.list", "查看计费周期列表", "计费周期", 2)
@@ -131,6 +167,8 @@ func InitRegistry() {
 }
 
 func GetCategories() []string {
+	regMu.RLock()
+	defer regMu.RUnlock()
 	cats := make(map[string]bool)
 	for _, d := range definitions {
 		cats[d.Category] = true
@@ -143,6 +181,8 @@ func GetCategories() []string {
 }
 
 func GetByCategory(category string) []domain.PermissionDefinition {
+	regMu.RLock()
+	defer regMu.RUnlock()
 	var result []domain.PermissionDefinition
 	for _, d := range definitions {
 		if d.Category == category {

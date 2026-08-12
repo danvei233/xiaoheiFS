@@ -19,7 +19,8 @@ func (r *GormRepo) ListTickets(ctx context.Context, filter appshared.TicketFilte
 		q = q.Where("status = ?", filter.Status)
 	}
 	if filter.Keyword != "" {
-		q = q.Where("subject LIKE ?", "%"+filter.Keyword+"%")
+		like := "%" + escapeLikePattern(filter.Keyword) + "%"
+		q = q.Where("subject LIKE ?"+likeEscapeClause(r.gdb), like)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -150,26 +151,37 @@ func (r *GormRepo) CreateTicketWithDetails(ctx context.Context, ticket *domain.T
 }
 
 func (r *GormRepo) AddTicketMessage(ctx context.Context, message *domain.TicketMessage) error {
-	row := ticketMessageRow{
-		TicketID:   message.TicketID,
-		SenderID:   message.SenderID,
-		SenderRole: message.SenderRole,
-		SenderName: message.SenderName,
-		SenderQQ:   message.SenderQQ,
-		Content:    message.Content,
-	}
-	if err := r.gdb.WithContext(ctx).Create(&row).Error; err != nil {
-		return err
-	}
-	now := time.Now()
-	message.ID = row.ID
-	message.CreatedAt = row.CreatedAt
-	return r.gdb.WithContext(ctx).Model(&ticketRow{}).Where("id = ?", message.TicketID).Updates(map[string]any{
-		"last_reply_at":   now,
-		"last_reply_by":   message.SenderID,
-		"last_reply_role": message.SenderRole,
-		"updated_at":      now,
-	}).Error
+	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		row := ticketMessageRow{
+			TicketID:   message.TicketID,
+			SenderID:   message.SenderID,
+			SenderRole: message.SenderRole,
+			SenderName: message.SenderName,
+			SenderQQ:   message.SenderQQ,
+			Content:    message.Content,
+		}
+		if err := tx.Create(&row).Error; err != nil {
+			return err
+		}
+		message.ID = row.ID
+		message.CreatedAt = row.CreatedAt
+		// last_reply_* is denormalized onto the ticket; write it in the same
+		// transaction as the message and roll back if the ticket is missing so
+		// no orphan message row survives.
+		res := tx.Model(&ticketRow{}).Where("id = ?", message.TicketID).Updates(map[string]any{
+			"last_reply_at":   row.CreatedAt,
+			"last_reply_by":   message.SenderID,
+			"last_reply_role": message.SenderRole,
+			"updated_at":      row.CreatedAt,
+		})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return appshared.ErrNotFound
+		}
+		return nil
+	})
 }
 
 func (r *GormRepo) ListTicketMessages(ctx context.Context, ticketID int64) ([]domain.TicketMessage, error) {

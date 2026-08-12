@@ -1116,15 +1116,19 @@
   }
 
   async function fetchBlockTable(
-    params: BlockTableParams
+    params: BlockTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<BlockRow>> {
     if (!canView.value) {
       return { records: [], current: params.current, size: params.size, total: 0 }
     }
 
-    const payload = await fetchCMSBlocks({
-      page: params.page || undefined
-    })
+    const payload = await fetchCMSBlocks(
+      {
+        page: params.page || undefined
+      },
+      signal
+    )
     const records = (payload.items || [])
       .map((item) => normalizeRow(item))
       .filter((row) => !params.type || row.type === params.type)

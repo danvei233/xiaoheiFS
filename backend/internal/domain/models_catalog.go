@@ -61,14 +61,17 @@ type Package struct {
 	Cores                int
 	MemoryGB             int
 	DiskGB               int
-	BandwidthMB          int
-	CPUModel             string
-	Monthly              int64
-	PortNum              int
-	SortOrder            int
-	Active               bool
-	Visible              bool
-	CapacityRemaining    int
+	// BandwidthMB is the plan bandwidth cap in Mbps (DB column bandwidth_mbps),
+	// not megabytes. The name is historical; treat the value as Mbps.
+	BandwidthMB int
+	CPUModel    string
+	// Monthly is the base monthly price in cents (DB column monthly_price).
+	Monthly           int64
+	PortNum           int
+	SortOrder         int
+	Active            bool
+	Visible           bool
+	CapacityRemaining int
 }
 
 type SystemImage struct {

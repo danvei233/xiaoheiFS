@@ -4,14 +4,12 @@
 > 所有页面必须按此规范编写。写代码前先读完对应章节。
 > 模板参考副本位置见 `docs/frontend/adp-migration-plan.md` 第 0 节。
 
-I have everything. Here is the reference document.
-
 ---
 
 # Art Design Pro v3.0.2 — Conventions Bible
 
-Template root in this report: `TPL = $TPL`
-Path aliases (from `TPL/vite.config.ts`): `@`→`src`, `@views`→`src/views`, `@imgs`→`src/assets/images`, `@icons`→`src/assets/icons`, `@utils`→`src/utils`, `@stores`→`src/store`, `@styles`→`src/assets/styles`.
+Template root is `frontend/` (this repository's SPA is built directly on the template).
+Path aliases (from `frontend/vite.config.ts`): `@`→`src`, `@views`→`src/views`, `@imgs`→`src/assets/images`, `@icons`→`src/assets/icons`, `@utils`→`src/utils`, `@plugins`→`src/plugins`, `@styles`→`src/assets/styles`. **注意：不定义 `@stores`**——本项目有两个 store 目录（`src/store/` 模板基建、`src/stores/` 业务），一律用 `@/store/...` 与 `@/stores/...` 显式书写。
 Auto-imported globally (no import needed): all of `vue`, `vue-router`, `pinia`, `@vueuse/core`, plus Element Plus components/APIs via `ElementPlusResolver` (so `ElMessage`, `ElCard`, `ElButton`, `ref`, `computed`, `h`, `storeToRefs` are all ambient). All `src/components/**` `Art*` components are auto-registered by `unplugin-vue-components`.
 
 ---

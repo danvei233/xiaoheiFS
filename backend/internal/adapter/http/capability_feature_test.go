@@ -1,6 +1,7 @@
 package http
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -33,6 +34,9 @@ func TestFeatureAllowedByCapability(t *testing.T) {
 func TestApplyPackageCapabilityPolicy_ResizeRefundRequirePluginFeature(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	// The handler now derives its request context from the HTTP request, so the
+	// test must supply one.
+	ctx.Request = &http.Request{}
 	h := &Handler{}
 	inst := domain.VPSInstance{ID: 23, GoodsTypeID: 1}
 
@@ -58,5 +62,35 @@ func TestApplyPackageCapabilityPolicy_ResizeRefundRequirePluginFeature(t *testin
 	}
 	if !featureAllowedByCapability(got, "refund", false) {
 		t.Fatalf("expected refund enabled when plugin feature present")
+	}
+}
+
+func TestResolveVPSCapabilitiesFromSnapshot_PackageOverridesGoodsType(t *testing.T) {
+	disabled := false
+	enabled := true
+	inst := domain.VPSInstance{
+		ID: 9, PackageID: 30, GoodsTypeID: 4,
+		AccessInfoJSON: `{"capabilities":{"automation":{"features":["resize","refund"]}}}`,
+	}
+	got := resolveVPSCapabilitiesFromSnapshot(
+		inst,
+		map[int64]domain.GoodsType{},
+		nil,
+		map[string]packageCapabilityPolicy{"30": {ResizeEnabled: &disabled}},
+		map[string]packageCapabilityPolicy{"4": {ResizeEnabled: &enabled, RefundEnabled: &disabled}},
+		nil,
+		map[string]domain.Setting{"resize_enabled": {ValueJSON: "true"}, "refund_enabled": {ValueJSON: "true"}},
+	)
+	if got == nil || got.Automation == nil {
+		t.Fatal("expected automation capability")
+	}
+	if featureAllowedByCapability(got.Automation, "resize", false) {
+		t.Fatalf("package disable must override goods type enable: %+v", got.Automation)
+	}
+	if featureAllowedByCapability(got.Automation, "refund", false) {
+		t.Fatalf("package nil must inherit goods type disable: %+v", got.Automation)
+	}
+	if got.Automation.NotSupportedReasons["resize"] != "套餐未开启升降配" {
+		t.Fatalf("unexpected resize reason: %+v", got.Automation.NotSupportedReasons)
 	}
 }

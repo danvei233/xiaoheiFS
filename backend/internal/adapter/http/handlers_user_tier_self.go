@@ -9,9 +9,9 @@ import (
 func (h *Handler) MeUserTier(c *gin.Context) {
 	userID := getUserID(c)
 	if h.userTierSvc != nil && userID > 0 {
-		_ = h.userTierSvc.EnsureUserHasGroup(c, userID)
+		_ = h.userTierSvc.EnsureUserHasGroup(c.Request.Context(), userID)
 	}
-	user, err := h.authSvc.GetUser(c, userID)
+	user, err := h.authSvc.GetUser(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		return
@@ -32,16 +32,16 @@ func (h *Handler) MeUserTier(c *gin.Context) {
 		return
 	}
 
-	group, err := h.userTierSvc.GetGroup(c, *user.UserTierGroupID)
+	group, err := h.userTierSvc.GetGroup(c.Request.Context(), *user.UserTierGroupID)
 	if err != nil {
-		_ = h.userTierSvc.EnsureUserHasGroup(c, userID)
-		user, uerr := h.authSvc.GetUser(c, userID)
+		_ = h.userTierSvc.EnsureUserHasGroup(c.Request.Context(), userID)
+		user, uerr := h.authSvc.GetUser(c.Request.Context(), userID)
 		if uerr != nil || user.UserTierGroupID == nil || *user.UserTierGroupID <= 0 {
 			c.JSON(http.StatusOK, resp)
 			return
 		}
 		resp["group_id"] = *user.UserTierGroupID
-		group, err = h.userTierSvc.GetGroup(c, *user.UserTierGroupID)
+		group, err = h.userTierSvc.GetGroup(c.Request.Context(), *user.UserTierGroupID)
 		if err != nil {
 			c.JSON(http.StatusOK, resp)
 			return

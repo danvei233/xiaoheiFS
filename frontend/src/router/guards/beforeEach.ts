@@ -31,10 +31,12 @@ import { checkAdminPath, fetchAdminPath, getCachedAdminPath } from '@/services/a
 
 import { RoutesAlias } from '../routesAlias'
 import { resolveRealm, prefixRoutePaths, type Realm } from '../realm'
+import { parseImpersonation } from './impersonation'
 import { buildConsoleMenus } from '../menus/console'
 import { asyncRoutes } from '../routes/asyncRoutes'
 import { RouteRegistry, IframeRouteManager, RoutePermissionValidator } from '../core'
 import { useCommon } from '@/hooks/core/useCommon'
+import { resolveAdminRedirect } from '@/utils/auth'
 
 let routeRegistry: RouteRegistry | null = null
 
@@ -147,9 +149,15 @@ async function isRealAdminPath(to: RouteLocationNormalized): Promise<boolean> {
   try {
     const { isAdmin } = await checkAdminPath(segment)
     return isAdmin
-  } catch {
-    // 后端不可达时不要把人挡在外面：退回本地缓存判断
-    return segment === getCachedAdminPath()
+  } catch (err) {
+    // H1：后端复核异常一律 fail-closed。绝不能回退到 `getCachedAdminPath()`
+    // （它读 localStorage 提示）当验证权威——攻击者可伪造 `admin_path_cache`
+    // 在复核失败时把自己写的路径当已验证放行。校验失败就 404。
+    console.error(
+      '[RouteGuard] admin path verification threw:',
+      err instanceof Error ? err.message : err
+    )
+    return false
   }
 }
 
@@ -157,27 +165,27 @@ async function isRealAdminPath(to: RouteLocationNormalized): Promise<boolean> {
 
 /**
  * 模拟登录：`/console#impersonate_token=xxx`
- * 取出 token 写入用户 store，并把它从 hash 里抹掉再重新导航，
- * 避免 token 留在地址栏和历史记录里。
+ *
+ * 取出 token 写入用户 store，并把它从 hash 里抹掉再重新导航，避免 token
+ * 留在地址栏和历史记录里。受理条件与解析逻辑见 `./impersonation` 的
+ * `parseImpersonation`：hash 里的 token 没有签名，任何链接都能带任意 token，
+ * 因此只允许在浏览器已存在管理会话（模拟登录由管理员发起）时写入，防止
+ * 任意链接把用户会话切换进攻击者账号（会话固定 / 登录 CSRF）。
  */
 function handleImpersonation(to: RouteLocationNormalized, next: NavigationGuardNext): boolean {
   const hash = typeof to.hash === 'string' ? to.hash : ''
-  if (!to.path.startsWith(RoutesAlias.Console) || !hash.includes('impersonate_token=')) {
-    return false
-  }
+  if (!to.path.startsWith(RoutesAlias.Console)) return false
 
-  const params = new URLSearchParams(hash.replace(/^#/, ''))
-  const token = params.get('impersonate_token') || ''
-  if (token) {
+  const parsed = parseImpersonation(hash, Boolean(useAdminAuthStore().token))
+  if (!parsed) return false
+
+  if (parsed.shouldWrite) {
     const auth = useAuthStore()
-    auth.token = token
-    auth.profile = null
-    localStorage.setItem('user_token', token)
+    // H4：标记为 impersonated，刷新后 loginToken 不会被误认成真实登录。
+    auth.applyImpersonatedToken(parsed.token)
   }
 
-  params.delete('impersonate_token')
-  const rest = params.toString()
-  next({ path: to.path, query: to.query, hash: rest ? `#${rest}` : '', replace: true })
+  next({ path: to.path, query: to.query, hash: parsed.restHash, replace: true })
   return true
 }
 
@@ -264,6 +272,16 @@ async function handleAdminRealm(
 
   if (!adminAuth.token) {
     next({ path: `/${adminPath}/login`, query: { redirect: to.fullPath }, replace: true })
+    return
+  }
+
+  // 登录 token 在 MFA 完成前只能调用 setup/confirm/unlock，不能先请求 profile。
+  if (adminAuth.requiresMfa) {
+    next({
+      path: `/${adminPath}/login`,
+      query: { redirect: resolveAdminRedirect(to.fullPath, adminPath) },
+      replace: true
+    })
     return
   }
 
@@ -359,6 +377,17 @@ async function registerAdminRoutes(
     // 路由表变了，重新走一遍导航让新路由生效
     next({ path: to.path, query: to.query, hash: to.hash, replace: true })
   } catch (error) {
+    const adminAuth = useAdminAuthStore()
+    if (adminAuth.requiresMfa) {
+      adminRoutesRegistering = false
+      closeLoading()
+      next({
+        path: `/${cachedAdminPath}/login`,
+        query: { redirect: resolveAdminRedirect(to.fullPath, cachedAdminPath) },
+        replace: true
+      })
+      return
+    }
     console.error('[RouteGuard] 管理后台动态路由注册失败:', error)
     adminRoutesRegistering = false
     adminRoutesFailed = true

@@ -79,6 +79,16 @@
 
       <section class="detail-section">
         <div class="section-title">事件流</div>
+        <!-- web_api_contract F4：详情只返回最近 200 条事件，总数更大时提示
+             避免管理员误以为事件流被截断是数据丢失。 -->
+        <ElAlert
+          v-if="eventsTruncated"
+          type="info"
+          :closable="false"
+          show-icon
+          class="events-truncated-note"
+          :title="`仅显示最近 ${normalizedEvents.length} 条事件（共 ${props.detail?.events_total ?? 0} 条）`"
+        />
         <ElEmpty v-if="!normalizedEvents.length" description="暂无事件" />
         <ElTimeline v-else>
           <ElTimelineItem
@@ -229,6 +239,9 @@
       ...event,
       parsedData: parseEventData(event.data)
     }))
+  )
+  const eventsTruncated = computed(
+    () => Number(props.detail?.events_total ?? 0) > (props.detail?.events?.length ?? 0)
   )
 
   function normalizeItem(item: OrderItem & Record<string, unknown>) {

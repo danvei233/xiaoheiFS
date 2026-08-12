@@ -2,6 +2,7 @@ package money
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -29,9 +30,6 @@ func ParseAmountToCents(input string) (int64, error) {
 	if intPart == "" {
 		intPart = "0"
 	}
-	if _, err := strconv.ParseInt(intPart, 10, 64); err != nil {
-		return 0, ErrInvalidAmount
-	}
 	frac := ""
 	if len(parts) == 2 {
 		frac = parts[1]
@@ -56,8 +54,16 @@ func ParseAmountToCents(input string) (int64, error) {
 			fracVal = v
 		}
 	}
-	intVal, _ := strconv.ParseInt(intPart, 10, 64)
-	cents := intVal*100 + fracVal
+
+	// Compute cents with big.Int so the x100+frac multiplication (and the
+	// rounding increment) cannot silently wrap on int64 overflow.
+	intBig, ok := new(big.Int).SetString(intPart, 10)
+	if !ok {
+		return 0, ErrInvalidAmount
+	}
+	cents := new(big.Int).Mul(intBig, big.NewInt(100))
+	cents.Add(cents, big.NewInt(fracVal))
+
 	roundUp := roundDigit > 5
 	if roundDigit == 5 {
 		roundUp = true
@@ -71,9 +77,12 @@ func ParseAmountToCents(input string) (int64, error) {
 		}
 	}
 	if roundUp {
-		cents++
+		cents.Add(cents, big.NewInt(1))
 	}
-	return cents * sign, nil
+	if !cents.IsInt64() {
+		return 0, ErrInvalidAmount
+	}
+	return cents.Int64() * sign, nil
 }
 
 func ParseNumberStringToCents(raw string) (int64, error) {
@@ -85,13 +94,15 @@ func ParseNumberStringToCents(raw string) (int64, error) {
 
 func FormatCents(cents int64) string {
 	sign := ""
+	u := uint64(cents)
 	if cents < 0 {
 		sign = "-"
-		cents = -cents
+		// Negating MinInt64 overflows; compute the magnitude in uint64 instead.
+		u = uint64(-(cents + 1)) + 1
 	}
-	integer := cents / 100
-	frac := cents % 100
-	return sign + strconv.FormatInt(integer, 10) + "." + leftPad2(frac)
+	integer := u / 100
+	frac := u % 100
+	return sign + strconv.FormatUint(integer, 10) + "." + leftPad2(int64(frac))
 }
 
 func ProrateCents(cents, remain, total int64) int64 {
@@ -103,7 +114,7 @@ func ProrateCents(cents, remain, total int64) int64 {
 	den := big.NewInt(total)
 	quot, rem := new(big.Int).QuoRem(num, den, new(big.Int))
 	if rem.Sign() == 0 {
-		return quot.Int64()
+		return clampToInt64(quot)
 	}
 	absRem := new(big.Int).Abs(rem)
 	doubleRem := new(big.Int).Mul(absRem, big.NewInt(2))
@@ -114,7 +125,17 @@ func ProrateCents(cents, remain, total int64) int64 {
 			quot.Sub(quot, big.NewInt(1))
 		}
 	}
-	return quot.Int64()
+	return clampToInt64(quot)
+}
+
+func clampToInt64(v *big.Int) int64 {
+	if !v.IsInt64() {
+		if v.Sign() > 0 {
+			return math.MaxInt64
+		}
+		return math.MinInt64
+	}
+	return v.Int64()
 }
 
 func leftPad2(val int64) string {

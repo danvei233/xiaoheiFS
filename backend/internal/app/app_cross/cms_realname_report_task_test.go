@@ -96,7 +96,7 @@ func TestRealNameService_Flow(t *testing.T) {
 	if _, err := svc.Latest(context.Background(), user.ID); err != nil {
 		t.Fatalf("latest: %v", err)
 	}
-	if list, _, err := svc.List(context.Background(), &user.ID, 10, 0); err != nil || len(list) == 0 {
+	if list, _, err := svc.List(context.Background(), &user.ID, "", 10, 0); err != nil || len(list) == 0 {
 		t.Fatalf("list: %v", err)
 	}
 	if list := svc.Providers(); len(list) == 0 {

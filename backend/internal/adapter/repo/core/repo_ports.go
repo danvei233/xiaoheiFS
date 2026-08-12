@@ -100,6 +100,12 @@ func NewProbeLogSessionRepo(gdb *gorm.DB) *ProbeLogSessionRepo {
 }
 
 var (
+	_ appports.GoodsTypeRepository           = (*GormRepo)(nil)
+	_ appports.VerificationCodeRepository    = (*GormRepo)(nil)
+	_ appports.RealNameRepository            = (*GormRepo)(nil)
+	_ appports.PluginInstallationRepository  = (*GormRepo)(nil)
+	_ appports.PluginPaymentMethodRepository = (*GormRepo)(nil)
+	_ appports.ScheduledTaskRunRepository    = (*GormRepo)(nil)
 	_ appports.UserRepository                = (*UserRepo)(nil)
 	_ appports.CaptchaRepository             = (*CaptchaRepo)(nil)
 	_ appports.CatalogRepository             = (*CatalogRepo)(nil)

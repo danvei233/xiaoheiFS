@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
@@ -25,14 +28,33 @@ func (r *GormRepo) AddAuditLog(ctx context.Context, log domain.AdminAuditLog) er
 
 }
 
-func (r *GormRepo) ListAuditLogs(ctx context.Context, limit, offset int) ([]domain.AdminAuditLog, int, error) {
-
+func (r *GormRepo) ListAuditLogs(ctx context.Context, filter appshared.AuditLogFilter, limit, offset int) ([]domain.AdminAuditLog, int, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	q := r.gdb.WithContext(ctx).Model(&adminAuditLogRow{})
+	if strings.TrimSpace(filter.Action) != "" {
+		q = q.Where("action LIKE ?", "%"+strings.TrimSpace(filter.Action)+"%")
+	}
+	if keyword := strings.TrimSpace(filter.Keyword); keyword != "" {
+		kw := "%" + keyword + "%"
+		q = q.Where("(target_id LIKE ? OR target_type LIKE ? OR detail_json LIKE ?)", kw, kw, kw)
+	}
+	if user := strings.TrimSpace(filter.User); user != "" {
+		// The audit DTO stores admin_id only; a numeric value matches by
+		// admin_id, a non-numeric input matches no operator (m059 F6).
+		if uid, err := strconv.ParseInt(user, 10, 64); err == nil {
+			q = q.Where("admin_id = ?", uid)
+		} else {
+			q = q.Where("admin_id = ?", -1)
+		}
+	}
 	var total int64
-	if err := r.gdb.WithContext(ctx).Model(&adminAuditLogRow{}).Count(&total).Error; err != nil {
+	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 	var rows []adminAuditLogRow
-	if err := r.gdb.WithContext(ctx).Order("id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+	if err := q.Order("id DESC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, 0, err
 	}
 	out := make([]domain.AdminAuditLog, 0, len(rows))
@@ -137,13 +159,18 @@ func (r *GormRepo) UpdatePermissionGroup(ctx context.Context, group domain.Permi
 	}
 	permJSON, _ := json.Marshal(perms)
 	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&permissionGroupRow{}).Where("id = ?", group.ID).Updates(map[string]any{
+		res := tx.Model(&permissionGroupRow{}).Where("id = ?", group.ID).Updates(map[string]any{
 			"name":             group.Name,
 			"description":      group.Description,
 			"permissions_json": string(permJSON),
 			"updated_at":       time.Now(),
-		}).Error; err != nil {
-			return err
+		})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			// Unknown group: abort before writing orphan join rows.
+			return appshared.ErrNotFound
 		}
 		return replacePermissionGroupPermissionsTx(tx, group.ID, perms)
 	})
@@ -155,9 +182,62 @@ func (r *GormRepo) DeletePermissionGroup(ctx context.Context, id int64) error {
 		if err := tx.Where("permission_group_id = ?", id).Delete(&permissionGroupPermissionRow{}).Error; err != nil {
 			return err
 		}
+		// Detach users and API keys that reference the group so their permission
+		// lookups degrade to "no group" instead of failing hard on a missing group.
+		if err := tx.Model(&userRow{}).Where("permission_group_id = ?", id).Update("permission_group_id", nil).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&apiKeyRow{}).Where("permission_group_id = ?", id).Update("permission_group_id", nil).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&permissionGroupRow{}, id).Error
 	})
 
+}
+
+// DeletePermissionGroupSafe atomically re-checks that no user or API key still
+// references the group and then deletes it, all within one transaction that
+// locks the group row. Concurrent assignments serialize on that row, so a
+// dangling reference can never be created between the reference count and the
+// delete (Issue #51 P2-36 TOCTOU).
+func (r *GormRepo) DeletePermissionGroupSafe(ctx context.Context, id int64) error {
+	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var group permissionGroupRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id).First(&group).Error; err != nil {
+			return rEnsure(err)
+		}
+		var userRefs int64
+		if err := tx.Model(&userRow{}).Where("permission_group_id = ?", id).Count(&userRefs).Error; err != nil {
+			return err
+		}
+		var keyRefs int64
+		if err := tx.Model(&apiKeyRow{}).Where("permission_group_id = ?", id).Count(&keyRefs).Error; err != nil {
+			return err
+		}
+		if userRefs > 0 || keyRefs > 0 {
+			return domain.ErrPermissionGroupInUse
+		}
+		if err := tx.Where("permission_group_id = ?", id).Delete(&permissionGroupPermissionRow{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&permissionGroupRow{}, id).Error
+	})
+}
+
+// lockPermissionGroupForWrite acquires a FOR UPDATE lock on the referenced
+// permission group (when a real group is being assigned) so that the assignment
+// and a concurrent DeletePermissionGroupSafe serialize on the same row. A
+// missing or non-positive group fails the assignment instead of creating a
+// dangling reference; a nil/zero group means "no group" and needs no lock.
+func lockPermissionGroupForWrite(tx *gorm.DB, groupID *int64) error {
+	if groupID == nil || *groupID <= 0 {
+		return nil
+	}
+	var row permissionGroupRow
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", *groupID).First(&row).Error; err != nil {
+		return rEnsure(err)
+	}
+	return nil
 }
 
 func (r *GormRepo) loadPermissionGroupPermissionsJSON(ctx context.Context, groupID int64, fallback string) (string, error) {

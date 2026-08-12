@@ -235,12 +235,13 @@
     return permissions.map((permission) => getPermissionLabel(permission)).join('、')
   }
 
-  async function fetchPermissionGroupTable(): Promise<
-    Api.Common.PaginatedResponse<PermissionGroupTableRow>
-  > {
+  async function fetchPermissionGroupTable(
+    _params?: unknown,
+    signal?: AbortSignal
+  ): Promise<Api.Common.PaginatedResponse<PermissionGroupTableRow>> {
     const [groupsPayload, permissionsPayload] = await Promise.all([
-      fetchPermissionGroups(),
-      fetchAdminPermissions()
+      fetchPermissionGroups(signal),
+      fetchAdminPermissions(signal)
     ])
     permissionOptions.value = permissionsPayload.items || []
     const allRows = (groupsPayload.items || []).map(normalizePermissionGroup)

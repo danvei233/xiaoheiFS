@@ -4,7 +4,10 @@
   "properties": {
     "access_key_id": { "type": "string", "title": "AccessKey ID" },
     "access_key_secret": { "type": "string", "title": "AccessKey Secret", "format": "password" },
-    "sign_name": { "type": "string", "title": "Sign Name" }
+    "sign_name": { "type": "string", "title": "Sign Name" },
+    "region": { "type": "string", "title": "Region", "default": "cn-hangzhou" },
+    "endpoint": { "type": "string", "title": "Endpoint", "default": "dysmsapi.aliyuncs.com" },
+    "timeout_sec": { "type": "integer", "title": "Request Timeout (sec)", "default": 10, "minimum": 1, "maximum": 60 }
   },
   "required": ["access_key_id", "access_key_secret", "sign_name"]
 }

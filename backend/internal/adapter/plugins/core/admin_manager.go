@@ -69,6 +69,31 @@ func (m *AdminManager) Install(ctx context.Context, filename string, r io.Reader
 	return m.inner.Install(ctx, filename, r)
 }
 
+func (m *AdminManager) InstallVerified(ctx context.Context, filename string, r io.Reader, expectedDigest string) (domain.PluginInstallation, error) {
+	if m == nil || m.inner == nil {
+		return domain.PluginInstallation{}, fmt.Errorf("plugins disabled")
+	}
+	return m.inner.InstallVerified(ctx, filename, r, expectedDigest)
+}
+
+func (m *AdminManager) VerifyInstallPackage(ctx context.Context, filename string, r io.Reader) (appshared.PluginInstallVerifyResult, error) {
+	if m == nil || m.inner == nil {
+		return appshared.PluginInstallVerifyResult{}, fmt.Errorf("plugins disabled")
+	}
+	res, err := m.inner.VerifyInstallPackage(ctx, filename, r)
+	if err != nil {
+		return appshared.PluginInstallVerifyResult{}, err
+	}
+	return appshared.PluginInstallVerifyResult{
+		Category:        res.Category,
+		PluginID:        res.PluginID,
+		Name:            res.Manifest.Name,
+		Version:         res.Manifest.Version,
+		SignatureStatus: res.SignatureStatus,
+		Digest:          res.Digest,
+	}, nil
+}
+
 func (m *AdminManager) Uninstall(ctx context.Context, category, pluginID string) error {
 	if m == nil || m.inner == nil {
 		return fmt.Errorf("plugins disabled")
@@ -76,18 +101,27 @@ func (m *AdminManager) Uninstall(ctx context.Context, category, pluginID string)
 	return m.inner.Uninstall(ctx, category, pluginID)
 }
 
-func (m *AdminManager) SignatureStatusOnDisk(category, pluginID string) (domain.PluginSignatureStatus, error) {
+func (m *AdminManager) PreviewImportFromDisk(ctx context.Context, category, pluginID string) (appshared.PluginImportPreview, error) {
 	if m == nil || m.inner == nil {
-		return domain.PluginSignatureUntrusted, fmt.Errorf("plugins disabled")
+		return appshared.PluginImportPreview{}, fmt.Errorf("plugins disabled")
 	}
-	return m.inner.SignatureStatusOnDisk(category, pluginID)
+	preview, err := m.inner.PreviewImportFromDisk(ctx, category, pluginID)
+	if err != nil {
+		return appshared.PluginImportPreview{}, err
+	}
+	return appshared.PluginImportPreview{
+		Category:        preview.Category,
+		PluginID:        preview.PluginID,
+		SignatureStatus: preview.SignatureStatus,
+		ContentDigest:   preview.ContentDigest,
+	}, nil
 }
 
-func (m *AdminManager) ImportFromDisk(ctx context.Context, category, pluginID string) (domain.PluginInstallation, error) {
+func (m *AdminManager) ImportFromDisk(ctx context.Context, category, pluginID, expectedDigest string) (domain.PluginInstallation, error) {
 	if m == nil || m.inner == nil {
 		return domain.PluginInstallation{}, fmt.Errorf("plugins disabled")
 	}
-	return m.inner.ImportFromDisk(ctx, category, pluginID)
+	return m.inner.ImportFromDisk(ctx, category, pluginID, expectedDigest)
 }
 
 func (m *AdminManager) EnableInstance(ctx context.Context, category, pluginID, instanceID string) error {

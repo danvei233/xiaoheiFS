@@ -25,7 +25,16 @@ class NotificationsRepository {
   Future<int> getUnreadCount() async {
     final response = await _dio.get(ApiEndpoints.notificationsUnreadCount);
     final data = ensureMap(response.data);
-    return (data['unread'] ?? 0) as int;
+    return parseUnreadCount(data['unread']);
+  }
+
+  /// 容错解析未读数量：服务端可能返回字符串数字（如 `"3"`），裸 `as int`
+  /// 会抛类型错误导致消息中心崩溃。
+  static int parseUnreadCount(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? 0;
+    return 0;
   }
 
   Future<void> markRead(int id) async {

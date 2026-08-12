@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	apppayment "xiaoheiplay/internal/app/payment"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
@@ -43,7 +45,7 @@ type RegionDTO struct {
 	ID          int64  `json:"id"`
 	GoodsTypeID int64  `json:"goods_type_id"`
 	Code        string `json:"code"`
-	Name        string `json:"name"`
+	Name        string `json:"name" binding:"required"`
 	Active      bool   `json:"active"`
 }
 
@@ -51,12 +53,12 @@ type PlanGroupDTO struct {
 	ID                int64   `json:"id"`
 	GoodsTypeID       int64   `json:"goods_type_id"`
 	RegionID          int64   `json:"region_id"`
-	Name              string  `json:"name"`
+	Name              string  `json:"name" binding:"required"`
 	LineID            int64   `json:"line_id"`
-	UnitCore          float64 `json:"unit_core"`
-	UnitMem           float64 `json:"unit_mem"`
-	UnitDisk          float64 `json:"unit_disk"`
-	UnitBW            float64 `json:"unit_bw"`
+	UnitCore          float64 `json:"unit_core" binding:"gte=0"`
+	UnitMem           float64 `json:"unit_mem" binding:"gte=0"`
+	UnitDisk          float64 `json:"unit_disk" binding:"gte=0"`
+	UnitBW            float64 `json:"unit_bw" binding:"gte=0"`
 	AddCoreMin        int     `json:"add_core_min"`
 	AddCoreMax        int     `json:"add_core_max"`
 	AddCoreStep       int     `json:"add_core_step"`
@@ -81,13 +83,13 @@ type PackageDTO struct {
 	PlanGroupID          int64   `json:"plan_group_id"`
 	ProductID            int64   `json:"product_id"`
 	IntegrationPackageID int64   `json:"integration_package_id"`
-	Name                 string  `json:"name"`
+	Name                 string  `json:"name" binding:"required"`
 	Cores                int     `json:"cores"`
 	MemoryGB             int     `json:"memory_gb"`
 	DiskGB               int     `json:"disk_gb"`
 	BandwidthMB          int     `json:"bandwidth_mbps"`
 	CPUModel             string  `json:"cpu_model"`
-	MonthlyPrice         float64 `json:"monthly_price"`
+	MonthlyPrice         float64 `json:"monthly_price" binding:"gte=0"`
 	PortNum              int     `json:"port_num"`
 	SortOrder            int     `json:"sort_order"`
 	Active               bool    `json:"active"`
@@ -96,19 +98,19 @@ type PackageDTO struct {
 }
 
 type SystemImageDTO struct {
-	ID      int64  `json:"id"`
-	ImageID int64  `json:"image_id"`
-	Name    string `json:"name"`
-	Type    string `json:"type"`
-	Enabled bool   `json:"enabled"`
+	ID        int64    `json:"id"`
+	ImageID   int64    `json:"image_id"`
+	Name      string   `json:"name" binding:"required"`
+	Type      string   `json:"type"`
+	Enabled   bool     `json:"enabled"`
 	LineNames []string `json:"line_names,omitempty"`
 }
 
 type BillingCycleDTO struct {
 	ID         int64     `json:"id"`
-	Name       string    `json:"name"`
-	Months     int       `json:"months"`
-	Multiplier float64   `json:"multiplier"`
+	Name       string    `json:"name" binding:"required"`
+	Months     int       `json:"months" binding:"gt=0"`
+	Multiplier float64   `json:"multiplier" binding:"gt=0"`
 	MinQty     int       `json:"min_qty"`
 	MaxQty     int       `json:"max_qty"`
 	Active     bool      `json:"active"`
@@ -195,11 +197,11 @@ type PaymentProviderDTO struct {
 }
 
 type PaymentMethodDTO struct {
-	Key        string  `json:"key"`
-	Name       string  `json:"name"`
-	SchemaJSON string  `json:"schema_json"`
-	ConfigJSON string  `json:"config_json"`
-	Balance    float64 `json:"balance"`
+	Key          string  `json:"key"`
+	Name         string  `json:"name"`
+	Instructions string  `json:"instructions"`
+	Notice       string  `json:"notice"`
+	Balance      float64 `json:"balance"`
 }
 
 type PaymentSelectDTO struct {
@@ -316,7 +318,7 @@ type VPSInstanceDTO struct {
 	DestroyAt            *time.Time          `json:"destroy_at,omitempty"`
 	DestroyInDays        *int                `json:"destroy_in_days,omitempty"`
 	PanelURLCache        string              `json:"panel_url_cache"`
-	AccessInfo           map[string]any      `json:"access_info"`
+	AccessInfo           map[string]any      `json:"access_info,omitempty"`
 	Capabilities         *VPSCapabilitiesDTO `json:"capabilities,omitempty"`
 	LastEmergencyRenewAt *time.Time          `json:"last_emergency_renew_at"`
 	CreatedAt            time.Time           `json:"created_at"`
@@ -371,8 +373,8 @@ type SettingDTO struct {
 
 type EmailTemplateDTO struct {
 	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Subject   string    `json:"subject"`
+	Name      string    `json:"name" binding:"required"`
+	Subject   string    `json:"subject" binding:"required"`
 	Body      string    `json:"body"`
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
@@ -421,11 +423,15 @@ type UserTierDiscountRuleDTO struct {
 	PlanGroupID      int64  `json:"plan_group_id"`
 	PackageID        int64  `json:"package_id"`
 	DiscountPermille int    `json:"discount_permille"`
-	FixedPrice       *int64 `json:"fixed_price"`
-	AddCorePermille  int    `json:"add_core_permille"`
-	AddMemPermille   int    `json:"add_mem_permille"`
-	AddDiskPermille  int    `json:"add_disk_permille"`
-	AddBWPermille    int    `json:"add_bw_permille"`
+	// FixedPrice is an optional fixed monthly price in CENTS (分), not yuan.
+	// Nil means "no fixed price — apply permille discounts instead".
+	// Do NOT convert with centsToFloat/floatToCents; it is passed through to the
+	// domain model and stored as integer cents (see UserTierDiscountRule.MonthlyPrice).
+	FixedPrice      *int64 `json:"fixed_price"`
+	AddCorePermille int    `json:"add_core_permille"`
+	AddMemPermille  int    `json:"add_mem_permille"`
+	AddDiskPermille int    `json:"add_disk_permille"`
+	AddBWPermille   int    `json:"add_bw_permille"`
 }
 
 type UserTierAutoRuleDTO struct {
@@ -830,8 +836,230 @@ func toPaymentProviderDTO(info appshared.PaymentProviderInfo) PaymentProviderDTO
 		OrderEnabled:  info.OrderEnabled,
 		WalletEnabled: info.WalletEnabled,
 		SchemaJSON:    info.SchemaJSON,
-		ConfigJSON:    info.ConfigJSON,
+		ConfigJSON:    redactPaymentConfigJSON(info.ConfigJSON, info.SchemaJSON),
 	}
+}
+
+// redactPaymentConfigJSON masks secret-keyed fields in a payment provider's
+// config JSON before it is echoed to an admin session (P2-13). The config can
+// carry merchant keys, app secrets and API keys; only the masked form must be
+// returned by the list endpoint.
+func redactPaymentConfigJSON(configJSON string, schemaJSON ...string) string {
+	raw := strings.TrimSpace(configJSON)
+	if raw == "" {
+		return raw
+	}
+	var config any
+	if err := json.Unmarshal([]byte(raw), &config); err != nil {
+		return "{}"
+	}
+	switch config.(type) {
+	case map[string]any, []any:
+	default:
+		masked, _ := json.Marshal(apppayment.ConfigSecretMask)
+		return string(masked)
+	}
+	secretPaths := paymentSchemaSecretPaths(schemaJSON)
+	changed := redactPaymentConfigValue(config, "", secretPaths)
+	if !changed {
+		return raw
+	}
+	out, err := json.Marshal(config)
+	if err != nil {
+		return raw
+	}
+	return string(out)
+}
+
+func redactPaymentConfigValue(value any, path string, schemaSecrets map[string]struct{}) bool {
+	changed := false
+	switch node := value.(type) {
+	case map[string]any:
+		for key, child := range node {
+			childPath := key
+			if path != "" {
+				childPath = path + "." + key
+			}
+			if isPaymentConfigSecretKey(key) || hasPaymentSchemaSecret(schemaSecrets, childPath) {
+				node[key] = apppayment.ConfigSecretMask
+				changed = true
+				continue
+			}
+			changed = redactPaymentConfigValue(child, childPath, schemaSecrets) || changed
+		}
+	case []any:
+		for index, child := range node {
+			childPath := fmt.Sprintf("%s[%d]", path, index)
+			if hasPaymentSchemaSecret(schemaSecrets, childPath) {
+				node[index] = apppayment.ConfigSecretMask
+				changed = true
+				continue
+			}
+			changed = redactPaymentConfigValue(child, childPath, schemaSecrets) || changed
+		}
+	}
+	return changed
+}
+
+func paymentSchemaSecretPaths(schemaJSON []string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, raw := range schemaJSON {
+		var root map[string]any
+		if json.Unmarshal([]byte(raw), &root) != nil {
+			continue
+		}
+		activeRefs := map[string]bool{}
+		nodesVisited := 0
+		var walk func(map[string]any, string, int)
+		walk = func(node map[string]any, prefix string, depth int) {
+			nodesVisited++
+			if depth > 64 || nodesVisited > 4096 {
+				if prefix != "" {
+					result[prefix] = struct{}{}
+				}
+				return
+			}
+			if secret, ok := node["x-secret"].(bool); ok && secret && prefix != "" {
+				result[prefix] = struct{}{}
+			}
+			if format, _ := node["format"].(string); strings.EqualFold(format, "password") && prefix != "" {
+				result[prefix] = struct{}{}
+			}
+			properties, _ := node["properties"].(map[string]any)
+			for key, child := range properties {
+				childMap, ok := child.(map[string]any)
+				if ok {
+					childPrefix := key
+					if prefix != "" {
+						childPrefix = prefix + "." + key
+					}
+					walk(childMap, childPrefix, depth+1)
+				}
+			}
+			if items, ok := node["items"].(map[string]any); ok {
+				walk(items, prefix+"[]", depth+1)
+			}
+			if additional, ok := node["additionalProperties"].(map[string]any); ok {
+				additionalPrefix := "*"
+				if prefix != "" {
+					additionalPrefix = prefix + ".*"
+				}
+				walk(additional, additionalPrefix, depth+1)
+			}
+			for _, composition := range []string{"allOf", "oneOf", "anyOf"} {
+				variants, _ := node[composition].([]any)
+				for _, variant := range variants {
+					if variantMap, ok := variant.(map[string]any); ok {
+						walk(variantMap, prefix, depth+1)
+					}
+				}
+			}
+			if ref, _ := node["$ref"].(string); strings.HasPrefix(ref, "#/$defs/") || strings.HasPrefix(ref, "#/definitions/") {
+				if activeRefs[ref] {
+					// Recursive schemas can describe arbitrarily deep config trees. Once
+					// the same reference re-enters the current chain, mask that subtree
+					// rather than recursing forever or leaking deeper credentials.
+					if prefix != "" {
+						result[prefix] = struct{}{}
+					}
+					return
+				}
+				activeRefs[ref] = true
+				defer delete(activeRefs, ref)
+				segments := strings.Split(strings.TrimPrefix(ref, "#/"), "/")
+				var current any = root
+				for _, segment := range segments {
+					mapping, ok := current.(map[string]any)
+					if !ok {
+						current = nil
+						break
+					}
+					current = mapping[segment]
+				}
+				if refMap, ok := current.(map[string]any); ok {
+					walk(refMap, prefix, depth+1)
+				}
+			}
+		}
+		walk(root, "", 0)
+	}
+	return result
+}
+
+func hasPaymentSchemaSecret(paths map[string]struct{}, path string) bool {
+	normalizedPath := normalizePaymentConfigPath(path)
+	if _, ok := paths[normalizedPath]; ok {
+		return true
+	}
+	actualSegments := strings.Split(normalizedPath, ".")
+	for pattern := range paths {
+		patternSegments := strings.Split(pattern, ".")
+		if len(patternSegments) != len(actualSegments) {
+			continue
+		}
+		matches := true
+		for index := range patternSegments {
+			if patternSegments[index] != "*" && patternSegments[index] != actualSegments[index] {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizePaymentConfigPath(path string) string {
+	var builder strings.Builder
+	for index := 0; index < len(path); index++ {
+		if path[index] != '[' {
+			builder.WriteByte(path[index])
+			continue
+		}
+		end := strings.IndexByte(path[index:], ']')
+		if end <= 0 {
+			builder.WriteByte(path[index])
+			continue
+		}
+		builder.WriteString("[]")
+		index += end
+	}
+	return builder.String()
+}
+
+// isPaymentConfigSecretKey reports whether a payment-channel config field holds
+// a credential. It reuses the settings secret-key patterns and additionally
+// treats merchant signing fields (`_key` / `private_key` / `sign_key`) as
+// secrets. Scoped to payment provider configs only, so the broader `_key`
+// suffix is acceptable here — the common secret fields in channel configs are
+// exactly those (merchant_key, app_key, api_key, sign_key, private_key).
+func isPaymentConfigSecretKey(key string) bool {
+	if isSecretSettingKey(key) {
+		return true
+	}
+	k := strings.ToLower(strings.TrimSpace(key))
+	normalized := strings.NewReplacer("_", "", "-", "", ".", "").Replace(k)
+	// Provider schemas are extensible and commonly use camelCase rather than
+	// the site's snake_case setting names. Keep this explicit list narrow enough
+	// to avoid masking ordinary labels while covering the credential spellings
+	// used by SDKs and payment gateways.
+	for _, exact := range []string{
+		"apikey", "appkey", "secretkey", "privatekey", "signingkey", "clientsecret",
+		"clientidsecret", "accesstoken", "refreshtoken", "merchantkey", "merchantsecret",
+		"password", "secret", "token", "webhooksecret", "hmackey",
+	} {
+		if normalized == exact {
+			return true
+		}
+	}
+	for _, suffix := range []string{"_key", "_private_key", "_sign_key", "_signing_key"} {
+		if strings.HasSuffix(k, suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func toPaymentProviderDTOs(items []appshared.PaymentProviderInfo) []PaymentProviderDTO {
@@ -844,11 +1072,11 @@ func toPaymentProviderDTOs(items []appshared.PaymentProviderInfo) []PaymentProvi
 
 func toPaymentMethodDTO(info appshared.PaymentMethodInfo) PaymentMethodDTO {
 	return PaymentMethodDTO{
-		Key:        info.Key,
-		Name:       info.Name,
-		SchemaJSON: info.SchemaJSON,
-		ConfigJSON: info.ConfigJSON,
-		Balance:    centsToFloat(info.Balance),
+		Key:          info.Key,
+		Name:         info.Name,
+		Instructions: info.Instructions,
+		Notice:       info.Notice,
+		Balance:      centsToFloat(info.Balance),
 	}
 }
 
@@ -939,7 +1167,7 @@ func toNotificationDTO(item domain.Notification) NotificationDTO {
 	}
 }
 
-func toRealNameVerificationDTO(item domain.RealNameVerification) RealNameVerificationDTO {
+func toRealNameVerificationDTO(item domain.RealNameVerification, redirectURL string) RealNameVerificationDTO {
 	return RealNameVerificationDTO{
 		ID:          item.ID,
 		UserID:      item.UserID,
@@ -948,10 +1176,22 @@ func toRealNameVerificationDTO(item domain.RealNameVerification) RealNameVerific
 		Status:      item.Status,
 		Provider:    item.Provider,
 		Reason:      item.Reason,
-		RedirectURL: parsePendingRedirectURL(item.Reason),
+		RedirectURL: redirectURL,
 		CreatedAt:   item.CreatedAt,
 		VerifiedAt:  item.VerifiedAt,
 	}
+}
+
+// realNameRedirectURL resolves the face-verification redirect URL for a record:
+// new records keep it in the encrypted provider_state (decrypted by the
+// service), legacy records still embed it in Reason. Never returns the token.
+func (h *Handler) realNameRedirectURL(ctx context.Context, record domain.RealNameVerification) string {
+	if h.realNameSvc != nil {
+		if u := h.realNameSvc.PendingRedirectURL(ctx, record); u != "" {
+			return u
+		}
+	}
+	return parsePendingRedirectURL(record.Reason)
 }
 
 func parsePendingRedirectURL(reason string) string {
@@ -1032,6 +1272,24 @@ func toVPSInstanceDTO(inst domain.VPSInstance) VPSInstanceDTO {
 	}
 }
 
+// toUserVPSInstanceDTO is the user-facing VPS shape (P2-4): it mirrors
+// toVPSInstanceDTO but NEVER carries AccessInfo — the map contains the panel,
+// VNC and OS passwords and must not be echoed to list/detail/monitor responses.
+// Credentials are served only by the explicit, audited credentials endpoint.
+func toUserVPSInstanceDTO(inst domain.VPSInstance) VPSInstanceDTO {
+	dto := toVPSInstanceDTO(inst)
+	dto.AccessInfo = nil
+	return dto
+}
+
+func toUserVPSInstanceDTOs(items []domain.VPSInstance) []VPSInstanceDTO {
+	out := make([]VPSInstanceDTO, 0, len(items))
+	for _, item := range items {
+		out = append(out, toUserVPSInstanceDTO(item))
+	}
+	return out
+}
+
 func toOrderEventDTO(event domain.OrderEvent) OrderEventDTO {
 	return OrderEventDTO{
 		ID:        event.ID,
@@ -1044,13 +1302,20 @@ func toOrderEventDTO(event domain.OrderEvent) OrderEventDTO {
 }
 
 func toAdminAuditLogDTO(log domain.AdminAuditLog) AdminAuditLogDTO {
+	detail := parseRawJSON(log.DetailJSON)
+	// Defensive redaction: historical settings.update rows may still carry a
+	// plaintext secret even though new writes are masked at the service layer.
+	if strings.EqualFold(strings.TrimSpace(log.Action), "settings.update") &&
+		isSecretSettingKey(log.TargetID) {
+		detail = json.RawMessage(`{"value":"***"}`)
+	}
 	return AdminAuditLogDTO{
 		ID:         log.ID,
 		AdminID:    log.AdminID,
 		Action:     log.Action,
 		TargetType: log.TargetType,
 		TargetID:   log.TargetID,
-		Detail:     parseRawJSON(log.DetailJSON),
+		Detail:     detail,
 		CreatedAt:  log.CreatedAt,
 	}
 }
@@ -1070,9 +1335,13 @@ func toAPIKeyDTO(key domain.APIKey) APIKeyDTO {
 }
 
 func toSettingDTO(setting domain.Setting) SettingDTO {
+	value := normalizeSettingValue(setting.Key, setting.ValueJSON)
+	if isPluginUploadPasswordSetting(setting.Key) && strings.TrimSpace(value) != "" {
+		value = pluginUploadPasswordMask
+	}
 	return SettingDTO{
 		Key:       setting.Key,
-		Value:     normalizeSettingValue(setting.Key, setting.ValueJSON),
+		Value:     value,
 		UpdatedAt: setting.UpdatedAt,
 	}
 }
@@ -1186,14 +1455,6 @@ func toOrderPaymentDTOs(items []domain.OrderPayment) []OrderPaymentDTO {
 	return out
 }
 
-func toVPSInstanceDTOs(items []domain.VPSInstance) []VPSInstanceDTO {
-	out := make([]VPSInstanceDTO, 0, len(items))
-	for _, item := range items {
-		out = append(out, toVPSInstanceDTO(item))
-	}
-	return out
-}
-
 func toOrderEventDTOs(items []domain.OrderEvent) []OrderEventDTO {
 	out := make([]OrderEventDTO, 0, len(items))
 	for _, item := range items {
@@ -1254,8 +1515,11 @@ func maskIDNumber(idNumber string) string {
 	if idNumber == "" {
 		return ""
 	}
+	if len(idNumber) <= 4 {
+		return "****"
+	}
 	if len(idNumber) <= 8 {
-		return idNumber
+		return idNumber[:2] + "****"
 	}
 	return idNumber[:4] + "****" + idNumber[len(idNumber)-4:]
 }
@@ -1331,7 +1595,9 @@ func parseAnyInt64(value any) (int64, bool) {
 	case int32:
 		return int64(v), true
 	case float64:
-		return int64(v), true
+		// Order-item spec amounts are integer cents; if a fractional float slips in
+		// (e.g. JSON 9.99), round to the nearest cent instead of truncating to 9.
+		return int64(math.Round(v)), true
 	case string:
 		n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
 		return n, err == nil
@@ -1366,8 +1632,65 @@ func parseStringArray(payload string) []string {
 	return out
 }
 
+// settingsSecretMask 掩码占位：后端设置列表绝不回显密钥明文，编辑提交时值为
+// 掩码/空 则保留原值不覆盖（web_auth_surface F6）。
+const settingsSecretMask = "********"
+
+var secretSettingKeys = map[string]bool{
+	"smtp_pass":                      true,
+	"payment_plugin_upload_password": true,
+	"robot_webhook_secret":           true,
+	"robot_webhook_key":              true,
+	"robot_webhooks":                 true,
+	"automation_api_key":             true,
+	"auth_geetest_captcha_key":       true,
+	"fcm_server_key":                 true,
+	"fcm_service_account_json":       true,
+}
+
+// isSecretSettingKey reports whether a settings key holds a credential that
+// must never be echoed back or written into the audit log. It matches an
+// explicit allowlist plus common credential suffixes.
+func isSecretSettingKey(key string) bool {
+	k := strings.ToLower(strings.TrimSpace(key))
+	if secretSettingKeys[k] {
+		return true
+	}
+	for _, suffix := range []string{"_secret", "_token", "_password", "_pass", "_api_key", "apikey", "appkey"} {
+		if strings.HasSuffix(k, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeSettingValue(key, value string) string {
+	// robot_webhooks is deep-redacted separately (redactRobotWebhooksValue
+	// preserves URLs/names/events); masking the whole value would break the
+	// robot config page.
+	if strings.EqualFold(strings.TrimSpace(key), "robot_webhooks") {
+		return value
+	}
+	if isSecretSettingKey(key) && value != "" {
+		return settingsSecretMask
+	}
 	return value
+}
+
+// pluginUploadPasswordMask is returned in place of the real payment plugin
+// upload password in the admin settings list. The update path treats this
+// literal as "keep the existing value" so a read-modify-write round trip does
+// not overwrite the secret with the mask.
+const pluginUploadPasswordMask = "******"
+
+// pluginUploadPasswordSettingKey is the settings key that gates plugin package
+// uploads. It is a credential and must not be echoed in plaintext.
+const pluginUploadPasswordSettingKey = "payment_plugin_upload_password"
+
+// isPluginUploadPasswordSetting reports whether a settings key is the plugin
+// upload password.
+func isPluginUploadPasswordSetting(key string) bool {
+	return strings.EqualFold(strings.TrimSpace(key), pluginUploadPasswordSettingKey)
 }
 
 func isLikelyJSONSettingKey(key string) bool {
@@ -1378,18 +1701,9 @@ func isLikelyJSONSettingKey(key string) bool {
 	if strings.HasSuffix(k, "_json") || strings.HasPrefix(k, "task.") {
 		return true
 	}
-	switch k {
-	case "site_nav_items",
-		"auth_register_required_fields",
-		"auth_register_verify_channels",
-		"auth_login_notify_channels",
-		"auth_password_reset_channels",
-		"realname_block_actions",
-		"robot_webhooks":
-		return true
-	default:
-		return false
-	}
+	// Named JSON settings keys are consolidated in app/shared (P3-4) so the
+	// handler and the repo layer cannot drift from each other.
+	return appshared.IsNamedJSONSettingKey(k)
 }
 
 func parseCouponProductRules(payload string) []domain.CouponProductRule {

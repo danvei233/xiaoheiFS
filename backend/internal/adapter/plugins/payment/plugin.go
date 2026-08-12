@@ -1,7 +1,10 @@
 package paymentplugin
 
 import (
+	"fmt"
 	"net/rpc"
+	"strings"
+	"time"
 
 	"github.com/hashicorp/go-plugin"
 
@@ -20,12 +23,40 @@ var Handshake = plugin.HandshakeConfig{
 	MagicCookieValue: MagicCookieValue,
 }
 
+// paymentPluginRPCTimeout bounds each net/rpc call to a legacy payment plugin.
+// net/rpc has no per-call deadline of its own; without this a hung plugin would
+// block the payment/create/notify request forever.
+var paymentPluginRPCTimeout = 60 * time.Second
+
+// isUnknownRPCMethod reports the net/rpc "method not found" error, which means
+// the legacy plugin binary predates the versioned VerifyNotifyV2 contract.
+func isUnknownRPCMethod(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "plugin.verifynotifyv2") {
+		return false
+	}
+	return strings.Contains(msg, "can't find method") ||
+		strings.Contains(msg, "can't find service") ||
+		strings.Contains(msg, "unknown method")
+}
+
 type Provider interface {
 	Key() string
 	Name() string
 	SchemaJSON() string
 	SetConfig(configJSON string) error
 	CreatePayment(req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error)
+	// VerifyNotifyV2 is the versioned notify contract: the plugin receives the
+	// original HTTP callback (method/path/raw query/headers/body) so signature
+	// verification can use the raw signing materials instead of a lossy
+	// params map. The host refuses to fall back to VerifyNotifyV1.
+	VerifyNotifyV2(req appshared.RawHTTPRequest) (appshared.PaymentNotifyResult, error)
+	// Deprecated: VerifyNotify(params) is the retired v1 callback. New plugins
+	// must implement VerifyNotifyV2; the host never calls this for a plugin
+	// that supports V2, and refuses to downgrade a callback to params.
 	VerifyNotify(params map[string]string) (appshared.PaymentNotifyResult, error)
 }
 
@@ -56,43 +87,98 @@ type NotifyArgs struct {
 	Params map[string]string
 }
 
+type NotifyV2Args struct {
+	Request appshared.RawHTTPRequest
+}
+
 type providerRPC struct {
 	client *rpc.Client
 }
 
 func (p *providerRPC) Key() string {
 	var resp string
-	_ = p.client.Call("Plugin.Key", EmptyArgs{}, &resp)
-	return resp
+	call := p.client.Go("Plugin.Key", EmptyArgs{}, &resp, nil)
+	select {
+	case <-call.Done:
+		return resp
+	case <-time.After(paymentPluginRPCTimeout):
+		return ""
+	}
 }
 
 func (p *providerRPC) Name() string {
 	var resp string
-	_ = p.client.Call("Plugin.Name", EmptyArgs{}, &resp)
-	return resp
+	call := p.client.Go("Plugin.Name", EmptyArgs{}, &resp, nil)
+	select {
+	case <-call.Done:
+		return resp
+	case <-time.After(paymentPluginRPCTimeout):
+		return ""
+	}
 }
 
 func (p *providerRPC) SchemaJSON() string {
 	var resp string
-	_ = p.client.Call("Plugin.SchemaJSON", EmptyArgs{}, &resp)
-	return resp
+	call := p.client.Go("Plugin.SchemaJSON", EmptyArgs{}, &resp, nil)
+	select {
+	case <-call.Done:
+		return resp
+	case <-time.After(paymentPluginRPCTimeout):
+		return ""
+	}
 }
 
 func (p *providerRPC) SetConfig(configJSON string) error {
 	var resp bool
-	return p.client.Call("Plugin.SetConfig", ConfigArgs{ConfigJSON: configJSON}, &resp)
+	call := p.client.Go("Plugin.SetConfig", ConfigArgs{ConfigJSON: configJSON}, &resp, nil)
+	select {
+	case <-call.Done:
+		return call.Error
+	case <-time.After(paymentPluginRPCTimeout):
+		return fmt.Errorf("payment plugin SetConfig timed out after %s", paymentPluginRPCTimeout)
+	}
 }
 
 func (p *providerRPC) CreatePayment(req appshared.PaymentCreateRequest) (appshared.PaymentCreateResult, error) {
 	var resp appshared.PaymentCreateResult
-	err := p.client.Call("Plugin.CreatePayment", CreateArgs{Request: req}, &resp)
-	return resp, err
+	call := p.client.Go("Plugin.CreatePayment", CreateArgs{Request: req}, &resp, nil)
+	select {
+	case <-call.Done:
+		return resp, call.Error
+	case <-time.After(paymentPluginRPCTimeout):
+		return appshared.PaymentCreateResult{}, fmt.Errorf("payment plugin CreatePayment timed out after %s", paymentPluginRPCTimeout)
+	}
 }
 
 func (p *providerRPC) VerifyNotify(params map[string]string) (appshared.PaymentNotifyResult, error) {
 	var resp appshared.PaymentNotifyResult
-	err := p.client.Call("Plugin.VerifyNotify", NotifyArgs{Params: params}, &resp)
-	return resp, err
+	call := p.client.Go("Plugin.VerifyNotify", NotifyArgs{Params: params}, &resp, nil)
+	select {
+	case <-call.Done:
+		return resp, call.Error
+	case <-time.After(paymentPluginRPCTimeout):
+		return appshared.PaymentNotifyResult{}, fmt.Errorf("payment plugin VerifyNotify timed out after %s", paymentPluginRPCTimeout)
+	}
+}
+
+// VerifyNotifyV2 carries the full original HTTP callback to the plugin. An
+// "unknown method" response means the legacy plugin binary predates V2; the host
+// treats that as fail-closed (never downgrades to the lossy params map).
+func (p *providerRPC) VerifyNotifyV2(req appshared.RawHTTPRequest) (appshared.PaymentNotifyResult, error) {
+	var resp appshared.PaymentNotifyResult
+	call := p.client.Go("Plugin.VerifyNotifyV2", NotifyV2Args{Request: req}, &resp, nil)
+	select {
+	case <-call.Done:
+		if call.Error != nil {
+			if isUnknownRPCMethod(call.Error) {
+				return appshared.PaymentNotifyResult{}, fmt.Errorf("payment plugin does not support the versioned VerifyNotifyV2 contract; refusing to downgrade to params")
+			}
+			return appshared.PaymentNotifyResult{}, call.Error
+		}
+		return resp, nil
+	case <-time.After(paymentPluginRPCTimeout):
+		return appshared.PaymentNotifyResult{}, fmt.Errorf("payment plugin VerifyNotifyV2 timed out after %s", paymentPluginRPCTimeout)
+	}
 }
 
 type providerRPCServer struct {
@@ -130,6 +216,15 @@ func (p *providerRPCServer) CreatePayment(args CreateArgs, resp *appshared.Payme
 
 func (p *providerRPCServer) VerifyNotify(args NotifyArgs, resp *appshared.PaymentNotifyResult) error {
 	result, err := p.Impl.VerifyNotify(args.Params)
+	if err != nil {
+		return err
+	}
+	*resp = result
+	return nil
+}
+
+func (p *providerRPCServer) VerifyNotifyV2(args NotifyV2Args, resp *appshared.PaymentNotifyResult) error {
+	result, err := p.Impl.VerifyNotifyV2(args.Request)
 	if err != nil {
 		return err
 	}

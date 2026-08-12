@@ -71,19 +71,32 @@ func (r *GormRepo) GetCMSCategoryByKey(ctx context.Context, key, lang string) (d
 }
 
 func (r *GormRepo) CreateCMSCategory(ctx context.Context, category *domain.CMSCategory) error {
-	row := cmsCategoryRow{
-		Key:       category.Key,
-		Name:      category.Name,
-		Lang:      category.Lang,
-		SortOrder: category.SortOrder,
-		Visible:   boolToInt(category.Visible),
+	// visible has `default:1` in the schema. GORM omits zero-valued fields that
+	// carry a default tag, so inserting a hidden category (visible=false) would
+	// silently fall back to the DB default of 1. Force the value via a map.
+	now := time.Now()
+	vals := map[string]any{
+		"key":        category.Key,
+		"name":       category.Name,
+		"lang":       category.Lang,
+		"sort_order": category.SortOrder,
+		"visible":    boolToInt(category.Visible),
+		"created_at": now,
+		"updated_at": now,
 	}
-	if err := r.gdb.WithContext(ctx).Create(&row).Error; err != nil {
+	if err := r.gdb.WithContext(ctx).Model(&cmsCategoryRow{}).Create(vals).Error; err != nil {
 		return err
 	}
-	category.ID = row.ID
-	category.CreatedAt = row.CreatedAt
-	category.UpdatedAt = row.UpdatedAt
+	// Re-read the inserted row so ID/timestamps are populated.
+	var created cmsCategoryRow
+	if err := r.gdb.WithContext(ctx).Model(&cmsCategoryRow{}).
+		Where("key = ? AND lang = ?", category.Key, category.Lang).
+		Order("id DESC").First(&created).Error; err != nil {
+		return err
+	}
+	category.ID = created.ID
+	category.CreatedAt = created.CreatedAt
+	category.UpdatedAt = created.UpdatedAt
 	return nil
 }
 
@@ -114,7 +127,11 @@ func (r *GormRepo) ListCMSPosts(ctx context.Context, filter appshared.CMSPostFil
 		q = q.Where("cms_posts.status = ?", filter.Status)
 	}
 	if filter.PublishedOnly {
-		q = q.Where("cms_posts.status = ?", "published")
+		// Published-only reads are the public surface: posts under a hidden
+		// category must not be exposed.
+		q = q.Where("cms_posts.status = ?", "published").
+			Joins("JOIN cms_categories cv ON cv.id = cms_posts.category_id").
+			Where("cv.visible = ?", true)
 	}
 	if filter.Lang != "" {
 		q = q.Where("cms_posts.lang = ?", filter.Lang)
@@ -181,8 +198,15 @@ func (r *GormRepo) GetCMSPost(ctx context.Context, id int64) (domain.CMSPost, er
 }
 
 func (r *GormRepo) GetCMSPostBySlug(ctx context.Context, slug string) (domain.CMSPost, error) {
+	// This is the public detail lookup: only published posts under a visible
+	// category are exposed. The listing path already filters by category
+	// visibility; without the same join here, a hidden-category post could still
+	// be read by guessing its slug.
 	var row cmsPostRow
-	if err := r.gdb.WithContext(ctx).Where("slug = ?", slug).First(&row).Error; err != nil {
+	if err := r.gdb.WithContext(ctx).
+		Joins("JOIN cms_categories cv ON cv.id = cms_posts.category_id").
+		Where("cms_posts.slug = ? AND cms_posts.status = ? AND cv.visible = ?", slug, "published", true).
+		First(&row).Error; err != nil {
 		return domain.CMSPost{}, r.ensure(err)
 	}
 	return domain.CMSPost{

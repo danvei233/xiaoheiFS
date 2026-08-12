@@ -205,3 +205,76 @@ func TestScanUser_NullCreatedUpdatedAt(t *testing.T) {
 		t.Fatalf("expected zero timestamps when db value is null")
 	}
 }
+
+// scanUser and scanWalletOrder are the only remaining users of the legacy
+// hand-written scan helpers (all production queries go through GORM). They
+// are kept next to the test that exercises them.
+func scanUser(row scanner) (domain.User, error) {
+	var u domain.User
+	var email sql.NullString
+	var qq sql.NullString
+	var avatar sql.NullString
+	var phone sql.NullString
+	var bio sql.NullString
+	var intro sql.NullString
+	var permissionGroupID sql.NullInt64
+	var createdAt sql.NullTime
+	var updatedAt sql.NullTime
+	if err := row.Scan(&u.ID, &u.Username, &email, &qq, &avatar, &phone, &bio, &intro, &permissionGroupID, &u.PasswordHash, &u.Role, &u.Status, &createdAt, &updatedAt); err != nil {
+		return domain.User{}, rEnsure(err)
+	}
+	if email.Valid {
+		u.Email = email.String
+	}
+	if qq.Valid {
+		u.QQ = qq.String
+	}
+	if avatar.Valid {
+		u.Avatar = avatar.String
+	}
+	if phone.Valid {
+		u.Phone = phone.String
+	}
+	if bio.Valid {
+		u.Bio = bio.String
+	}
+	if intro.Valid {
+		u.Intro = intro.String
+	}
+	if permissionGroupID.Valid {
+		u.PermissionGroupID = &permissionGroupID.Int64
+	}
+	if createdAt.Valid {
+		u.CreatedAt = createdAt.Time
+	}
+	if updatedAt.Valid {
+		u.UpdatedAt = updatedAt.Time
+	}
+	return u, nil
+}
+func scanWalletOrder(row scanner) (domain.WalletOrder, error) {
+	var order domain.WalletOrder
+	var reviewed sql.NullInt64
+	var reason sql.NullString
+	var createdAt sql.NullTime
+	var updatedAt sql.NullTime
+	if err := row.Scan(&order.ID, &order.UserID, &order.Type, &order.Amount, &order.Currency, &order.Status, &order.Note, &order.MetaJSON, &reviewed, &reason, &createdAt, &updatedAt); err != nil {
+		return domain.WalletOrder{}, rEnsure(err)
+	}
+	if reviewed.Valid {
+		order.ReviewedBy = &reviewed.Int64
+	}
+	if reason.Valid {
+		order.ReviewReason = reason.String
+	}
+	if createdAt.Valid {
+		order.CreatedAt = createdAt.Time
+	}
+	if updatedAt.Valid {
+		order.UpdatedAt = updatedAt.Time
+	}
+	return order, nil
+}
+type scanner interface {
+	Scan(dest ...any) error
+}

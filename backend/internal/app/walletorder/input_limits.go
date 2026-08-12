@@ -12,6 +12,11 @@ const (
 	maxLenPaymentNote  = 1000
 	maxLenReviewReason = 1000
 	maxLenRefundReason = 1000
+
+	// maxWalletOrderAmountCents is a defensive ceiling for a single
+	// recharge/withdraw order (1 billion CNY in cents). It exists only to
+	// reject absurd amounts; business-grade limits belong in settings.
+	maxWalletOrderAmountCents int64 = 100_000_000_000
 )
 
 var walletOrderFieldValidator = validator.New()

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -338,7 +337,6 @@ class _UserDetailScreenState extends State<UserDetailScreen> {
       ).showSnackBar(const SnackBar(content: Text('未获取到用户令牌')));
       return;
     }
-    await Clipboard.setData(ClipboardData(text: token));
     final baseUrl = context.read<AppState>().apiClient?.baseUrl ?? '';
     final url = _buildImpersonateConsoleUri(baseUrl, token);
     final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
@@ -1014,10 +1012,13 @@ class _Avatar extends StatelessWidget {
     if (url.isEmpty) {
       return CircleAvatar(radius: radius, child: const Icon(Icons.person));
     }
-    final session = context.read<AppState>().session;
+    final app = context.read<AppState>();
+    final session = app.session;
     final headers = avatarHeaders(
       token: session?.token,
       apiKey: session?.apiKey,
+      baseUrl: app.apiClient?.baseUrl,
+      url: url,
     );
     return CircleAvatar(
       radius: radius,

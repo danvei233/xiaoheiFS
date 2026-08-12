@@ -49,14 +49,12 @@ func TestHandlers_AdminConfigEndpoints(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create permission group: %d", rec.Code)
 	}
-	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/admin/api/v1/permission-groups", nil, token)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("list permission groups: %d", rec.Code)
-	}
 	var group struct {
-		ID int64 `json:"id"`
+		ID int64 `json:"ID"`
 	}
-	_ = json.Unmarshal(rec.Body.Bytes(), &group)
+	if err := json.Unmarshal(rec.Body.Bytes(), &group); err != nil || group.ID == 0 {
+		t.Fatalf("decode created permission group: %v (body=%s)", err, rec.Body.String())
+	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodPatch, "/admin/api/v1/permission-groups/"+testutil.Itoa(group.ID), map[string]any{
 		"name":        "ops-updated",
 		"description": "ops team updated",
@@ -84,7 +82,7 @@ func TestHandlers_AdminConfigEndpoints(t *testing.T) {
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/admins", map[string]any{
 		"username":            "opsadmin",
 		"email":               "opsadmin@example.com",
-		"password":            "pass",
+		"password":            "pass123",
 		"permission_group_id": groupID,
 	}, token)
 	if rec.Code != http.StatusOK {
@@ -164,13 +162,15 @@ func TestHandlers_AdminConfigEndpoints(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("smtp config update: %d", rec.Code)
 	}
+	// SMTP test sends are restricted to the current admin's own verified email;
+	// an arbitrary recipient must be rejected with 403.
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/admin/api/v1/integrations/smtp/test", map[string]any{
 		"to":      "test@example.com",
 		"subject": "hello",
 		"body":    "test",
 	}, token)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("smtp test expected error: %d", rec.Code)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("smtp test expected 403 for arbitrary recipient, got %d", rec.Code)
 	}
 
 	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/admin/api/v1/email-templates", nil, token)

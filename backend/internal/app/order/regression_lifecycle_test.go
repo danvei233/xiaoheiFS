@@ -2,10 +2,14 @@ package order
 
 import (
 	"context"
+	"errors"
+	"gorm.io/gorm"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	appports "xiaoheiplay/internal/app/ports"
 	apprealname "xiaoheiplay/internal/app/realname"
 	appvps "xiaoheiplay/internal/app/vps"
 	"xiaoheiplay/internal/domain"
@@ -15,6 +19,21 @@ type fakeLifecycleSettingsRepo struct {
 	values map[string]string
 }
 
+func (f *fakeLifecycleSettingsRepo) UpdateSettingAtomic(ctx context.Context, key string, mutate func(current string) (string, error)) error {
+	current, err := f.GetSetting(ctx, key)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			current = domain.Setting{}
+		} else {
+			return err
+		}
+	}
+	next, err := mutate(current.ValueJSON)
+	if err != nil {
+		return err
+	}
+	return f.UpsertSetting(ctx, domain.Setting{Key: key, ValueJSON: next})
+}
 func (f *fakeLifecycleSettingsRepo) GetSetting(ctx context.Context, key string) (domain.Setting, error) {
 	if f.values == nil {
 		return domain.Setting{}, ErrNotFound
@@ -31,6 +50,15 @@ func (f *fakeLifecycleSettingsRepo) UpsertSetting(ctx context.Context, setting d
 		f.values = map[string]string{}
 	}
 	f.values[setting.Key] = setting.ValueJSON
+	return nil
+}
+
+func (f *fakeLifecycleSettingsRepo) UpsertSettings(ctx context.Context, settings []domain.Setting) error {
+	for _, setting := range settings {
+		if err := f.UpsertSetting(ctx, setting); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -59,11 +87,12 @@ func (f *fakeLifecycleSettingsRepo) DeleteEmailTemplate(ctx context.Context, id 
 }
 
 type fakeLifecycleVPSRepo struct {
-	inst          domain.VPSInstance
-	updates       []time.Time
-	deletes       []int64
-	expiring      []domain.VPSInstance
-	statusUpdates []struct {
+	inst            domain.VPSInstance
+	updates         []time.Time
+	updateExpireErr error
+	deletes         []int64
+	expiring        []domain.VPSInstance
+	statusUpdates   []struct {
 		ID              int64
 		Status          domain.VPSStatus
 		AutomationState int
@@ -86,10 +115,31 @@ func (f *fakeLifecycleVPSRepo) GetInstance(ctx context.Context, id int64) (domai
 func (f *fakeLifecycleVPSRepo) GetInstanceByOrderItem(ctx context.Context, orderItemID int64) (domain.VPSInstance, error) {
 	return domain.VPSInstance{}, ErrNotFound
 }
+func (f *fakeLifecycleVPSRepo) ListInstancesByUserFiltered(ctx context.Context, userID int64, filter appports.VPSUserInstanceFilter, limit, offset int) ([]domain.VPSInstance, int, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	items, err := f.ListInstancesByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	start := offset
+	if start > len(items) {
+		start = len(items)
+	}
+	end := start + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end], len(items), nil
+}
 func (f *fakeLifecycleVPSRepo) ListInstancesByUser(ctx context.Context, userID int64) ([]domain.VPSInstance, error) {
 	return nil, nil
 }
 func (f *fakeLifecycleVPSRepo) ListInstances(ctx context.Context, limit, offset int) ([]domain.VPSInstance, int, error) {
+	return nil, 0, nil
+}
+func (f *fakeLifecycleVPSRepo) ListInstancesFiltered(ctx context.Context, filter appports.VPSInstanceFilter, limit, offset int) ([]domain.VPSInstance, int, error) {
 	return nil, 0, nil
 }
 func (f *fakeLifecycleVPSRepo) ListInstancesExpiring(ctx context.Context, before time.Time) ([]domain.VPSInstance, error) {
@@ -116,7 +166,7 @@ func (f *fakeLifecycleVPSRepo) UpdateInstanceAdminStatus(ctx context.Context, id
 }
 func (f *fakeLifecycleVPSRepo) UpdateInstanceExpireAt(ctx context.Context, id int64, expireAt time.Time) error {
 	f.updates = append(f.updates, expireAt)
-	return nil
+	return f.updateExpireErr
 }
 func (f *fakeLifecycleVPSRepo) UpdateInstancePanelCache(ctx context.Context, id int64, panelURL string) error {
 	return nil
@@ -135,11 +185,14 @@ func (f *fakeLifecycleVPSRepo) UpdateInstanceLocal(ctx context.Context, inst dom
 }
 
 type fakeLifecycleOrderRepo struct {
+	mu     sync.Mutex
 	nextID int64
 	orders map[int64]domain.Order
 }
 
 func (f *fakeLifecycleOrderRepo) CreateOrder(ctx context.Context, order *domain.Order) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.orders == nil {
 		f.orders = map[int64]domain.Order{}
 	}
@@ -149,6 +202,8 @@ func (f *fakeLifecycleOrderRepo) CreateOrder(ctx context.Context, order *domain.
 	return nil
 }
 func (f *fakeLifecycleOrderRepo) GetOrder(ctx context.Context, id int64) (domain.Order, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if order, ok := f.orders[id]; ok {
 		return order, nil
 	}
@@ -161,6 +216,8 @@ func (f *fakeLifecycleOrderRepo) GetOrderByIdempotencyKey(ctx context.Context, u
 	return domain.Order{}, ErrNotFound
 }
 func (f *fakeLifecycleOrderRepo) UpdateOrderStatus(ctx context.Context, id int64, status domain.OrderStatus) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	order, ok := f.orders[id]
 	if !ok {
 		return ErrNotFound
@@ -170,11 +227,53 @@ func (f *fakeLifecycleOrderRepo) UpdateOrderStatus(ctx context.Context, id int64
 	return nil
 }
 func (f *fakeLifecycleOrderRepo) UpdateOrderMeta(ctx context.Context, order domain.Order) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.orders == nil {
 		f.orders = map[int64]domain.Order{}
 	}
 	f.orders[order.ID] = order
 	return nil
+}
+func (f *fakeLifecycleOrderRepo) ApproveOrderAtomic(ctx context.Context, order domain.Order, itemIDs []int64, tasks []*domain.ResizeTask, currentStatuses []domain.OrderStatus) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	current, ok := f.orders[order.ID]
+	if !ok {
+		return false, ErrNotFound
+	}
+	for _, status := range currentStatuses {
+		if current.Status == status {
+			f.orders[order.ID] = order
+			return true, nil
+		}
+	}
+	return false, nil
+}
+func (f *fakeLifecycleOrderRepo) RejectOrderAtomic(ctx context.Context, order domain.Order, adminID int64, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(order.ID, order.Status, currentStatuses)
+}
+func (f *fakeLifecycleOrderRepo) CancelOrderAtomic(ctx context.Context, order domain.Order, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(order.ID, domain.OrderStatusCanceled, currentStatuses)
+}
+func (f *fakeLifecycleOrderRepo) UpdateOrderStatusIfCurrent(ctx context.Context, id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(id, status, currentStatuses)
+}
+func (f *fakeLifecycleOrderRepo) updateOrderIfCurrent(id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	order, ok := f.orders[id]
+	if !ok {
+		return false, ErrNotFound
+	}
+	for _, current := range currentStatuses {
+		if order.Status == current {
+			order.Status = status
+			f.orders[id] = order
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (f *fakeLifecycleOrderRepo) ListOrders(ctx context.Context, filter OrderFilter, limit, offset int) ([]domain.Order, int, error) {
 	return nil, 0, nil
@@ -223,6 +322,19 @@ func (f *fakeLifecycleOrderItemRepo) UpdateOrderItemStatus(ctx context.Context, 
 	}
 	return ErrNotFound
 }
+func (f *fakeLifecycleOrderItemRepo) ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error) {
+	for i := range f.items {
+		if f.items[i].ID != id {
+			continue
+		}
+		if f.items[i].Status != domain.OrderItemStatusApproved && f.items[i].Status != domain.OrderItemStatusFailed {
+			return false, nil
+		}
+		f.items[i].Status = domain.OrderItemStatusProvisioning
+		return true, nil
+	}
+	return false, ErrNotFound
+}
 func (f *fakeLifecycleOrderItemRepo) UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error {
 	return nil
 }
@@ -254,7 +366,7 @@ func (f *fakeLifecycleRealNameRepo) GetLatestRealNameVerification(ctx context.Co
 	return f.latest, nil
 }
 
-func (f *fakeLifecycleRealNameRepo) ListRealNameVerifications(ctx context.Context, userID *int64, limit, offset int) ([]domain.RealNameVerification, int, error) {
+func (f *fakeLifecycleRealNameRepo) ListRealNameVerifications(ctx context.Context, userID *int64, status string, limit, offset int) ([]domain.RealNameVerification, int, error) {
 	if !f.has {
 		return nil, 0, nil
 	}
@@ -264,6 +376,13 @@ func (f *fakeLifecycleRealNameRepo) ListRealNameVerifications(ctx context.Contex
 	return []domain.RealNameVerification{f.latest}, 1, nil
 }
 
+func (f *fakeLifecycleRealNameRepo) ListPendingRealNameVerifications(ctx context.Context, afterID int64, limit int) ([]domain.RealNameVerification, error) {
+	if !f.has || f.latest.ID <= afterID || f.latest.Status != "pending" {
+		return nil, nil
+	}
+	return []domain.RealNameVerification{f.latest}, nil
+}
+
 func (f *fakeLifecycleRealNameRepo) UpdateRealNameStatus(ctx context.Context, id int64, status string, reason string, verifiedAt *time.Time) error {
 	if !f.has || f.latest.ID != id {
 		return ErrNotFound
@@ -271,6 +390,27 @@ func (f *fakeLifecycleRealNameRepo) UpdateRealNameStatus(ctx context.Context, id
 	f.latest.Status = status
 	f.latest.Reason = reason
 	f.latest.VerifiedAt = verifiedAt
+	return nil
+}
+
+func (f *fakeLifecycleRealNameRepo) UpdateRealNameProviderState(ctx context.Context, id int64, providerState string, stableReason string) error {
+	if !f.has || f.latest.ID != id {
+		return ErrNotFound
+	}
+	f.latest.ProviderState = providerState
+	f.latest.Reason = stableReason
+	return nil
+}
+
+func (f *fakeLifecycleRealNameRepo) AllowRealNameAttempt(ctx context.Context, userID int64, dimension string, max int, window time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (f *fakeLifecycleRealNameRepo) CleanupRealNameAttempts(ctx context.Context, before time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (f *fakeLifecycleRealNameRepo) MarkRealNamePolled(ctx context.Context, id int64, at time.Time) error {
 	return nil
 }
 
@@ -478,6 +618,24 @@ func TestHandleEmergencyRenew_RespectsWindowAndUpdatesExpire(t *testing.T) {
 	}
 	if len(vpsRepo.updates) != 1 {
 		t.Fatalf("expected expire update")
+	}
+}
+
+func TestHandleRenew_ReturnsLocalUpdateFailureAfterRemoteSuccess(t *testing.T) {
+	expire := time.Now().Add(24 * time.Hour)
+	vpsRepo := &fakeLifecycleVPSRepo{
+		inst:            domain.VPSInstance{ID: 7, UserID: 9, GoodsTypeID: 1, AutomationInstanceID: "1007", ExpireAt: &expire, AdminStatus: domain.VPSAdminStatusNormal, Status: domain.VPSStatusRunning},
+		updateExpireErr: context.Canceled,
+	}
+	automation := &fakeLifecycleAutomationClient{}
+	svc := NewOrderService(&fakeLifecycleOrderRepo{}, &fakeLifecycleOrderItemRepo{}, nil, nil, nil, nil, vpsRepo, nil, nil, nil, automation, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	item := domain.OrderItem{OrderID: 20, ID: 21, Action: "renew", SpecJSON: `{"vps_id":7,"renew_days":30}`}
+
+	if err := svc.handleRenew(context.Background(), item); err != context.Canceled {
+		t.Fatalf("expected local update error, got %v", err)
+	}
+	if len(automation.RenewCalls) != 1 {
+		t.Fatalf("expected remote renew before local failure, got %d calls", len(automation.RenewCalls))
 	}
 }
 

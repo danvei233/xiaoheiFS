@@ -551,6 +551,8 @@ class _HeaderSliverState extends State<_HeaderSliver> {
                               final headers = avatarHeaders(
                                 token: session?.token,
                                 apiKey: session?.apiKey,
+                                baseUrl: baseUrl,
+                                url: avatarUrl,
                               );
                               return CircleAvatar(
                                 radius: 18,

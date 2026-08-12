@@ -73,7 +73,7 @@
         v-model:columns="columnChecks"
         v-model:showSearchBar="showSearchBar"
         :loading="loading"
-        @refresh="refreshData"
+        @refresh="refreshTable"
       >
         <template #left>
           <ElSpace wrap>
@@ -215,16 +215,20 @@
   import ArtButtonTable from '@/components/core/forms/art-button-table/index.vue'
   import { useAuth } from '@/hooks/core/useAuth'
   import { useTable } from '@/hooks/core/useTable'
+  import { useLifecycleSafeTimer } from '@/hooks/core/useLifecycleSafeTimer'
   import { ElMessage, ElMessageBox } from 'element-plus'
   import ProbeDialog from './modules/probe-dialog.vue'
   import ProbeSearch from './modules/probe-search.vue'
 
   defineOptions({ name: 'ProbeList' })
 
-  const fetchAdminProbes = async (params: Record<string, unknown> = {}) =>
-    (await listAdminProbes(params)).data
-  const fetchAdminProbeSla = async (id: number | string, params: Record<string, unknown> = {}) =>
-    (await getAdminProbeSla(id, params)).data
+  const fetchAdminProbes = async (params: Record<string, unknown> = {}, signal?: AbortSignal) =>
+    (await listAdminProbes(params, signal)).data
+  const fetchAdminProbeSla = async (
+    id: number | string,
+    params: Record<string, unknown> = {},
+    signal?: AbortSignal
+  ) => (await getAdminProbeSla(id, params, signal)).data
   const fetchAdminSettings = async () => (await listSettings()).data
   const updateAdminSettings = updateSetting
   const createProbe = async (payload: Record<string, unknown>) =>
@@ -303,6 +307,10 @@
   const searchForm = ref<ProbeSearchForm>(createDefaultSearchForm())
   const dialogForm = ref<ProbeDialogFormValue>(createDefaultDialogForm())
   const slaMap = reactive<Record<string, number>>({})
+  const slaUpdatedAt = new Map<string, number>()
+
+  const SLA_CACHE_MS = 5 * 60 * 1000
+  const SLA_CONCURRENCY = 4
 
   const settingsForm = reactive({
     heartbeat_interval_sec: 20,
@@ -323,7 +331,8 @@
     resetSearchParams,
     handleSizeChange,
     handleCurrentChange,
-    refreshData
+    refreshData,
+    refreshSoft
   } = useTable({
     core: {
       apiFn: fetchProbeTable,
@@ -355,13 +364,27 @@
     }
   })
 
-  const fetchData = refreshData
+  let polling = false
+  let pollingStopped = true
+  let slaController: AbortController | null = null
+  let forceSlaRefresh = false
 
-  let poller: number | null = null
+  // web_refresh_perf F1：keep-alive 页面切后台时组件不卸载、onBeforeUnmount
+  // 不触发，裸 setTimeout 轮询会在缓存里无限续跑（后台请求风暴）。用
+  // useLifecycleSafeTimer 统一在 onDeactivated 停表、onActivated 恢复。
+  const { schedule: schedulePolling, cancel: cancelPolling } = useLifecycleSafeTimer(() => {
+    if (polling || loading.value) return
+    polling = true
+    refreshSoft()
+      .catch(() => undefined)
+      .finally(() => {
+        polling = false
+      })
+  }, 10000)
 
   onMounted(async () => {
     if (canViewSettings.value) {
-      await loadSettings()
+      void loadSettings().catch(() => undefined)
     }
 
     const status = String(route.query.status || '').trim()
@@ -370,12 +393,17 @@
     }
 
     Object.assign(searchParams, { status: status || undefined })
-    await getData()
     startPolling()
+    await getData().catch(() => undefined)
   })
 
   onBeforeUnmount(() => {
     stopPolling()
+  })
+
+  onActivated(() => {
+    // keep-alive 切回前台：恢复轮询（切走时 onDeactivated 已停表）。
+    if (!pollingStopped) schedulePolling()
   })
 
   function createDefaultSearchForm(): ProbeSearchForm {
@@ -535,35 +563,65 @@
     return `${Number(value).toFixed(2)}%`
   }
 
-  async function loadSla(rows: ProbeTableRow[]) {
-    Object.keys(slaMap).forEach((key) => delete slaMap[key])
+  function isAbortError(error: unknown) {
+    const requestError = error as { name?: string; code?: string }
+    return requestError?.name === 'AbortError' || requestError?.code === 'ERR_CANCELED'
+  }
+
+  async function loadSla(rows: ProbeTableRow[], signal: AbortSignal, force: boolean) {
+    const now = Date.now()
+    const pending = rows.filter((item) => {
+      if (!item.id) return false
+      const updatedAt = slaUpdatedAt.get(String(item.id)) || 0
+      return force || now - updatedAt >= SLA_CACHE_MS
+    })
+    let nextIndex = 0
+
+    const worker = async () => {
+      while (!signal.aborted) {
+        const item = pending[nextIndex++]
+        if (!item?.id) return
+
+        try {
+          const payload = await fetchAdminProbeSla(Number(item.id), { days: 7 }, signal)
+          if (signal.aborted) return
+          const key = String(item.id)
+          slaMap[key] = Number(payload.sla?.uptime_percent || 0)
+          slaUpdatedAt.set(key, Date.now())
+        } catch (error) {
+          if (signal.aborted || isAbortError(error)) return
+          const key = String(item.id)
+          slaMap[key] = 0
+          slaUpdatedAt.set(key, Date.now())
+        }
+      }
+    }
 
     await Promise.all(
-      rows
-        .filter((item) => item.id)
-        .map(async (item) => {
-          try {
-            const payload = await fetchAdminProbeSla(Number(item.id), { days: 7 })
-            slaMap[String(item.id)] = Number(payload.sla?.uptime_percent || 0)
-          } catch {
-            slaMap[String(item.id)] = 0
-          }
-        })
+      Array.from({ length: Math.min(SLA_CONCURRENCY, pending.length) }, () => worker())
     )
   }
 
   async function fetchProbeTable(
-    params: ProbeTableParams
+    params: ProbeTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<ProbeTableRow>> {
     try {
-      const payload = await fetchAdminProbes({
-        limit: params.size,
-        offset: (params.current - 1) * params.size,
-        keyword: params.keyword.trim() || undefined,
-        status: params.status || undefined
-      })
+      const payload = await fetchAdminProbes(
+        {
+          limit: params.size,
+          offset: (params.current - 1) * params.size,
+          keyword: params.keyword.trim() || undefined,
+          status: params.status || undefined
+        },
+        signal
+      )
       const records = (payload.items || []).map((item) => normalizeProbe(item))
-      await loadSla(records)
+      slaController?.abort()
+      slaController = new AbortController()
+      const force = forceSlaRefresh
+      forceSlaRefresh = false
+      void loadSla(records, slaController.signal, force)
       lastRefreshAt.value = new Date().toISOString()
       refreshError.value = ''
       return {
@@ -573,10 +631,18 @@
         total: payload.total ?? records.length
       }
     } catch (error: any) {
+      if (signal?.aborted || isAbortError(error)) throw error
       refreshError.value = String(error?.message || '请求失败')
       throw error
     }
   }
+
+  async function refreshTable() {
+    forceSlaRefresh = true
+    await refreshData()
+  }
+
+  const fetchData = refreshTable
 
   async function loadSettings() {
     settingsLoading.value = true
@@ -623,19 +689,15 @@
   }
 
   function startPolling() {
-    stopPolling()
-    poller = window.setInterval(() => {
-      fetchData()
-    }, 10000)
+    pollingStopped = false
+    schedulePolling()
   }
 
   function stopPolling() {
-    if (!poller) {
-      return
-    }
-
-    window.clearInterval(poller)
-    poller = null
+    pollingStopped = true
+    cancelPolling()
+    slaController?.abort()
+    slaController = null
   }
 
   function handleSearch(params: ProbeSearchForm) {

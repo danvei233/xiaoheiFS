@@ -151,3 +151,71 @@ func TestHandlers_UserOpsMore(t *testing.T) {
 func ptrTime(t time.Time) *time.Time {
 	return &t
 }
+
+func TestVPSResetOS_RejectsDisabledImageWhenLineUnknown(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	user := testutil.CreateUser(t, env.Repo, "resetosuser", "resetosuser@example.com", "pass")
+	token := testutil.IssueJWT(t, env.JWTSecret, user.ID, "user", time.Hour)
+
+	// Disabled image that must never be usable for a reinstall. Create it
+	// enabled first then disable it: GORM omits zero-value fields carrying a
+	// DB default on INSERT, so a fresh CreateSystemImage would otherwise end up
+	// enabled in the row.
+	disabled := domain.SystemImage{ImageID: 909, Name: "Disabled OS", Type: "linux", Enabled: true}
+	if err := env.Repo.CreateSystemImage(context.Background(), &disabled); err != nil {
+		t.Fatalf("create disabled image: %v", err)
+	}
+	disabled.Enabled = false
+	if err := env.Repo.UpdateSystemImage(context.Background(), disabled); err != nil {
+		t.Fatalf("disable image: %v", err)
+	}
+
+	// Instance with no resolvable line (line_id == 0 and no package/plan lookup).
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		AutomationInstanceID: "77",
+		Name:                 "vm-noline",
+		Status:               domain.VPSStatusRunning,
+		SpecJSON:             "{}",
+		AccessInfoJSON:       `{"os_password":"secret"}`,
+		ExpireAt:             ptrTime(time.Now().Add(24 * time.Hour)),
+	}
+	if err := env.Repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/reset-os", map[string]any{
+		"template_id": disabled.ID,
+		"password":    "Pass123!",
+	}, token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when resetting to a disabled image on a line-less instance, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestVPSPortMapping_RejectsInvalidPort(t *testing.T) {
+	env := testutilhttp.NewTestEnv(t, false)
+	user := testutil.CreateUser(t, env.Repo, "portuser", "portuser@example.com", "pass")
+	token := testutil.IssueJWT(t, env.JWTSecret, user.ID, "user", time.Hour)
+
+	inst := domain.VPSInstance{
+		UserID:               user.ID,
+		AutomationInstanceID: "78",
+		Name:                 "vm-port",
+		Status:               domain.VPSStatusRunning,
+		SpecJSON:             "{}",
+		ExpireAt:             ptrTime(time.Now().Add(24 * time.Hour)),
+	}
+	if err := env.Repo.CreateInstance(context.Background(), &inst); err != nil {
+		t.Fatalf("create instance: %v", err)
+	}
+
+	rec := testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/ports", map[string]any{
+		"name":  "bad",
+		"sport": "1000",
+		"dport": 99999,
+	}, token)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for dport > 65535, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import '../../core/constants/api_endpoints.dart';
 import '../../core/network/api_client.dart';
 import '../../core/utils/map_utils.dart';
@@ -193,7 +194,7 @@ class VpsRepository {
     final status = response.statusCode ?? 0;
     final location = response.headers.value('location')?.trim() ?? '';
     if (_isRedirectStatus(status) && location.isNotEmpty) {
-      return location;
+      return _requireSafeRedirectUrl(location);
     }
 
     if (status >= 400) {
@@ -208,13 +209,42 @@ class VpsRepository {
       'location',
     ]);
     if (directUrl.isNotEmpty) {
-      return directUrl;
+      return _requireSafeRedirectUrl(directUrl);
     }
 
     if (location.isNotEmpty) {
-      return location;
+      return _requireSafeRedirectUrl(location);
     }
     throw Exception('未获取到跳转地址');
+  }
+
+  /// 校验重定向/面板地址：
+  ///
+  /// - 生产（release）只允许 **HTTPS**：面板/VNC 跳转携带短时单次 ticket，
+  ///   明文 HTTP 会把 ticket 暴露给链路窃听者（公网/LAN 均可被中间人读取）。
+  /// - 开发（debug/profile）例外：`http://localhost` / `http://127.0.0.1` /
+  ///   `http://[::1]` 允许（本机面板调试），公网/LAN 明文 HTTP 一律拒绝。
+  /// - 任何 `intent://`、`file://`、`javascript:` 等 scheme 一律拒绝。
+  ///
+  /// [allowCleartext] 供测试注入：默认跟随构建模式（release 仅 HTTPS）；
+  /// 传 `false` 可模拟 release 行为，传 `true` 仅放行本机 http。
+  static bool isSafeRedirectUrl(String url, {bool? allowCleartext}) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+    if (uri.scheme == 'https') return true;
+    final allowHttp = allowCleartext ?? !kReleaseMode;
+    if (allowHttp && uri.scheme == 'http') {
+      final host = uri.host.toLowerCase();
+      return host == 'localhost' || host == '127.0.0.1' || host == '::1';
+    }
+    return false;
+  }
+
+  String _requireSafeRedirectUrl(String url) {
+    if (!isSafeRedirectUrl(url)) {
+      throw Exception('跳转地址不安全：生产仅支持 HTTPS（本机调试可放行 localhost HTTP）');
+    }
+    return url;
   }
 
   bool _isRedirectStatus(int code) =>

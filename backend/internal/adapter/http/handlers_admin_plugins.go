@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"os"
-	"path/filepath"
+	"regexp"
 	"strings"
 	apppluginadmin "xiaoheiplay/internal/app/pluginadmin"
 	appshared "xiaoheiplay/internal/app/shared"
@@ -15,6 +14,20 @@ import (
 
 func pluginUploadAllowed() bool {
 	return gin.Mode() == gin.DebugMode
+}
+
+// maxPluginPackageUploadBytes bounds plugin package uploads so an oversized
+// archive cannot exhaust disk or memory before extraction limits kick in.
+const maxPluginPackageUploadBytes = 256 << 20 // 256 MiB
+
+// pluginIdentifierPattern is the whitelist for category / plugin_id /
+// instance_id. These values are joined onto the plugin base directory
+// (filepath.Join + os.RemoveAll), so traversal characters such as "..", "/"
+// and "\" must never reach the filesystem layer.
+var pluginIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+func validPluginIdentifier(s string) bool {
+	return pluginIdentifierPattern.MatchString(s)
 }
 
 type pluginKeyURI struct {
@@ -49,7 +62,7 @@ func (h *Handler) AdminPaymentProviders(c *gin.Context) {
 	includeDisabled := strings.EqualFold(strings.TrimSpace(query.IncludeDisabled), "true")
 	includeLegacy := strings.EqualFold(strings.TrimSpace(query.IncludeLegacy), "true")
 	scene := strings.TrimSpace(query.Scene)
-	items, err := h.paymentSvc.ListProvidersByScene(c, includeDisabled, scene)
+	items, err := h.paymentSvc.ListProvidersByScene(c.Request.Context(), includeDisabled, scene)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -87,6 +100,12 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 		return
 	}
+	if payload.ConfigJSON != "" {
+		if err := validatePluginConfigJSON(payload.ConfigJSON); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
 	enabled := true
 	if payload.Enabled != nil {
 		enabled = *payload.Enabled
@@ -102,7 +121,7 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 			return
 		}
-		if err := h.paymentSvc.UpdateProviderSceneEnabled(c, trimmedKey, trimmedScene, enabled); err != nil {
+		if err := h.paymentSvc.UpdateProviderSceneEnabled(c.Request.Context(), trimmedKey, trimmedScene, enabled); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -131,12 +150,16 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidPluginPaymentKeyOrPayload.Error()})
 			return
 		}
-		if err := h.pluginAdmin.UpsertPaymentMethod(c, "payment", pluginID, instanceID, method, enabled); err != nil {
+		if !validPluginIdentifier(pluginID) || !validPluginIdentifier(instanceID) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidPluginPaymentKeyOrPayload.Error()})
+			return
+		}
+		if err := h.pluginAdmin.UpsertPaymentMethod(c.Request.Context(), "payment", pluginID, instanceID, method, enabled); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		if h.adminSvc != nil {
-			h.adminSvc.Audit(c, getUserID(c), "plugin.payment_method.update", "plugin", "payment/"+pluginID+"/"+instanceID, map[string]any{
+			h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.payment_method.update", "plugin", "payment/"+pluginID+"/"+instanceID, map[string]any{
 				"method":  method,
 				"enabled": enabled,
 				"via":     "payments.providers.update",
@@ -149,73 +172,26 @@ func (h *Handler) AdminPaymentProviderUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPaymentDisabled.Error()})
 		return
 	}
-	if err := h.paymentSvc.UpdateProvider(c, uri.Key, enabled, payload.ConfigJSON); err != nil {
+	if err := h.paymentSvc.UpdateProvider(c.Request.Context(), uri.Key, enabled, payload.ConfigJSON); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-func (h *Handler) AdminPaymentPluginUpload(c *gin.Context) {
-	if !pluginUploadAllowed() {
-		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrPluginUploadDebugOnly.Error()})
-		return
-	}
-	password := c.PostForm("password")
-	if password == "" {
-		password = c.GetHeader("X-Plugin-Password")
-	}
-	expected := ""
-	if h.pluginAdmin != nil {
-		expected = h.pluginAdmin.ResolveUploadPassword(c, "")
-	} else {
-		expected = strings.TrimSpace(h.getSettingValueByKey(c, "payment_plugin_upload_password"))
-	}
-	if expected == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginUploadPasswordNotConfigured.Error()})
-		return
-	}
-	if password == "" || password != expected {
-		c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrInvalidPassword.Error()})
-		return
-	}
-	file, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrMissingFile.Error()})
-		return
-	}
-	dir := ""
-	if h.pluginAdmin != nil {
-		dir = strings.TrimSpace(h.pluginAdmin.ResolveUploadDir(c, ""))
-	} else {
-		dir = strings.TrimSpace(h.getSettingValueByKey(c, "payment_plugin_dir"))
-		if dir == "" {
-			dir = "plugins/payment"
-		}
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrMkdirFailed.Error()})
-		return
-	}
-	filename := filepath.Base(file.Filename)
-	if filename == "." || filename == "" || strings.Contains(filename, "..") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidFilename.Error()})
-		return
-	}
-	dst := filepath.Join(dir, filename)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrUploadFailed.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"ok": true, "path": dst})
-}
+// AdminPaymentPluginUpload was a legacy raw-binary upload path: it dropped a
+// single executable into the payment plugin directory where a watcher would
+// launch it, completely bypassing the package manifest/checksums/signature
+// trust chain. It is removed. Plugin binaries must now be installed through
+// AdminPluginInstall, which validates the full package and requires an explicit
+// trust confirmation before any file lands on disk.
 
 func (h *Handler) AdminPluginsList(c *gin.Context) {
 	if h.pluginAdmin == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	items, err := h.pluginAdmin.List(c)
+	items, err := h.pluginAdmin.List(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -228,7 +204,7 @@ func (h *Handler) AdminPluginsDiscover(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginsDisabled.Error()})
 		return
 	}
-	items, err := h.pluginAdmin.DiscoverOnDisk(c)
+	items, err := h.pluginAdmin.DiscoverOnDisk(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -253,7 +229,19 @@ func (h *Handler) AdminPluginPaymentMethodsList(c *gin.Context) {
 	category := strings.TrimSpace(query.Category)
 	pluginID := strings.TrimSpace(query.PluginID)
 	instanceID := strings.TrimSpace(query.InstanceID)
-	items, err := h.pluginAdmin.ListPaymentMethods(c, category, pluginID, instanceID)
+	if category != "" && !validPluginIdentifier(category) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if pluginID != "" && !validPluginIdentifier(pluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if instanceID != "" && !validPluginIdentifier(instanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	items, err := h.pluginAdmin.ListPaymentMethods(c.Request.Context(), category, pluginID, instanceID)
 	if err != nil {
 		if strings.Contains(err.Error(), "required") {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -293,7 +281,19 @@ func (h *Handler) AdminPluginPaymentMethodsUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrPluginMethodUpdateRequired.Error()})
 		return
 	}
-	err := h.pluginAdmin.UpdatePaymentMethod(c, payload.Category, payload.PluginID, payload.InstanceID, payload.Method, *payload.Enabled)
+	if strings.TrimSpace(payload.Category) != "" && !validPluginIdentifier(payload.Category) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if !validPluginIdentifier(strings.TrimSpace(payload.PluginID)) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if strings.TrimSpace(payload.InstanceID) != "" && !validPluginIdentifier(payload.InstanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	err := h.pluginAdmin.UpdatePaymentMethod(c.Request.Context(), payload.Category, payload.PluginID, payload.InstanceID, payload.Method, *payload.Enabled)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") || strings.Contains(err.Error(), "not enabled/loaded") {
 			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
@@ -312,7 +312,7 @@ func (h *Handler) AdminPluginPaymentMethodsUpdate(c *gin.Context) {
 		instanceID = apppluginadmin.DefaultInstanceID
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.payment_method.update", "plugin", category+"/"+pluginID+"/"+instanceID, map[string]any{
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.payment_method.update", "plugin", category+"/"+pluginID+"/"+instanceID, map[string]any{
 			"method":  strings.TrimSpace(payload.Method),
 			"enabled": *payload.Enabled,
 		})
@@ -334,6 +334,10 @@ func (h *Handler) AdminPluginInstall(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrMissingFile.Error()})
 		return
 	}
+	if file.Size <= 0 || file.Size > maxPluginPackageUploadBytes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	f, err := file.Open()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrOpenFileFailed.Error()})
@@ -341,33 +345,50 @@ func (h *Handler) AdminPluginInstall(c *gin.Context) {
 	}
 	defer f.Close()
 
-	inst, err := h.pluginAdmin.Install(c, file.Filename, f)
+	// Phase 1 — pre-commit trust gate (P2-14): validate the archive (manifest,
+	// entry, signature, extraction bounds) WITHOUT writing any files into the
+	// plugin base directory. An untrusted plugin must satisfy the admin second
+	// factor before its payload is ever on disk or imported by the bootstrap.
+	preview, err := h.pluginAdmin.VerifyInstallPackage(c.Request.Context(), file.Filename, f)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if inst.SignatureStatus != domain.PluginSignatureOfficial {
+	if preview.SignatureStatus != domain.PluginSignatureOfficial {
 		adminPassword := strings.TrimSpace(c.PostForm("admin_password"))
 		if adminPassword == "" {
-			_ = h.pluginAdmin.Uninstall(c, inst.Category, inst.PluginID)
 			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminPasswordRequiredForUntrustedPlugin.Error()})
 			return
 		}
 		if h.authSvc == nil {
-			_ = h.pluginAdmin.Uninstall(c, inst.Category, inst.PluginID)
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAuthDisabled.Error()})
 			return
 		}
-		if err := h.authSvc.VerifyPassword(c, getUserID(c), adminPassword); err != nil {
-			_ = h.pluginAdmin.Uninstall(c, inst.Category, inst.PluginID)
+		if err := h.authSvc.VerifyPassword(c.Request.Context(), getUserID(c), adminPassword); err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrInvalidAdminPassword.Error()})
 			return
 		}
 	}
 
+	// Phase 2 — commit. The verify pass consumed the reader, so re-open the
+	// upload for a fresh stream. The commit must re-hash to the digest the
+	// trust confirmation above was bound to; a swapped package is refused
+	// before any file is written into the plugin base directory.
+	f2, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrOpenFileFailed.Error()})
+		return
+	}
+	defer f2.Close()
+	inst, err := h.pluginAdmin.InstallVerified(c.Request.Context(), file.Filename, f2, preview.Digest)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.install", "plugin", inst.Category+"/"+inst.PluginID, map[string]any{
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.install", "plugin", inst.Category+"/"+inst.PluginID, map[string]any{
 			"signature_status": inst.SignatureStatus,
 		})
 	}
@@ -384,6 +405,10 @@ func (h *Handler) AdminPluginImportFromDisk(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 
 	var payload struct {
 		AdminPassword string `json:"admin_password"`
@@ -393,13 +418,17 @@ func (h *Handler) AdminPluginImportFromDisk(c *gin.Context) {
 		return
 	}
 
-	targetSig, err := h.pluginAdmin.SignatureStatusOnDisk(uri.Category, uri.PluginID)
+	// Inspect the on-disk plugin once and bind the trust decision to its content
+	// digest. The final import re-inspects the directory and refuses if the
+	// digest changed, so replacing the directory between this decision and the
+	// commit cannot smuggle a different plugin past the second factor.
+	preview, err := h.pluginAdmin.PreviewImportFromDisk(c.Request.Context(), uri.Category, uri.PluginID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if targetSig != domain.PluginSignatureOfficial {
+	if preview.SignatureStatus != domain.PluginSignatureOfficial {
 		adminPassword := strings.TrimSpace(payload.AdminPassword)
 		if adminPassword == "" {
 			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrAdminPasswordRequiredForUntrustedPlugin.Error()})
@@ -409,19 +438,23 @@ func (h *Handler) AdminPluginImportFromDisk(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrAuthDisabled.Error()})
 			return
 		}
-		if err := h.authSvc.VerifyPassword(c, getUserID(c), adminPassword); err != nil {
+		if err := h.authSvc.VerifyPassword(c.Request.Context(), getUserID(c), adminPassword); err != nil {
 			c.JSON(http.StatusForbidden, gin.H{"error": domain.ErrInvalidAdminPassword.Error()})
 			return
 		}
 	}
 
-	inst, err := h.pluginAdmin.ImportFromDisk(c, uri.Category, uri.PluginID)
+	inst, err := h.pluginAdmin.ImportFromDisk(c.Request.Context(), uri.Category, uri.PluginID, preview.ContentDigest)
 	if err != nil {
+		if strings.Contains(err.Error(), "changed during import") {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.import", "plugin", inst.Category+"/"+inst.PluginID, map[string]any{
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.import", "plugin", inst.Category+"/"+inst.PluginID, map[string]any{
 			"signature_status": inst.SignatureStatus,
 		})
 	}
@@ -438,12 +471,16 @@ func (h *Handler) AdminPluginEnable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if err := h.pluginAdmin.EnableInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.EnableInstance(c.Request.Context(), uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.enable", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.enable", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -458,12 +495,16 @@ func (h *Handler) AdminPluginDisable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if err := h.pluginAdmin.DisableInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DisableInstance(c.Request.Context(), uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.disable", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.disable", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -478,12 +519,16 @@ func (h *Handler) AdminPluginUninstall(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if err := h.pluginAdmin.DeleteInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DeleteInstance(c.Request.Context(), uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.uninstall", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.uninstall", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -498,7 +543,11 @@ func (h *Handler) AdminPluginConfigSchema(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID)
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c.Request.Context(), uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -516,7 +565,11 @@ func (h *Handler) AdminPluginConfigGet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	cfg, err := h.pluginAdmin.GetConfigInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID)
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	cfg, err := h.pluginAdmin.GetConfigInstance(c.Request.Context(), uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -534,6 +587,10 @@ func (h *Handler) AdminPluginConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		ConfigJSON string `json:"config_json"`
 	}
@@ -545,12 +602,12 @@ func (h *Handler) AdminPluginConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.pluginAdmin.UpdateConfigInstance(c, uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID, payload.ConfigJSON); err != nil {
+	if err := h.pluginAdmin.UpdateConfigInstance(c.Request.Context(), uri.Category, uri.PluginID, apppluginadmin.DefaultInstanceID, payload.ConfigJSON); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.config_update", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.config_update", "plugin", uri.Category+"/"+uri.PluginID+"/"+apppluginadmin.DefaultInstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -565,6 +622,10 @@ func (h *Handler) AdminPluginInstanceCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		InstanceID string `json:"instance_id"`
 		ConfigJSON string `json:"config_json"`
@@ -574,7 +635,7 @@ func (h *Handler) AdminPluginInstanceCreate(c *gin.Context) {
 		return
 	}
 
-	inst, err := h.pluginAdmin.CreateInstance(c, uri.Category, uri.PluginID, payload.InstanceID)
+	inst, err := h.pluginAdmin.CreateInstance(c.Request.Context(), uri.Category, uri.PluginID, payload.InstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -584,14 +645,14 @@ func (h *Handler) AdminPluginInstanceCreate(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := h.pluginAdmin.UpdateConfigInstance(c, uri.Category, uri.PluginID, inst.InstanceID, payload.ConfigJSON); err != nil {
-			_ = h.pluginAdmin.DeleteInstance(c, uri.Category, uri.PluginID, inst.InstanceID)
+		if err := h.pluginAdmin.UpdateConfigInstance(c.Request.Context(), uri.Category, uri.PluginID, inst.InstanceID, payload.ConfigJSON); err != nil {
+			_ = h.pluginAdmin.DeleteInstance(c.Request.Context(), uri.Category, uri.PluginID, inst.InstanceID)
 			writePluginHandlerError(c, err)
 			return
 		}
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.instance_create", "plugin", uri.Category+"/"+uri.PluginID+"/"+inst.InstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.instance_create", "plugin", uri.Category+"/"+uri.PluginID+"/"+inst.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "plugin": inst})
 }
@@ -606,12 +667,16 @@ func (h *Handler) AdminPluginInstanceEnable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if err := h.pluginAdmin.EnableInstance(c, uri.Category, uri.PluginID, uri.InstanceID); err != nil {
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) || !validPluginIdentifier(uri.InstanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.EnableInstance(c.Request.Context(), uri.Category, uri.PluginID, uri.InstanceID); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.enable", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.enable", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -626,12 +691,16 @@ func (h *Handler) AdminPluginInstanceDisable(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if err := h.pluginAdmin.DisableInstance(c, uri.Category, uri.PluginID, uri.InstanceID); err != nil {
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) || !validPluginIdentifier(uri.InstanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DisableInstance(c.Request.Context(), uri.Category, uri.PluginID, uri.InstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.disable", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.disable", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -646,12 +715,16 @@ func (h *Handler) AdminPluginInstanceDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if err := h.pluginAdmin.DeleteInstance(c, uri.Category, uri.PluginID, uri.InstanceID); err != nil {
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) || !validPluginIdentifier(uri.InstanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DeleteInstance(c.Request.Context(), uri.Category, uri.PluginID, uri.InstanceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.instance_delete", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.instance_delete", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -666,7 +739,11 @@ func (h *Handler) AdminPluginInstanceConfigSchema(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c, uri.Category, uri.PluginID, uri.InstanceID)
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) || !validPluginIdentifier(uri.InstanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	jsonSchema, uiSchema, err := h.pluginAdmin.GetConfigSchemaInstance(c.Request.Context(), uri.Category, uri.PluginID, uri.InstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -684,7 +761,11 @@ func (h *Handler) AdminPluginInstanceConfigGet(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	cfg, err := h.pluginAdmin.GetConfigInstance(c, uri.Category, uri.PluginID, uri.InstanceID)
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) || !validPluginIdentifier(uri.InstanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	cfg, err := h.pluginAdmin.GetConfigInstance(c.Request.Context(), uri.Category, uri.PluginID, uri.InstanceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -702,6 +783,10 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) || !validPluginIdentifier(uri.InstanceID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
 	var payload struct {
 		ConfigJSON string `json:"config_json"`
 	}
@@ -713,12 +798,12 @@ func (h *Handler) AdminPluginInstanceConfigUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if err := h.pluginAdmin.UpdateConfigInstance(c, uri.Category, uri.PluginID, uri.InstanceID, payload.ConfigJSON); err != nil {
+	if err := h.pluginAdmin.UpdateConfigInstance(c.Request.Context(), uri.Category, uri.PluginID, uri.InstanceID, payload.ConfigJSON); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.config_update", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.config_update", "plugin", uri.Category+"/"+uri.PluginID+"/"+uri.InstanceID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
@@ -765,12 +850,16 @@ func (h *Handler) AdminPluginDeleteFiles(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	if err := h.pluginAdmin.DeletePluginFiles(c, uri.Category, uri.PluginID); err != nil {
+	if !validPluginIdentifier(uri.Category) || !validPluginIdentifier(uri.PluginID) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	if err := h.pluginAdmin.DeletePluginFiles(c.Request.Context(), uri.Category, uri.PluginID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if h.adminSvc != nil {
-		h.adminSvc.Audit(c, getUserID(c), "plugin.delete_files", "plugin", uri.Category+"/"+uri.PluginID, map[string]any{})
+		h.adminSvc.Audit(c.Request.Context(), getUserID(c), "plugin.delete_files", "plugin", uri.Category+"/"+uri.PluginID, map[string]any{})
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }

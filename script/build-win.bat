@@ -6,6 +6,9 @@ cd /d "%~dp0\.."
 
 set "OUT_DIR=build\windows"
 set "OUT_STATIC=%OUT_DIR%\static"
+set "ORIG_GOOS=%GOOS%"
+set "ORIG_GOARCH=%GOARCH%"
+set "ORIG_CGO=%CGO_ENABLED%"
 
 echo [1/3] Build frontend...
 pushd "frontend" >nul
@@ -20,9 +23,22 @@ xcopy "frontend\dist\*" "%OUT_STATIC%\\" /E /I /Y >nul
 
 echo [3/3] Build backend (windows)...
 pushd "backend" >nul
-go env -w CGO_ENABLED=0
-go build -o "..\%OUT_DIR%\server.exe" .\cmd\server || exit /b 1
+set "CGO_ENABLED=0"
+set "GOOS=windows"
+set "GOARCH=amd64"
+go build -buildvcs=false -trimpath -o "..\%OUT_DIR%\server.exe" .\cmd\server
+if errorlevel 1 (
+  popd >nul
+  set "GOOS=%ORIG_GOOS%"
+  set "GOARCH=%ORIG_GOARCH%"
+  set "CGO_ENABLED=%ORIG_CGO%"
+  exit /b 1
+)
 popd >nul
+
+set "GOOS=%ORIG_GOOS%"
+set "GOARCH=%ORIG_GOARCH%"
+set "CGO_ENABLED=%ORIG_CGO%"
 
 echo Done.
 endlocal

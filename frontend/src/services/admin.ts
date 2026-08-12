@@ -1,6 +1,9 @@
 import { http } from './http'
 import type {
   AdminProfile,
+  AdminLoginResponse,
+  AdminTwoFactorSetupResponse,
+  AdminTwoFactorUnlockResponse,
   AdminUser,
   ApiList,
   AutomationConfig,
@@ -62,19 +65,25 @@ import type {
   CouponProductGroup
 } from './types'
 
-export const adminLogin = (payload: Record<string, unknown>) =>
-  http.post('/admin/api/v1/auth/login', payload)
+export const adminLogin = (payload: { username: string; password: string; admin_path: string }) =>
+  http.post<AdminLoginResponse>('/admin/api/v1/auth/login', payload)
+export const adminLogout = (accessToken: string) =>
+  http.post(
+    '/admin/api/v1/auth/logout',
+    null,
+    accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined
+  )
 export const admin2FAUnlock = (payload: { totp_code: string }) =>
-  http.post('/admin/api/v1/auth/2fa/unlock', payload)
+  http.post<AdminTwoFactorUnlockResponse>('/admin/api/v1/auth/2fa/unlock', payload)
 export const adminSetupTwoFA = (payload: { password?: string; current_code?: string }) =>
-  http.post('/admin/api/v1/auth/2fa/setup', payload)
+  http.post<AdminTwoFactorSetupResponse>('/admin/api/v1/auth/2fa/setup', payload)
 export const adminConfirmTwoFA = (payload: { code: string }) =>
-  http.post('/admin/api/v1/auth/2fa/confirm', payload)
+  http.post<{ ok?: boolean }>('/admin/api/v1/auth/2fa/confirm', payload)
 
-export const listAdminUsers = (params?: Record<string, unknown>) =>
-  http.get<ApiList<User>>('/admin/api/v1/users', { params })
-export const getAdminUserDetail = (id: number | string) =>
-  http.get<User>(`/admin/api/v1/users/${id}`)
+export const listAdminUsers = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<User>>('/admin/api/v1/users', { params, signal })
+export const getAdminUserDetail = (id: number | string, signal?: AbortSignal) =>
+  http.get<User>(`/admin/api/v1/users/${id}`, { signal })
 export const createAdminUser = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/users', payload)
 export const updateAdminUser = (id: number | string, payload: Record<string, unknown>) =>
@@ -137,8 +146,8 @@ export const updateUserTierAutoRule = (
 export const deleteUserTierAutoRule = (groupId: number | string, ruleId: number | string) =>
   http.delete(`/admin/api/v1/user-tiers/${groupId}/auto-rules/${ruleId}`)
 
-export const listCouponGroups = () =>
-  http.get<ApiList<CouponProductGroup>>('/admin/api/v1/coupon-groups')
+export const listCouponGroups = (signal?: AbortSignal) =>
+  http.get<ApiList<CouponProductGroup>>('/admin/api/v1/coupon-groups', { signal })
 export const createCouponGroup = (payload: Record<string, unknown>) =>
   http.post<CouponProductGroup>('/admin/api/v1/coupon-groups', payload)
 export const updateCouponGroup = (id: number | string, payload: Record<string, unknown>) =>
@@ -146,8 +155,8 @@ export const updateCouponGroup = (id: number | string, payload: Record<string, u
 export const deleteCouponGroup = (id: number | string) =>
   http.delete(`/admin/api/v1/coupon-groups/${id}`)
 
-export const listCoupons = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Coupon>>('/admin/api/v1/coupons', { params })
+export const listCoupons = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Coupon>>('/admin/api/v1/coupons', { params, signal })
 export const createCoupon = (payload: Record<string, unknown>) =>
   http.post<Coupon>('/admin/api/v1/coupons', payload)
 export const updateCoupon = (id: number | string, payload: Record<string, unknown>) =>
@@ -156,10 +165,10 @@ export const deleteCoupon = (id: number | string) => http.delete(`/admin/api/v1/
 export const batchGenerateCoupons = (payload: Record<string, unknown>) =>
   http.post<ApiList<Coupon>>('/admin/api/v1/coupons/batch-generate', payload)
 
-export const listAdminOrders = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Order>>('/admin/api/v1/orders', { params })
-export const getAdminOrderDetail = (id: number | string) =>
-  http.get<OrderDetailResponse>(`/admin/api/v1/orders/${id}`)
+export const listAdminOrders = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Order>>('/admin/api/v1/orders', { params, signal })
+export const getAdminOrderDetail = (id: number | string, signal?: AbortSignal) =>
+  http.get<OrderDetailResponse>(`/admin/api/v1/orders/${id}`, { signal })
 export const approveAdminOrder = (id: number | string) =>
   http.post(`/admin/api/v1/orders/${id}/approve`)
 export const rejectAdminOrder = (id: number | string, payload: Record<string, unknown>) =>
@@ -169,13 +178,13 @@ export const markPaidAdminOrder = (id: number | string) =>
   http.post(`/admin/api/v1/orders/${id}/mark-paid`)
 export const retryAdminOrder = (id: number | string) =>
   http.post(`/admin/api/v1/orders/${id}/retry`)
-export const listAdminScheduledTasks = () =>
-  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/scheduled-tasks')
+export const listAdminScheduledTasks = (signal?: AbortSignal) =>
+  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/scheduled-tasks', { signal })
 export const updateAdminScheduledTask = (key: string, payload: Record<string, unknown>) =>
   http.patch(`/admin/api/v1/scheduled-tasks/${key}`, payload)
 
-export const listAdminVps = (params?: Record<string, unknown>) =>
-  http.get<ApiList<VPSInstance>>('/admin/api/v1/vps', { params })
+export const listAdminVps = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<VPSInstance>>('/admin/api/v1/vps', { params, signal })
 export const createAdminVps = (payload: Record<string, unknown>) =>
   http.post<VPSInstance>('/admin/api/v1/vps', payload)
 export const getAdminVpsDetail = (id: number | string) =>
@@ -196,8 +205,8 @@ export const emergencyRenewAdminVps = (id: number | string, payload: Record<stri
 export const updateAdminVpsExpire = (id: number | string, payload: Record<string, unknown>) =>
   http.patch(`/admin/api/v1/vps/${id}/expire-at`, payload)
 
-export const listRegions = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Region>>('/admin/api/v1/regions', { params })
+export const listRegions = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Region>>('/admin/api/v1/regions', { params, signal })
 export const createRegion = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/regions', payload)
 export const updateRegion = (id: number | string, payload: Record<string, unknown>) =>
@@ -206,8 +215,8 @@ export const deleteRegion = (id: number | string) => http.delete(`/admin/api/v1/
 export const bulkDeleteRegions = (ids: Array<number | string>) =>
   http.post('/admin/api/v1/regions/bulk-delete', { ids })
 
-export const listLines = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Line>>('/admin/api/v1/lines', { params })
+export const listLines = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Line>>('/admin/api/v1/lines', { params, signal })
 export const createLine = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/lines', payload)
 export const updateLine = (id: number | string, payload: Record<string, unknown>) =>
@@ -216,8 +225,8 @@ export const deleteLine = (id: number | string) => http.delete(`/admin/api/v1/li
 export const bulkDeleteLines = (ids: Array<number | string>) =>
   http.post('/admin/api/v1/lines/bulk-delete', { ids })
 
-export const listPlanGroups = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Line>>('/admin/api/v1/plan-groups', { params })
+export const listPlanGroups = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Line>>('/admin/api/v1/plan-groups', { params, signal })
 export const createPlanGroup = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/plan-groups', payload)
 export const updatePlanGroup = (id: number | string, payload: Record<string, unknown>) =>
@@ -227,8 +236,8 @@ export const deletePlanGroup = (id: number | string) =>
 export const bulkDeletePlanGroups = (ids: Array<number | string>) =>
   http.post('/admin/api/v1/plan-groups/bulk-delete', { ids })
 
-export const listPackages = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Package>>('/admin/api/v1/packages', { params })
+export const listPackages = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Package>>('/admin/api/v1/packages', { params, signal })
 export const createPackage = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/packages', payload)
 export const updatePackage = (id: number | string, payload: Record<string, unknown>) =>
@@ -243,8 +252,8 @@ export const updatePackageCapabilities = (
   payload: { resize_enabled?: boolean | null; refund_enabled?: boolean | null }
 ) => http.patch(`/admin/api/v1/packages/${id}/capabilities`, payload)
 
-export const listBillingCycles = () =>
-  http.get<ApiList<BillingCycle>>('/admin/api/v1/billing-cycles')
+export const listBillingCycles = (signal?: AbortSignal) =>
+  http.get<ApiList<BillingCycle>>('/admin/api/v1/billing-cycles', { signal })
 export const createBillingCycle = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/billing-cycles', payload)
 export const updateBillingCycle = (id: number | string, payload: Record<string, unknown>) =>
@@ -254,8 +263,8 @@ export const deleteBillingCycle = (id: number | string) =>
 export const bulkDeleteBillingCycles = (ids: Array<number | string>) =>
   http.post('/admin/api/v1/billing-cycles/bulk-delete', { ids })
 
-export const listSystemImages = (params?: Record<string, unknown>) =>
-  http.get<ApiList<SystemImage>>('/admin/api/v1/system-images', { params })
+export const listSystemImages = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<SystemImage>>('/admin/api/v1/system-images', { params, signal })
 export const createSystemImage = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/system-images', payload)
 export const updateSystemImage = (id: number | string, payload: Record<string, unknown>) =>
@@ -271,8 +280,8 @@ export const setLineSystemImages = (
 export const syncSystemImages = (params?: Record<string, unknown>) =>
   http.post('/admin/api/v1/system-images/sync', null, { params })
 
-export const listApiKeys = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/api-keys', { params })
+export const listApiKeys = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/api-keys', { params, signal })
 export const createApiKey = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/api-keys', payload)
 export const updateApiKeyStatus = (id: number | string, payload: Record<string, unknown>) =>
@@ -282,16 +291,19 @@ export const listSettings = () => http.get<ApiList<SettingItem>>('/admin/api/v1/
 export const updateSetting = (payload: Record<string, unknown>) =>
   http.patch('/admin/api/v1/settings', payload)
 
-export const listAdminPaymentProviders = (params?: {
-  include_disabled?: boolean
-  include_legacy?: boolean
-  scene?: 'order' | 'wallet'
-}) => http.get<ApiList<PaymentProvider>>('/admin/api/v1/payments/providers', { params })
+export const listAdminPaymentProviders = (
+  params?: {
+    include_disabled?: boolean
+    include_legacy?: boolean
+    scene?: 'order' | 'wallet'
+  },
+  signal?: AbortSignal
+) => http.get<ApiList<PaymentProvider>>('/admin/api/v1/payments/providers', { params, signal })
 export const updateAdminPaymentProvider = (key: string, payload: Record<string, unknown>) =>
   http.patch(`/admin/api/v1/payments/providers/${key}`, payload)
 
-export const listEmailTemplates = () =>
-  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/email-templates')
+export const listEmailTemplates = (signal?: AbortSignal) =>
+  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/email-templates', { signal })
 export const upsertEmailTemplate = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/email-templates', payload)
 export const updateEmailTemplate = (id: number | string, payload: Record<string, unknown>) =>
@@ -299,8 +311,8 @@ export const updateEmailTemplate = (id: number | string, payload: Record<string,
 export const deleteEmailTemplate = (id: number | string) =>
   http.delete(`/admin/api/v1/email-templates/${id}`)
 
-export const listAuditLogs = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/audit-logs', { params })
+export const listAuditLogs = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Record<string, unknown>>>('/admin/api/v1/audit-logs', { params, signal })
 
 export const getDebugStatus = () => http.get<DebugStatusResponse>('/admin/api/v1/debug/status')
 export const updateDebugStatus = (payload: { enabled: boolean }) =>
@@ -309,8 +321,8 @@ export const getDebugLogs = (params?: Record<string, unknown>) =>
   http.get<DebugLogsResponse>('/admin/api/v1/debug/logs', { params })
 
 // 钱包订单
-export const listAdminWalletOrders = (params?: Record<string, unknown>) =>
-  http.get<WalletOrderListResponse>('/admin/api/v1/wallet/orders', { params })
+export const listAdminWalletOrders = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<WalletOrderListResponse>('/admin/api/v1/wallet/orders', { params, signal })
 export const approveAdminWalletOrder = (id: number | string) =>
   http.post<{ order?: WalletOrder }>(
     '/admin/api/v1/wallet/orders/{id}/approve'.replace('{id}', String(id))
@@ -325,8 +337,8 @@ export const listAdminWalletTransactions = (
 ) => http.get(`/admin/api/v1/wallets/${userId}/transactions`, { params })
 
 // 工单
-export const listAdminTickets = (params?: Record<string, unknown>) =>
-  http.get<ApiList<Ticket>>('/admin/api/v1/tickets', { params })
+export const listAdminTickets = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<Ticket>>('/admin/api/v1/tickets', { params, signal })
 export const getAdminTicketDetail = (id: number | string) =>
   http.get<TicketDetailResponse>(`/admin/api/v1/tickets/${id}`)
 export const updateAdminTicket = (id: number | string, payload: Record<string, unknown>) =>
@@ -343,7 +355,8 @@ export const syncAutomationCatalog = () => http.post('/admin/api/v1/integrations
 export const listAutomationSyncLogs = () =>
   http.get<ApiList<AutomationSyncLog>>('/admin/api/v1/integrations/automation/sync-logs')
 
-export const getRobotConfig = () => http.get<RobotConfig>('/admin/api/v1/integrations/robot')
+export const getRobotConfig = (signal?: AbortSignal) =>
+  http.get<RobotConfig>('/admin/api/v1/integrations/robot', { signal })
 export const updateRobotConfig = (payload: Record<string, unknown>) =>
   http.patch('/admin/api/v1/integrations/robot', payload)
 export const testRobotWebhook = (payload: Record<string, unknown>) =>
@@ -353,10 +366,10 @@ export const testRobotWebhook = (payload: Record<string, unknown>) =>
 export const getRealNameConfig = () => http.get<RealNameConfig>('/admin/api/v1/realname/config')
 export const updateRealNameConfig = (payload: RealNameConfig) =>
   http.patch('/admin/api/v1/realname/config', payload)
-export const listRealNameProviders = () =>
-  http.get<{ items: RealNameProvider[] }>('/admin/api/v1/realname/providers')
-export const listRealNameRecords = (params?: Record<string, unknown>) =>
-  http.get<RealNameRecordListResponse>('/admin/api/v1/realname/records', { params })
+export const listRealNameProviders = (signal?: AbortSignal) =>
+  http.get<{ items: RealNameProvider[] }>('/admin/api/v1/realname/providers', { signal })
+export const listRealNameRecords = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<RealNameRecordListResponse>('/admin/api/v1/realname/records', { params, signal })
 export const getSmtpConfig = () => http.get<SMTPConfig>('/admin/api/v1/integrations/smtp')
 export const updateSmtpConfig = (payload: Record<string, unknown>) =>
   http.patch('/admin/api/v1/integrations/smtp', payload)
@@ -369,7 +382,8 @@ export const previewSmsConfig = (payload: Record<string, unknown>) =>
   http.post<{ content?: string }>('/admin/api/v1/integrations/sms/preview', payload)
 export const testSmsConfig = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/integrations/sms/test', payload)
-export const listSmsTemplates = () => http.get<ApiList<SMSTemplate>>('/admin/api/v1/sms-templates')
+export const listSmsTemplates = (signal?: AbortSignal) =>
+  http.get<ApiList<SMSTemplate>>('/admin/api/v1/sms-templates', { signal })
 export const upsertSmsTemplate = (payload: Record<string, unknown>) =>
   http.post<SMSTemplate>('/admin/api/v1/sms-templates', payload)
 export const updateSmsTemplate = (id: number | string, payload: Record<string, unknown>) =>
@@ -399,28 +413,39 @@ export const getRevenueAnalyticsTop = (payload: RevenueAnalyticsQuery) =>
     '/admin/api/v1/dashboard/revenue-analytics/top',
     payload
   )
-export const getRevenueAnalyticsDetails = (payload: RevenueAnalyticsQuery) =>
+export const getRevenueAnalyticsDetails = (payload: RevenueAnalyticsQuery, signal?: AbortSignal) =>
   http.post<RevenueAnalyticsDetailsResponse>(
     '/admin/api/v1/dashboard/revenue-analytics/details',
-    payload
+    payload,
+    { signal }
   )
 export const exportRevenueAnalyticsAudit = (payload: RevenueAnalyticsQuery) =>
   http.post('/admin/api/v1/dashboard/revenue-analytics/export', payload, { responseType: 'blob' })
 
 // Probes
-export const listAdminProbes = (params?: Record<string, unknown>) =>
-  http.get<ApiList<ProbeNode>>('/admin/api/v1/probes', { params })
+export const listAdminProbes = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<ProbeNode>>('/admin/api/v1/probes', { params, signal })
 export const createAdminProbe = (payload: Record<string, unknown>) =>
   http.post<{ probe?: ProbeNode; enroll_token?: string }>('/admin/api/v1/probes', payload)
-export const getAdminProbeDetail = (id: number | string, params?: Record<string, unknown>) =>
-  http.get<{ probe?: ProbeNode; online?: boolean }>(`/admin/api/v1/probes/${id}`, { params })
+export const getAdminProbeDetail = (
+  id: number | string,
+  params?: Record<string, unknown>,
+  signal?: AbortSignal
+) =>
+  http.get<{ probe?: ProbeNode; online?: boolean }>(`/admin/api/v1/probes/${id}`, {
+    params,
+    signal
+  })
 export const updateAdminProbe = (id: number | string, payload: Record<string, unknown>) =>
   http.patch(`/admin/api/v1/probes/${id}`, payload)
 export const deleteAdminProbe = (id: number | string) => http.delete(`/admin/api/v1/probes/${id}`)
 export const resetAdminProbeEnrollToken = (id: number | string) =>
   http.post<{ enroll_token?: string }>(`/admin/api/v1/probes/${id}/enroll-token/reset`)
-export const getAdminProbeSla = (id: number | string, params?: Record<string, unknown>) =>
-  http.get<{ sla?: ProbeSLA }>(`/admin/api/v1/probes/${id}/sla`, { params })
+export const getAdminProbeSla = (
+  id: number | string,
+  params?: Record<string, unknown>,
+  signal?: AbortSignal
+) => http.get<{ sla?: ProbeSLA }>(`/admin/api/v1/probes/${id}/sla`, { params, signal })
 export const adminProbePortCheck = (id: number | string, payload?: Record<string, unknown>) =>
   http.post<{ ok?: boolean; request_id?: string }>(
     `/admin/api/v1/probes/${id}/port-check`,
@@ -433,8 +458,8 @@ export const createAdminProbeLogSession = (id: number | string, payload: Record<
   )
 
 // 管理员管理
-export const listAdmins = (params?: Record<string, unknown>) =>
-  http.get<ApiList<AdminUser>>('/admin/api/v1/admins', { params })
+export const listAdmins = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<AdminUser>>('/admin/api/v1/admins', { params, signal })
 export const createAdmin = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/admins', payload)
 export const updateAdmin = (id: number | string, payload: Record<string, unknown>) =>
@@ -444,10 +469,10 @@ export const updateAdminStatus = (id: number | string, payload: Record<string, u
 export const deleteAdmin = (id: number | string) => http.delete(`/admin/api/v1/admins/${id}`)
 
 // 权限组管理
-export const listPermissions = () =>
-  http.get<ApiList<PermissionItem>>('/admin/api/v1/permissions/list')
-export const listPermissionGroups = () =>
-  http.get<ApiList<PermissionGroup>>('/admin/api/v1/permission-groups')
+export const listPermissions = (signal?: AbortSignal) =>
+  http.get<ApiList<PermissionItem>>('/admin/api/v1/permissions/list', { signal })
+export const listPermissionGroups = (signal?: AbortSignal) =>
+  http.get<ApiList<PermissionGroup>>('/admin/api/v1/permission-groups', { signal })
 export const createPermissionGroup = (payload: Record<string, unknown>) =>
   http.post('/admin/api/v1/permission-groups', payload)
 export const updatePermissionGroup = (id: number | string, payload: Record<string, unknown>) =>
@@ -467,8 +492,8 @@ export const setRegionActive = (id: number | string, active: boolean) =>
   http.patch<{ id: number; active: boolean }>(`/admin/api/v1/regions/${id}/active`, { active })
 
 // CMS
-export const listCmsCategories = (params?: Record<string, unknown>) =>
-  http.get<ApiList<CMSCategory>>('/admin/api/v1/cms/categories', { params })
+export const listCmsCategories = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<CMSCategory>>('/admin/api/v1/cms/categories', { params, signal })
 export const createCmsCategory = (payload: Record<string, unknown>) =>
   http.post<CMSCategory>('/admin/api/v1/cms/categories', payload)
 export const updateCmsCategory = (id: number | string, payload: Record<string, unknown>) =>
@@ -476,24 +501,24 @@ export const updateCmsCategory = (id: number | string, payload: Record<string, u
 export const deleteCmsCategory = (id: number | string) =>
   http.delete(`/admin/api/v1/cms/categories/${id}`)
 
-export const listCmsPosts = (params?: Record<string, unknown>) =>
-  http.get<CMSPostListResponse>('/admin/api/v1/cms/posts', { params })
+export const listCmsPosts = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<CMSPostListResponse>('/admin/api/v1/cms/posts', { params, signal })
 export const createCmsPost = (payload: Record<string, unknown>) =>
   http.post<CMSPost>('/admin/api/v1/cms/posts', payload)
 export const updateCmsPost = (id: number | string, payload: Record<string, unknown>) =>
   http.patch<CMSPost>(`/admin/api/v1/cms/posts/${id}`, payload)
 export const deleteCmsPost = (id: number | string) => http.delete(`/admin/api/v1/cms/posts/${id}`)
 
-export const listCmsBlocks = (params?: Record<string, unknown>) =>
-  http.get<ApiList<CMSBlock>>('/admin/api/v1/cms/blocks', { params })
+export const listCmsBlocks = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<ApiList<CMSBlock>>('/admin/api/v1/cms/blocks', { params, signal })
 export const createCmsBlock = (payload: Record<string, unknown>) =>
   http.post<CMSBlock>('/admin/api/v1/cms/blocks', payload)
 export const updateCmsBlock = (id: number | string, payload: Record<string, unknown>) =>
   http.patch<CMSBlock>(`/admin/api/v1/cms/blocks/${id}`, payload)
 export const deleteCmsBlock = (id: number | string) => http.delete(`/admin/api/v1/cms/blocks/${id}`)
 
-export const listUploads = (params?: Record<string, unknown>) =>
-  http.get<UploadListResponse>('/admin/api/v1/uploads', { params })
+export const listUploads = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  http.get<UploadListResponse>('/admin/api/v1/uploads', { params, signal })
 export const uploadFile = (file: File) => {
   const formData = new FormData()
   formData.append('file', file)
@@ -502,18 +527,9 @@ export const uploadFile = (file: File) => {
   })
 }
 
-export const uploadPaymentPlugin = (file: File, password: string) => {
-  const formData = new FormData()
-  formData.append('file', file)
-  formData.append('password', password)
-  return http.post('/admin/api/v1/plugins/payment/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  })
-}
-
 // Plugins (new unified plugin system)
-export const listAdminPlugins = () =>
-  http.get<{ items?: PluginListItem[] }>('/admin/api/v1/plugins')
+export const listAdminPlugins = (signal?: AbortSignal) =>
+  http.get<{ items?: PluginListItem[] }>('/admin/api/v1/plugins', { signal })
 export const discoverAdminPlugins = () =>
   http.get<{ items?: PluginDiscoverItem[] }>('/admin/api/v1/plugins/discover')
 
@@ -636,7 +652,8 @@ export const updateAdminPluginPaymentMethod = (payload: {
 }) => http.patch<{ ok?: boolean }>('/admin/api/v1/plugins/payment-methods', payload)
 
 // Goods types
-export const listGoodsTypes = () => http.get<{ items?: GoodsType[] }>('/admin/api/v1/goods-types')
+export const listGoodsTypes = (signal?: AbortSignal) =>
+  http.get<{ items?: GoodsType[] }>('/admin/api/v1/goods-types', { signal })
 export const createGoodsType = (payload: Record<string, unknown>) =>
   http.post<GoodsType>('/admin/api/v1/goods-types', payload)
 export const updateGoodsType = (id: number | string, payload: Record<string, unknown>) =>
@@ -863,23 +880,23 @@ export const mapAdminProfileToUserInfo = (profile: AdminProfile) => ({
   qq: profile.qq || ''
 })
 
-export const fetchAdminUsers = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listAdminUsers(params))
+export const fetchAdminUsers = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listAdminUsers(params, signal))
 export const fetchAdminUserDetail = (id: number | string) => unwrapAdmin(getAdminUserDetail(id))
 export const fetchUserTierGroups = () => unwrapAdmin(listUserTierGroups())
 export const fetchUserTierDiscountRules = (id: number | string) =>
   unwrapAdmin(listUserTierDiscountRules(id))
 export const fetchUserTierAutoRules = (id: number | string) =>
   unwrapAdmin(listUserTierAutoRules(id))
-export const fetchAdminOrders = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listAdminOrders(params))
+export const fetchAdminOrders = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listAdminOrders(params, signal))
 export const fetchAdminWalletInfo = (id: number | string) => unwrapAdmin(getAdminWalletInfo(id))
 export const fetchAdminWalletTransactions = (
   id: number | string,
   params?: Record<string, unknown>
 ) => unwrapAdmin(listAdminWalletTransactions(id, params))
-export const fetchRealNameRecords = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listRealNameRecords(params))
+export const fetchRealNameRecords = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listRealNameRecords(params, signal))
 export const impersonateAdminUser = (id: number | string) => unwrapAdmin(adminImpersonateUser(id))
 export const resetAdminUserPassword = (id: number | string, payload: Record<string, unknown>) =>
   unwrapAdmin(resetUserPassword(id, payload))
@@ -891,8 +908,9 @@ export const updateAdminUserTier = (
 ) => unwrapAdmin(setAdminUserTier(id, payload))
 
 export const fetchAdminProfile = () => unwrapAdmin(getAdminProfile())
-export const fetchAdminPermissions = () => unwrapAdmin(listPermissions())
-export const fetchPermissionGroups = () => unwrapAdmin(listPermissionGroups())
+export const fetchAdminPermissions = (signal?: AbortSignal) => unwrapAdmin(listPermissions(signal))
+export const fetchPermissionGroups = (signal?: AbortSignal) =>
+  unwrapAdmin(listPermissionGroups(signal))
 export const updateAdminProfileRecord = (payload: Record<string, unknown>) =>
   unwrapAdmin(updateAdminProfile(payload))
 export const changeAdminPasswordRecord = (payload: {
@@ -900,8 +918,8 @@ export const changeAdminPasswordRecord = (payload: {
   new_password: string
 }) => unwrapAdmin(changeAdminPassword(payload))
 
-export const fetchAdminAccounts = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listAdmins(params))
+export const fetchAdminAccounts = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listAdmins(params, signal))
 export const createAdminAccount = (payload: Record<string, unknown>) =>
   unwrapAdmin(createAdmin(payload))
 export const updateAdminAccount = (id: number | string, payload: Record<string, unknown>) =>
@@ -909,17 +927,19 @@ export const updateAdminAccount = (id: number | string, payload: Record<string, 
 export const updateAdminAccountStatus = (id: number | string, payload: Record<string, unknown>) =>
   unwrapAdmin(updateAdminStatus(id, payload))
 
-export const fetchAdminGoodsTypes = () => unwrapAdmin(listGoodsTypes())
-export const fetchAdminRegions = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listRegions(params))
-export const fetchAdminPlanGroups = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listPlanGroups(params))
-export const fetchAdminLines = (params?: Record<string, unknown>) => unwrapAdmin(listLines(params))
-export const fetchAdminPackages = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listPackages(params))
-export const fetchAdminSystemImages = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listSystemImages(params))
-export const fetchAdminBillingCycles = () => unwrapAdmin(listBillingCycles())
+export const fetchAdminGoodsTypes = (signal?: AbortSignal) => unwrapAdmin(listGoodsTypes(signal))
+export const fetchAdminRegions = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listRegions(params, signal))
+export const fetchAdminPlanGroups = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listPlanGroups(params, signal))
+export const fetchAdminLines = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listLines(params, signal))
+export const fetchAdminPackages = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listPackages(params, signal))
+export const fetchAdminSystemImages = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listSystemImages(params, signal))
+export const fetchAdminBillingCycles = (signal?: AbortSignal) =>
+  unwrapAdmin(listBillingCycles(signal))
 export const createAdminSystemImage = (payload: Record<string, unknown>) =>
   unwrapAdmin(createSystemImage(payload))
 export const updateAdminSystemImage = (id: number | string, payload: Record<string, unknown>) =>
@@ -934,41 +954,43 @@ export const setAdminLineSystemImages = (
 export const syncAdminSystemImages = (params?: Record<string, unknown>) =>
   unwrapAdmin(syncSystemImages(params))
 
-export const fetchAdminScheduledTasks = () => unwrapAdmin(listAdminScheduledTasks())
+export const fetchAdminScheduledTasks = (signal?: AbortSignal) =>
+  unwrapAdmin(listAdminScheduledTasks(signal))
 export const fetchAdminScheduledTaskRuns = (key: string, params?: { limit?: number }) =>
   unwrapAdmin(
     http.get<ApiList<ScheduledTaskRunRecord>>(`/admin/api/v1/scheduled-tasks/${key}/runs`, {
       params
     })
   )
-export const fetchAdminTickets = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listAdminTickets(params))
+export const fetchAdminTickets = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listAdminTickets(params, signal))
 export const fetchAdminTicketDetail = (id: number | string) => unwrapAdmin(getAdminTicketDetail(id))
 export const createAdminTicketMessage = (id: number | string, payload: Record<string, unknown>) =>
   unwrapAdmin(addAdminTicketMessage(id, payload))
 
-export const fetchCMSCategories = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listCmsCategories(params))
+export const fetchCMSCategories = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listCmsCategories(params, signal))
 export const createCMSCategory = (payload: Record<string, unknown>) =>
   unwrapAdmin(createCmsCategory(payload))
 export const updateCMSCategory = (id: number | string, payload: Record<string, unknown>) =>
   unwrapAdmin(updateCmsCategory(id, payload))
 export const deleteCMSCategory = (id: number | string) => unwrapAdmin(deleteCmsCategory(id))
-export const fetchCMSPosts = (params?: Record<string, unknown>) => unwrapAdmin(listCmsPosts(params))
+export const fetchCMSPosts = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listCmsPosts(params, signal))
 export const createCMSPost = (payload: Record<string, unknown>) =>
   unwrapAdmin(createCmsPost(payload))
 export const updateCMSPost = (id: number | string, payload: Record<string, unknown>) =>
   unwrapAdmin(updateCmsPost(id, payload))
 export const deleteCMSPost = (id: number | string) => unwrapAdmin(deleteCmsPost(id))
-export const fetchCMSBlocks = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listCmsBlocks(params))
+export const fetchCMSBlocks = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listCmsBlocks(params, signal))
 export const createCMSBlock = (payload: Record<string, unknown>) =>
   unwrapAdmin(createCmsBlock(payload))
 export const updateCMSBlock = (id: number | string, payload: Record<string, unknown>) =>
   unwrapAdmin(updateCmsBlock(id, payload))
 export const deleteCMSBlock = (id: number | string) => unwrapAdmin(deleteCmsBlock(id))
-export const fetchAdminUploads = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listUploads(params))
+export const fetchAdminUploads = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listUploads(params, signal))
 export const uploadAdminAsset = (file: File) => unwrapAdmin(uploadFile(file))
 export const fetchAdminSettings = () => unwrapAdmin(listSettings())
 export const updateAdminSettings = (payload: Record<string, unknown>) =>
@@ -990,10 +1012,14 @@ export type CouponProductGroupRecord = CouponProductGroup
 export type CouponRecord = Coupon
 
 export const fetchAdminAutomationConfig = () => unwrapAdmin(getAutomationConfig())
-export const fetchAdminAutomationSyncLogs = (params?: Record<string, unknown>) =>
+export const fetchAdminAutomationSyncLogs = (
+  params?: Record<string, unknown>,
+  signal?: AbortSignal
+) =>
   unwrapAdmin(
     http.get<ApiList<IntegrationSyncLogRecord>>('/admin/api/v1/integrations/automation/sync-logs', {
-      params
+      params,
+      signal
     })
   )
 export const fetchAdminDebugStatus = () => unwrapAdmin(getDebugStatus())
@@ -1037,7 +1063,7 @@ export const fetchAdminPluginInstanceConfigSchema = (
   pluginId: string,
   instanceId: string
 ) => unwrapAdmin(getAdminPluginInstanceConfigSchema(category, pluginId, instanceId))
-export const fetchAdminPlugins = () => unwrapAdmin(listAdminPlugins())
+export const fetchAdminPlugins = (signal?: AbortSignal) => unwrapAdmin(listAdminPlugins(signal))
 export const syncAdminGoodsTypeAutomation = (id: number | string, mode?: string) =>
   unwrapAdmin(syncGoodsTypeAutomation(id, mode))
 export const updateAdminBillingCycle = (id: number | string, payload: Record<string, unknown>) =>
@@ -1055,9 +1081,10 @@ export const updateAdminPlanGroup = (id: number | string, payload: Record<string
 export const updateAdminRegion = (id: number | string, payload: Record<string, unknown>) =>
   unwrapAdmin(updateRegion(id, payload))
 
-export const fetchAdminCouponGroups = () => unwrapAdmin(listCouponGroups())
-export const fetchAdminCoupons = (params?: Record<string, unknown>) =>
-  unwrapAdmin(listCoupons(params))
+export const fetchAdminCouponGroups = (signal?: AbortSignal) =>
+  unwrapAdmin(listCouponGroups(signal))
+export const fetchAdminCoupons = (params?: Record<string, unknown>, signal?: AbortSignal) =>
+  unwrapAdmin(listCoupons(params, signal))
 export const createAdminCouponGroup = (payload: Record<string, unknown>) =>
   unwrapAdmin(createCouponGroup(payload))
 export const updateAdminCouponGroup = (id: number | string, payload: Record<string, unknown>) =>

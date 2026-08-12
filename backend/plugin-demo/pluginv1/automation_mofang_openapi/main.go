@@ -80,7 +80,7 @@ func (s *coreServer) GetConfigSchema(ctx context.Context, _ *pluginv1.Empty) (*p
     "os_template": { "type": "object", "title": "OS Template", "description": "cart/products 的 os 模板，支持 {{os}}" },
     "enable_catalog_sync": { "type": "boolean", "title": "Enable Catalog Sync", "default": true },
     "enable_create_host": { "type": "boolean", "title": "Enable Create Host", "default": true },
-    "timeout_sec": { "type": "integer", "title": "Timeout (sec)", "default": 12, "minimum": 1, "maximum": 60 },
+    "timeout_sec": { "type": "integer", "title": "Timeout (sec)", "default": 120, "minimum": 1, "maximum": 120 },
     "retry": { "type": "integer", "title": "Retry", "default": 1, "minimum": 0, "maximum": 5 },
     "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
   },
@@ -101,7 +101,7 @@ func (s *coreServer) ValidateConfig(ctx context.Context, req *pluginv1.ValidateC
 	if strings.TrimSpace(cfg.BaseURL) == "" || strings.TrimSpace(cfg.Account) == "" || strings.TrimSpace(cfg.APIPassword) == "" {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "base_url/account/api_password required"}, nil
 	}
-	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 60 {
+	if cfg.TimeoutSec < 0 || cfg.TimeoutSec > 120 {
 		return &pluginv1.ValidateConfigResponse{Ok: false, Error: "timeout_sec out of range"}, nil
 	}
 	if cfg.Retry < 0 || cfg.Retry > 5 {

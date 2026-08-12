@@ -173,80 +173,93 @@ class BillingPage extends ConsumerWidget {
   Future<void> _showRechargeDialog(BuildContext context, WidgetRef ref) async {
     final amountController = TextEditingController();
     final noteController = TextEditingController();
+    var submitting = false;
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(AppStrings.recharge),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '充值金额'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text(AppStrings.recharge),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '充值金额'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                maxLength: InputLimits.paymentNote,
+                decoration: const InputDecoration(labelText: '备注'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(AppStrings.cancel),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteController,
-              maxLength: InputLimits.paymentNote,
-              decoration: const InputDecoration(labelText: '备注'),
+            TextButton(
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      if (submitting) return;
+                      final amountText = amountController.text.trim();
+                      if (!_moneyPattern.hasMatch(amountText)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('金额格式不正确，最多保留2位小数'),
+                          ),
+                        );
+                        return;
+                      }
+                      final amount = double.parse(amountText);
+                      if (amount <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请输入有效金额')),
+                        );
+                        return;
+                      }
+                      final note = noteController.text.trim();
+                      if (runeLength(note) > InputLimits.paymentNote) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('备注长度不能超过 500 个字符')),
+                        );
+                        return;
+                      }
+                      // 请求进行中锁定按钮，防止双击重复提交资金单。
+                      setModalState(() => submitting = true);
+                      try {
+                        await ref.read(walletProvider.notifier).recharge({
+                          'amount': amount,
+                          'note': note,
+                        });
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('充值提交成功')),
+                          );
+                          await ref.read(walletProvider.notifier).refresh();
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          setModalState(() => submitting = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
+                        }
+                      }
+                    },
+              child: const Text(AppStrings.confirm),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(AppStrings.cancel),
-          ),
-          TextButton(
-            onPressed: () async {
-              final amountText = amountController.text.trim();
-              if (!_moneyPattern.hasMatch(amountText)) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('金额格式不正确，最多保留2位小数')));
-                return;
-              }
-              final amount = double.parse(amountText);
-              if (amount <= 0) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('请输入有效金额')));
-                return;
-              }
-              final note = noteController.text.trim();
-              if (runeLength(note) > InputLimits.paymentNote) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('备注长度不能超过 500 个字符')));
-                return;
-              }
-              try {
-                await ref.read(walletProvider.notifier).recharge({
-                  'amount': amount,
-                  'note': note,
-                });
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('充值提交成功')));
-                  await ref.read(walletProvider.notifier).refresh();
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(e.toString())));
-                }
-              }
-            },
-            child: const Text(AppStrings.confirm),
-          ),
-        ],
       ),
     );
+    amountController.dispose();
+    noteController.dispose();
   }
 
   Future<void> _showWithdrawDialog(
@@ -259,89 +272,102 @@ class BillingPage extends ConsumerWidget {
     final rawWallet = wallet?['wallet'];
     final data = rawWallet is Map ? rawWallet.cast<String, dynamic>() : wallet;
     final balance = double.tryParse('${data?['balance'] ?? 0}') ?? 0;
+    var submitting = false;
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text(AppStrings.withdraw),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('可用余额：${MoneyFormatter.format(balance)}'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '提现金额'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text(AppStrings.withdraw),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('可用余额：${MoneyFormatter.format(balance)}'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: amountController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '提现金额'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                maxLength: InputLimits.paymentNote,
+                decoration: const InputDecoration(labelText: '备注'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(AppStrings.cancel),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteController,
-              maxLength: InputLimits.paymentNote,
-              decoration: const InputDecoration(labelText: '备注'),
+            TextButton(
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      if (submitting) return;
+                      final amountText = amountController.text.trim();
+                      if (!_moneyPattern.hasMatch(amountText)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('金额格式不正确，最多保留2位小数'),
+                          ),
+                        );
+                        return;
+                      }
+                      final amount = double.parse(amountText);
+                      if (amount <= 0) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('请输入有效金额')),
+                        );
+                        return;
+                      }
+                      if (amount > balance) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('提现金额不能大于余额')),
+                        );
+                        return;
+                      }
+                      final note = noteController.text.trim();
+                      if (runeLength(note) > InputLimits.paymentNote) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('备注长度不能超过 500 个字符')),
+                        );
+                        return;
+                      }
+                      // 请求进行中锁定按钮，防止双击重复提交资金单。
+                      setModalState(() => submitting = true);
+                      try {
+                        await ref.read(walletProvider.notifier).withdraw({
+                          'amount': amount,
+                          'note': note,
+                          'meta': {'channel': 'manual'},
+                        });
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('提现提交成功')),
+                          );
+                          await ref.read(walletProvider.notifier).refresh();
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          setModalState(() => submitting = false);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString())),
+                          );
+                        }
+                      }
+                    },
+              child: const Text(AppStrings.confirm),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(AppStrings.cancel),
-          ),
-          TextButton(
-            onPressed: () async {
-              final amountText = amountController.text.trim();
-              if (!_moneyPattern.hasMatch(amountText)) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('金额格式不正确，最多保留2位小数')));
-                return;
-              }
-              final amount = double.parse(amountText);
-              if (amount <= 0) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('请输入有效金额')));
-                return;
-              }
-              if (amount > balance) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('提现金额不能大于余额')));
-                return;
-              }
-              final note = noteController.text.trim();
-              if (runeLength(note) > InputLimits.paymentNote) {
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('备注长度不能超过 500 个字符')));
-                return;
-              }
-              try {
-                await ref.read(walletProvider.notifier).withdraw({
-                  'amount': amount,
-                  'note': note,
-                  'meta': {'channel': 'manual'},
-                });
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(const SnackBar(content: Text('提现提交成功')));
-                  await ref.read(walletProvider.notifier).refresh();
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(
-                    context,
-                  ).showSnackBar(SnackBar(content: Text(e.toString())));
-                }
-              }
-            },
-            child: const Text(AppStrings.confirm),
-          ),
-        ],
       ),
     );
+    amountController.dispose();
+    noteController.dispose();
   }
 
   String _mapTxType(String type) {

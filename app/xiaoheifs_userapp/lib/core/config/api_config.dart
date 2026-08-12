@@ -1,26 +1,30 @@
-/// API闁板秶鐤嗙猾?
-/// 缁狅紕鎮夾PI閸╄櫣顢匲RL閸滃瞼娴夐崗鎶藉帳缂?
+/// API配置类
+/// 管理API基础URL和相关配置
 class ApiConfig {
-  /// 姒涙顓籄PI URL
-  static const String defaultUrl = 'https://api.example.com';
+  /// 默认API URL（保留 /api 前缀，与登录页 _normalizeApiUrl 的归一化规则一致），
+  /// 可通过 `--dart-define=DEFAULT_API_URL=...` 覆盖。
+  static const String defaultUrl = String.fromEnvironment(
+    'DEFAULT_API_URL',
+    defaultValue: 'https://api.example.com/api',
+  );
 
-  /// 瑜版挸澧燗PI URL閿涘牆褰查悽杈╂暏閹村嘲婀惂璇茬秿妞ょ敻鍘ょ純顕嗙礆
+  /// 当前API URL（可由用户在登录页配置）
   static String _baseUrl = defaultUrl;
 
-  /// 閼惧嘲褰囪ぐ鎾冲API URL
+  /// 获取当前API URL
   static String get baseUrl => _baseUrl;
 
-  /// 鐠佸墽鐤咥PI URL閿涘牏鏁ゆ禍搴ｆ暏閹寸柉鍤滅€规矮绠熼張宥呭閸ｃ劌婀撮崸鈧敍?
+  /// 设置API URL（用于用户自定义服务器地址）
   static void setBaseUrl(String url) {
     _baseUrl = url;
   }
 
-  /// 闁插秶鐤嗘稉娲帛鐠侇椈RL
+  /// 重置为默认URL
   static void reset() {
     _baseUrl = defaultUrl;
   }
 
-  /// 閼惧嘲褰囩€瑰本鏆ｉ惃鍑橮I缁旑垳鍋RL
+  /// 获取完整的API端点URL
   static String getEndpoint(String path) {
     return '$baseUrl$path';
   }

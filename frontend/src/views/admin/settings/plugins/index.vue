@@ -329,11 +329,12 @@
     PluginListItem,
     PluginPaymentMethodItem
   } from '@/services/types'
-  import { getCachedAdminPath } from '@/services/adminPath'
   import { useTable } from '@/hooks/core/useTable'
   import { useAdminPermissions } from '../_shared/settings'
 
   defineOptions({ name: 'AdminSettingsPlugins' })
+
+  const router = useRouter()
 
   type PluginRow = PluginListItem & { row_key: string }
   type DiscoverRow = PluginDiscoverItem & { row_key: string }
@@ -773,7 +774,7 @@
   }
 
   function navigateCatalog(): void {
-    window.location.assign(`/${getCachedAdminPath()}/catalog`)
+    void router.push({ name: 'CatalogPage' })
   }
 </script>
 

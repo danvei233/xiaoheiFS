@@ -178,14 +178,18 @@
   })
 
   async function fetchWalletOrders(
-    params: WalletOrderTableParams
+    params: WalletOrderTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<WalletOrderTableRow>> {
-    const response = await listAdminWalletOrders({
-      limit: params.size,
-      offset: (params.current - 1) * params.size,
-      status: params.status || undefined,
-      user_id: normalizeUserId(params.user_id)
-    })
+    const response = await listAdminWalletOrders(
+      {
+        limit: params.size,
+        offset: (params.current - 1) * params.size,
+        status: params.status || undefined,
+        user_id: normalizeUserId(params.user_id)
+      },
+      signal
+    )
     const payload = response.data || { items: [], total: 0 }
     const records = (payload.items || []).map(normalizeOrder)
     return {

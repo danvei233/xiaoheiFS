@@ -388,9 +388,9 @@ components:
           type: string
         name:
           type: string
-        schema_json:
+        instructions:
           type: string
-        config_json:
+        notice:
           type: string
         balance:
           type: number

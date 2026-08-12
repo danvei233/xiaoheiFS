@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
 
@@ -91,9 +92,14 @@ func (r *GormRepo) UpdateGoodsType(ctx context.Context, gt domain.GoodsType) err
 }
 
 func (r *GormRepo) DeleteGoodsType(ctx context.Context, id int64) error {
-
+	var refs int64
+	if err := r.gdb.WithContext(ctx).Model(&planGroupRow{}).Where("goods_type_id = ?", id).Count(&refs).Error; err != nil {
+		return err
+	}
+	if refs > 0 {
+		return appshared.ErrConflict
+	}
 	return r.gdb.WithContext(ctx).Delete(&goodsTypeRow{}, id).Error
-
 }
 
 func (r *GormRepo) ListRegions(ctx context.Context) ([]domain.Region, error) {
@@ -145,9 +151,14 @@ func (r *GormRepo) UpdateRegion(ctx context.Context, region domain.Region) error
 }
 
 func (r *GormRepo) DeleteRegion(ctx context.Context, id int64) error {
-
+	var refs int64
+	if err := r.gdb.WithContext(ctx).Model(&planGroupRow{}).Where("region_id = ?", id).Count(&refs).Error; err != nil {
+		return err
+	}
+	if refs > 0 {
+		return appshared.ErrConflict
+	}
 	return r.gdb.WithContext(ctx).Delete(&regionRow{}, id).Error
-
 }
 
 func (r *GormRepo) SetRegionActive(ctx context.Context, id int64, active bool) error {
@@ -156,7 +167,6 @@ func (r *GormRepo) SetRegionActive(ctx context.Context, id int64, active bool) e
 		"updated_at": time.Now(),
 	}).Error
 }
-
 
 func (r *GormRepo) ListPlanGroups(ctx context.Context) ([]domain.PlanGroup, error) {
 
@@ -267,9 +277,14 @@ func (r *GormRepo) UpdatePlanGroup(ctx context.Context, plan domain.PlanGroup) e
 }
 
 func (r *GormRepo) DeletePlanGroup(ctx context.Context, id int64) error {
-
+	var refs int64
+	if err := r.gdb.WithContext(ctx).Model(&packageRow{}).Where("plan_group_id = ?", id).Count(&refs).Error; err != nil {
+		return err
+	}
+	if refs > 0 {
+		return appshared.ErrConflict
+	}
 	return r.gdb.WithContext(ctx).Delete(&planGroupRow{}, id).Error
-
 }
 
 func (r *GormRepo) ListPackages(ctx context.Context) ([]domain.Package, error) {
@@ -357,9 +372,19 @@ func (r *GormRepo) UpdatePackage(ctx context.Context, pkg domain.Package) error 
 }
 
 func (r *GormRepo) DeletePackage(ctx context.Context, id int64) error {
-
+	// A package still referenced by a cart item, an order item or a live VPS
+	// must not be hard-deleted: the referencing rows would dangle. Deactivate
+	// the package (Active=false) instead for routine removal from sale.
+	for _, model := range []any{&cartItemRow{}, &orderItemRow{}, &vpsInstanceRow{}} {
+		var refs int64
+		if err := r.gdb.WithContext(ctx).Model(model).Where("package_id = ?", id).Count(&refs).Error; err != nil {
+			return err
+		}
+		if refs > 0 {
+			return appshared.ErrConflict
+		}
+	}
 	return r.gdb.WithContext(ctx).Delete(&packageRow{}, id).Error
-
 }
 
 func (r *GormRepo) GetPackage(ctx context.Context, id int64) (domain.Package, error) {

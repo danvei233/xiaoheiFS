@@ -27,9 +27,9 @@ func (h *Handler) AdminUserTierGroups(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrNotSupported.Error()})
 		return
 	}
-	items, err := h.userTierSvc.ListGroups(c)
+	items, err := h.userTierSvc.ListGroups(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toUserTierGroupDTOs(items)})
@@ -42,7 +42,7 @@ func (h *Handler) AdminUserTierGroupCreate(c *gin.Context) {
 	}
 	var payload UserTierGroupDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	group := domain.UserTierGroup{
@@ -52,8 +52,8 @@ func (h *Handler) AdminUserTierGroupCreate(c *gin.Context) {
 		Priority:           payload.Priority,
 		AutoApproveEnabled: payload.AutoApproveEnabled,
 	}
-	if err := h.userTierSvc.CreateGroup(c, getUserID(c), &group); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.CreateGroup(c.Request.Context(), getUserID(c), &group); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, toUserTierGroupDTO(group))
@@ -69,14 +69,14 @@ func (h *Handler) AdminUserTierGroupUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	old, err := h.userTierSvc.GetGroup(c, uri.ID)
+	old, err := h.userTierSvc.GetGroup(c.Request.Context(), uri.ID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
 		return
 	}
 	var payload UserTierGroupDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	old.Name = strings.TrimSpace(payload.Name)
@@ -84,8 +84,8 @@ func (h *Handler) AdminUserTierGroupUpdate(c *gin.Context) {
 	old.Icon = strings.TrimSpace(payload.Icon)
 	old.Priority = payload.Priority
 	old.AutoApproveEnabled = payload.AutoApproveEnabled
-	if err := h.userTierSvc.UpdateGroup(c, getUserID(c), old); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.UpdateGroup(c.Request.Context(), getUserID(c), old); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, toUserTierGroupDTO(old))
@@ -101,8 +101,8 @@ func (h *Handler) AdminUserTierGroupDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.userTierSvc.DeleteGroup(c, getUserID(c), uri.ID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.DeleteGroup(c.Request.Context(), getUserID(c), uri.ID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -118,9 +118,9 @@ func (h *Handler) AdminUserTierDiscountRules(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	items, err := h.userTierSvc.ListDiscountRules(c, uri.ID)
+	items, err := h.userTierSvc.ListDiscountRules(c.Request.Context(), uri.ID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toUserTierDiscountRuleDTOs(items)})
@@ -138,7 +138,7 @@ func (h *Handler) AdminUserTierDiscountRuleCreate(c *gin.Context) {
 	}
 	var payload UserTierDiscountRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	rule := domain.UserTierDiscountRule{
@@ -155,8 +155,8 @@ func (h *Handler) AdminUserTierDiscountRuleCreate(c *gin.Context) {
 		AddDiskPermille:  payload.AddDiskPermille,
 		AddBWPermille:    payload.AddBWPermille,
 	}
-	if err := h.userTierSvc.CreateDiscountRule(c, getUserID(c), &rule); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.CreateDiscountRule(c.Request.Context(), getUserID(c), &rule); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, toUserTierDiscountRuleDTO(rule))
@@ -174,7 +174,7 @@ func (h *Handler) AdminUserTierDiscountRuleUpdate(c *gin.Context) {
 	}
 	var payload UserTierDiscountRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	rule := domain.UserTierDiscountRule{
@@ -192,8 +192,8 @@ func (h *Handler) AdminUserTierDiscountRuleUpdate(c *gin.Context) {
 		AddDiskPermille:  payload.AddDiskPermille,
 		AddBWPermille:    payload.AddBWPermille,
 	}
-	if err := h.userTierSvc.UpdateDiscountRule(c, getUserID(c), rule); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.UpdateDiscountRule(c.Request.Context(), getUserID(c), rule); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, toUserTierDiscountRuleDTO(rule))
@@ -209,8 +209,8 @@ func (h *Handler) AdminUserTierDiscountRuleDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.userTierSvc.DeleteDiscountRule(c, getUserID(c), uri.ID, uri.RuleID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.DeleteDiscountRule(c.Request.Context(), getUserID(c), uri.ID, uri.RuleID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -226,9 +226,9 @@ func (h *Handler) AdminUserTierAutoRules(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	items, err := h.userTierSvc.ListAutoRules(c, uri.ID)
+	items, err := h.userTierSvc.ListAutoRules(c.Request.Context(), uri.ID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toUserTierAutoRuleDTOs(items)})
@@ -246,7 +246,7 @@ func (h *Handler) AdminUserTierAutoRuleCreate(c *gin.Context) {
 	}
 	var payload UserTierAutoRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	rule := domain.UserTierAutoRule{
@@ -255,8 +255,8 @@ func (h *Handler) AdminUserTierAutoRuleCreate(c *gin.Context) {
 		ConditionsJSON: payload.ConditionsJSON,
 		SortOrder:      payload.SortOrder,
 	}
-	if err := h.userTierSvc.CreateAutoRule(c, getUserID(c), &rule); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.CreateAutoRule(c.Request.Context(), getUserID(c), &rule); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, toUserTierAutoRuleDTO(rule))
@@ -274,7 +274,7 @@ func (h *Handler) AdminUserTierAutoRuleUpdate(c *gin.Context) {
 	}
 	var payload UserTierAutoRuleDTO
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	rule := domain.UserTierAutoRule{
@@ -284,8 +284,8 @@ func (h *Handler) AdminUserTierAutoRuleUpdate(c *gin.Context) {
 		ConditionsJSON: payload.ConditionsJSON,
 		SortOrder:      payload.SortOrder,
 	}
-	if err := h.userTierSvc.UpdateAutoRule(c, getUserID(c), rule); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.UpdateAutoRule(c.Request.Context(), getUserID(c), rule); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, toUserTierAutoRuleDTO(rule))
@@ -301,8 +301,8 @@ func (h *Handler) AdminUserTierAutoRuleDelete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
 		return
 	}
-	if err := h.userTierSvc.DeleteAutoRule(c, getUserID(c), uri.ID, uri.RuleID); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.DeleteAutoRule(c.Request.Context(), getUserID(c), uri.ID, uri.RuleID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -341,7 +341,7 @@ func (h *Handler) AdminUserSetTier(c *gin.Context) {
 		ExpireAt string `json:"expire_at"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	var exp *time.Time
@@ -353,8 +353,8 @@ func (h *Handler) AdminUserSetTier(c *gin.Context) {
 		}
 		exp = &v
 	}
-	if err := h.userTierSvc.SetUserGroup(c, getUserID(c), uri.ID, payload.GroupID, exp); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if err := h.userTierSvc.SetUserGroup(c.Request.Context(), getUserID(c), uri.ID, payload.GroupID, exp); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": clientErrMessage(err)})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})

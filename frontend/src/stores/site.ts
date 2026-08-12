@@ -11,6 +11,7 @@ interface SiteState {
   blocks: Record<string, any[]>
   posts: Record<string, any[]>
   settings: Record<string, any>
+  settingsLoaded: boolean
 }
 
 export interface SiteNavItem {
@@ -20,6 +21,8 @@ export interface SiteNavItem {
   lang?: string
   enabled?: boolean
 }
+
+let settingsRequest: Promise<void> | null = null
 
 export const useSiteStore = defineStore('site', {
   state: (): SiteState => ({
@@ -31,7 +34,8 @@ export const useSiteStore = defineStore('site', {
     maintenanceMessage: '',
     blocks: {},
     posts: {},
-    settings: {}
+    settings: {},
+    settingsLoaded: false
   }),
 
   getters: {
@@ -79,30 +83,49 @@ export const useSiteStore = defineStore('site', {
 
   actions: {
     setLang(lang?: string) {
-      this.language = lang || navigator.language || 'zh-CN'
+      // P2-80 / m065 #2：归一化到后端 CMS 认可的两档（zh-CN/en-US）。
+      // 非标准浏览器语言（en-GB/zh-TW）不再原样透传，否则 CMS 按精确匹配拿空。
+      const raw = lang || navigator.language || 'zh-CN'
+      this.language = raw.toLowerCase().startsWith('en') ? 'en-US' : 'zh-CN'
     },
 
-    async fetchSettings() {
-      try {
-        const res = await getSiteSettings()
-        const items = (res.data as any)?.items || []
-        this.settings = {}
-        items.forEach((item: any) => {
-          this.settings[item.key] = item.value
-        })
-        const resolveValue = (key: string, legacyKey?: string) =>
-          this.settings[key] || (legacyKey ? this.settings[legacyKey] : '')
-        this.siteName = resolveValue('site_name') || '小黑云控制台'
-        this.logoUrl = resolveValue('logo_url', 'site_logo')
-        this.faviconUrl = resolveValue('favicon_url', 'site_favicon')
-        const maintenanceRaw = resolveValue('maintenance_mode', 'site_maintenance_mode')
-        this.maintenanceMode = maintenanceRaw === 'true' || maintenanceRaw === true
-        this.maintenanceMessage =
-          resolveValue('maintenance_message', 'site_maintenance_message') ||
-          '系统维护中，请稍后再试'
-      } catch (error) {
-        console.error('Failed to fetch site settings:', error)
+    fetchSettings(force = false): Promise<void> {
+      if (!force && this.settingsLoaded) return Promise.resolve()
+      if (settingsRequest) {
+        return force ? settingsRequest.then(() => this.fetchSettings(true)) : settingsRequest
       }
+
+      settingsRequest = (async () => {
+        try {
+          const res = await getSiteSettings()
+          const items = (res.data as any)?.items || []
+          this.settings = {}
+          items.forEach((item: any) => {
+            this.settings[item.key] = item.value
+          })
+          const resolveValue = (key: string, legacyKey?: string) =>
+            this.settings[key] || (legacyKey ? this.settings[legacyKey] : '')
+          this.siteName = resolveValue('site_name') || '小黑云控制台'
+          this.logoUrl = resolveValue('logo_url', 'site_logo')
+          this.faviconUrl = resolveValue('favicon_url', 'site_favicon')
+          const maintenanceRaw = resolveValue('maintenance_mode', 'site_maintenance_mode')
+          // P3-46：后端 settings 值以字符串存储，兼容常见布尔串，避免"1"/"on"被漏判。
+          const maintenanceStr =
+            typeof maintenanceRaw === 'string' ? maintenanceRaw.trim().toLowerCase() : ''
+          this.maintenanceMode =
+            maintenanceRaw === true || ['1', 'true', 'yes', 'on'].includes(maintenanceStr)
+          this.maintenanceMessage =
+            resolveValue('maintenance_message', 'site_maintenance_message') ||
+            '系统维护中，请稍后再试'
+          this.settingsLoaded = true
+        } catch (error) {
+          console.error('Failed to fetch site settings:', error)
+        } finally {
+          settingsRequest = null
+        }
+      })()
+
+      return settingsRequest
     },
 
     async fetchBlocks(page?: string) {

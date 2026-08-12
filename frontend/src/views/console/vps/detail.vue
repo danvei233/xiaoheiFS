@@ -660,11 +660,11 @@
     VideoCamera,
     View
   } from '@element-plus/icons-vue'
-  import { useAuthStore } from '@/stores/auth'
   import { useCatalogStore } from '@/stores/catalog'
   import { useSiteStore } from '@/stores/site'
   import { useVpsStore } from '@/stores/vps'
   import { INPUT_LIMITS } from '@/constants/inputLimits'
+  import { classifyExternalUrl } from '@/utils/urlPolicy'
   import {
     addVpsFirewallRule,
     addVpsPortMapping,
@@ -678,11 +678,14 @@
     deleteVpsSnapshot,
     emergencyRenewVps,
     getVpsBackups,
+    getVpsCredentials,
     getVpsFirewallRules,
     getVpsMonitor,
+    getVpsPanelUrl,
     getVpsPortCandidates,
     getVpsPortMappings,
     getVpsSnapshots,
+    getVpsVncUrl,
     listSystemImages,
     quoteVpsResizeOrder,
     requestVpsRefund,
@@ -838,7 +841,6 @@
   const router = useRouter()
   const store = useVpsStore() as unknown as VpsStoreView
   const catalog = useCatalogStore()
-  const auth = useAuthStore()
   const site = useSiteStore()
   const id = computed(() => String(route.params.id || ''))
   const loading = ref(true)
@@ -848,6 +850,10 @@
   const detail = computed<CompatibleVpsRecord | null>(() => {
     const row = store.current
     if (!row) return null
+    // 防御性渲染：store.current 是单槽，必须与当前路由参数匹配才展示，
+    // 否则 /console/vps/1 → /console/vps/2 加载期会把 VPS1 的明文凭据
+    // （access_info）渲染在 VPS2 的 URL 下（web_state_isolation F1）。
+    if (String(row.id ?? row.ID ?? '') !== String(id.value)) return null
     return {
       ...row,
       id: row.id ?? row.ID,
@@ -905,8 +911,13 @@
         fallback.BandwidthMB
     }
   })
+  const credentials = ref<Record<string, unknown>>({})
+  let credentialsRequestVersion = 0
+  let credentialsAbortController: AbortController | null = null
   const access = computed(() => {
-    const info = parseJson(detail.value?.access_info)
+    // P2-4: the list/detail/monitor DTOs never carry AccessInfo; the panel/VNC/OS
+    // passwords are fetched on demand from the explicit credentials endpoint.
+    const info = credentials.value
     return {
       remote_ip: String(info.remote_ip || info.ip || info.public_ip || info.ipv4 || info.Ip || ''),
       remote_port: String(info.remote_port || info.port || info.ssh_port || info.Port || ''),
@@ -914,6 +925,29 @@
       panel_password: String(info.panel_password || info.panelPassword || '')
     }
   })
+
+  const loadCredentials = async () => {
+    const requestedId = String(route.params.id || '')
+    const requestVersion = ++credentialsRequestVersion
+    credentialsAbortController?.abort()
+    const controller = new AbortController()
+    credentialsAbortController = controller
+    try {
+      const res = await getVpsCredentials(requestedId, controller.signal)
+      if (
+        disposed ||
+        requestVersion !== credentialsRequestVersion ||
+        requestedId !== String(route.params.id || '')
+      )
+        return
+      credentials.value = res.data?.access_info ?? {}
+    } catch {
+      if (requestVersion !== credentialsRequestVersion || controller.signal.aborted) return
+      credentials.value = {}
+    } finally {
+      if (credentialsAbortController === controller) credentialsAbortController = null
+    }
+  }
 
   const normalizeFeature = (value: unknown) => {
     const feature = String(value || '')
@@ -1048,6 +1082,8 @@
     trafficOut: createSeries()
   })
   const monitorLoading = ref(false)
+  let monitorRequest: Promise<void> | null = null
+  let disposed = false
   const pushPoint = (series: Series, value: unknown) => {
     series.labels.push(new Date().toLocaleTimeString('zh-CN', { hour12: false }))
     series.values.push(Number(value || 0))
@@ -1082,10 +1118,14 @@
       series: monitor.trafficOut
     }
   ])
-  const fetchMonitor = async () => {
+  const fetchMonitor = (): Promise<void> => {
+    if (monitorRequest) return monitorRequest
+
+    const targetId = id.value
     monitorLoading.value = true
-    try {
-      const response = await getVpsMonitor(id.value)
+    monitorRequest = (async () => {
+      const response = await getVpsMonitor(targetId)
+      if (disposed || id.value !== targetId) return
       const value = (response.data || {}) as MonitorPayload
       if (
         store.current &&
@@ -1121,9 +1161,12 @@
           Number(value.bytes_out ?? value.out_bytes ?? value.tx_bytes ?? value.out ?? 0) / 1024
         )
       )
-    } finally {
+    })().finally(() => {
+      monitorRequest = null
       monitorLoading.value = false
-    }
+    })
+
+    return monitorRequest
   }
 
   const errorResponse = (error: unknown) => {
@@ -1319,10 +1362,37 @@
     }
   }
 
-  const base = import.meta.env.VITE_API_BASE || ''
-  const openExternal = (path: string) => {
-    const query = auth.token ? `?token=${encodeURIComponent(auth.token)}` : ''
-    window.open(`${base}/api/v1/vps/${id.value}/${path}${query}`, '_blank', 'noopener')
+  const openExternal = async (type: 'panel' | 'vnc') => {
+    const targetWindow = window.open('about:blank', '_blank')
+    if (!targetWindow) {
+      ElMessage.error('浏览器阻止了新窗口，请允许本站打开弹窗后重试')
+      return
+    }
+    targetWindow.opener = null
+
+    try {
+      const response =
+        type === 'panel' ? await getVpsPanelUrl(id.value) : await getVpsVncUrl(id.value)
+      const targetUrl = String(response.data?.url || '').trim()
+      if (!targetUrl) {
+        targetWindow.close()
+        ElMessage.error(type === 'panel' ? '面板地址为空' : 'VNC 地址为空')
+        return
+      }
+      // H9：面板/VNC 地址是后端返回的数据。`window.open('about:blank')` 打开的
+      // 新窗口继承 opener 的 origin，`location.replace('javascript:...')` 等于
+      // 在同源窗口执行脚本。打开前必须校验为可安全导航的 web URL；面板/VNC
+      // 常见于 LAN/内网地址，允许 http（allowHttp），拒绝其余危险 scheme。
+      const decision = classifyExternalUrl(targetUrl, { allowHttp: true })
+      if (!decision.ok || decision.kind !== 'web') {
+        targetWindow.close()
+        ElMessage.error(type === 'panel' ? '面板地址无效，无法打开' : 'VNC 地址无效，无法打开')
+        return
+      }
+      targetWindow.location.replace(targetUrl)
+    } catch {
+      targetWindow.close()
+    }
   }
   const openPanel = () => openExternal('panel')
   const openVnc = () => openExternal('vnc')
@@ -1565,16 +1635,31 @@
     )
   }
 
+  // P3-41：用 CSPRNG 生成随机密码，不再用 Math.random（可预测）。
+  // 保证每组字符至少出现一次，然后洗牌。
   const generatePassword = () => {
     const groups = ['abcdefghjkmnpqrstuvwxyz', 'ABCDEFGHJKMNPQRSTUVWXYZ', '23456789', '!@$%^&*']
-    const pick = (value: string) => value[Math.floor(Math.random() * value.length)]
-    const result = groups.map(pick)
     const all = groups.join('')
-    while (result.length < 12) result.push(pick(all))
-    return result.sort(() => Math.random() - 0.5).join('')
+    const randomIndex = (max: number) => {
+      const buf = new Uint32Array(1)
+      globalThis.crypto.getRandomValues(buf)
+      return buf[0] % max
+    }
+    const result = groups.map((group) => group[randomIndex(group.length)])
+    while (result.length < 12) result.push(all[randomIndex(all.length)])
+    // Fisher-Yates 洗牌（用 CSPRNG 提供的随机数）。
+    for (let i = result.length - 1; i > 0; i--) {
+      const j = randomIndex(i + 1)
+      const tmp = result[i]
+      result[i] = result[j]
+      result[j] = tmp
+    }
+    return result.join('')
   }
   const openResetPassword = () => {
-    resetPasswordForm.password = access.value.os_password
+    // 不预填当前系统密码到输入框（m059 F8）：避免把明文凭据回显给会话内的
+    // 任何旁观者，也让"重置"语义真正是设置一个新密码。
+    resetPasswordForm.password = ''
     resetPasswordOpen.value = true
   }
   const submitResetPassword = () =>
@@ -1961,7 +2046,9 @@
       ? { ...addonMin.value }
       : Object.fromEntries(addonFields.map(({ key }) => [key, resizeForm[key]])),
     ...(resizeForm.schedule_mode === 'scheduled' && resizeForm.scheduled_at
-      ? { scheduled_at: dayjs(resizeForm.scheduled_at).format('YYYY-MM-DD HH:mm:ss') }
+      ? // P3-44：后端按 time.RFC3339 解析（handlers_site_vps_ticket.go:996），
+        // 旧的 'YYYY-MM-DD HH:mm:ss' 无法解析会 400。用带本地时区偏移的 RFC3339。
+        { scheduled_at: dayjs(resizeForm.scheduled_at).format('YYYY-MM-DDTHH:mm:ssZ') }
       : {})
   })
   const openResize = () => {
@@ -2122,19 +2209,65 @@
     }
   )
 
-  let monitorTimer: ReturnType<typeof setInterval> | null = null
+  let monitorTimer: ReturnType<typeof setTimeout> | null = null
+
+  const scheduleMonitor = () => {
+    if (disposed) return
+    monitorTimer = setTimeout(() => {
+      void fetchMonitor()
+        .catch(() => undefined)
+        .finally(scheduleMonitor)
+    }, 10000)
+  }
+
+  // P2-4: App.vue 按顶层路由 key 复用组件，/console/vps/1 → /console/vps/2
+  // 不会重建实例、onMounted 不会重跑，旧的 credentials 会残留渲染在新 VPS 下。
+  // 监听 :id 变化：立即清空上一条 VPS 的明文凭据与展示开关，再重新拉详情 +
+  // 凭据 + 监控。store.fetchDetail 本身也会在 id 变化时清空 current 单槽。
+  watch(
+    () => route.params.id,
+    async (newId, oldId) => {
+      if (!newId || newId === oldId) return
+      credentialsRequestVersion += 1
+      credentialsAbortController?.abort()
+      credentialsAbortController = null
+      credentials.value = {}
+      showOsPassword.value = false
+      showPanelPassword.value = false
+      loading.value = true
+      try {
+        await store.fetchDetail(String(newId))
+      } finally {
+        loading.value = false
+      }
+      if (disposed) return
+      void loadCredentials().catch(() => undefined)
+      void fetchMonitor()
+        .catch(() => undefined)
+        .finally(scheduleMonitor)
+    }
+  )
+
   onMounted(async () => {
     loading.value = true
+    void catalog.fetchCatalog().catch(() => undefined)
+    void site.fetchSettings().catch(() => undefined)
     try {
-      await Promise.all([catalog.fetchCatalog(), site.fetchSettings(), store.fetchDetail(id.value)])
-      await fetchMonitor()
-      monitorTimer = setInterval(fetchMonitor, 10000)
+      await store.fetchDetail(id.value)
     } finally {
       loading.value = false
     }
+    if (disposed) return
+    void loadCredentials().catch(() => undefined)
+    void fetchMonitor()
+      .catch(() => undefined)
+      .finally(scheduleMonitor)
   })
   onBeforeUnmount(() => {
-    if (monitorTimer) clearInterval(monitorTimer)
+    disposed = true
+    credentialsRequestVersion += 1
+    credentialsAbortController?.abort()
+    if (monitorTimer) clearTimeout(monitorTimer)
     if (resizeQuoteTimer) clearTimeout(resizeQuoteTimer)
     if (portCandidateTimer) clearTimeout(portCandidateTimer)
   })

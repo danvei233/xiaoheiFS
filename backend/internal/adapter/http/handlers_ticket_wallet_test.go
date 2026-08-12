@@ -34,9 +34,26 @@ func TestHandlers_TicketAndNotifications(t *testing.T) {
 
 	other := testutil.CreateUser(t, env.Repo, "other", "other@example.com", "pass")
 	otherToken := testutil.IssueJWT(t, env.JWTSecret, other.ID, "user", time.Hour)
+	// P3-10: another user's ticket must be indistinguishable from a missing
+	// ticket (404), never a 403 existence oracle.
 	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/tickets/"+testutil.Itoa(ticketResp.Ticket.ID), nil, otherToken)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", rec.Code)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for another user's ticket, got %d", rec.Code)
+	}
+	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/tickets/"+testutil.Itoa(ticketResp.Ticket.ID)+"/messages", map[string]any{
+		"content": "hijack",
+	}, otherToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for replying to another user's ticket, got %d", rec.Code)
+	}
+	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/tickets/"+testutil.Itoa(ticketResp.Ticket.ID)+"/close", nil, otherToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for closing another user's ticket, got %d", rec.Code)
+	}
+	// A genuinely missing ticket also returns 404.
+	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/tickets/999999", nil, otherToken)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a missing ticket, got %d", rec.Code)
 	}
 
 	n := domain.Notification{UserID: user.ID, Type: "info", Title: "hi", Content: "msg"}

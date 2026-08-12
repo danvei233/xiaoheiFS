@@ -78,6 +78,7 @@
   import type { FormItem } from '@/components/core/forms/art-form/index.vue'
   import type { FormRules } from 'element-plus'
   import { runInstall } from '@/services/user'
+  import { setAdminPathHint } from '@/services/adminPath'
   import { useInstallStore } from '@/stores/install'
   import { useInstallWizardStore } from '@/stores/installWizard'
   import { INPUT_LIMITS } from '@/constants/inputLimits'
@@ -300,7 +301,9 @@
         admin: { username: form.adminUser, password: form.adminPass }
       })
       await install.fetchStatus()
-      localStorage.setItem('admin_path_cache', adminPath)
+      setAdminPathHint(adminPath)
+      // H5：安装完成立即清除内存中的 DBA/管理员密码，不再继续驻留。
+      wiz.clearSecrets()
       ElMessage.success('安装完成')
       emit(
         'next',

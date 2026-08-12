@@ -1,12 +1,18 @@
 package order
 
-import "context"
+import (
+	"context"
+
+	"xiaoheiplay/internal/domain"
+)
 
 type orderSourceKey struct{}
 
 const (
-	OrderSourceUserUI     = "user_ui"
-	OrderSourceUserAPIKey = "user_apikey"
+	// OrderSourceUserUI and OrderSourceUserAPIKey are aliases of the canonical
+	// domain constants (moved there for a single definition site).
+	OrderSourceUserUI     = domain.OrderSourceUserUI
+	OrderSourceUserAPIKey = domain.OrderSourceUserAPIKey
 )
 
 func WithOrderSource(ctx context.Context, source string) context.Context {

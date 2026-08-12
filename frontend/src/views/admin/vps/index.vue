@@ -501,10 +501,10 @@
 
   defineOptions({ name: 'VpsPage' })
 
-  const fetchAdminVps = async (params: Record<string, unknown> = {}) =>
-    (await listAdminVps(params)).data
-  const fetchAdminUsers = async (params: Record<string, unknown> = {}) =>
-    (await listAdminUsers(params)).data
+  const fetchAdminVps = async (params: Record<string, unknown> = {}, signal?: AbortSignal) =>
+    (await listAdminVps(params, signal)).data
+  const fetchAdminUsers = async (params: Record<string, unknown> = {}, signal?: AbortSignal) =>
+    (await listAdminUsers(params, signal)).data
   const fetchAdminGoodsTypes = async () => {
     const payload = (await listGoodsTypes()).data
     return { items: payload.items || [] }
@@ -978,32 +978,6 @@
     return `${user.username || '用户'} (#${user.id}) ${user.email || ''}`.trim()
   }
 
-  function applyClientFilters(items: VpsTableRow[], filters = searchForm.value) {
-    let rows = [...items]
-    const keyword = filters.keyword.trim().toLowerCase()
-
-    if (filters.status) {
-      rows = rows.filter((item) => item.admin_status === filters.status)
-    }
-
-    if (keyword) {
-      rows = rows.filter((item) =>
-        [
-          item.id,
-          item.user_id,
-          item.name,
-          item.region,
-          item.package_name,
-          item.automation_instance_id
-        ]
-          .map((value) => String(value ?? '').toLowerCase())
-          .some((value) => value.includes(keyword))
-      )
-    }
-
-    return rows
-  }
-
   function formatPrice(value?: number | null) {
     return Number(value || 0).toFixed(2)
   }
@@ -1183,53 +1157,37 @@
   }
 
   async function fetchVpsTable(
-    params: VpsTableParams
+    params: VpsTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<VpsTableRow>> {
     const filters = {
       keyword: String(params.keyword || ''),
       status: params.status || undefined
     }
-    const hasFilters = Boolean(filters.keyword.trim() || filters.status)
-    let payload: { items?: VpsRecord[]; total?: number }
-
-    if (!hasFilters) {
-      payload = await fetchAdminVps({
+    // web_refresh_perf F4：状态/关键词过滤下推后端（AdminVPSList 支持
+    // status/keyword），不再全表拉取后客户端过滤（大部署下每次搜索 =
+    // ⌈T/500⌉ 个串行请求）。后端返回过滤后的当前页与总数。
+    const payload = await fetchAdminVps(
+      {
         limit: params.size,
-        offset: (params.current - 1) * params.size
-      })
-    } else {
-      // The admin endpoint only pages raw instances. Collect every raw page before
-      // filtering so a match on a later page remains reachable from the UI.
-      const pageSize = 500
-      const allItems: VpsRecord[] = []
-      let offset = 0
-      let total = 0
-
-      while (allItems.length < total || (offset === 0 && total === 0)) {
-        const page = await fetchAdminVps({ limit: pageSize, offset })
-        const items = page.items || []
-        allItems.push(...items)
-        total = Number(page.total ?? allItems.length)
-        if (!items.length || allItems.length >= total) {
-          break
-        }
-        offset += items.length
-      }
-
-      payload = { items: allItems, total }
-    }
+        offset: (params.current - 1) * params.size,
+        status: filters.status || undefined,
+        keyword: filters.keyword.trim() || undefined
+      },
+      signal
+    )
 
     searchForm.value = {
       keyword: filters.keyword,
       status: filters.status
     }
     const normalized = (payload.items || []).map((item) => normalizeVps(item as VpsRecordLike))
-    const filtered = hasFilters ? applyClientFilters(normalized, filters) : normalized
-    const records = hasFilters
-      ? filtered.slice((params.current - 1) * params.size, params.current * params.size)
-      : filtered
-    const resultTotal = hasFilters ? filtered.length : (payload.total ?? records.length)
-    return { records, current: params.current, size: params.size, total: resultTotal }
+    return {
+      records: normalized,
+      current: params.current,
+      size: params.size,
+      total: Number(payload.total ?? normalized.length)
+    }
   }
 
   function handleSearch(params: VpsSearchForm) {

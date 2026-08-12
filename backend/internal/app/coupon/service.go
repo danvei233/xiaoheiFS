@@ -106,7 +106,7 @@ func (s *Service) GetCoupon(ctx context.Context, id int64) (domain.Coupon, error
 }
 
 func (s *Service) CreateCoupon(ctx context.Context, adminID int64, coupon *domain.Coupon) error {
-	if err := s.validateCoupon(ctx, *coupon); err != nil {
+	if err := s.validateCoupon(ctx, *coupon, true); err != nil {
 		return err
 	}
 	coupon.Code = normalizeCode(coupon.Code)
@@ -118,7 +118,7 @@ func (s *Service) CreateCoupon(ctx context.Context, adminID int64, coupon *domai
 }
 
 func (s *Service) UpdateCoupon(ctx context.Context, adminID int64, coupon domain.Coupon) error {
-	if err := s.validateCoupon(ctx, coupon); err != nil {
+	if err := s.validateCoupon(ctx, coupon, true); err != nil {
 		return err
 	}
 	coupon.Code = normalizeCode(coupon.Code)
@@ -163,7 +163,7 @@ func (s *Service) BatchGenerate(ctx context.Context, adminID int64, input BatchG
 	if input.Length > 32 {
 		return nil, appshared.ErrInvalidInput
 	}
-	if err := s.validateCoupon(ctx, input.Coupon); err != nil {
+	if err := s.validateCoupon(ctx, input.Coupon, false); err != nil {
 		return nil, err
 	}
 	prefix := strings.ToUpper(strings.TrimSpace(input.Prefix))
@@ -300,8 +300,8 @@ func (s *Service) MarkOrderConfirmed(ctx context.Context, orderID int64) error {
 	}, domain.CouponRedemptionStatusConfirmed)
 }
 
-func (s *Service) validateCoupon(ctx context.Context, coupon domain.Coupon) error {
-	if normalizeCode(coupon.Code) == "" {
+func (s *Service) validateCoupon(ctx context.Context, coupon domain.Coupon, requireCode bool) error {
+	if requireCode && normalizeCode(coupon.Code) == "" {
 		return appshared.ErrInvalidInput
 	}
 	if coupon.DiscountPermille <= 0 || coupon.DiscountPermille > 1000 {
@@ -310,7 +310,10 @@ func (s *Service) validateCoupon(ctx context.Context, coupon domain.Coupon) erro
 	if coupon.ProductGroupID <= 0 {
 		return appshared.ErrInvalidInput
 	}
-	if coupon.TotalLimit < -1 || coupon.PerUserLimit < -1 {
+	// -1 means unlimited; >= 1 is a positive cap. 0 is accepted by the range
+	// check above but PreviewDiscount treats 0 as "already fully used", so the
+	// coupon could never be redeemed — reject it as a configuration error.
+	if coupon.TotalLimit < -1 || coupon.TotalLimit == 0 || coupon.PerUserLimit < -1 || coupon.PerUserLimit == 0 {
 		return appshared.ErrInvalidInput
 	}
 	if coupon.StartsAt != nil && coupon.EndsAt != nil && coupon.StartsAt.After(*coupon.EndsAt) {

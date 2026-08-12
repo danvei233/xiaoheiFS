@@ -1,4 +1,5 @@
 {
-  "key": { "ui:widget": "password", "ui:help": "留空表示不修改（由宿主处理）" }
+  "merchant_key": { "ui:widget": "password", "ui:help": "留空表示不修改（由宿主处理）" },
+  "sign_type": { "ui:widget": "hidden" }
 }
 

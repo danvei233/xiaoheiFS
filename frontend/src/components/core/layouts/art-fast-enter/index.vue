@@ -64,6 +64,7 @@
 <script setup lang="ts">
   import { useFastEnter } from '@/hooks/core/useFastEnter'
   import type { FastEnterApplication, FastEnterQuickLink } from '@/types/config'
+  import { openExternalUrl } from '@/utils/urlPolicy'
 
   defineOptions({ name: 'ArtFastEnter' })
 
@@ -86,8 +87,13 @@
       return
     }
 
-    if (targetPath.startsWith('http')) {
-      window.open(targetPath, '_blank')
+    // H9：链接来自配置（可能后台下发）。`startsWith('http')` 会放过
+    // `httpfoo:` 之类畸形 scheme，且旧实现漏了 noopener/noreferrer。
+    // 统一过 URL 安全策略：只接受 https（dev localhost http）。
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(targetPath)) {
+      openExternalUrl(targetPath, {
+        onInvalid: () => console.warn('[FastEnter] blocked external link')
+      })
     } else {
       router.push({ name: targetPath })
     }

@@ -5,7 +5,8 @@
     <ElCard class="error-card" shadow="never">
       <div class="title">页面渲染失败</div>
       <div class="description">通常是接口返回异常或前端运行时错误导致。可先刷新重试。</div>
-      <pre v-if="message" class="message">{{ message }}</pre>
+      <!-- 不把原始错误信息渲染给访客：错误里可能带接口地址/token/内部字段名（P2-79 / m064 F10）。
+           原始错误已 console.error，便于开发者定位。 -->
       <div class="actions">
         <ElButton type="primary" @click="reload">刷新页面</ElButton>
       </div>
@@ -16,9 +17,19 @@
 <script setup lang="ts">
   defineOptions({ name: 'ErrorBoundary' })
 
+  const route = useRoute()
   const hasError = ref(false)
-  const message = ref('')
   const reload = () => window.location.reload()
+
+  // web_bundle_mobile F1：ErrorBoundary 的 key 只跨布局域变化，不再随每次
+  // 路由切换整壳重挂载（那会让 KeepAlive 缓存失效、每个列表页重新拉数据）。
+  // 错误兜底状态改为在路由变化（含同域内切换）时复位，保留 P2-79 语义。
+  watch(
+    () => route.fullPath,
+    () => {
+      hasError.value = false
+    }
+  )
 
   onErrorCaptured((error) => {
     const errorWithMessage = error as { message?: unknown } | null | undefined
@@ -30,7 +41,8 @@
     }
 
     hasError.value = true
-    message.value = errorMessage
+    // 原始错误只进控制台，不渲染给用户（P2-79 / m064 F10）。
+    console.error('[ErrorBoundary]', error)
     return false
   })
 </script>
@@ -63,19 +75,6 @@
   .description {
     margin-bottom: 12px;
     color: var(--art-gray-600);
-  }
-
-  .message {
-    max-height: 240px;
-    padding: 12px;
-    margin: 0 0 12px;
-    overflow: auto;
-    font-size: 12px;
-    color: var(--art-gray-800);
-    white-space: pre-wrap;
-    background: var(--art-gray-100);
-    border: 1px solid var(--default-border);
-    border-radius: calc(var(--custom-radius) / 2 + 2px);
   }
 
   .actions {

@@ -46,4 +46,9 @@ class RealnameNotifier extends StateNotifier<RealnameState> {
     await _repo.submit(payload);
     await fetch();
   }
+
+  /// 重置为初始状态（登出时调用）。
+  void reset() {
+    state = const RealnameState();
+  }
 }

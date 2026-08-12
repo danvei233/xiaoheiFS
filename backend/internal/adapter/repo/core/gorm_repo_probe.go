@@ -70,8 +70,9 @@ func (r *GormRepo) ListProbeNodes(ctx context.Context, filter appshared.ProbeNod
 		q = q.Where("status = ?", strings.TrimSpace(filter.Status))
 	}
 	if kw := strings.TrimSpace(filter.Keyword); kw != "" {
-		like := "%" + kw + "%"
-		q = q.Where("name LIKE ? OR agent_id LIKE ?", like, like)
+		like := "%" + escapeLikePattern(kw) + "%"
+		esc := likeEscapeClause(r.gdb)
+		q = q.Where("name LIKE ?"+esc+" OR agent_id LIKE ?"+esc, like, like)
 	}
 	var total int64
 	if err := q.Count(&total).Error; err != nil {
@@ -86,6 +87,56 @@ func (r *GormRepo) ListProbeNodes(ctx context.Context, filter appshared.ProbeNod
 		out = append(out, fromProbeNodeRow(row))
 	}
 	return out, int(total), nil
+}
+
+// ListProbeNodesByCursor returns up to limit nodes with id > afterID ordered by
+// id ASC. The monotonic cursor lets callers page the whole table to exhaustion
+// in bounded batches, independent of ListProbeNodes' 500-cap and id-DESC order.
+func (r *GormRepo) ListProbeNodesByCursor(ctx context.Context, afterID int64, limit int) ([]domain.ProbeNode, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	var rows []probeNodeRow
+	if err := r.gdb.WithContext(ctx).
+		Where("id > ?", afterID).
+		Order("id ASC").
+		Limit(limit).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := make([]domain.ProbeNode, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, fromProbeNodeRow(row))
+	}
+	return out, nil
+}
+
+// EnrollProbeNode consumes the enroll token (CAS on used_at IS NULL) and
+// persists the rotated probe secret in one DB transaction. On any failure the
+// transaction rolls back so the token is never burned without the secret being
+// rotated, and a concurrent replay gets ErrConflict instead of double-rotating.
+func (r *GormRepo) EnrollProbeNode(ctx context.Context, tokenID int64, usedAt time.Time, node domain.ProbeNode) error {
+	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&probeEnrollTokenRow{}).
+			Where("id = ? AND used_at IS NULL", tokenID).
+			Update("used_at", usedAt)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return domain.ErrConflict
+		}
+		return tx.Model(&probeNodeRow{}).Where("id = ?", node.ID).Updates(map[string]any{
+			"secret_hash": strings.TrimSpace(node.SecretHash),
+			"agent_id":    strings.TrimSpace(node.AgentID),
+			"name":        strings.TrimSpace(node.Name),
+			"os_type":     strings.TrimSpace(node.OSType),
+			"updated_at":  time.Now(),
+		}).Error
+	})
 }
 
 func (r *GormRepo) UpdateProbeNode(ctx context.Context, node domain.ProbeNode) error {
@@ -168,11 +219,70 @@ func (r *GormRepo) GetValidProbeEnrollTokenByHash(ctx context.Context, tokenHash
 }
 
 func (r *GormRepo) MarkProbeEnrollTokenUsed(ctx context.Context, id int64, usedAt time.Time) error {
-	return r.gdb.WithContext(ctx).Model(&probeEnrollTokenRow{}).Where("id = ?", id).Update("used_at", usedAt).Error
+	// Guard with used_at IS NULL so a concurrent Enroll that already passed the
+	// validity check cannot clobber the consumption timestamp. Callers that need
+	// to detect a lost race should switch to a RowsAffected-aware contract.
+	return r.gdb.WithContext(ctx).Model(&probeEnrollTokenRow{}).
+		Where("id = ? AND used_at IS NULL", id).
+		Update("used_at", usedAt).Error
+}
+
+// MarkProbeEnrollTokenUsedIfUnused atomically claims an enroll token: the
+// update only succeeds for a row that is still unused, so two concurrent
+// enrollments cannot both consume the same token (P2-33).
+func (r *GormRepo) MarkProbeEnrollTokenUsedIfUnused(ctx context.Context, id int64, usedAt time.Time) (bool, error) {
+	res := r.gdb.WithContext(ctx).Model(&probeEnrollTokenRow{}).
+		Where("id = ? AND used_at IS NULL", id).
+		Update("used_at", usedAt)
+	if res.Error != nil {
+		return false, res.Error
+	}
+	return res.RowsAffected == 1, nil
 }
 
 func (r *GormRepo) DeleteProbeEnrollTokensByProbe(ctx context.Context, probeID int64) error {
 	return r.gdb.WithContext(ctx).Where("probe_id = ? AND used_at IS NULL", probeID).Delete(&probeEnrollTokenRow{}).Error
+}
+
+// ConsumeProbeEnrollTokenAndUpdateNode atomically claims a one-time enroll token
+// and applies the node binding/secret update in a single transaction. A failed
+// node update rolls the claim back, so a usable token is never burned and the
+// agent secret is never half-applied (P2-33 follow-up).
+func (r *GormRepo) ConsumeProbeEnrollTokenAndUpdateNode(ctx context.Context, tokenID, nodeID int64, updates map[string]any, usedAt time.Time) (bool, error) {
+	claimed := false
+	// SQLite is a single-writer store: concurrent enrolls can surface SQLITE_BUSY
+	// instead of a clean claimed=false for the loser. Retry the whole transaction
+	// on transient busy/lock errors so the concurrent single-winner contract holds
+	// under parallelism.
+	err := r.withTransientTxRetry(ctx, func(tx *gorm.DB) error {
+		var row probeEnrollTokenRow
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", tokenID).First(&row).Error; err != nil {
+			return rEnsure(err)
+		}
+		if row.UsedAt != nil || row.ExpiresAt.Before(usedAt) {
+			return nil
+		}
+		if row.ProbeID != nodeID {
+			return appshared.ErrInvalidInput
+		}
+		if err := tx.Model(&probeEnrollTokenRow{}).Where("id = ? AND used_at IS NULL", tokenID).Update("used_at", usedAt).Error; err != nil {
+			return err
+		}
+		claimed = true
+		updates["updated_at"] = usedAt
+		res := tx.Model(&probeNodeRow{}).Where("id = ?", nodeID).Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return appshared.ErrNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return claimed, nil
 }
 
 func (r *GormRepo) CreateProbeStatusEvent(ctx context.Context, ev *domain.ProbeStatusEvent) error {

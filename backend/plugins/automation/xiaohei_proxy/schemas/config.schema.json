@@ -7,8 +7,9 @@
       "title": "Base URL",
       "description": "e.g. https://upstream.example.com"
     },
-    "open_akid": { "type": "string", "title": "Open AKID" },
-    "open_secret": { "type": "string", "title": "Open Secret", "format": "password" },
+    "open_akid": { "type": "string", "title": "Open AKID", "description": "AKID from upstream user console -> API key management" },
+    "open_key": { "type": "string", "title": "Open Key", "format": "password", "description": "Key returned when creating upstream user API key (preferred)" },
+    "open_secret": { "type": "string", "title": "Open Secret (Deprecated)", "format": "password", "description": "legacy alias of open_key" },
     "admin_api_key": {
       "type": "string",
       "title": "Admin API Key",
@@ -44,5 +45,5 @@
     },
     "dry_run": { "type": "boolean", "title": "Dry Run", "default": false }
   },
-  "required": ["base_url", "open_akid", "open_secret", "goods_type_id"]
+  "required": ["base_url", "open_akid", "goods_type_id"]
 }

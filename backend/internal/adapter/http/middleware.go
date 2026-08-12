@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	appapikey "xiaoheiplay/internal/app/apikey"
 	apppermission "xiaoheiplay/internal/app/permission"
@@ -21,27 +20,39 @@ import (
 	"xiaoheiplay/internal/pkg/permissions"
 )
 
+const maxSignedRequestBodyBytes int64 = 1 << 20
+
+// signedAPIKeyRateWindow / RateLimit bound how many signed requests a single
+// API key may issue per window. The count is derived from the durable nonce
+// ledger, so it holds across instances and restarts (P1-10).
+const (
+	signedAPIKeyRateWindow = time.Minute
+	signedAPIKeyRateLimit  = 60
+)
+
 type Middleware struct {
-	jwtSecret     []byte
-	apiKeys       *appapikey.Service
-	userAPIKeys   *appuserapikey.Service
-	permissionSvc *apppermission.Service
-	authSvc       AuthService
-	settingsSvc   SettingsService
-	nonceMu       sync.Mutex
-	nonceSeen     map[string]time.Time
+	jwtSecret          []byte
+	apiKeys            *appapikey.Service
+	userAPIKeys        *appuserapikey.Service
+	permissionSvc      *apppermission.Service
+	authSvc            AuthService
+	settingsSvc        SettingsService
+	impersonationAudit ImpersonationAuditService
 }
 
-func NewMiddleware(jwtSecret string, apiKeys *appapikey.Service, userAPIKeys *appuserapikey.Service, permissionSvc *apppermission.Service, authSvc AuthService, settingsSvc SettingsService) *Middleware {
-	return &Middleware{
+func NewMiddleware(jwtSecret string, apiKeys *appapikey.Service, userAPIKeys *appuserapikey.Service, permissionSvc *apppermission.Service, authSvc AuthService, settingsSvc SettingsService, impersonationAudit ...ImpersonationAuditService) *Middleware {
+	middleware := &Middleware{
 		jwtSecret:     []byte(jwtSecret),
 		apiKeys:       apiKeys,
 		userAPIKeys:   userAPIKeys,
 		permissionSvc: permissionSvc,
 		authSvc:       authSvc,
 		settingsSvc:   settingsSvc,
-		nonceSeen:     map[string]time.Time{},
 	}
+	if len(impersonationAudit) > 0 {
+		middleware.impersonationAudit = impersonationAudit[0]
+	}
+	return middleware
 }
 
 func (m *Middleware) RequireUser() gin.HandlerFunc {
@@ -61,15 +72,43 @@ func (m *Middleware) RequireUser() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrForbidden.Error()})
 			return
 		}
+		if impersonatorID := impersonatorIDFromClaims(claims); impersonatorID > 0 {
+			if m.impersonationAudit == nil || m.impersonationAudit.AuditRequired(
+				c.Request.Context(), impersonatorID, "admin.impersonated_request", "http_request",
+				strconv.FormatInt(userID, 10), map[string]any{"method": c.Request.Method, "path": c.FullPath()},
+			) != nil {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": domain.ErrAuditWriteFailed.Error()})
+				return
+			}
+		}
 		c.Set("user_id", userID)
 		c.Set("role", role)
+		setTokenFamilyContext(c, claims)
 		c.Set("actor_mode", string(domain.RequestActorModeUserJWT))
 		c.Set("request_actor", domain.RequestActor{
-			Mode:   domain.RequestActorModeUserJWT,
-			UserID: userID,
-			Role:   role,
+			Mode:           domain.RequestActorModeUserJWT,
+			UserID:         userID,
+			Role:           role,
+			ImpersonatorID: impersonatorIDFromClaims(claims),
 		})
 		c.Next()
+	}
+}
+
+// impersonatorIDFromClaims extracts the `imp` claim (admin id that issued an
+// impersonation token) when present; zero otherwise.
+func impersonatorIDFromClaims(claims jwt.MapClaims) int64 {
+	imp, _ := toInt64Claim(claims["imp"])
+	if imp <= 0 {
+		return 0
+	}
+	return imp
+}
+
+func setTokenFamilyContext(c *gin.Context, claims jwt.MapClaims) {
+	familyID, _ := claims["fid"].(string)
+	if familyID = strings.TrimSpace(familyID); familyID != "" {
+		c.Set("token_family_id", familyID)
 	}
 }
 
@@ -99,13 +138,27 @@ func (m *Middleware) OptionalUser() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if impersonatorID := impersonatorIDFromClaims(claims); impersonatorID > 0 {
+			if m.impersonationAudit == nil || m.impersonationAudit.AuditRequired(
+				c.Request.Context(), impersonatorID, "admin.impersonated_request", "http_request",
+				strconv.FormatInt(userID, 10), map[string]any{"method": c.Request.Method, "path": c.FullPath()},
+			) != nil {
+				// Optional auth remains optional for ordinary invalid credentials, but
+				// a valid impersonation capability must never become unaudited. Fail
+				// closed instead of silently downgrading it to a guest request.
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": domain.ErrAuditWriteFailed.Error()})
+				return
+			}
+		}
 		c.Set("user_id", userID)
 		c.Set("role", role)
+		setTokenFamilyContext(c, claims)
 		c.Set("actor_mode", string(domain.RequestActorModeUserJWT))
 		c.Set("request_actor", domain.RequestActor{
-			Mode:   domain.RequestActorModeUserJWT,
-			UserID: userID,
-			Role:   role,
+			Mode:           domain.RequestActorModeUserJWT,
+			UserID:         userID,
+			Role:           role,
+			ImpersonatorID: impersonatorIDFromClaims(claims),
 		})
 		c.Next()
 	}
@@ -130,6 +183,7 @@ func (m *Middleware) RequireAdmin() gin.HandlerFunc {
 		}
 		c.Set("user_id", userID)
 		c.Set("role", role)
+		setTokenFamilyContext(c, claims)
 		c.Set("actor_mode", string(domain.RequestActorModeAdminJWT))
 		c.Set("request_actor", domain.RequestActor{
 			Mode:   domain.RequestActorModeAdminJWT,
@@ -177,6 +231,13 @@ func (m *Middleware) RequireAdminPermissionAuto() gin.HandlerFunc {
 		}
 		c.Set("user_id", userID)
 		c.Set("role", role)
+		setTokenFamilyContext(c, claims)
+		c.Set("actor_mode", string(domain.RequestActorModeAdminJWT))
+		c.Set("request_actor", domain.RequestActor{
+			Mode:   domain.RequestActorModeAdminJWT,
+			UserID: userID,
+			Role:   "admin",
+		})
 
 		if !m.isAdmin2FAAllowlisted(path) {
 			m.enforceAdmin2FAGate(c, userID, claims)
@@ -189,7 +250,7 @@ func (m *Middleware) RequireAdminPermissionAuto() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		isPrimary, err := m.permissionSvc.IsPrimaryAdmin(c, userID)
+		isPrimary, err := m.permissionSvc.IsPrimaryAdmin(c.Request.Context(), userID)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 			return
@@ -207,7 +268,7 @@ func (m *Middleware) RequireAdminPermissionAuto() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		has, err := m.permissionSvc.HasPermission(c, userID, perm)
+		has, err := m.permissionSvc.HasPermission(c.Request.Context(), userID, perm)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 			return
@@ -229,7 +290,7 @@ func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey strin
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrApiKeyDisabled.Error()})
 		return
 	}
-	key, err := m.apiKeys.Validate(c, rawKey)
+	key, err := m.apiKeys.Validate(c.Request.Context(), rawKey)
 	if err != nil {
 		status := http.StatusUnauthorized
 		if errors.Is(err, appshared.ErrForbidden) {
@@ -239,13 +300,18 @@ func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey strin
 		return
 	}
 
-	c.Set("user_id", int64(0))
+	// The audit actor for an admin API-key request is the derived negative id so
+	// audit logs are attributable (type+id) instead of silently collapsing to
+	// admin_id=0 (Issue #51 P2-22). The encoding keeps API-key actors disjoint
+	// from admin/user ids (>0) and from the robot webhook sentinel (-1).
+	actorID := domain.AdminAPIKeyActorID(key.ID)
+	c.Set("user_id", actorID)
 	c.Set("role", "admin")
 	c.Set("api_key_id", key.ID)
 	c.Set("actor_mode", string(domain.RequestActorModeAdminAPIKey))
 	c.Set("request_actor", domain.RequestActor{
 		Mode:          domain.RequestActorModeAdminAPIKey,
-		UserID:        0,
+		UserID:        actorID,
 		Role:          "admin",
 		AdminAPIKeyID: key.ID,
 	})
@@ -263,7 +329,7 @@ func (m *Middleware) requireAdminPermissionByAPIKey(c *gin.Context, rawKey strin
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
 		return
 	}
-	has, err := m.permissionSvc.HasPermissionForGroup(c, *key.PermissionGroupID, perm)
+	has, err := m.permissionSvc.HasPermissionForGroup(c.Request.Context(), *key.PermissionGroupID, perm)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 		return
@@ -286,7 +352,7 @@ func (m *Middleware) RequireAPIKey() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrApiKeyDisabled.Error()})
 			return
 		}
-		_, err := m.apiKeys.Validate(c, key)
+		_, err := m.apiKeys.Validate(c.Request.Context(), key)
 		if err != nil {
 			status := http.StatusUnauthorized
 			if errors.Is(err, appshared.ErrForbidden) {
@@ -317,19 +383,21 @@ func (m *Middleware) RequireUserAPIKeySigned() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
 			return
 		}
-		if !m.registerNonce(akid, nonce, time.Now(), appuserapikey.DefaultSignatureWindowSec) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
-			return
-		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxSignedRequestBodyBytes)
 		body, err := io.ReadAll(c.Request.Body)
 		if err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": domain.ErrRequestBodyTooLarge.Error()})
+				return
+			}
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
 			return
 		}
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 		path := c.Request.URL.Path
 		canonical := appuserapikey.BuildCanonical(c.Request.Method, path, c.Request.URL.RawQuery, tsRaw, nonce, body)
-		key, err := m.userAPIKeys.ValidateSignature(c, akid, tsRaw, nonce, signature, canonical)
+		key, err := m.userAPIKeys.ValidateSignature(c.Request.Context(), akid, tsRaw, nonce, signature, canonical)
 		if err != nil {
 			status := http.StatusUnauthorized
 			if errors.Is(err, appshared.ErrForbidden) {
@@ -338,6 +406,33 @@ func (m *Middleware) RequireUserAPIKeySigned() gin.HandlerFunc {
 			c.AbortWithStatusJSON(status, gin.H{"error": domain.ErrInvalidSignature.Error()})
 			return
 		}
+
+		// Enforce the route's required scope (P0-7).
+		routePath := c.FullPath()
+		if routePath == "" {
+			routePath = path
+		}
+		required, ok := appuserapikey.RequiredScope(c.Request.Method, routePath)
+		if !ok || !appuserapikey.HasScope(key, required) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": domain.ErrPermissionDenied.Error()})
+			return
+		}
+
+		// Durable, multi-instance replay protection and request budget.
+		claimed, count, err := m.userAPIKeys.ConsumeNonce(c.Request.Context(), akid, nonce, time.Now(), signedAPIKeyRateWindow, signedAPIKeyRateLimit)
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrSignatureCheckFailed.Error()})
+			return
+		}
+		if !claimed {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidSignature.Error()})
+			return
+		}
+		if count > signedAPIKeyRateLimit {
+			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"error": domain.ErrTooManyRequests.Error()})
+			return
+		}
+		_ = m.userAPIKeys.RecordUse(c.Request.Context(), key.ID)
 		c.Set("user_id", key.UserID)
 		c.Set("role", "user")
 		c.Set("user_api_key_id", key.ID)
@@ -385,7 +480,7 @@ func (m *Middleware) RequirePermission(permissions ...string) gin.HandlerFunc {
 		}
 
 		for _, perm := range permissions {
-			has, err := m.permissionSvc.HasPermission(c, userID, perm)
+			has, err := m.permissionSvc.HasPermission(c.Request.Context(), userID, perm)
 			if err != nil {
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": domain.ErrPermissionCheckFailed.Error()})
 				return
@@ -412,35 +507,78 @@ func (m *Middleware) parseToken(c *gin.Context) (jwt.MapClaims, error) {
 		return nil, domain.ErrEmptyToken
 	}
 	claims := jwt.MapClaims{}
-	token, err := jwt.ParseWithClaims(tokenStr, claims, func(token *jwt.Token) (any, error) {
-		if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
-			return nil, domain.ErrUnexpectedSigningMethod
-		}
-		return m.jwtSecret, nil
-	})
+	token, err := jwt.ParseWithClaims(tokenStr, claims,
+		func(token *jwt.Token) (any, error) {
+			if token.Method == nil || token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+				return nil, domain.ErrUnexpectedSigningMethod
+			}
+			return m.jwtSecret, nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithIssuer(jwtIssuer),
+		jwt.WithAudience(jwtAudience),
+	)
 	if err != nil || !token.Valid {
 		return nil, domain.ErrInvalidToken
 	}
-	if m.authSvc != nil {
-		userID, ok := toInt64Claim(claims["user_id"])
-		if ok && userID > 0 {
-			user, userErr := m.authSvc.GetUser(c, userID)
-			if userErr != nil {
-				return nil, domain.ErrInvalidToken
-			}
-			if user.PasswordChangedAt != nil {
-				iatSeconds, hasIAT := toFloat64Claim(claims["iat"])
-				if !hasIAT || iatSeconds <= 0 {
-					return nil, domain.ErrInvalidToken
-				}
-				changedAt := float64(user.PasswordChangedAt.UnixNano()) / 1e9
-				if iatSeconds <= changedAt {
-					return nil, domain.ErrInvalidToken
-				}
-			}
+	tokenType, _ := claims["type"].(string)
+	if tokenType != "access" {
+		return nil, domain.ErrInvalidTokenType
+	}
+	if err := validateCurrentAuthClaims(c.Request.Context(), m.authSvc, claims); err != nil {
+		return nil, err
+	}
+	if purpose, _ := claims["purpose"].(string); purpose == "impersonation" {
+		impersonatorID := impersonatorIDFromClaims(claims)
+		if m.permissionSvc == nil || impersonatorID <= 0 {
+			return nil, domain.ErrInvalidToken
+		}
+		primary, err := m.permissionSvc.IsPrimaryAdmin(c.Request.Context(), impersonatorID)
+		if err != nil || !primary {
+			return nil, domain.ErrInvalidToken
 		}
 	}
 	return claims, nil
+}
+
+func validateCurrentAuthClaims(ctx context.Context, authSvc AuthService, claims jwt.MapClaims) error {
+	if authSvc == nil {
+		return nil
+	}
+	userID, ok := toInt64Claim(claims["user_id"])
+	if !ok || userID <= 0 {
+		return domain.ErrInvalidToken
+	}
+	role, ok := claims["role"].(string)
+	if !ok || role == "" {
+		return domain.ErrInvalidToken
+	}
+	user, err := authSvc.GetUser(ctx, userID)
+	if err != nil || user.Status != domain.UserStatusActive || role != string(user.Role) {
+		return domain.ErrInvalidToken
+	}
+	if tokenIssuedBeforePasswordChange(user, claims) {
+		return domain.ErrInvalidToken
+	}
+	// Impersonation is a delegated capability, not a permanent user token. The
+	// issuing administrator must still be an active primary admin on every
+	// request; revocation therefore takes effect immediately for already-issued
+	// 24-hour impersonation tokens.
+	if purpose, _ := claims["purpose"].(string); purpose == "impersonation" {
+		impersonatorID := impersonatorIDFromClaims(claims)
+		if impersonatorID <= 0 {
+			return domain.ErrInvalidToken
+		}
+		operator, err := authSvc.GetUser(ctx, impersonatorID)
+		if err != nil || operator.Status != domain.UserStatusActive || operator.Role != domain.UserRoleAdmin {
+			return domain.ErrInvalidToken
+		}
+		issuedOperatorPVV, ok := toInt64Claim(claims["imp_pvv"])
+		if !ok || issuedOperatorPVV != operator.PasswordVersion {
+			return domain.ErrInvalidToken
+		}
+	}
+	return nil
 }
 
 func extractAPIKey(c *gin.Context) string {
@@ -462,8 +600,7 @@ func (m *Middleware) isAdmin2FAAllowlisted(path string) bool {
 		"/admin/api/v1/auth/refresh",
 		"/admin/api/v1/auth/2fa/setup",
 		"/admin/api/v1/auth/2fa/confirm",
-		"/admin/api/v1/auth/2fa/unlock",
-		"/admin/api/v1/avatar/qq/:qq":
+		"/admin/api/v1/auth/2fa/unlock":
 		return true
 	default:
 		return false
@@ -488,7 +625,7 @@ func (m *Middleware) enforceAdmin2FAGate(c *gin.Context, userID int64, claims jw
 		return
 	}
 
-	user, err := m.authSvc.GetUser(c, userID)
+	user, err := m.authSvc.GetUser(c.Request.Context(), userID)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": domain.ErrInvalidToken.Error()})
 		return
@@ -519,26 +656,6 @@ func (m *Middleware) getSettingBool(ctx context.Context, key string, def bool) b
 	return val == "true" || val == "1" || val == "yes"
 }
 
-func (m *Middleware) registerNonce(akid, nonce string, now time.Time, windowSec int) bool {
-	if windowSec <= 0 {
-		windowSec = appuserapikey.DefaultSignatureWindowSec
-	}
-	key := akid + ":" + nonce
-	cutoff := now.Add(-time.Duration(windowSec) * time.Second)
-	m.nonceMu.Lock()
-	defer m.nonceMu.Unlock()
-	for k, seenAt := range m.nonceSeen {
-		if seenAt.Before(cutoff) {
-			delete(m.nonceSeen, k)
-		}
-	}
-	if _, exists := m.nonceSeen[key]; exists {
-		return false
-	}
-	m.nonceSeen[key] = now
-	return true
-}
-
 func getUserID(c *gin.Context) int64 {
 	val, _ := c.Get("user_id")
 	id, _ := val.(int64)
@@ -554,26 +671,6 @@ func toInt64Claim(v any) (int64, bool) {
 	case json.Number:
 		if i, err := t.Int64(); err == nil {
 			return i, true
-		}
-	}
-	return 0, false
-}
-
-func toFloat64Claim(v any) (float64, bool) {
-	switch t := v.(type) {
-	case float64:
-		return t, true
-	case int64:
-		return float64(t), true
-	case int:
-		return float64(t), true
-	case json.Number:
-		if f, err := t.Float64(); err == nil {
-			return f, true
-		}
-	case string:
-		if f, err := strconv.ParseFloat(strings.TrimSpace(t), 64); err == nil {
-			return f, true
 		}
 	}
 	return 0, false

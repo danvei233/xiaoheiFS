@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,7 +15,7 @@ import (
 
 func (h *Handler) AdminAPIKeys(c *gin.Context) {
 	limit, offset := paging(c)
-	items, total, err := h.adminSvc.ListAPIKeys(c, limit, offset)
+	items, total, err := h.adminSvc.ListAPIKeys(c.Request.Context(), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
@@ -29,10 +30,10 @@ func (h *Handler) AdminAPIKeyCreate(c *gin.Context) {
 		Scopes            []string `json:"scopes"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	raw, key, err := h.adminSvc.CreateAPIKey(c, getUserID(c), payload.Name, payload.PermissionGroupID, payload.Scopes)
+	raw, key, err := h.adminSvc.CreateAPIKey(c.Request.Context(), getUserID(c), payload.Name, payload.PermissionGroupID, payload.Scopes)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -50,22 +51,116 @@ func (h *Handler) AdminAPIKeyUpdate(c *gin.Context) {
 		Status string `json:"status"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	status := domain.APIKeyStatus(payload.Status)
-	if err := h.adminSvc.UpdateAPIKeyStatus(c, getUserID(c), uri.ID, status); err != nil {
+	if err := h.adminSvc.UpdateAPIKeyStatus(c.Request.Context(), getUserID(c), uri.ID, status); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// redactedSecretValue is the placeholder returned for secret settings.
+const redactedSecretValue = "***"
+
+// maskedSecretSentinel is the value the frontend sends back to signal "keep the
+// existing secret". Both the redacted value and the frontend mask placeholder
+// must be treated as keep markers.
+const maskedSecretSentinel = "********"
+
+
+// redactSecretValue replaces a credential with a fixed placeholder.
+func redactSecretValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return ""
+	}
+	return redactedSecretValue
+}
+
+// isRedactedSecretValue reports whether the submitted value is a keep-marker
+// (the backend's "***" or the frontend's "********") that must not overwrite a
+// real stored secret.
+func isRedactedSecretValue(value string) bool {
+	v := strings.TrimSpace(value)
+	return v == "" || v == redactedSecretValue || v == maskedSecretSentinel || v == pluginUploadPasswordMask
+}
+
+// redactRobotWebhooksValue masks the per-webhook HMAC secret field of the
+// robot_webhooks setting JSON while preserving URLs/names/events for the admin
+// UI. A raw value that cannot be parsed is fully redacted so no secret can leak.
+func redactRobotWebhooksValue(valueJSON string) string {
+	webhooks := appshared.ParseRobotWebhookConfigs(valueJSON)
+	if len(webhooks) == 0 {
+		return redactSecretValue(valueJSON)
+	}
+	for i := range webhooks {
+		if strings.TrimSpace(webhooks[i].Secret) != "" {
+			webhooks[i].Secret = redactedSecretValue
+		}
+	}
+	raw, err := json.Marshal(webhooks)
+	if err != nil {
+		return redactSecretValue(valueJSON)
+	}
+	return string(raw)
+}
+
+// restoreRobotWebhookSecrets replaces masked per-webhook secrets ("***") in the
+// submitted robot_webhooks JSON with the currently stored real secrets, so a
+// save from the admin UI (which only ever sees masked secrets) never overwrites
+// a signing credential with the placeholder. Matching is by webhook identity
+// (URL, else name), the same key the admin robot config update uses.
+func (h *Handler) restoreRobotWebhookSecrets(c *gin.Context, submitted string) (string, error) {
+	return restoreRobotWebhookSecretsInJSON(h.getSettingValueByKey(c, "robot_webhooks"), submitted)
+}
+
+// restoreRobotWebhookSecretsInJSON is the pure form of the restore: it replaces
+// masked per-webhook secrets in the submitted JSON with the real secrets from
+// the currently stored JSON.
+func restoreRobotWebhookSecretsInJSON(existingJSON, submitted string) (string, error) {
+	existing := appshared.ParseRobotWebhookConfigs(existingJSON)
+	byKey := make(map[string]string, len(existing))
+	for _, w := range existing {
+		byKey[webhookIdentity(w)] = strings.TrimSpace(w.Secret)
+	}
+	webhooks := appshared.ParseRobotWebhookConfigs(submitted)
+	if webhooks == nil {
+		return "", domain.ErrInvalidBody
+	}
+	for i := range webhooks {
+		if !isRedactedSecretValue(webhooks[i].Secret) {
+			continue
+		}
+		if real := byKey[webhookIdentity(webhooks[i])]; real != "" {
+			webhooks[i].Secret = real
+		}
+	}
+	raw, err := json.Marshal(webhooks)
+	if err != nil {
+		return "", domain.ErrInvalidBody
+	}
+	return string(raw), nil
+}
+
 func (h *Handler) AdminSettingsList(c *gin.Context) {
-	items, err := h.adminSvc.ListSettings(c)
+	items, err := h.adminSvc.ListSettings(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListError.Error()})
 		return
+	}
+	for i := range items {
+		switch items[i].Key {
+		case "robot_webhooks":
+			// Deep-redact the nested per-webhook secret; the whole value would
+			// break the admin robot config page that needs URLs/names/events.
+			items[i].ValueJSON = redactRobotWebhooksValue(items[i].ValueJSON)
+		default:
+			if isSecretSettingKey(items[i].Key) {
+				items[i].ValueJSON = redactSecretValue(items[i].ValueJSON)
+			}
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"items": toSettingDTOs(items)})
 }
@@ -80,16 +175,13 @@ func (h *Handler) AdminSettingsUpdate(c *gin.Context) {
 		} `json:"items"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 
 	// 批量更新模式
 	if len(payload.Items) > 0 {
-		normalizedItems := make([]struct {
-			Key   string
-			Value string
-		}, 0, len(payload.Items))
+		normalizedItems := make([]domain.Setting, 0, len(payload.Items))
 
 		// 验证所有配置项
 		for _, item := range payload.Items {
@@ -97,26 +189,34 @@ func (h *Handler) AdminSettingsUpdate(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidKey.Error()})
 				return
 			}
+			if item.Key == "robot_webhooks" {
+				// Restore masked per-webhook secrets before persisting so a save
+				// never overwrites a signing credential with the placeholder.
+				restored, err := h.restoreRobotWebhookSecrets(c, item.Value)
+				if err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+					return
+				}
+				normalizedItems = append(normalizedItems, domain.Setting{Key: item.Key, ValueJSON: restored})
+				continue
+			}
+			// Masked secrets are keep-markers and must be preserved, not
+			// validated as JSON/structural values or written back.
+			if isSecretSettingKey(item.Key) && isRedactedSecretValue(item.Value) {
+				continue
+			}
 			normalizedValue, err := validateAndNormalizeSettingValue(item.Key, item.Value)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			normalizedItems = append(normalizedItems, struct {
-				Key   string
-				Value string
-			}{
-				Key:   item.Key,
-				Value: normalizedValue,
-			})
+			normalizedItems = append(normalizedItems, domain.Setting{Key: item.Key, ValueJSON: normalizedValue})
 		}
 
-		// 执行更新
-		for _, item := range normalizedItems {
-			if err := h.adminSvc.UpdateSetting(c, getUserID(c), item.Key, item.Value); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
+		// 执行更新：所有键在一个事务内写入，任一键失败则全部回滚。
+		if err := h.adminSvc.UpdateSettings(c.Request.Context(), getUserID(c), normalizedItems); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 	} else {
 		// 单个更新模式
@@ -124,14 +224,29 @@ func (h *Handler) AdminSettingsUpdate(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidKey.Error()})
 			return
 		}
-
-		normalizedValue, err := validateAndNormalizeSettingValue(payload.Key, payload.Value)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		if isSecretSettingKey(payload.Key) && isRedactedSecretValue(payload.Value) {
+			c.JSON(http.StatusOK, gin.H{"ok": true})
 			return
 		}
 
-		if err := h.adminSvc.UpdateSetting(c, getUserID(c), payload.Key, normalizedValue); err != nil {
+		normalizedValue := payload.Value
+		if payload.Key == "robot_webhooks" {
+			restored, err := h.restoreRobotWebhookSecrets(c, payload.Value)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			normalizedValue = restored
+		} else {
+			validated, err := validateAndNormalizeSettingValue(payload.Key, payload.Value)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			normalizedValue = validated
+		}
+
+		if err := h.adminSvc.UpdateSetting(c.Request.Context(), getUserID(c), payload.Key, normalizedValue); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -143,14 +258,19 @@ func validateAndNormalizeSettingValue(key, value string) (string, error) {
 	switch key {
 	case "copyright_text":
 		if strings.TrimSpace(value) == "" {
-			return "", fmt.Errorf("版权信息不能为空")
+			return "", domain.ErrCopyrightTextRequired
 		}
 		if len([]rune(value)) > 200 {
-			return "", fmt.Errorf("版权信息不能超过200字")
+			return "", domain.ErrCopyrightTextTooLong
 		}
 		return value, nil
 	case "beian_info_list":
 		if err := validateBeianInfoList(value); err != nil {
+			return "", err
+		}
+		return value, nil
+	case "site_nav_items":
+		if err := validateSiteNavItems(value); err != nil {
 			return "", err
 		}
 		return value, nil
@@ -160,35 +280,132 @@ func validateAndNormalizeSettingValue(key, value string) (string, error) {
 			return "", err
 		}
 		return normalizedPath, nil
+	case "emergency_renew_window_days":
+		// P3-27: a non-positive window would permanently open the emergency renew
+		// door, so reject 0/negative values instead of letting them through.
+		n, err := strconv.Atoi(strings.TrimSpace(value))
+		if err != nil || n <= 0 {
+			return "", fmt.Errorf("%w: emergency_renew_window_days must be a positive integer", domain.ErrInvalidInput)
+		}
+		return value, nil
+	case "analytics_code":
+		// P3-47: the field is displayed as plain text only and must never carry a
+		// <script> payload. Reject script/iframe/event-handler content so a future
+		// render path cannot become a stored XSS sink.
+		if strings.Contains(strings.ToLower(value), "<script") || strings.Contains(strings.ToLower(value), "<iframe") || strings.Contains(strings.ToLower(value), "onerror=") {
+			return "", domain.ErrInvalidInput
+		}
+		return value, nil
 	default:
+		// P2-1: previously validateSettingJSONValue was dead code and unknown
+		// *_json / task.* / named-JSON keys passed straight through, so malformed
+		// or double-encoded JSON was persisted. Route every key that isLikelyJSON
+		// flags through the shared validator.
+		if isLikelyJSONSettingKey(key) {
+			if err := validateSettingJSONValue(key, value); err != nil {
+				return "", err
+			}
+		}
 		return value, nil
 	}
 }
 
-// validateBeianInfoList 验证备案信息列表的格式
+// validateExternalURL 校验会被渲染进 `<a href>` / `<img src>` 的外部 URL 字段。
+//
+// 站点设置里的导航、备案链接、footer 社交链接等会直接绑定到模板锚点；如果
+// 允许 `javascript:`/`data:`/协议相对，管理员写一次就会被任何访客以同源身份
+// 执行（存储型 XSS，见 web_url_content F1）。只放行：
+//
+//   - 空值（可选字段）
+//   - 同源相对路径（`/` 开头且非 `//`，无控制字符）
+//   - http(s) 绝对地址（有 host、无 userinfo、无控制字符）
+//
+// 其余（javascript:/data:/file:/blob:/vbscript:/协议相对/userinfo/控制字符）
+// 一律拒绝。
+func validateExternalURL(raw string) error {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil
+	}
+	for _, r := range value {
+		if r < 0x20 || r == 0x7f {
+			return domain.ErrUnsafeExternalURL
+		}
+	}
+	if strings.HasPrefix(value, "//") {
+		return domain.ErrUnsafeExternalURL
+	}
+	if strings.HasPrefix(value, "/") {
+		return nil
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		return domain.ErrUnsafeExternalURL
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return domain.ErrUnsafeExternalURL
+	}
+	if u.Host == "" {
+		return domain.ErrUnsafeExternalURL
+	}
+	if u.User != nil {
+		return domain.ErrUnsafeExternalURL
+	}
+	return nil
+}
+
+// validateSiteNavItems 验证站点导航项：只校验 URL 安全性，不限制字段结构
+// （前端 headerNavItems 已做 label/url/enabled 归一化）。
+func validateSiteNavItems(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "[]" {
+		return nil
+	}
+	var navList []struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal([]byte(value), &navList); err != nil {
+		return fmt.Errorf("%w: %v", domain.ErrInvalidBeianInfoFormat, err)
+	}
+	for i, item := range navList {
+		if err := validateExternalURL(item.URL); err != nil {
+			return fmt.Errorf("导航项 %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
+// validateBeianInfoList 验证备案信息列表的格式与 URL 安全性
 func validateBeianInfoList(value string) error {
 	value = strings.TrimSpace(value)
 	if value == "" || value == "[]" {
 		return nil
 	}
-	
+
 	var beianList []struct {
 		Number  string `json:"number"`
 		IconURL string `json:"icon_url"`
 		LinkURL string `json:"link_url"`
 	}
-	
+
 	if err := json.Unmarshal([]byte(value), &beianList); err != nil {
-		return fmt.Errorf("备案信息格式错误: %v", err)
+		return fmt.Errorf("%w: %v", domain.ErrInvalidBeianInfoFormat, err)
 	}
-	
+
 	for i, beian := range beianList {
 		// 如果填写了任何字段，备案号必填
 		if (beian.IconURL != "" || beian.LinkURL != "") && strings.TrimSpace(beian.Number) == "" {
-			return fmt.Errorf("备案信息 %d 的备案号不能为空", i+1)
+			return fmt.Errorf("备案信息 %d: %w", i+1, domain.ErrBeianNumberRequired)
+		}
+		if err := validateExternalURL(beian.LinkURL); err != nil {
+			return fmt.Errorf("备案信息 %d link_url: %w", i+1, err)
+		}
+		if err := validateExternalURL(beian.IconURL); err != nil {
+			return fmt.Errorf("备案信息 %d icon_url: %w", i+1, err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -203,10 +420,10 @@ func (h *Handler) AdminPushTokenRegister(c *gin.Context) {
 		DeviceID string `json:"device_id"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.pushSvc.RegisterToken(c, getUserID(c), payload.Platform, payload.Token, payload.DeviceID); err != nil {
+	if err := h.pushSvc.RegisterToken(c.Request.Context(), getUserID(c), payload.Platform, payload.Token, payload.DeviceID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -222,10 +439,10 @@ func (h *Handler) AdminPushTokenDelete(c *gin.Context) {
 		Token string `json:"token"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.pushSvc.RemoveToken(c, getUserID(c), payload.Token); err != nil {
+	if err := h.pushSvc.RemoveToken(c.Request.Context(), getUserID(c), payload.Token); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -250,10 +467,10 @@ func (h *Handler) AdminDebugStatusUpdate(c *gin.Context) {
 		Enabled bool `json:"enabled"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
-	if err := h.adminSvc.UpdateSetting(c, getUserID(c), "debug_enabled", boolToString(payload.Enabled)); err != nil {
+	if err := h.adminSvc.UpdateSetting(c.Request.Context(), getUserID(c), "debug_enabled", boolToString(payload.Enabled)); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -295,7 +512,7 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 
 	resp := gin.H{}
 	if includeType("audit") && h.adminSvc != nil {
-		items, total, err := h.adminSvc.ListAuditLogs(c, limit, offset)
+		items, total, err := h.adminSvc.ListAuditLogs(c.Request.Context(), appshared.AuditLogFilter{}, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListAuditLogsError.Error()})
 			return
@@ -307,7 +524,7 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		if query.OrderID != nil {
 			orderID = *query.OrderID
 		}
-		items, total, err := h.autoLogSvc.List(c, orderID, limit, offset)
+		items, total, err := h.autoLogSvc.List(c.Request.Context(), orderID, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListAutomationLogsError.Error()})
 			return
@@ -315,7 +532,7 @@ func (h *Handler) AdminDebugLogs(c *gin.Context) {
 		resp["automation_logs"] = gin.H{"items": toAutomationLogDTOs(items), "total": total}
 	}
 	if includeType("sync") && h.integration != nil {
-		items, total, err := h.integration.ListSyncLogs(c, query.Target, limit, offset)
+		items, total, err := h.integration.ListSyncLogs(c.Request.Context(), query.Target, limit, offset)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": domain.ErrListSyncLogsError.Error()})
 			return
@@ -361,7 +578,7 @@ func (h *Handler) AdminAutomationConfig(c *gin.Context) {
 		present["api_key"] && strings.TrimSpace(cfg.APIKey) != ""
 	resp := gin.H{
 		"base_url":      cfg.BaseURL,
-		"api_key":       cfg.APIKey,
+		"api_key":       redactSecretValue(cfg.APIKey),
 		"enabled":       enabled,
 		"timeout_sec":   cfg.TimeoutSec,
 		"retry":         cfg.Retry,
@@ -393,7 +610,7 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 		DryRun     *bool   `json:"dry_run"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		writeBodyError(c, err)
 		return
 	}
 	binding, err := h.resolveWritableAutomationBinding(c)
@@ -407,7 +624,7 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 	}
 
 	current := appshared.AutomationConfig{}
-	cfgJSON, err := h.pluginAdmin.GetConfigInstance(c, "automation", binding.PluginID, binding.InstanceID)
+	cfgJSON, err := h.pluginAdmin.GetConfigInstance(c.Request.Context(), "automation", binding.PluginID, binding.InstanceID)
 	if err == nil {
 		if cfg, _, perr := parseAutomationConfigJSON(cfgJSON); perr == nil {
 			current = cfg
@@ -416,7 +633,7 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 	if payload.BaseURL != nil {
 		current.BaseURL = strings.TrimSpace(*payload.BaseURL)
 	}
-	if payload.APIKey != nil {
+	if payload.APIKey != nil && !isRedactedSecretValue(*payload.APIKey) {
 		current.APIKey = strings.TrimSpace(*payload.APIKey)
 	}
 	if payload.TimeoutSec != nil {
@@ -442,19 +659,19 @@ func (h *Handler) AdminAutomationConfigUpdate(c *gin.Context) {
 		"retry":       current.Retry,
 		"dry_run":     current.DryRun,
 	})
-	if err := h.pluginAdmin.UpdateConfigInstance(c, "automation", binding.PluginID, binding.InstanceID, string(rawCfg)); err != nil {
+	if err := h.pluginAdmin.UpdateConfigInstance(c.Request.Context(), "automation", binding.PluginID, binding.InstanceID, string(rawCfg)); err != nil {
 		writePluginHandlerError(c, err)
 		return
 	}
 
 	if payload.Enabled != nil {
 		if *payload.Enabled {
-			if err := h.pluginAdmin.EnableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
+			if err := h.pluginAdmin.EnableInstance(c.Request.Context(), "automation", binding.PluginID, binding.InstanceID); err != nil {
 				writePluginHandlerError(c, err)
 				return
 			}
 		} else {
-			if err := h.pluginAdmin.DisableInstance(c, "automation", binding.PluginID, binding.InstanceID); err != nil {
+			if err := h.pluginAdmin.DisableInstance(c.Request.Context(), "automation", binding.PluginID, binding.InstanceID); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
@@ -478,7 +695,7 @@ func (h *Handler) readAutomationPluginConfig(c *gin.Context) (appshared.Automati
 	if h.pluginAdmin == nil {
 		return appshared.AutomationConfig{}, nil, automationBinding{}, false, domain.ErrPluginsDisabled
 	}
-	items, err := h.pluginAdmin.List(c)
+	items, err := h.pluginAdmin.List(c.Request.Context())
 	if err != nil {
 		return appshared.AutomationConfig{}, nil, automationBinding{}, false, err
 	}
@@ -491,7 +708,7 @@ func (h *Handler) readAutomationPluginConfig(c *gin.Context) (appshared.Automati
 		enabledByBinding[key] = item.Enabled
 	}
 	for _, binding := range h.collectAutomationBindingCandidates(c) {
-		cfgJSON, err := h.pluginAdmin.GetConfigInstance(c, "automation", binding.PluginID, binding.InstanceID)
+		cfgJSON, err := h.pluginAdmin.GetConfigInstance(c.Request.Context(), "automation", binding.PluginID, binding.InstanceID)
 		if err != nil {
 			continue
 		}
@@ -510,7 +727,7 @@ func (h *Handler) resolveWritableAutomationBinding(c *gin.Context) (automationBi
 		return automationBinding{}, domain.ErrPluginsDisabled
 	}
 	for _, binding := range h.collectAutomationBindingCandidates(c) {
-		if _, err := h.pluginAdmin.GetConfigInstance(c, "automation", binding.PluginID, binding.InstanceID); err == nil {
+		if _, err := h.pluginAdmin.GetConfigInstance(c.Request.Context(), "automation", binding.PluginID, binding.InstanceID); err == nil {
 			return binding, nil
 		}
 	}
@@ -520,7 +737,7 @@ func (h *Handler) resolveWritableAutomationBinding(c *gin.Context) (automationBi
 func (h *Handler) collectAutomationBindingCandidates(c *gin.Context) []automationBinding {
 	candidates := make([]automationBinding, 0, 4)
 	if h.goodsTypes != nil {
-		items, err := h.goodsTypes.List(c)
+		items, err := h.goodsTypes.List(c.Request.Context())
 		if err == nil {
 			sort.SliceStable(items, func(i, j int) bool {
 				if items[i].SortOrder == items[j].SortOrder {
@@ -681,7 +898,7 @@ func (h *Handler) AdminAutomationSync(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	result, err := h.integration.SyncAutomation(c, query.Mode)
+	result, err := h.integration.SyncAutomation(c.Request.Context(), query.Mode)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -702,7 +919,7 @@ func (h *Handler) AdminAutomationSyncLogs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
 		return
 	}
-	items, total, err := h.integration.ListSyncLogs(c, query.Target, limit, offset)
+	items, total, err := h.integration.ListSyncLogs(c.Request.Context(), query.Target, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

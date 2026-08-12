@@ -423,9 +423,12 @@ export interface PaymentProvider {
   enabled?: boolean
   order_enabled?: boolean
   wallet_enabled?: boolean
+  instructions?: string
+  notice?: string
+  balance?: number
+  // Present only on the administrator endpoint.
   schema_json?: string
   config_json?: string
-  balance?: number
 }
 
 export interface PaymentCreateResult {
@@ -948,6 +951,30 @@ export interface AdminProfile {
   created_at?: string
 }
 
+export interface AdminLoginResponse {
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  totp_enabled?: boolean
+  mfa_required?: boolean
+  mfa_bind_required?: boolean
+  mfa_unlocked?: boolean
+  user?: AdminProfile
+  admin?: AdminProfile
+}
+
+export interface AdminTwoFactorSetupResponse {
+  secret?: string
+  otpauth_url?: string
+}
+
+export interface AdminTwoFactorUnlockResponse {
+  access_token?: string
+  refresh_token?: string
+  expires_in?: number
+  mfa_unlocked?: boolean
+}
+
 export interface SiteSetting {
   key?: string
   value?: string
@@ -1310,4 +1337,6 @@ export interface OrderDetailWithEventsResponse {
   items?: OrderItem[]
   payments?: OrderPayment[]
   events?: OrderEvent[]
+  /** 订单事件总数（详情只返回最近 200 条；>200 时前端提示"仅显示最近 N 条"）。 */
+  events_total?: number
 }

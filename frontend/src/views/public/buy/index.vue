@@ -215,6 +215,7 @@
             :addon-price="addonPrice"
             :cycle-multiplier="cycleMultiplier"
             :qty="form.qty"
+            :addons="previewAddons"
           />
 
           <ElCard class="checkout-card art-card-xs" shadow="never">
@@ -269,12 +270,15 @@
   import { useCartStore } from '@/stores/cart'
   import { useCatalogStore } from '@/stores/catalog'
   import { createOrder, listSystemImages, previewCoupon } from '@/services/user'
+  import { IdempotentRequest } from '@/utils/idempotentRequest'
+  import { priceBreakdownToCents } from '@/utils/pricing'
   import type {
     BillingCycle,
     CartSpec,
     CouponPreviewResponse,
     GoodsType,
     Line,
+    OrderCreateRequest,
     Package,
     Region,
     SystemImage
@@ -331,6 +335,7 @@
   const couponPreview = ref<CouponPreviewResponse | null>(null)
   const systemImages = ref<SystemImage[]>([])
   const systemImagesLoading = ref(false)
+  const orderRequest = new IdempotentRequest<OrderCreateRequest>('order')
   let systemImageRequestId = 0
 
   const form = reactive<BuyForm>({
@@ -469,9 +474,21 @@
     () =>
       Number(selectedCycle.value?.multiplier || selectedCycle.value?.months || 1) * form.cycleQty
   )
-  const computedOriginalTotal = computed(
-    () => (basePrice.value + addonPrice.value) * cycleMultiplier.value * form.qty
+  // 附加项明细：与后端逐项整数舍入对齐（cross-module "订单价格预览"）。
+  const previewAddons = computed(() =>
+    addonFields.value.map((addon) => ({
+      value: Number(form[addon.key] || 0),
+      unitPrice: addon.unitPrice
+    }))
   )
+  const computedOriginalTotal = computed(() => {
+    const cents = priceBreakdownToCents({
+      baseMonthly: basePrice.value,
+      addons: previewAddons.value,
+      multiplier: cycleMultiplier.value
+    })
+    return (cents.totalCents * form.qty) / 100
+  })
   const addonStatus = (addon: AddonField) => {
     if (addon.rule.disabled) return '已禁用'
     const value = form[addon.key]
@@ -627,18 +644,19 @@
     }
 
     creating.value = true
+    const request = orderRequest.prepare(() => ({
+      coupon_code: form.couponCode.trim() || undefined,
+      items: [cartPayload()]
+    }))
     try {
-      const response = await createOrder(
-        {
-          coupon_code: form.couponCode.trim() || undefined,
-          items: [cartPayload()]
-        },
-        `order-${Date.now()}`
-      )
+      const response = await createOrder(request.payload, request.key)
+      orderRequest.resolve()
       const payload = response.data as Record<string, any>
       const orderId = payload.order?.id ?? payload.order?.ID ?? payload.id ?? payload.ID
       ElMessage.success('订单已创建')
       if (orderId) await router.push({ name: 'ConsoleOrderDetail', params: { id: orderId } })
+    } catch (error) {
+      orderRequest.reject(error)
     } finally {
       creating.value = false
     }

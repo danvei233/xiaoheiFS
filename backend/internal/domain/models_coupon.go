@@ -48,8 +48,11 @@ type CouponProductRule struct {
 }
 
 type Coupon struct {
-	ID               int64
-	Code             string
+	ID    int64
+	Code  string
+	// DiscountPermille is the coupon discount in per-mille (‰) of the original
+	// price: 1000 = free, 500 = 50% off. Do not confuse with
+	// UserTierDiscountRule.DiscountPermille, which is per-10,000.
 	DiscountPermille int
 	ProductGroupID   int64
 	TotalLimit       int

@@ -29,6 +29,9 @@
     reinstalling: '重装系统中',
     reinstall_failed: '重装系统失败',
     failed: '创建失败',
-    deleting: '删除中'
+    deleting: '删除中',
+    rescue: '救援模式',
+    cracking_password: '破解密码中',
+    unknown: '未知'
   }
 </script>

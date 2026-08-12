@@ -4,28 +4,18 @@
  * 用于在内网环境下支持 Iconify 图标的离线加载。
  * 通过预加载图标集数据，避免运行时从 CDN 获取图标。
  *
- * 使用方式：
- * 1. 安装所需图标集：pnpm add -D @iconify-json/[icon-set-name]
- * 2. 在此文件中导入并注册图标集
- * 3. 在组件中使用：<ArtSvgIcon icon="ri:home-line" />
+ * web_bundle_mobile F2：全部 `ri:*` 图标此前依赖 `@iconify/vue` 默认的
+ * `https://api.iconify.design` 运行时拉取——离线/内网/受限网络生产图标全空白，
+ * 且把图标名发给第三方 CDN。这里用**已提交的 ri 子集**（`src/assets/iconify/
+ * ri-subset.json`，只含当前实际用到的 166 个图标，约 48KB）注册到 Iconify
+ * 离线集合；未收录的新图标仍回退 CDN。
  *
- * @module utils/ui/iconify-loader
- * @author Art Design Pro Team
+ * 用法：在 main.ts 里 `import '@/utils/ui/iconify-loader'`。
  */
+import { addCollection } from '@iconify/vue'
+import riIcons from '@/assets/iconify/ri-subset.json'
 
-// import { addCollection } from '@iconify/vue'
+// 注册离线图标集（remix icon 子集）
+addCollection(riIcons as never)
 
-// // 导入离线图标数据
-
-// // 系统必要图标库
-// import riIcons from '@iconify-json/ri/icons.json'
-
-// // 演示图标库（可选，生产环境可移除）
-// import svgSpinners from '@iconify-json/svg-spinners/icons.json'
-// import lineMd from '@iconify-json/line-md/icons.json'
-
-// // 注册离线图标集
-
-// addCollection(riIcons)
-// addCollection(svgSpinners)
-// addCollection(lineMd)
+export {}

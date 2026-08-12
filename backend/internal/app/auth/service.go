@@ -22,13 +22,21 @@ import (
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/pkg/cryptox"
 )
 
 type Service struct {
 	users            appports.UserRepository
 	captchas         appports.CaptchaRepository
 	verify           appports.VerificationCodeRepository
+	refreshUses      appports.RefreshTokenUseRepository
 	userTierAssigner userTierAssigner
+	// totpRing is the versioned AES-GCM key ring used for TOTP secret
+	// encryption. The legacy constant is present only as a decryption fallback
+	// for pre-upgrade rows (one-time read-then-reencrypt).
+	totpRing   *cryptox.KeyRing
+	totpV1Key  []byte
+	totpLegacy []byte
 }
 
 type userTierAssigner interface {
@@ -44,8 +52,57 @@ const (
 type RegisterInput = appshared.RegisterInput
 type UpdateProfileInput = appshared.UpdateProfileInput
 
-func NewService(users appports.UserRepository, captchas appports.CaptchaRepository, verify appports.VerificationCodeRepository) *Service {
-	return &Service{users: users, captchas: captchas, verify: verify}
+func NewService(users appports.UserRepository, captchas appports.CaptchaRepository, verify appports.VerificationCodeRepository, refreshUses appports.RefreshTokenUseRepository, totpEncryptionKey string) *Service {
+	ring, v1, legacy := buildTOTPKeyRing(totpEncryptionKey)
+	return &Service{
+		users:       users,
+		captchas:    captchas,
+		verify:      verify,
+		refreshUses: refreshUses,
+		totpRing:    ring,
+		totpV1Key:   v1,
+		totpLegacy:  legacy,
+	}
+}
+
+// RotateRefreshToken atomically consumes the current refresh token and records
+// its successor. Only SHA-256 digests are persisted, so the ledger cannot be
+// used to recover bearer credentials if the database is exposed.
+func (s *Service) RotateRefreshToken(ctx context.Context, currentRaw, nextRaw, familyID string, currentExpiresAt, nextExpiresAt time.Time) (bool, bool, error) {
+	currentRaw = strings.TrimSpace(currentRaw)
+	nextRaw = strings.TrimSpace(nextRaw)
+	familyID = strings.TrimSpace(familyID)
+	if currentRaw == "" || nextRaw == "" || currentRaw == nextRaw || familyID == "" || len(familyID) > 64 ||
+		!currentExpiresAt.After(time.Now()) || !nextExpiresAt.After(time.Now()) {
+		return false, false, appshared.ErrInvalidInput
+	}
+	if s.refreshUses == nil {
+		return false, false, appshared.ErrServiceUnavailable
+	}
+	currentDigest := sha256.Sum256([]byte(currentRaw))
+	nextDigest := sha256.Sum256([]byte(nextRaw))
+	return s.refreshUses.RotateRefreshToken(
+		ctx,
+		hex.EncodeToString(currentDigest[:]),
+		hex.EncodeToString(nextDigest[:]),
+		familyID,
+		currentExpiresAt,
+		nextExpiresAt,
+	)
+}
+
+// RevokeRefreshTokenFamily creates a durable family tombstone. A digest derived
+// from the family id occupies the token primary key without exposing the id.
+func (s *Service) RevokeRefreshTokenFamily(ctx context.Context, familyID string, expiresAt time.Time) error {
+	familyID = strings.TrimSpace(familyID)
+	if familyID == "" || len(familyID) > 64 || !expiresAt.After(time.Now()) {
+		return appshared.ErrInvalidInput
+	}
+	if s.refreshUses == nil {
+		return appshared.ErrServiceUnavailable
+	}
+	digest := sha256.Sum256([]byte("family-revocation:" + familyID))
+	return s.refreshUses.RevokeRefreshTokenFamily(ctx, familyID, hex.EncodeToString(digest[:]), expiresAt)
 }
 
 func (s *Service) SetUserTierAssigner(assigner userTierAssigner) {
@@ -108,6 +165,15 @@ func (s *Service) Register(ctx context.Context, in RegisterInput) (domain.User, 
 			return domain.User{}, appshared.ErrConflict
 		}
 	}
+	// A phone number is a unique account identifier: two accounts with the same
+	// phone make login/SMS-reset resolution ambiguous (GetUserByPhone returns the
+	// first row), so a duplicate non-empty phone is rejected here and enforced by
+	// the DB unique index as well (Issue #51 phone binding).
+	if phone != "" {
+		if _, err := s.users.GetUserByPhone(ctx, phone); err == nil {
+			return domain.User{}, domain.ErrPhoneAlreadyExists
+		}
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return domain.User{}, err
@@ -152,15 +218,91 @@ func (s *Service) Login(ctx context.Context, usernameOrEmail string, password st
 		}
 	}
 	if err != nil {
+		// Run a dummy bcrypt comparison so the response time does not reveal
+		// whether the account exists (P3-19).
+		_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password))
 		return domain.User{}, appshared.ErrUnauthorized
 	}
 	if user.Status != domain.UserStatusActive {
-		return domain.User{}, appshared.ErrForbidden
+		// A disabled/blocked account must not be distinguishable from a wrong
+		// password by timing or by error type: run the same dummy bcrypt and
+		// return the same unauthorized error (P3-19 follow-up). Returning
+		// ErrForbidden here lets an attacker enumerate "exists and is disabled"
+		// accounts via response time and error text.
+		_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password))
+		return domain.User{}, appshared.ErrUnauthorized
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return domain.User{}, appshared.ErrUnauthorized
 	}
 	return user, nil
+}
+
+// LoginUser authenticates accounts allowed to use the public user login.
+func (s *Service) LoginUser(ctx context.Context, usernameOrEmail string, password string) (domain.User, error) {
+	user, err := s.Login(ctx, usernameOrEmail, password)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("public user login: %w", err)
+	}
+	if user.Role != domain.UserRoleUser {
+		return domain.User{}, domain.ErrAdminRoleNotAllowed
+	}
+	return user, nil
+}
+
+// GetUserForPasswordReset resolves an active public user account.
+func (s *Service) GetUserForPasswordReset(ctx context.Context, account string) (domain.User, error) {
+	account, err := trimAndValidateRequired(account, maxLenEmail)
+	if err != nil {
+		return domain.User{}, appshared.ErrInvalidInput
+	}
+	user, err := s.users.GetUserByUsernameOrEmail(ctx, account)
+	if err != nil && looksLikePhoneAccount(account) {
+		if byPhone, phoneErr := s.users.GetUserByPhone(ctx, account); phoneErr == nil {
+			user = byPhone
+			err = nil
+		}
+	}
+	if err != nil {
+		return domain.User{}, appshared.ErrNotFound
+	}
+	if user.Role != domain.UserRoleUser {
+		return domain.User{}, domain.ErrNotAUserAccount
+	}
+	if user.Status != domain.UserStatusActive {
+		return domain.User{}, appshared.ErrForbidden
+	}
+	return user, nil
+}
+
+// ResetUserPassword changes the password only for an active public user account.
+func (s *Service) ResetUserPassword(ctx context.Context, userID int64, newPassword string) (domain.User, error) {
+	newPassword, err := trimAndValidateRequired(newPassword, maxLenPassword)
+	if userID <= 0 || err != nil {
+		return domain.User{}, appshared.ErrInvalidInput
+	}
+	user, err := s.users.GetUserByID(ctx, userID)
+	if err != nil {
+		return domain.User{}, appshared.ErrNotFound
+	}
+	if user.Role != domain.UserRoleUser {
+		return domain.User{}, domain.ErrNotAUserAccount
+	}
+	if user.Status != domain.UserStatusActive {
+		return domain.User{}, appshared.ErrForbidden
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("hash reset password: %w", err)
+	}
+	if err := s.users.UpdateUserPassword(ctx, user.ID, string(hash)); err != nil {
+		return domain.User{}, fmt.Errorf("update reset password: %w", err)
+	}
+	updated, err := s.users.GetUserByID(ctx, user.ID)
+	if err != nil {
+		return domain.User{}, fmt.Errorf("reload reset password user: %w", err)
+	}
+	return updated, nil
 }
 
 func looksLikePhoneAccount(v string) bool {
@@ -221,6 +363,22 @@ func (s *Service) UpdateUser(ctx context.Context, user domain.User) error {
 	if user.ID <= 0 {
 		return appshared.ErrInvalidInput
 	}
+	phone := strings.TrimSpace(user.Phone)
+	if phone != "" {
+		existing, err := s.users.GetUserByID(ctx, user.ID)
+		if err != nil {
+			return err
+		}
+		// A phone change must not collide with another account's phone. This
+		// guards the no-2FA contact-change path (check-then-update) and any other
+		// profile update that carries a phone; the DB unique index is the atomic
+		// backstop for concurrent writers (Issue #51 phone binding).
+		if strings.TrimSpace(existing.Phone) != phone {
+			if owner, err := s.users.GetUserByPhone(ctx, phone); err == nil && owner.ID != user.ID {
+				return domain.ErrPhoneAlreadyExists
+			}
+		}
+	}
 	return s.users.UpdateUser(ctx, user)
 }
 
@@ -251,7 +409,11 @@ func (s *Service) SetupTOTP(ctx context.Context, userID int64, password, current
 		return "", "", appshared.ErrNotFound
 	}
 	if user.TOTPEnabled {
-		if ok := verifyTOTPCode(decryptText(user.TOTPSecretEnc), strings.TrimSpace(currentCode), time.Now(), 1); !ok {
+		existing, err := s.decryptTOTPFieldForUser(ctx, &user, &user.TOTPSecretEnc)
+		if err != nil {
+			return "", "", err
+		}
+		if ok := verifyTOTPCode(existing, strings.TrimSpace(currentCode), time.Now(), 1); !ok {
 			return "", "", appshared.ErrUnauthorized
 		}
 	} else {
@@ -259,8 +421,15 @@ func (s *Service) SetupTOTP(ctx context.Context, userID int64, password, current
 			return "", "", err
 		}
 	}
-	secret := generateTOTPSecret()
-	user.TOTPPendingSecretEnc = encryptText(secret)
+	secret, err := generateTOTPSecret()
+	if err != nil {
+		return "", "", err
+	}
+	enc, err := s.encryptText(secret)
+	if err != nil {
+		return "", "", err
+	}
+	user.TOTPPendingSecretEnc = enc
 	if err := s.users.UpdateUser(ctx, user); err != nil {
 		return "", "", err
 	}
@@ -277,7 +446,10 @@ func (s *Service) ConfirmTOTP(ctx context.Context, userID int64, code string) er
 	if err != nil {
 		return appshared.ErrNotFound
 	}
-	secret := decryptText(user.TOTPPendingSecretEnc)
+	secret, err := s.decryptTOTPFieldForUser(ctx, &user, &user.TOTPPendingSecretEnc)
+	if err != nil {
+		return appshared.ErrNotFound
+	}
 	if strings.TrimSpace(secret) == "" {
 		return appshared.ErrNotFound
 	}
@@ -301,7 +473,11 @@ func (s *Service) VerifyTOTP(ctx context.Context, userID int64, code string) err
 	if !user.TOTPEnabled {
 		return appshared.ErrForbidden
 	}
-	if !verifyTOTPCode(decryptText(user.TOTPSecretEnc), strings.TrimSpace(code), time.Now(), 1) {
+	secret, err := s.decryptTOTPFieldForUser(ctx, &user, &user.TOTPSecretEnc)
+	if err != nil {
+		return appshared.ErrUnauthorized
+	}
+	if !verifyTOTPCode(secret, strings.TrimSpace(code), time.Now(), 1) {
 		return appshared.ErrUnauthorized
 	}
 	return nil
@@ -506,13 +682,14 @@ func randomCodeByPolicy(n int, complexity string) (string, error) {
 	if len(charset) == 0 {
 		return "", appshared.ErrInvalidInput
 	}
-	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	out := make([]rune, n)
-	for i := range out {
-		out[i] = charset[int(b[i])%len(charset)]
+	// Uniform draw via crypto/rand.Int avoids the modulo bias of a
+	// byte%len(charset) mapping, which measurably skews short verification codes
+	// toward low-index characters (F5).
+	out, err := cryptox.RandomAlphabet(string(charset), n)
+	if err != nil {
+		return "", err
 	}
-	return string(out), nil
+	return out, nil
 }
 
 func randomID(n int) string {
@@ -526,63 +703,126 @@ func hashText(v string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-var totpEncryptKey = sha256.Sum256([]byte("xiaoheiplay-totp-v1"))
+// legacyTOTPEncryptKey is the previous compile-time constant used to encrypt
+// TOTP secrets. It is retained strictly as a decryption-only fallback so
+// pre-upgrade rows remain readable; new writes always use the versioned
+// deployment key (Issue #51 P0-9).
+var legacyTOTPEncryptKey = sha256.Sum256([]byte("xiaoheiplay-totp-v1"))
 
-func encryptText(v string) string {
-	if strings.TrimSpace(v) == "" {
-		return ""
-	}
-	block, err := aes.NewCipher(totpEncryptKey[:])
+// dummyPasswordHash is a cost-10 bcrypt hash of a random password used to
+// equalize login timing for unknown accounts (P3-19).
+var dummyPasswordHash = mustDummyHash()
+
+func mustDummyHash() []byte {
+	h, err := bcrypt.GenerateFromPassword([]byte("xiaoheiplay-dummy-password"), bcrypt.DefaultCost)
 	if err != nil {
-		return v
+		panic("auth: failed to precompute dummy password hash: " + err.Error())
 	}
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return v
-	}
-	nonce := make([]byte, gcm.NonceSize())
-	_, _ = rand.Read(nonce)
-	ciphertext := gcm.Seal(nil, nonce, []byte(v), nil)
-	raw := map[string]string{
-		"n": base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(nonce),
-		"c": base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(ciphertext),
-	}
-	b, _ := json.Marshal(raw)
-	return string(b)
+	return h
 }
 
-func decryptText(v string) string {
-	if strings.TrimSpace(v) == "" {
-		return ""
+// buildTOTPKeyRing derives the versioned TOTP encryption keys. The active key
+// (v1) is a SHA-256 of the operator-provided source, matching the derivation
+// used by the previous branch so existing ciphertexts stay readable; the legacy
+// constant is present for one-time read-then-reencrypt only. An empty source
+// panics (fail-fast) rather than silently falling back to a deterministic key.
+func buildTOTPKeyRing(source string) (*cryptox.KeyRing, []byte, []byte) {
+	trimmed := strings.TrimSpace(source)
+	if trimmed == "" {
+		panic("auth: TOTP encryption key source must not be empty")
 	}
+	active := sha256.Sum256([]byte(trimmed))
+	legacy := sha256.Sum256([]byte("xiaoheiplay-totp-v1"))
+	ring, err := cryptox.NewKeyRing("v1", map[string][]byte{
+		"v1":     active[:],
+		"legacy": legacy[:],
+	})
+	if err != nil {
+		panic("auth: failed to build TOTP key ring: " + err.Error())
+	}
+	return ring, active[:], legacy[:]
+}
+
+// encryptText seals a TOTP secret with the active key into a versioned
+// envelope. A crypto/random failure is returned, never silently stored as the
+// plaintext.
+func (s *Service) encryptText(v string) (string, error) {
+	if s == nil || s.totpRing == nil || strings.TrimSpace(v) == "" {
+		return "", nil
+	}
+	return s.totpRing.EncryptString(v)
+}
+
+// decryptTextForUser decrypts a TOTP secret field for the given user. When the
+// stored value is a pre-keyring legacy ciphertext, it is re-encrypted with the
+// active key and persisted (one-time read-then-reencrypt / controlled
+// migration). A corrupt or unreadable value is an error — it is never treated
+// as the plaintext secret.
+func (s *Service) decryptTOTPFieldForUser(ctx context.Context, user *domain.User, field *string) (string, error) {
+	if s == nil || s.totpRing == nil {
+		return "", appshared.ErrNotSupported
+	}
+	if strings.TrimSpace(*field) == "" {
+		return "", nil
+	}
+	if plain, err := s.totpRing.DecryptString(*field); err == nil {
+		return plain, nil
+	}
+	for _, key := range [][]byte{s.totpV1Key, s.totpLegacy} {
+		if plain, ok := decryptLegacyTOTPFormat(*field, key); ok {
+			re, err := s.totpRing.EncryptString(plain)
+			if err != nil {
+				return "", err
+			}
+			*field = re
+			if user.ID > 0 {
+				if err := s.users.UpdateUser(ctx, *user); err != nil {
+					return "", err
+				}
+			}
+			return plain, nil
+		}
+	}
+	return "", domain.ErrTOTPSecretCorrupt
+}
+
+// decryptLegacyTOTPFormat unwraps the previous base32 {n,c} envelope with a
+// specific key. It reports success only for a well-formed, authentic envelope —
+// a non-JSON or otherwise damaged value never passes as plaintext.
+func decryptLegacyTOTPFormat(v string, key []byte) (string, bool) {
 	var raw map[string]string
 	if err := json.Unmarshal([]byte(v), &raw); err != nil {
-		return v
+		return "", false
+	}
+	if raw["n"] == "" || raw["c"] == "" {
+		return "", false
 	}
 	nonce, errN := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(raw["n"])
 	ciphertext, errC := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(raw["c"])
 	if errN != nil || errC != nil {
-		return ""
+		return "", false
 	}
-	block, err := aes.NewCipher(totpEncryptKey[:])
+	block, err := aes.NewCipher(key)
 	if err != nil {
-		return ""
+		return "", false
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return ""
+		return "", false
 	}
 	plain, err := gcm.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
-		return ""
+		return "", false
 	}
-	return string(plain)
+	return string(plain), true
 }
 
-func generateTOTPSecret() string {
+func generateTOTPSecret() (string, error) {
 	b := make([]byte, 20)
-	_, _ = rand.Read(b)
-	return strings.TrimRight(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b), "=")
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("auth: generate TOTP secret: %w", err)
+	}
+	return strings.TrimRight(base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b), "="), nil
 }
 
 func verifyTOTPCode(secret, code string, now time.Time, window int) bool {

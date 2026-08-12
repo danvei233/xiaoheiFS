@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -26,6 +27,55 @@ type Envelope struct {
 	Type      string `json:"type"`
 	RequestID string `json:"request_id,omitempty"`
 	Payload   any    `json:"payload,omitempty"`
+}
+
+const (
+	// maxInboundFrameBytes caps inbound WS frames (8 MiB).
+	maxInboundFrameBytes = 8 << 20
+	// maxLogLines caps a single request_log reply so a server cannot force the
+	// agent to emit an unbounded stream.
+	maxLogLines = 100000
+	// maxRuntimeIntervalSec caps heartbeat/snapshot intervals so a hostile
+	// server config cannot cause ticker overflow or pathological load.
+	maxRuntimeIntervalSec = 3600
+	// maxLogChunkBytes caps the per-chunk size the agent will emit.
+	maxLogChunkBytes = 1 << 20
+	// maxConcurrentLogStreams bounds concurrent request_log follow streams per
+	// connection so a server cannot spawn unbounded long-lived goroutines.
+	maxConcurrentLogStreams = 4
+)
+
+// clampRuntimeInterval bounds an interval to [1, maxRuntimeIntervalSec],
+// falling back to def when the value is non-positive.
+func clampRuntimeInterval(sec, def int) int {
+	if sec <= 0 {
+		sec = def
+	}
+	if sec < 1 {
+		return 1
+	}
+	if sec > maxRuntimeIntervalSec {
+		return maxRuntimeIntervalSec
+	}
+	return sec
+}
+
+// applyRuntimeConfig derives the effective runtime config from a server
+// set_config message, clamped to the same bounds used at startup and defaulting
+// to the previous values for missing/zero fields. It is a pure function so the
+// set_config path (which feeds time.NewTicker) is unit-testable.
+func applyRuntimeConfig(incoming client.RuntimeConfig, prev client.RuntimeConfig) client.RuntimeConfig {
+	out := prev
+	out.HeartbeatIntervalSec = clampRuntimeInterval(incoming.HeartbeatIntervalSec, prev.HeartbeatIntervalSec)
+	out.SnapshotIntervalSec = clampRuntimeInterval(incoming.SnapshotIntervalSec, prev.SnapshotIntervalSec)
+	if incoming.LogChunkMaxBytes <= 0 {
+		out.LogChunkMaxBytes = prev.LogChunkMaxBytes
+	} else if incoming.LogChunkMaxBytes > maxLogChunkBytes {
+		out.LogChunkMaxBytes = maxLogChunkBytes
+	} else {
+		out.LogChunkMaxBytes = incoming.LogChunkMaxBytes
+	}
+	return out
 }
 
 type Service struct {
@@ -52,31 +102,47 @@ func (s *Service) Run(ctx context.Context) error {
 		}
 		if err := s.ensureEnrollment(); err != nil {
 			log.Printf("enroll failed: %v", err)
-			time.Sleep(backoff)
+			if !sleepCtx(ctx, backoff) {
+				return nil
+			}
 			backoff = minDuration(backoff*2, 30*time.Second)
 			continue
 		}
 		accessToken, runtimeCfg, err := s.api.AuthToken(s.cfg.ProbeID, s.cfg.ProbeSecret)
 		if err != nil {
 			log.Printf("auth token failed: %v", err)
-			time.Sleep(backoff)
+			if !sleepCtx(ctx, backoff) {
+				return nil
+			}
 			backoff = minDuration(backoff*2, 30*time.Second)
 			continue
 		}
-		if runtimeCfg.HeartbeatIntervalSec <= 0 {
-			runtimeCfg.HeartbeatIntervalSec = 10
-		}
-		if runtimeCfg.SnapshotIntervalSec <= 0 {
-			runtimeCfg.SnapshotIntervalSec = 60
-		}
+		runtimeCfg.HeartbeatIntervalSec = clampRuntimeInterval(runtimeCfg.HeartbeatIntervalSec, 10)
+		runtimeCfg.SnapshotIntervalSec = clampRuntimeInterval(runtimeCfg.SnapshotIntervalSec, 60)
 		if runtimeCfg.LogChunkMaxBytes <= 0 {
 			runtimeCfg.LogChunkMaxBytes = 16384
+		}
+		if runtimeCfg.LogChunkMaxBytes > maxLogChunkBytes {
+			runtimeCfg.LogChunkMaxBytes = maxLogChunkBytes
 		}
 		if err := s.wsLoop(ctx, accessToken, runtimeCfg); err != nil {
 			log.Printf("ws disconnected: %v", err)
 		}
-		time.Sleep(backoff)
+		if !sleepCtx(ctx, backoff) {
+			return nil
+		}
 		backoff = minDuration(backoff*2, 30*time.Second)
+	}
+}
+
+// sleepCtx sleeps for d or returns immediately when ctx is cancelled, so a
+// reconnect backoff never blocks shutdown.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-time.After(d):
+		return true
 	}
 }
 
@@ -113,7 +179,9 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 	if err != nil {
 		return err
 	}
-	log.Printf("dial ws url=%s", wsURL)
+	// Never log a URL that could carry userinfo or a query (both would leak
+	// credentials). Only the scheme/host/path is safe to print.
+	log.Printf("dial ws url=%s", SanitizeURL(wsURL))
 	dialer := websocket.Dialer{
 		HandshakeTimeout: 15 * time.Second,
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: s.cfg.TLSInsecureSkipVerify},
@@ -125,6 +193,9 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 		return err
 	}
 	defer conn.Close()
+	// Bound inbound frames so a compromised/misbehaving server cannot make the
+	// agent buffer an unbounded frame.
+	conn.SetReadLimit(maxInboundFrameBytes)
 	log.Printf("ws connected probe_id=%d", s.cfg.ProbeID)
 
 	sendMu := sync.Mutex{}
@@ -134,6 +205,14 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 		_ = conn.SetWriteDeadline(time.Now().Add(15 * time.Second))
 		return conn.WriteJSON(env)
 	}
+	// logStreamSem bounds how many concurrent request_log streams a single
+	// connection may run, so a malicious/buggy server cannot spawn unbounded
+	// goroutines (each follow stream can live up to 10 minutes).
+	logStreamSem := make(chan struct{}, maxConcurrentLogStreams)
+	// connCtx is cancelled when this connection tears down, so in-flight log
+	// streams stop instead of lingering after a reconnect.
+	connCtx, connCancel := context.WithCancel(ctx)
+	defer connCancel()
 
 	_ = send(Envelope{
 		Type: "hello",
@@ -153,7 +232,7 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 
 	errCh := make(chan error, 1)
 	sendSnapshot := func(trigger string) {
-		snapshot, warnings := collector.Snapshot(context.Background(), s.cfg.HostnameAlias)
+		snapshot, warnings := collector.Snapshot(ctx, s.cfg.HostnameAlias)
 		if len(warnings) > 0 {
 			log.Printf("snapshot warnings trigger=%s details=%s", trigger, strings.Join(warnings, " | "))
 		}
@@ -209,7 +288,14 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 				_ = send(Envelope{Type: "pong", RequestID: msg.RequestID})
 			case "request_log":
 				log.Printf("request_log received request_id=%s", strings.TrimSpace(msg.RequestID))
-				go s.handleLogRequest(send, msg, runtimeCfg.LogChunkMaxBytes)
+				go func() {
+					select {
+					case logStreamSem <- struct{}{}:
+						defer func() { <-logStreamSem }()
+						s.handleLogRequest(connCtx, send, msg, runtimeCfg.LogChunkMaxBytes)
+					case <-connCtx.Done():
+					}
+				}()
 			case "request_snapshot":
 				log.Printf("request_snapshot received request_id=%s", strings.TrimSpace(msg.RequestID))
 				sendSnapshot("request_snapshot:" + strings.TrimSpace(msg.RequestID))
@@ -240,27 +326,21 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 		case err := <-errCh:
 			return err
 		case incoming := <-cfgCh:
-			changedHB := false
-			changedSS := false
-			if incoming.HeartbeatIntervalSec > 0 && incoming.HeartbeatIntervalSec != runtimeCfg.HeartbeatIntervalSec {
-				runtimeCfg.HeartbeatIntervalSec = incoming.HeartbeatIntervalSec
-				changedHB = true
-			}
-			if incoming.SnapshotIntervalSec > 0 && incoming.SnapshotIntervalSec != runtimeCfg.SnapshotIntervalSec {
-				runtimeCfg.SnapshotIntervalSec = incoming.SnapshotIntervalSec
-				changedSS = true
-			}
-			if incoming.LogChunkMaxBytes > 0 {
-				runtimeCfg.LogChunkMaxBytes = incoming.LogChunkMaxBytes
-			}
-			if changedHB {
+			// A compromised/misbehaving server could send a set_config with an
+			// enormous interval (overflowing time.Duration into a negative ticker
+			// and panicking) or a huge chunk cap. applyRuntimeConfig applies the
+			// same clamps used at startup so a hostile config can never drive a
+			// pathological ticker.
+			next := applyRuntimeConfig(incoming, runtimeCfg)
+			if next.HeartbeatIntervalSec != runtimeCfg.HeartbeatIntervalSec {
 				hbTicker.Stop()
-				hbTicker = time.NewTicker(time.Duration(runtimeCfg.HeartbeatIntervalSec) * time.Second)
+				hbTicker = time.NewTicker(time.Duration(next.HeartbeatIntervalSec) * time.Second)
 			}
-			if changedSS {
+			if next.SnapshotIntervalSec != runtimeCfg.SnapshotIntervalSec {
 				ssTicker.Stop()
-				ssTicker = time.NewTicker(time.Duration(runtimeCfg.SnapshotIntervalSec) * time.Second)
+				ssTicker = time.NewTicker(time.Duration(next.SnapshotIntervalSec) * time.Second)
 			}
+			runtimeCfg = next
 		case <-hbTicker.C:
 			sendHeartbeat()
 		case <-ssTicker.C:
@@ -276,7 +356,7 @@ func (s *Service) wsLoop(ctx context.Context, accessToken string, runtimeCfg cli
 	}
 }
 
-func (s *Service) handleLogRequest(send func(Envelope) error, msg Envelope, maxChunk int) {
+func (s *Service) handleLogRequest(ctx context.Context, send func(Envelope) error, msg Envelope, maxChunk int) {
 	raw, _ := json.Marshal(msg.Payload)
 	var payload struct {
 		SessionID string `json:"session_id"`
@@ -298,14 +378,20 @@ func (s *Service) handleLogRequest(send func(Envelope) error, msg Envelope, maxC
 	if payload.Lines <= 0 {
 		payload.Lines = 300
 	}
+	if payload.Lines > maxLogLines {
+		payload.Lines = maxLogLines
+	}
 	if maxChunk <= 0 {
 		maxChunk = 16384
+	}
+	if maxChunk > maxLogChunkBytes {
+		maxChunk = maxLogChunkBytes
 	}
 	emittedLines := 0
 	var sendErr error
 
 	emit := func(line string) bool {
-		line = strings.TrimSpace(line)
+		line = redactSensitive(strings.TrimSpace(line))
 		if line == "" {
 			return true
 		}
@@ -327,7 +413,7 @@ func (s *Service) handleLogRequest(send func(Envelope) error, msg Envelope, maxC
 		return true
 	}
 
-	if err := logreader.Stream(resolvedSource, payload.Keyword, payload.Lines, payload.Follow, emit); err != nil {
+	if err := logreader.Stream(ctx, resolvedSource, payload.Keyword, payload.Lines, payload.Follow, emit); err != nil {
 		log.Printf("log stream failed session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), err)
 		if serr := send(Envelope{
 			Type:      "log_chunk",
@@ -372,6 +458,27 @@ func (s *Service) handleLogRequest(send func(Envelope) error, msg Envelope, maxC
 		log.Printf("log end send failed session=%s source=%s err=%v", strings.TrimSpace(payload.SessionID), strings.TrimSpace(resolvedSource), err)
 	}
 }
+
+// redactSensitive masks credentials that could appear in log/event content
+// (Authorization: Bearer <token>, psk_ probe secrets) so they are never
+// shipped back to the server or written into local logs.
+func redactSensitive(line string) string {
+	// Authorization header values (Bearer or raw key) are fully masked first;
+	// the value class cannot match the [REDACTED] marker so this is idempotent.
+	line = redactAuthHeaderRe.ReplaceAllString(line, "$1[REDACTED]")
+	line = redactBearerRe.ReplaceAllString(line, "$1[REDACTED]")
+	line = redactPSKRe.ReplaceAllString(line, "psk_[REDACTED]")
+	return line
+}
+
+var (
+	redactBearerRe = regexp.MustCompile(`(?i)(Bearer\s+)([A-Za-z0-9._~+/=-]+)`)
+	redactPSKRe    = regexp.MustCompile(`psk_[A-Za-z0-9]{48,}`)
+	// redactAuthHeaderRe masks the value of an Authorization header, whether it
+	// is a Bearer token or a raw API key. It is idempotent because the
+	// [REDACTED] marker is not matched by the value class.
+	redactAuthHeaderRe = regexp.MustCompile(`(?i)(authorization\s*[:=]\s*)(?:Bearer\s+)?([A-Za-z0-9._~+/=-]+)`)
+)
 
 func (s *Service) resolveLogSource(requestSource string) string {
 	source := strings.TrimSpace(requestSource)
@@ -420,6 +527,19 @@ func toWSURL(baseURL, path string) (string, error) {
 	u.Path = path
 	u.RawQuery = ""
 	return u.String(), nil
+}
+
+// SanitizeURL returns a URL string safe to log: userinfo and query (either can
+// carry credentials) are stripped, leaving only scheme://host/path.
+func SanitizeURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "[invalid-url]"
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.Fragment = ""
+	return u.String()
 }
 
 func probeMachineTag() string {

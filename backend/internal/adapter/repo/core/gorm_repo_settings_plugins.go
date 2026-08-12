@@ -3,7 +3,9 @@ package repo
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	mysqlDriver "github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"sort"
@@ -18,14 +20,22 @@ const (
 	settingKeySMSTemplates        = "sms_templates_json"
 	settingKeyRobotWebhooks       = "robot_webhooks"
 	settingKeyPackageCapabilities = "package_capabilities_json"
+	settingKeyGoodsCapabilities   = "goods_type_capabilities_json"
 )
 
-var normalizedListSettingKeys = map[string]struct{}{
-	"auth_register_required_fields": {},
-	"auth_register_verify_channels": {},
-	"auth_login_notify_channels":    {},
-	"auth_password_reset_channels":  {},
-	"realname_block_actions":        {},
+// normalizedListSettingKeys is derived from the single source of truth
+// (app/shared JSONSettingKeys, P3-4) so the repo's list-key set and the HTTP
+// handler's isLikelyJSONSettingKey cannot drift apart. getNormalizedSettingValue
+// special-cases sms_templates_json / robot_webhooks / package_capabilities_json
+// before this set is consulted, so the extra named keys are harmless on read.
+var normalizedListSettingKeys = buildNormalizedListSettingKeys()
+
+func buildNormalizedListSettingKeys() map[string]struct{} {
+	keys := make(map[string]struct{}, len(appshared.JSONSettingKeys))
+	for _, k := range appshared.JSONSettingKeys {
+		keys[k] = struct{}{}
+	}
+	return keys
 }
 
 func (r *GormRepo) GetSetting(ctx context.Context, key string) (domain.Setting, error) {
@@ -43,17 +53,86 @@ func (r *GormRepo) GetSetting(ctx context.Context, key string) (domain.Setting, 
 
 }
 
-func (r *GormRepo) UpsertSetting(ctx context.Context, setting domain.Setting) error {
-	if handled, err := r.upsertNormalizedSetting(ctx, setting); handled || err != nil {
-		return err
+// ClaimSettingIfAbsent atomically inserts a setting row only when the key is not
+// already present. It returns true when the caller performed the insert (the key
+// was absent), false when the row already exists. The installer uses it to make
+// the DB-side install-completion marker an atomic claim: two hosts sharing one
+// database cannot both pass a check-then-insert, and a replayed install cannot
+// reach the admin side effects once a claim exists.
+func (r *GormRepo) ClaimSettingIfAbsent(ctx context.Context, key, valueJSON string) (bool, error) {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return false, appshared.ErrInvalidInput
 	}
-	m := settingModel{Key: setting.Key, ValueJSON: setting.ValueJSON, UpdatedAt: time.Now()}
-	return r.gdb.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "key"}},
-			DoUpdates: clause.AssignmentColumns([]string{"value_json", "updated_at"}),
-		}).
-		Create(&m).Error
+	m := settingModel{Key: key, ValueJSON: valueJSON, UpdatedAt: time.Now()}
+	err := r.gdb.WithContext(ctx).Create(&m).Error
+	if err == nil {
+		return true, nil
+	}
+	if isUniqueConstraintViolation(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// DeleteSetting removes a raw scalar setting. The installer uses this only to
+// roll back a completion-marker claim from the same failed attempt.
+func (r *GormRepo) DeleteSetting(ctx context.Context, key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return appshared.ErrInvalidInput
+	}
+	return r.gdb.WithContext(ctx).Where("`key` = ?", key).Delete(&settingModel{}).Error
+}
+
+// isUniqueConstraintViolation reports whether err is a unique-constraint /
+// duplicate-key violation across the supported drivers (SQLite, MySQL, Postgres).
+func isUniqueConstraintViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	var me *mysqlDriver.MySQLError
+	if errors.As(err, &me) {
+		return me.Number == 1062
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "duplicate entry") ||
+		strings.Contains(msg, "duplicate key") ||
+		strings.Contains(msg, "unique constraint") ||
+		strings.Contains(msg, "constraint failed")
+}
+
+func (r *GormRepo) UpsertSetting(ctx context.Context, setting domain.Setting) error {
+	return r.UpsertSettings(ctx, []domain.Setting{setting})
+}
+
+// UpsertSettings writes a batch of settings atomically: either every key is
+// persisted or none is. The admin settings batch endpoint uses it so a failure
+// on the k-th key does not leave the first k-1 keys half-written.
+func (r *GormRepo) UpsertSettings(ctx context.Context, settings []domain.Setting) error {
+	if len(settings) == 0 {
+		return nil
+	}
+	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, setting := range settings {
+			if handled, err := r.upsertNormalizedSetting(tx, setting); handled || err != nil {
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			m := settingModel{Key: setting.Key, ValueJSON: setting.ValueJSON, UpdatedAt: time.Now()}
+			if err := tx.
+				Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "key"}},
+					DoUpdates: clause.AssignmentColumns([]string{"value_json", "updated_at"}),
+				}).
+				Create(&m).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *GormRepo) ListSettings(ctx context.Context) ([]domain.Setting, error) {
@@ -86,6 +165,7 @@ func (r *GormRepo) overlayNormalizedSettings(ctx context.Context, base []domain.
 		settingKeySMSTemplates,
 		settingKeyRobotWebhooks,
 		settingKeyPackageCapabilities,
+		settingKeyGoodsCapabilities,
 	}
 	for k := range normalizedListSettingKeys {
 		keys = append(keys, k)
@@ -218,6 +298,20 @@ func (r *GormRepo) getNormalizedSettingValue(ctx context.Context, key string) (s
 		}
 		raw, _ := json.Marshal(payload)
 		return string(raw), true, nil
+	case key == settingKeyGoodsCapabilities:
+		rows, err := r.listGoodsTypeCapabilityRows(ctx)
+		if err != nil {
+			return "", false, err
+		}
+		if len(rows) == 0 {
+			return "", false, nil
+		}
+		payload := map[string]domain.CapabilityPolicy{}
+		for _, row := range rows {
+			payload[strconv.FormatInt(row.GoodsTypeID, 10)] = capabilityPolicyFromInts(row.ResizeEnabled, row.RefundEnabled)
+		}
+		raw, _ := json.Marshal(payload)
+		return string(raw), true, nil
 	case isListSettingKey(key):
 		rows, err := r.listSettingListValues(ctx, key)
 		if err != nil {
@@ -254,23 +348,31 @@ func (r *GormRepo) getNormalizedSettingValue(ctx context.Context, key string) (s
 	}
 }
 
-func (r *GormRepo) upsertNormalizedSetting(ctx context.Context, setting domain.Setting) (bool, error) {
+func (r *GormRepo) upsertNormalizedSetting(db *gorm.DB, setting domain.Setting) (bool, error) {
 	key := strings.TrimSpace(setting.Key)
 	switch {
 	case key == settingKeySMSTemplates:
-		return true, r.upsertSMSTemplatesSetting(ctx, setting.ValueJSON)
+		return true, r.upsertSMSTemplatesSetting(db, setting.ValueJSON)
 	case key == settingKeyRobotWebhooks:
-		return true, r.upsertRobotWebhooksSetting(ctx, setting.ValueJSON)
+		return true, r.upsertRobotWebhooksSetting(db, setting.ValueJSON)
 	case key == settingKeyPackageCapabilities:
-		return true, r.upsertPackageCapabilitiesSetting(ctx, setting.ValueJSON)
+		return true, r.upsertPackageCapabilitiesSetting(db, setting.ValueJSON)
+	case key == settingKeyGoodsCapabilities:
+		return true, r.upsertGoodsTypeCapabilitiesSetting(db, setting.ValueJSON)
+	case key == "site_nav_items":
+		// site_nav_items is a JSON document (array of nav objects) stored as a
+		// raw settings row, not as scalar list values. It is part of the shared
+		// JSON-settings key set (P3-4) but must NOT be routed through the list
+		// write path; return (false, nil) so the caller does the raw upsert.
+		return false, nil
 	case isListSettingKey(key):
-		return true, r.upsertListSetting(ctx, key, setting.ValueJSON)
+		return true, r.upsertListSetting(db, key, setting.ValueJSON)
 	case strings.HasPrefix(key, "task."):
 		taskKey := strings.TrimSpace(strings.TrimPrefix(key, "task."))
 		if taskKey == "" {
 			return true, appshared.ErrInvalidInput
 		}
-		return true, r.upsertTaskSetting(ctx, taskKey, setting.ValueJSON)
+		return true, r.upsertTaskSetting(db, taskKey, setting.ValueJSON)
 	default:
 		return false, nil
 	}
@@ -281,7 +383,7 @@ func isListSettingKey(key string) bool {
 	return ok
 }
 
-func (r *GormRepo) upsertSMSTemplatesSetting(ctx context.Context, raw string) error {
+func (r *GormRepo) upsertSMSTemplatesSetting(db *gorm.DB, raw string) error {
 	type smsTemplatePayload struct {
 		ID        int64     `json:"id"`
 		Name      string    `json:"name"`
@@ -294,7 +396,7 @@ func (r *GormRepo) upsertSMSTemplatesSetting(ctx context.Context, raw string) er
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &items); err != nil {
 		return appshared.ErrInvalidInput
 	}
-	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("1 = 1").Delete(&smsTemplateRow{}).Error; err != nil {
 			return err
 		}
@@ -330,7 +432,7 @@ func (r *GormRepo) upsertSMSTemplatesSetting(ctx context.Context, raw string) er
 	})
 }
 
-func (r *GormRepo) upsertRobotWebhooksSetting(ctx context.Context, raw string) error {
+func (r *GormRepo) upsertRobotWebhooksSetting(db *gorm.DB, raw string) error {
 	type webhookPayload struct {
 		Name    string   `json:"name"`
 		URL     string   `json:"url"`
@@ -342,7 +444,7 @@ func (r *GormRepo) upsertRobotWebhooksSetting(ctx context.Context, raw string) e
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &items); err != nil {
 		return appshared.ErrInvalidInput
 	}
-	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("1 = 1").Delete(&robotWebhookRow{}).Error; err != nil {
 			return err
 		}
@@ -367,16 +469,12 @@ func (r *GormRepo) upsertRobotWebhooksSetting(ctx context.Context, raw string) e
 	})
 }
 
-func (r *GormRepo) upsertPackageCapabilitiesSetting(ctx context.Context, raw string) error {
-	type capabilityPolicy struct {
-		ResizeEnabled *bool `json:"resize_enabled,omitempty"`
-		RefundEnabled *bool `json:"refund_enabled,omitempty"`
-	}
-	var payload map[string]capabilityPolicy
+func (r *GormRepo) upsertPackageCapabilitiesSetting(db *gorm.DB, raw string) error {
+	var payload map[string]domain.CapabilityPolicy
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
 		return appshared.ErrInvalidInput
 	}
-	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("1 = 1").Delete(&packageCapabilityRow{}).Error; err != nil {
 			return err
 		}
@@ -407,11 +505,68 @@ func (r *GormRepo) upsertPackageCapabilitiesSetting(ctx context.Context, raw str
 				return err
 			}
 		}
-		return tx.Where("`key` = ?", settingKeyPackageCapabilities).Delete(&settingModel{}).Error
+		return upsertCapabilityLockRow(tx, settingKeyPackageCapabilities)
 	})
 }
 
-func (r *GormRepo) upsertListSetting(ctx context.Context, key string, raw string) error {
+func (r *GormRepo) upsertGoodsTypeCapabilitiesSetting(db *gorm.DB, raw string) error {
+	var payload map[string]domain.CapabilityPolicy
+	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &payload); err != nil {
+		return appshared.ErrInvalidInput
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("1 = 1").Delete(&goodsTypeCapabilityRow{}).Error; err != nil {
+			return err
+		}
+		for key, item := range payload {
+			goodsTypeID, err := strconv.ParseInt(strings.TrimSpace(key), 10, 64)
+			if err != nil || goodsTypeID <= 0 {
+				continue
+			}
+			row := goodsTypeCapabilityRow{GoodsTypeID: goodsTypeID}
+			row.ResizeEnabled = optionalBoolToInt(item.ResizeEnabled)
+			row.RefundEnabled = optionalBoolToInt(item.RefundEnabled)
+			if row.ResizeEnabled == nil && row.RefundEnabled == nil {
+				continue
+			}
+			if err := tx.Create(&row).Error; err != nil {
+				return err
+			}
+		}
+		return upsertCapabilityLockRow(tx, settingKeyGoodsCapabilities)
+	})
+}
+
+func upsertCapabilityLockRow(db *gorm.DB, key string) error {
+	row := settingModel{Key: key, ValueJSON: "{}", UpdatedAt: time.Now()}
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "key"}},
+		DoUpdates: clause.AssignmentColumns([]string{"value_json", "updated_at"}),
+	}).Create(&row).Error
+}
+
+func optionalBoolToInt(value *bool) *int {
+	if value == nil {
+		return nil
+	}
+	v := boolToInt(*value)
+	return &v
+}
+
+func capabilityPolicyFromInts(resize, refund *int) domain.CapabilityPolicy {
+	policy := domain.CapabilityPolicy{}
+	if resize != nil {
+		v := *resize == 1
+		policy.ResizeEnabled = &v
+	}
+	if refund != nil {
+		v := *refund == 1
+		policy.RefundEnabled = &v
+	}
+	return policy
+}
+
+func (r *GormRepo) upsertListSetting(db *gorm.DB, key string, raw string) error {
 	var values []string
 	if err := json.Unmarshal([]byte(strings.TrimSpace(raw)), &values); err != nil {
 		return appshared.ErrInvalidInput
@@ -429,7 +584,7 @@ func (r *GormRepo) upsertListSetting(ctx context.Context, key string, raw string
 		uniq[v] = struct{}{}
 		normalized = append(normalized, v)
 	}
-	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("setting_key = ?", key).Delete(&settingListValueRow{}).Error; err != nil {
 			return err
 		}
@@ -454,7 +609,7 @@ func (r *GormRepo) upsertListSetting(ctx context.Context, key string, raw string
 	})
 }
 
-func (r *GormRepo) upsertTaskSetting(ctx context.Context, taskKey string, raw string) error {
+func (r *GormRepo) upsertTaskSetting(db *gorm.DB, taskKey string, raw string) error {
 	var payload struct {
 		Enabled     *bool   `json:"enabled"`
 		Strategy    *string `json:"strategy"`
@@ -483,7 +638,7 @@ func (r *GormRepo) upsertTaskSetting(ctx context.Context, taskKey string, raw st
 	if row.IntervalSec <= 0 {
 		row.IntervalSec = 60
 	}
-	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "task_key"}},
 			DoUpdates: clause.AssignmentColumns([]string{"enabled", "strategy", "interval_sec", "daily_at", "updated_at"}),
@@ -526,6 +681,92 @@ func (r *GormRepo) listPackageCapabilityRows(ctx context.Context) ([]packageCapa
 		return nil, err
 	}
 	return rows, nil
+}
+
+func (r *GormRepo) listGoodsTypeCapabilityRows(ctx context.Context) ([]goodsTypeCapabilityRow, error) {
+	var rows []goodsTypeCapabilityRow
+	if err := r.gdb.WithContext(ctx).Order("goods_type_id ASC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *GormRepo) ListCapabilityPolicies(ctx context.Context, scope domain.CapabilityPolicyScope) (map[int64]domain.CapabilityPolicy, error) {
+	out := map[int64]domain.CapabilityPolicy{}
+	switch scope {
+	case domain.CapabilityPolicyScopePackage:
+		rows, err := r.listPackageCapabilityRows(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out[row.PackageID] = capabilityPolicyFromInts(row.ResizeEnabled, row.RefundEnabled)
+		}
+	case domain.CapabilityPolicyScopeGoodsType:
+		rows, err := r.listGoodsTypeCapabilityRows(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			out[row.GoodsTypeID] = capabilityPolicyFromInts(row.ResizeEnabled, row.RefundEnabled)
+		}
+	default:
+		return nil, appshared.ErrInvalidInput
+	}
+	return out, nil
+}
+
+func (r *GormRepo) GetCapabilityPolicy(ctx context.Context, scope domain.CapabilityPolicyScope, itemID int64) (domain.CapabilityPolicy, error) {
+	if itemID <= 0 {
+		return domain.CapabilityPolicy{}, appshared.ErrInvalidInput
+	}
+	switch scope {
+	case domain.CapabilityPolicyScopePackage:
+		var row packageCapabilityRow
+		if err := r.gdb.WithContext(ctx).Where("package_id = ?", itemID).First(&row).Error; err != nil {
+			return domain.CapabilityPolicy{}, r.ensure(err)
+		}
+		return capabilityPolicyFromInts(row.ResizeEnabled, row.RefundEnabled), nil
+	case domain.CapabilityPolicyScopeGoodsType:
+		var row goodsTypeCapabilityRow
+		if err := r.gdb.WithContext(ctx).Where("goods_type_id = ?", itemID).First(&row).Error; err != nil {
+			return domain.CapabilityPolicy{}, r.ensure(err)
+		}
+		return capabilityPolicyFromInts(row.ResizeEnabled, row.RefundEnabled), nil
+	default:
+		return domain.CapabilityPolicy{}, appshared.ErrInvalidInput
+	}
+}
+
+func (r *GormRepo) UpsertCapabilityPolicy(ctx context.Context, scope domain.CapabilityPolicyScope, itemID int64, policy domain.CapabilityPolicy) error {
+	if itemID <= 0 {
+		return appshared.ErrInvalidInput
+	}
+	resize := optionalBoolToInt(policy.ResizeEnabled)
+	refund := optionalBoolToInt(policy.RefundEnabled)
+	db := r.gdb.WithContext(ctx)
+	switch scope {
+	case domain.CapabilityPolicyScopePackage:
+		if resize == nil && refund == nil {
+			return db.Where("package_id = ?", itemID).Delete(&packageCapabilityRow{}).Error
+		}
+		row := packageCapabilityRow{PackageID: itemID, ResizeEnabled: resize, RefundEnabled: refund}
+		return db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "package_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"resize_enabled", "refund_enabled", "updated_at"}),
+		}).Create(&row).Error
+	case domain.CapabilityPolicyScopeGoodsType:
+		if resize == nil && refund == nil {
+			return db.Where("goods_type_id = ?", itemID).Delete(&goodsTypeCapabilityRow{}).Error
+		}
+		row := goodsTypeCapabilityRow{GoodsTypeID: itemID, ResizeEnabled: resize, RefundEnabled: refund}
+		return db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "goods_type_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{"resize_enabled", "refund_enabled", "updated_at"}),
+		}).Create(&row).Error
+	default:
+		return appshared.ErrInvalidInput
+	}
 }
 
 func (r *GormRepo) listSettingListValues(ctx context.Context, key string) ([]settingListValueRow, error) {
@@ -582,6 +823,7 @@ func (r *GormRepo) UpsertPluginInstallation(ctx context.Context, inst *domain.Pl
 		InstanceID:      inst.InstanceID,
 		Enabled:         boolToInt(inst.Enabled),
 		SignatureStatus: string(inst.SignatureStatus),
+		ContentDigest:   inst.ContentDigest,
 		ConfigCipher:    inst.ConfigCipher,
 	}
 	return r.gdb.WithContext(ctx).
@@ -590,6 +832,7 @@ func (r *GormRepo) UpsertPluginInstallation(ctx context.Context, inst *domain.Pl
 			DoUpdates: clause.AssignmentColumns([]string{
 				"enabled",
 				"signature_status",
+				"content_digest",
 				"config_cipher",
 				"updated_at",
 			}),
@@ -611,6 +854,7 @@ func (r *GormRepo) GetPluginInstallation(ctx context.Context, category, pluginID
 		InstanceID:      row.InstanceID,
 		Enabled:         row.Enabled == 1,
 		SignatureStatus: domain.PluginSignatureStatus(row.SignatureStatus),
+		ContentDigest:   row.ContentDigest,
 		ConfigCipher:    row.ConfigCipher,
 		CreatedAt:       row.CreatedAt,
 		UpdatedAt:       row.UpdatedAt,
@@ -631,6 +875,7 @@ func (r *GormRepo) ListPluginInstallations(ctx context.Context) ([]domain.Plugin
 			InstanceID:      row.InstanceID,
 			Enabled:         row.Enabled == 1,
 			SignatureStatus: domain.PluginSignatureStatus(row.SignatureStatus),
+			ContentDigest:   row.ContentDigest,
 			ConfigCipher:    row.ConfigCipher,
 			CreatedAt:       row.CreatedAt,
 			UpdatedAt:       row.UpdatedAt,
@@ -825,4 +1070,81 @@ func (r *GormRepo) PurgeSyncLogs(ctx context.Context, before time.Time) error {
 	return r.gdb.WithContext(ctx).
 		Where("created_at < ?", before).
 		Delete(&integrationSyncLogRow{}).Error
+}
+
+// UpdateSettingAtomic applies mutate to the stored value of a settings key
+// inside a transaction with a row lock (P2-8). Concurrent read-modify-write of
+// a shared settings document across instances is serialized on the row, so a
+// later writer re-reads the other writer's committed value instead of
+// last-write-wins dropping one key.
+func (r *GormRepo) UpdateSettingAtomic(ctx context.Context, key string, mutate func(current string) (string, error)) error {
+	key = strings.TrimSpace(key)
+	if key == "" || mutate == nil {
+		return appshared.ErrInvalidInput
+	}
+	// Seed a stable lock row before entering the transaction. SELECT FOR UPDATE
+	// cannot serialize a row that does not exist; a conflict-safe insert closes
+	// the first-writer race on MySQL/Postgres. Capability policy updates use
+	// independent row upserts on every dialect and do not depend on this lock.
+	seed := settingModel{Key: key, ValueJSON: "", UpdatedAt: time.Now()}
+	if key == settingKeyPackageCapabilities || key == settingKeyGoodsCapabilities {
+		seed.ValueJSON = "{}"
+	}
+	if err := r.gdb.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(&seed).Error; err != nil {
+		return err
+	}
+	return r.gdb.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var row settingModel
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("key = ?", key).
+			First(&row).Error; err != nil {
+			return err
+		}
+		current := row.ValueJSON
+		if key == settingKeyPackageCapabilities || key == settingKeyGoodsCapabilities {
+			var err error
+			current, err = capabilitySettingValueFromDB(tx, key)
+			if err != nil {
+				return err
+			}
+		}
+		next, err := mutate(current)
+		if err != nil {
+			return err
+		}
+		if key == settingKeyPackageCapabilities {
+			return r.upsertPackageCapabilitiesSetting(tx, next)
+		}
+		if key == settingKeyGoodsCapabilities {
+			return r.upsertGoodsTypeCapabilitiesSetting(tx, next)
+		}
+		return tx.Model(&settingModel{}).Where("key = ?", key).
+			Updates(map[string]any{"value_json": next, "updated_at": time.Now()}).Error
+	})
+}
+
+func capabilitySettingValueFromDB(db *gorm.DB, key string) (string, error) {
+	payload := map[string]domain.CapabilityPolicy{}
+	switch key {
+	case settingKeyPackageCapabilities:
+		var rows []packageCapabilityRow
+		if err := db.Order("package_id ASC").Find(&rows).Error; err != nil {
+			return "", err
+		}
+		for _, row := range rows {
+			payload[strconv.FormatInt(row.PackageID, 10)] = capabilityPolicyFromInts(row.ResizeEnabled, row.RefundEnabled)
+		}
+	case settingKeyGoodsCapabilities:
+		var rows []goodsTypeCapabilityRow
+		if err := db.Order("goods_type_id ASC").Find(&rows).Error; err != nil {
+			return "", err
+		}
+		for _, row := range rows {
+			payload[strconv.FormatInt(row.GoodsTypeID, 10)] = capabilityPolicyFromInts(row.ResizeEnabled, row.RefundEnabled)
+		}
+	default:
+		return "", appshared.ErrInvalidInput
+	}
+	raw, err := json.Marshal(payload)
+	return string(raw), err
 }

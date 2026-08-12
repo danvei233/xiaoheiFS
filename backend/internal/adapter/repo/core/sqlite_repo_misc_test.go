@@ -2,12 +2,33 @@ package repo_test
 
 import (
 	"context"
+	"testing"
 	"time"
 
-	"testing"
-
+	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
 )
+
+func TestSQLiteRepo_ListAuditLogsDefaultsLimit(t *testing.T) {
+	_, r := newTestRepo(t)
+	ctx := context.Background()
+
+	for i := 0; i < 25; i++ {
+		if err := r.AddAuditLog(ctx, domain.AdminAuditLog{AdminID: int64(i), Action: "op", TargetType: "order", TargetID: "1", DetailJSON: "{}"}); err != nil {
+			t.Fatalf("add audit log %d: %v", i, err)
+		}
+	}
+	rows, total, err := r.ListAuditLogs(ctx, appshared.AuditLogFilter{}, 0, 0)
+	if err != nil {
+		t.Fatalf("list audit logs with limit=0: %v", err)
+	}
+	if total != 25 {
+		t.Fatalf("expected total=25, got %d", total)
+	}
+	if len(rows) != 20 {
+		t.Fatalf("expected limit=0 to default to 20 rows, got %d", len(rows))
+	}
+}
 
 func TestSQLiteRepo_APIsAndLogs(t *testing.T) {
 	_, r := newTestRepo(t)
@@ -55,7 +76,7 @@ func TestSQLiteRepo_APIsAndLogs(t *testing.T) {
 	if err := r.AddAuditLog(ctx, logEntry); err != nil {
 		t.Fatalf("add audit log: %v", err)
 	}
-	logs, _, err := r.ListAuditLogs(ctx, 10, 0)
+	logs, _, err := r.ListAuditLogs(ctx, appshared.AuditLogFilter{}, 10, 0)
 	if err != nil || len(logs) == 0 {
 		t.Fatalf("list audit logs: %v", err)
 	}

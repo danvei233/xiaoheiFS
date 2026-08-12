@@ -3,12 +3,16 @@ package order_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 	apporder "xiaoheiplay/internal/app/order"
+	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	appwalletorder "xiaoheiplay/internal/app/walletorder"
 	"xiaoheiplay/internal/domain"
+
+	"gorm.io/gorm"
 	"xiaoheiplay/internal/pkg/money"
 )
 
@@ -92,6 +96,21 @@ type fakeResizeSettingsRepo struct {
 	values map[string]string
 }
 
+func (f *fakeResizeSettingsRepo) UpdateSettingAtomic(ctx context.Context, key string, mutate func(current string) (string, error)) error {
+	current, err := f.GetSetting(ctx, key)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			current = domain.Setting{}
+		} else {
+			return err
+		}
+	}
+	next, err := mutate(current.ValueJSON)
+	if err != nil {
+		return err
+	}
+	return f.UpsertSetting(ctx, domain.Setting{Key: key, ValueJSON: next})
+}
 func (f *fakeResizeSettingsRepo) GetSetting(ctx context.Context, key string) (domain.Setting, error) {
 	if v, ok := f.values[key]; ok {
 		return domain.Setting{Key: key, ValueJSON: v}, nil
@@ -103,6 +122,14 @@ func (f *fakeResizeSettingsRepo) UpsertSetting(ctx context.Context, setting doma
 		f.values = map[string]string{}
 	}
 	f.values[setting.Key] = setting.ValueJSON
+	return nil
+}
+func (f *fakeResizeSettingsRepo) UpsertSettings(ctx context.Context, settings []domain.Setting) error {
+	for _, s := range settings {
+		if err := f.UpsertSetting(ctx, s); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 func (f *fakeResizeSettingsRepo) ListSettings(ctx context.Context) ([]domain.Setting, error) {
@@ -140,10 +167,31 @@ func (f *fakeResizeVPSRepo) GetInstanceByOrderItem(ctx context.Context, orderIte
 	}
 	return domain.VPSInstance{}, appshared.ErrNotFound
 }
+func (f *fakeResizeVPSRepo) ListInstancesByUserFiltered(ctx context.Context, userID int64, filter appports.VPSUserInstanceFilter, limit, offset int) ([]domain.VPSInstance, int, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	items, err := f.ListInstancesByUser(ctx, userID)
+	if err != nil {
+		return nil, 0, err
+	}
+	start := offset
+	if start > len(items) {
+		start = len(items)
+	}
+	end := start + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end], len(items), nil
+}
 func (f *fakeResizeVPSRepo) ListInstancesByUser(ctx context.Context, userID int64) ([]domain.VPSInstance, error) {
 	return nil, nil
 }
 func (f *fakeResizeVPSRepo) ListInstances(ctx context.Context, limit, offset int) ([]domain.VPSInstance, int, error) {
+	return nil, 0, nil
+}
+func (f *fakeResizeVPSRepo) ListInstancesFiltered(ctx context.Context, filter appports.VPSInstanceFilter, limit, offset int) ([]domain.VPSInstance, int, error) {
 	return nil, 0, nil
 }
 func (f *fakeResizeVPSRepo) ListInstancesExpiring(ctx context.Context, before time.Time) ([]domain.VPSInstance, error) {
@@ -178,6 +226,8 @@ func (f *fakeResizeVPSRepo) UpdateInstanceLocal(ctx context.Context, inst domain
 type fakeResizeOrderRepo struct {
 	nextID int64
 	orders map[int64]domain.Order
+	items  *fakeResizeOrderItemRepo
+	tasks  *fakeResizeTaskRepo
 }
 
 func (f *fakeResizeOrderRepo) CreateOrder(ctx context.Context, order *domain.Order) error {
@@ -216,6 +266,56 @@ func (f *fakeResizeOrderRepo) UpdateOrderMeta(ctx context.Context, order domain.
 	}
 	f.orders[order.ID] = order
 	return nil
+}
+func (f *fakeResizeOrderRepo) ApproveOrderAtomic(ctx context.Context, order domain.Order, itemIDs []int64, tasks []*domain.ResizeTask, currentStatuses []domain.OrderStatus) (bool, error) {
+	current, ok := f.orders[order.ID]
+	if !ok {
+		return false, appshared.ErrNotFound
+	}
+	allowed := false
+	for _, status := range currentStatuses {
+		allowed = allowed || current.Status == status
+	}
+	if !allowed {
+		return false, nil
+	}
+	f.orders[order.ID] = order
+	if f.items != nil {
+		for _, id := range itemIDs {
+			_ = f.items.UpdateOrderItemStatus(ctx, id, domain.OrderItemStatusApproved)
+		}
+	}
+	if f.tasks != nil {
+		for _, task := range tasks {
+			if task != nil {
+				_ = f.tasks.CreateResizeTask(ctx, task)
+			}
+		}
+	}
+	return true, nil
+}
+func (f *fakeResizeOrderRepo) RejectOrderAtomic(ctx context.Context, order domain.Order, adminID int64, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(order.ID, order.Status, currentStatuses)
+}
+func (f *fakeResizeOrderRepo) CancelOrderAtomic(ctx context.Context, order domain.Order, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(order.ID, domain.OrderStatusCanceled, currentStatuses)
+}
+func (f *fakeResizeOrderRepo) UpdateOrderStatusIfCurrent(ctx context.Context, id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	return f.updateOrderIfCurrent(id, status, currentStatuses)
+}
+func (f *fakeResizeOrderRepo) updateOrderIfCurrent(id int64, status domain.OrderStatus, currentStatuses []domain.OrderStatus) (bool, error) {
+	order, ok := f.orders[id]
+	if !ok {
+		return false, appshared.ErrNotFound
+	}
+	for _, current := range currentStatuses {
+		if order.Status == current {
+			order.Status = status
+			f.orders[id] = order
+			return true, nil
+		}
+	}
+	return false, nil
 }
 func (f *fakeResizeOrderRepo) ListOrders(ctx context.Context, filter appshared.OrderFilter, limit, offset int) ([]domain.Order, int, error) {
 	return nil, 0, nil
@@ -265,6 +365,19 @@ func (f *fakeResizeOrderItemRepo) UpdateOrderItemStatus(ctx context.Context, id 
 	}
 	return nil
 }
+func (f *fakeResizeOrderItemRepo) ClaimOrderItemForProvision(ctx context.Context, id int64) (bool, error) {
+	for i := range f.items {
+		if f.items[i].ID != id {
+			continue
+		}
+		if f.items[i].Status != domain.OrderItemStatusApproved && f.items[i].Status != domain.OrderItemStatusFailed {
+			return false, nil
+		}
+		f.items[i].Status = domain.OrderItemStatusProvisioning
+		return true, nil
+	}
+	return false, appshared.ErrNotFound
+}
 func (f *fakeResizeOrderItemRepo) UpdateOrderItemAutomation(ctx context.Context, id int64, automationID string) error {
 	return nil
 }
@@ -300,15 +413,21 @@ func (f *fakeResizeTaskRepo) GetResizeTask(ctx context.Context, id int64) (domai
 	return domain.ResizeTask{}, appshared.ErrNotFound
 }
 
-func (f *fakeResizeTaskRepo) UpdateResizeTask(ctx context.Context, task domain.ResizeTask) error {
+func (f *fakeResizeTaskRepo) UpdateResizeTask(ctx context.Context, task domain.ResizeTask) (bool, error) {
 	for i := range f.tasks {
 		if f.tasks[i].ID == task.ID {
+			if f.tasks[i].LeaseOwner != "" && f.tasks[i].LeaseOwner != task.LeaseOwner {
+				return false, nil
+			}
+			if f.tasks[i].Fence != task.Fence && task.Fence != 0 {
+				return false, nil
+			}
 			f.tasks[i] = task
-			return nil
+			return true, nil
 		}
 	}
 	f.tasks = append(f.tasks, task)
-	return nil
+	return true, nil
 }
 
 type fakeWalletOrderRepo struct {
@@ -326,6 +445,10 @@ func (f *fakeWalletOrderRepo) CreateWalletOrder(ctx context.Context, order *doma
 	return nil
 }
 
+func (f *fakeWalletOrderRepo) GetWalletOrderByPaymentTradeNo(ctx context.Context, tradeNo string) (domain.WalletOrder, error) {
+	return domain.WalletOrder{}, gorm.ErrRecordNotFound
+}
+
 func (f *fakeWalletOrderRepo) GetWalletOrder(ctx context.Context, id int64) (domain.WalletOrder, error) {
 	if order, ok := f.orders[id]; ok {
 		return order, nil
@@ -335,6 +458,13 @@ func (f *fakeWalletOrderRepo) GetWalletOrder(ctx context.Context, id int64) (dom
 
 func (f *fakeWalletOrderRepo) ListWalletOrders(ctx context.Context, userID int64, limit, offset int) ([]domain.WalletOrder, int, error) {
 	return nil, 0, nil
+}
+
+func (f *fakeWalletOrderRepo) ListWalletOrdersFiltered(ctx context.Context, userID int64, status, orderType string, limit, offset int) ([]domain.WalletOrder, int, error) {
+	return nil, 0, nil
+}
+func (f *fakeWalletOrderRepo) SummarizeWalletOrders(context.Context, int64, time.Time, time.Time) (domain.WalletOrderSummary, error) {
+	return domain.WalletOrderSummary{}, nil
 }
 
 func (f *fakeWalletOrderRepo) ListAllWalletOrders(ctx context.Context, status string, limit, offset int) ([]domain.WalletOrder, int, error) {
@@ -364,6 +494,20 @@ func (f *fakeWalletOrderRepo) UpdateWalletOrderStatusIfCurrent(ctx context.Conte
 	return true, nil
 }
 
+func (f *fakeWalletOrderRepo) ApproveWalletOrderAtomic(ctx context.Context, order domain.WalletOrder, adminID int64, amount int64, txType string) (domain.Wallet, bool, error) {
+	stored, ok := f.orders[order.ID]
+	if !ok {
+		return domain.Wallet{}, false, appshared.ErrNotFound
+	}
+	if stored.Status != domain.WalletOrderPendingReview {
+		return domain.Wallet{}, false, nil
+	}
+	stored.Status = domain.WalletOrderApproved
+	stored.ReviewedBy = &adminID
+	f.orders[order.ID] = stored
+	return domain.Wallet{UserID: order.UserID, Balance: amount}, true, nil
+}
+
 func (f *fakeWalletOrderRepo) UpdateWalletOrderMeta(ctx context.Context, id int64, metaJSON string) error {
 	order, ok := f.orders[id]
 	if !ok {
@@ -382,8 +526,49 @@ func (f *fakeResizeTaskRepo) HasPendingResizeTask(ctx context.Context, vpsID int
 	return f.pending, nil
 }
 
+func (f *fakeResizeTaskRepo) ClaimResizeTask(ctx context.Context, taskID int64, owner string, leaseUntil time.Time) (domain.ResizeTask, bool, error) {
+	now := time.Now()
+	for i := range f.tasks {
+		if f.tasks[i].ID != taskID {
+			continue
+		}
+		switch f.tasks[i].Status {
+		case domain.ResizeTaskStatusPending:
+			f.tasks[i].Status = domain.ResizeTaskStatusRunning
+			f.tasks[i].StartedAt = &now
+			f.tasks[i].LeaseOwner = owner
+			f.tasks[i].LeaseUntil = &leaseUntil
+			f.tasks[i].Fence++
+			return f.tasks[i], true, nil
+		case domain.ResizeTaskStatusRunning:
+			lu := f.tasks[i].LeaseUntil
+			if lu == nil || !lu.After(time.Now()) {
+				f.tasks[i].Status = domain.ResizeTaskStatusRunning
+				f.tasks[i].StartedAt = &now
+				f.tasks[i].LeaseOwner = owner
+				f.tasks[i].LeaseUntil = &leaseUntil
+				f.tasks[i].Fence++
+				return f.tasks[i], true, nil
+			}
+		}
+	}
+	return domain.ResizeTask{}, false, nil
+}
+
+func (f *fakeResizeTaskRepo) RenewResizeTaskLease(ctx context.Context, taskID int64, owner string, fence int, leaseUntil time.Time) (bool, error) {
+	for i := range f.tasks {
+		if f.tasks[i].ID == taskID && f.tasks[i].LeaseOwner == owner && f.tasks[i].Fence == fence {
+			f.tasks[i].LeaseUntil = &leaseUntil
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func newResizeOrderService(inst domain.VPSInstance, catalog *fakeResizeCatalogRepo, settings *fakeResizeSettingsRepo, orders *fakeResizeOrderRepo, items *fakeResizeOrderItemRepo, tasks *fakeResizeTaskRepo) *apporder.Service {
 	vps := &fakeResizeVPSRepo{inst: inst}
+	orders.items = items
+	orders.tasks = tasks
 	return apporder.NewService(
 		orders,
 		items,
@@ -587,6 +772,50 @@ func TestResizeOrder_RejectsExpiredVPS(t *testing.T) {
 	}
 }
 
+func TestResizeOrder_DowngradeRatioZeroApprovesWithoutWallet(t *testing.T) {
+	plan := domain.PlanGroup{ID: 10, RegionID: 1}
+	current := domain.Package{ID: 1, PlanGroupID: plan.ID, ProductID: 11, Name: "A", Cores: 4, MemoryGB: 8, DiskGB: 80, BandwidthMB: 200, Monthly: 20000}
+	target := domain.Package{ID: 2, PlanGroupID: plan.ID, ProductID: 22, Name: "B", Cores: 2, MemoryGB: 4, DiskGB: 80, BandwidthMB: 100, Monthly: 10000}
+	catalog := &fakeResizeCatalogRepo{
+		packages: map[int64]domain.Package{current.ID: current, target.ID: target},
+		plans:    map[int64]domain.PlanGroup{plan.ID: plan},
+	}
+	settings := &fakeResizeSettingsRepo{values: map[string]string{"resize_refund_ratio": "0"}}
+	now := time.Now()
+	inst := domain.VPSInstance{
+		ID:        1,
+		UserID:    2,
+		PackageID: current.ID,
+		SpecJSON: mustJSON(t, map[string]any{
+			"duration_months":      1,
+			"current_period_start": now.Add(-15 * 24 * time.Hour).UTC().Format(time.RFC3339),
+			"current_period_end":   now.Add(15 * 24 * time.Hour).UTC().Format(time.RFC3339),
+		}),
+		CreatedAt: now.Add(-30 * 24 * time.Hour),
+		ExpireAt:  ptrTime(now.Add(15 * 24 * time.Hour)),
+	}
+	orders := &fakeResizeOrderRepo{}
+	items := &fakeResizeOrderItemRepo{}
+	tasks := &fakeResizeTaskRepo{}
+	svc := newResizeOrderService(inst, catalog, settings, orders, items, tasks)
+
+	order, quote, err := svc.CreateResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false, nil)
+	if err != nil {
+		t.Fatalf("create resize order: %v", err)
+	}
+	if quote.ChargeAmount != 0 || quote.RefundAmount != 0 {
+		t.Fatalf("ratio=0 downgrade must be a free resize, got charge=%d refund=%d", quote.ChargeAmount, quote.RefundAmount)
+	}
+	if order.Status != domain.OrderStatusApproved {
+		t.Fatalf("expected free downgrade to be auto-approved, got status %v", order.Status)
+	}
+	// No wallet repository is wired; if the quote still carried a negative
+	// charge the approval-time refund would have failed the whole order.
+	if len(tasks.tasks) != 1 {
+		t.Fatalf("expected one resize task, got %d", len(tasks.tasks))
+	}
+}
+
 func TestResizeOrder_RejectsDiskDecrease(t *testing.T) {
 	plan := domain.PlanGroup{ID: 10, RegionID: 1}
 	current := domain.Package{ID: 1, PlanGroupID: plan.ID, ProductID: 11, Name: "A", Cores: 2, MemoryGB: 4, DiskGB: 40, BandwidthMB: 100, Monthly: 10000}
@@ -610,6 +839,85 @@ func TestResizeOrder_RejectsDiskDecrease(t *testing.T) {
 	}
 	if _, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false); err != appshared.ErrInvalidInput {
 		t.Fatalf("expected quote invalid input for disk decrease, got %v", err)
+	}
+}
+
+func TestResizeProrationMultiMonthCycle(t *testing.T) {
+	plan := domain.PlanGroup{ID: 10, RegionID: 1}
+	current := domain.Package{ID: 1, PlanGroupID: plan.ID, ProductID: 11, Name: "A", Cores: 2, MemoryGB: 4, DiskGB: 40, BandwidthMB: 100, Monthly: 10000}
+	target := domain.Package{ID: 2, PlanGroupID: plan.ID, ProductID: 22, Name: "B", Cores: 4, MemoryGB: 8, DiskGB: 80, BandwidthMB: 200, Monthly: 20000}
+	catalog := &fakeResizeCatalogRepo{
+		packages: map[int64]domain.Package{current.ID: current, target.ID: target},
+		plans:    map[int64]domain.PlanGroup{plan.ID: plan},
+	}
+
+	tests := []struct {
+		name       string
+		periodDays int
+		elapsed    int
+		want       int64
+	}{
+		{
+			name:       "12-month cycle with 6 months remaining",
+			periodDays: 360,
+			elapsed:    180,
+			want:       60000,
+		},
+		{
+			name:       "1-month cycle with half remaining stays unchanged",
+			periodDays: 30,
+			elapsed:    15,
+			want:       5000,
+		},
+	}
+
+	for _, tc := range tests {
+		now := time.Now()
+		periodStart := now.Add(-time.Duration(tc.elapsed) * 24 * time.Hour)
+		periodEnd := periodStart.Add(time.Duration(tc.periodDays) * 24 * time.Hour)
+		inst := domain.VPSInstance{
+			ID:        1,
+			UserID:    2,
+			PackageID: current.ID,
+			SpecJSON: mustJSON(t, map[string]any{
+				"current_period_start": periodStart.UTC().Format(time.RFC3339),
+				"current_period_end":   periodEnd.UTC().Format(time.RFC3339),
+			}),
+			CreatedAt: now.Add(-time.Duration(tc.periodDays) * 24 * time.Hour),
+			ExpireAt:  ptrTime(periodEnd),
+		}
+		svc := newResizeOrderService(inst, catalog, &fakeResizeSettingsRepo{}, &fakeResizeOrderRepo{}, &fakeResizeOrderItemRepo{}, &fakeResizeTaskRepo{})
+		quote, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false)
+		if err != nil {
+			t.Fatalf("%s: quote resize: %v", tc.name, err)
+		}
+		if quote.ChargeAmount != tc.want {
+			t.Fatalf("%s: expected charge %d, got %d", tc.name, tc.want, quote.ChargeAmount)
+		}
+	}
+}
+
+func TestResizeQuote_RejectsUnresolvablePeriod(t *testing.T) {
+	plan := domain.PlanGroup{ID: 10, RegionID: 1}
+	current := domain.Package{ID: 1, PlanGroupID: plan.ID, ProductID: 11, Name: "A", Cores: 2, MemoryGB: 4, DiskGB: 40, BandwidthMB: 100, Monthly: 10000}
+	target := domain.Package{ID: 2, PlanGroupID: plan.ID, ProductID: 22, Name: "B", Cores: 4, MemoryGB: 8, DiskGB: 80, BandwidthMB: 200, Monthly: 20000}
+	catalog := &fakeResizeCatalogRepo{
+		packages: map[int64]domain.Package{current.ID: current, target.ID: target},
+		plans:    map[int64]domain.PlanGroup{plan.ID: plan},
+	}
+	// Active-looking instance (future expiry) whose billing period can't be
+	// resolved: empty spec and a zero CreatedAt. Pricing it would silently
+	// produce a 0-cent charge (free upgrade), so it must be rejected instead.
+	inst := domain.VPSInstance{
+		ID:        1,
+		UserID:    2,
+		PackageID: current.ID,
+		SpecJSON:  "{}",
+		ExpireAt:  ptrTime(time.Now().Add(30 * 24 * time.Hour)),
+	}
+	svc := newResizeOrderService(inst, catalog, &fakeResizeSettingsRepo{}, &fakeResizeOrderRepo{}, &fakeResizeOrderItemRepo{}, &fakeResizeTaskRepo{})
+	if _, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false); err != appshared.ErrInvalidInput {
+		t.Fatalf("expected ErrInvalidInput for unresolvable billing period, got %v", err)
 	}
 }
 
@@ -738,6 +1046,92 @@ func TestRefundCurveUsesElapsedRatio(t *testing.T) {
 		if refund.Amount != 5000 {
 			t.Fatalf("refund curve period %v: expected 5000, got %d", period, refund.Amount)
 		}
+	}
+}
+
+func newDowngradeQuoteService(t *testing.T, settings *fakeResizeSettingsRepo) (*apporder.Service, domain.VPSInstance, domain.Package) {
+	t.Helper()
+	plan := domain.PlanGroup{ID: 10, RegionID: 1}
+	current := domain.Package{ID: 1, PlanGroupID: plan.ID, ProductID: 11, Name: "A", Cores: 4, MemoryGB: 8, DiskGB: 80, BandwidthMB: 200, Monthly: 20000}
+	target := domain.Package{ID: 2, PlanGroupID: plan.ID, ProductID: 22, Name: "B", Cores: 2, MemoryGB: 4, DiskGB: 80, BandwidthMB: 100, Monthly: 10000}
+	catalog := &fakeResizeCatalogRepo{
+		packages: map[int64]domain.Package{current.ID: current, target.ID: target},
+		plans:    map[int64]domain.PlanGroup{plan.ID: plan},
+	}
+	now := time.Now()
+	inst := domain.VPSInstance{
+		ID:        1,
+		UserID:    2,
+		PackageID: current.ID,
+		SpecJSON: mustJSON(t, map[string]any{
+			"duration_months":      1,
+			"current_period_start": now.Add(-15 * 24 * time.Hour).UTC().Format(time.RFC3339),
+			"current_period_end":   now.Add(15 * 24 * time.Hour).UTC().Format(time.RFC3339),
+		}),
+		CreatedAt: now.Add(-30 * 24 * time.Hour),
+		ExpireAt:  ptrTime(now.Add(15 * 24 * time.Hour)),
+	}
+	svc := newResizeOrderService(inst, catalog, settings, &fakeResizeOrderRepo{}, &fakeResizeOrderItemRepo{}, &fakeResizeTaskRepo{})
+	return svc, inst, target
+}
+
+func TestResizeQuote_DowngradeRefundRatioZero(t *testing.T) {
+	settings := &fakeResizeSettingsRepo{values: map[string]string{"resize_refund_ratio": "0"}}
+	svc, inst, target := newDowngradeQuoteService(t, settings)
+	quote, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false)
+	if err != nil {
+		t.Fatalf("quote resize: %v", err)
+	}
+	if quote.ChargeAmount != 0 {
+		t.Fatalf("ratio=0 downgrade must not carry a negative charge that triggers a full refund; got ChargeAmount=%d", quote.ChargeAmount)
+	}
+	if quote.RefundAmount != 0 {
+		t.Fatalf("ratio=0 downgrade must not carry a refund; got RefundAmount=%d", quote.RefundAmount)
+	}
+}
+
+func TestResizeQuote_DowngradeMinRefundSqueeze(t *testing.T) {
+	settings := &fakeResizeSettingsRepo{values: map[string]string{"resize_refund_ratio": "1", "resize_min_refund": "100"}}
+	svc, inst, target := newDowngradeQuoteService(t, settings)
+	quote, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false)
+	if err != nil {
+		t.Fatalf("quote resize: %v", err)
+	}
+	if quote.ChargeAmount != 0 {
+		t.Fatalf("min_refund-squeezed downgrade must not carry a negative charge; got ChargeAmount=%d", quote.ChargeAmount)
+	}
+	if quote.RefundAmount != 0 {
+		t.Fatalf("min_refund-squeezed downgrade must not carry a refund; got RefundAmount=%d", quote.RefundAmount)
+	}
+}
+
+func TestResizeQuote_DowngradeRefundHalfRatio(t *testing.T) {
+	settings := &fakeResizeSettingsRepo{values: map[string]string{"resize_refund_ratio": "0.5"}}
+	svc, inst, target := newDowngradeQuoteService(t, settings)
+	quote, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false)
+	if err != nil {
+		t.Fatalf("quote resize: %v", err)
+	}
+	if quote.ChargeAmount != -5000 {
+		t.Fatalf("downgrade with an actual refund must keep the negative charge; got ChargeAmount=%d", quote.ChargeAmount)
+	}
+	if quote.RefundAmount != 2500 {
+		t.Fatalf("expected refund of half the prorated diff, got RefundAmount=%d", quote.RefundAmount)
+	}
+}
+
+func TestResizeQuote_DowngradeRefundNotToWallet(t *testing.T) {
+	settings := &fakeResizeSettingsRepo{values: map[string]string{"resize_refund_ratio": "1", "resize_refund_to_wallet": "false"}}
+	svc, inst, target := newDowngradeQuoteService(t, settings)
+	quote, _, err := svc.QuoteResizeOrder(context.Background(), inst.UserID, inst.ID, nil, target.ID, false)
+	if err != nil {
+		t.Fatalf("quote resize: %v", err)
+	}
+	if quote.ChargeAmount != 0 {
+		t.Fatalf("refund_to_wallet=false downgrade must not auto-issue a wallet refund; got ChargeAmount=%d", quote.ChargeAmount)
+	}
+	if quote.RefundAmount != 0 {
+		t.Fatalf("refund_to_wallet=false downgrade must not carry a refund; got RefundAmount=%d", quote.RefundAmount)
 	}
 }
 

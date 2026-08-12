@@ -13,6 +13,7 @@ import (
 	appports "xiaoheiplay/internal/app/ports"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/pkg/safego"
 )
 
 type AutoCondition struct {
@@ -468,7 +469,7 @@ func (s *Service) ReconcileExpired(ctx context.Context, limit int) (int, error) 
 }
 
 func (s *Service) RebuildAllPriceCachesAsync() {
-	go func() {
+	safego.Go("user tier full price cache rebuild", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		groups, err := s.repo.ListUserTierGroups(ctx)
@@ -478,14 +479,22 @@ func (s *Service) RebuildAllPriceCachesAsync() {
 		for _, g := range groups {
 			s.RebuildGroupPriceCacheAsync(g.ID)
 		}
-	}()
+	})
 }
 
 func (s *Service) RebuildGroupPriceCacheAsync(groupID int64) {
 	if groupID <= 0 {
 		return
 	}
-	go s.rebuildGroupPriceCache(groupID)
+	go s.rebuildGroupPriceCacheAsyncGuarded(groupID)
+}
+
+// rebuildGroupPriceCacheAsyncGuarded runs rebuildGroupPriceCache on a goroutine
+// with a panic guard so a repo panic in an async cache rebuild cannot take down
+// the whole process (P1-13). A rebuild is best-effort: a panic is logged and the
+// group cache is simply not refreshed.
+func (s *Service) rebuildGroupPriceCacheAsyncGuarded(groupID int64) {
+	safego.Run("user tier group price cache rebuild", func() { s.rebuildGroupPriceCache(groupID) })
 }
 
 func (s *Service) ResolvePackagePricing(ctx context.Context, userID, packageID int64) (domain.UserTierPriceCache, int64, error) {
@@ -501,6 +510,13 @@ func (s *Service) ResolvePackagePricing(ctx context.Context, userID, packageID i
 	if user.UserTierGroupID != nil {
 		groupID = *user.UserTierGroupID
 	}
+	if groupID > 0 {
+		// A user may still reference a group that was deleted; resolve pricing
+		// under the default group instead of a dangling id.
+		if _, err := s.repo.GetUserTierGroup(ctx, groupID); err != nil {
+			groupID = 0
+		}
+	}
 	if groupID <= 0 {
 		def, derr := s.EnsureDefaultGroup(ctx)
 		if derr != nil {
@@ -512,7 +528,11 @@ func (s *Service) ResolvePackagePricing(ctx context.Context, userID, packageID i
 	if err == nil {
 		return cache, groupID, nil
 	}
-	s.RebuildGroupPriceCacheAsync(groupID)
+	// A cache miss must never return the full catalog price: the tier discount
+	// would be skipped until an async rebuild lands, and a permanently failing
+	// rebuild would leave the user overcharged forever. Resolve the discounted
+	// price synchronously for this package and persist it so the next call hits
+	// the cache.
 	pkg, perr := s.catalog.GetPackage(ctx, packageID)
 	if perr != nil {
 		return domain.UserTierPriceCache{}, 0, perr
@@ -521,16 +541,18 @@ func (s *Service) ResolvePackagePricing(ctx context.Context, userID, packageID i
 	if plerr != nil {
 		return domain.UserTierPriceCache{}, 0, plerr
 	}
-	return domain.UserTierPriceCache{
-		GroupID:      groupID,
-		PackageID:    packageID,
-		MonthlyPrice: pkg.Monthly,
-		UnitCore:     plan.UnitCore,
-		UnitMem:      plan.UnitMem,
-		UnitDisk:     plan.UnitDisk,
-		UnitBW:       plan.UnitBW,
-		UpdatedAt:    time.Now(),
-	}, groupID, nil
+	rules, rerr := s.repo.ListUserTierDiscountRules(ctx, groupID)
+	if rerr != nil {
+		return domain.UserTierPriceCache{}, 0, rerr
+	}
+	resolved := applyTierRulesToPackage(groupID, pkg, plan, rules)
+	// Cache persistence failure must not surface as an error: the discounted
+	// price is already computed, so returning it keeps the user from being
+	// overcharged even if the next call misses again.
+	if err := s.repo.UpsertUserTierPriceCaches(ctx, []domain.UserTierPriceCache{resolved}); err == nil {
+		return resolved, groupID, nil
+	}
+	return resolved, groupID, nil
 }
 
 func (s *Service) rebuildGroupPriceCache(groupID int64) {
@@ -541,6 +563,12 @@ func (s *Service) rebuildGroupPriceCache(groupID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
+	// Never rebuild price caches for a group that no longer exists. Users may
+	// still reference a deleted group; rebuilding would resurrect stale caches
+	// (and the deleted group's discounts) under a dangling group id.
+	if _, err := s.repo.GetUserTierGroup(ctx, groupID); err != nil {
+		return
+	}
 	rules, err := s.repo.ListUserTierDiscountRules(ctx, groupID)
 	if err != nil {
 		return
@@ -563,35 +591,42 @@ func (s *Service) rebuildGroupPriceCache(groupID int64) {
 		if !ok {
 			continue
 		}
-		cache := domain.UserTierPriceCache{
-			GroupID:      groupID,
-			PackageID:    pkg.ID,
-			MonthlyPrice: pkg.Monthly,
-			UnitCore:     plan.UnitCore,
-			UnitMem:      plan.UnitMem,
-			UnitDisk:     plan.UnitDisk,
-			UnitBW:       plan.UnitBW,
-			UpdatedAt:    time.Now(),
-		}
-		baseRule := selectBestBaseRule(rules, pkg, plan)
-		addonRule := selectBestAddonRule(rules, pkg, plan)
-		if baseRule != nil {
-			if baseRule.FixedPrice != nil && baseRule.Scope == domain.UserTierScopePackage {
-				cache.MonthlyPrice = *baseRule.FixedPrice
-			} else {
-				cache.MonthlyPrice = applyDiscount(cache.MonthlyPrice, baseRule.DiscountPermille)
-			}
-		}
-		if addonRule != nil {
-			cache.UnitCore = applyDiscount(cache.UnitCore, addonRule.AddCorePermille)
-			cache.UnitMem = applyDiscount(cache.UnitMem, addonRule.AddMemPermille)
-			cache.UnitDisk = applyDiscount(cache.UnitDisk, addonRule.AddDiskPermille)
-			cache.UnitBW = applyDiscount(cache.UnitBW, addonRule.AddBWPermille)
-		}
-		items = append(items, cache)
+		items = append(items, applyTierRulesToPackage(groupID, pkg, plan, rules))
 	}
 	_ = s.repo.DeleteUserTierPriceCachesByGroup(ctx, groupID)
 	_ = s.repo.UpsertUserTierPriceCaches(ctx, items)
+}
+
+// applyTierRulesToPackage applies the group's best-matching discount rules to a
+// single package and its plan. Shared by the bulk cache rebuild and the
+// synchronous cache-miss path in ResolvePackagePricing.
+func applyTierRulesToPackage(groupID int64, pkg domain.Package, plan domain.PlanGroup, rules []domain.UserTierDiscountRule) domain.UserTierPriceCache {
+	cache := domain.UserTierPriceCache{
+		GroupID:      groupID,
+		PackageID:    pkg.ID,
+		MonthlyPrice: pkg.Monthly,
+		UnitCore:     plan.UnitCore,
+		UnitMem:      plan.UnitMem,
+		UnitDisk:     plan.UnitDisk,
+		UnitBW:       plan.UnitBW,
+		UpdatedAt:    time.Now(),
+	}
+	baseRule := selectBestBaseRule(rules, pkg, plan)
+	addonRule := selectBestAddonRule(rules, pkg, plan)
+	if baseRule != nil {
+		if baseRule.FixedPrice != nil && baseRule.Scope == domain.UserTierScopePackage {
+			cache.MonthlyPrice = *baseRule.FixedPrice
+		} else {
+			cache.MonthlyPrice = applyDiscount(cache.MonthlyPrice, baseRule.DiscountPermille)
+		}
+	}
+	if addonRule != nil {
+		cache.UnitCore = applyDiscount(cache.UnitCore, addonRule.AddCorePermille)
+		cache.UnitMem = applyDiscount(cache.UnitMem, addonRule.AddMemPermille)
+		cache.UnitDisk = applyDiscount(cache.UnitDisk, addonRule.AddDiskPermille)
+		cache.UnitBW = applyDiscount(cache.UnitBW, addonRule.AddBWPermille)
+	}
+	return cache
 }
 
 func (s *Service) getRebuildLock(groupID int64) *sync.Mutex {

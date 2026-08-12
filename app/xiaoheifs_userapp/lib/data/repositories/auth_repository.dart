@@ -246,13 +246,14 @@ class AuthRepository {
   }
 
   /// 检查是否已登录
-  bool isLoggedIn() {
-    return _storage.getAccessToken() != null;
+  Future<bool> isLoggedIn() async {
+    final token = await _storage.getAccessToken();
+    return token != null && token.isNotEmpty;
   }
 
   /// 获取存储的Token
-  String? getAccessToken() {
-    return _storage.getAccessToken();
+  Future<String?> getAccessToken() async {
+    return await _storage.getAccessToken();
   }
 
   /// 错误处理

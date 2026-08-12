@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 仅暴露系统 temp 目录下的临时更新包（downloadAndVerifyApk 写入处），
+     其余路径不通过 FileProvider 暴露。 -->
+<paths>
+    <cache-path name="update_temp" path="." />
+    <files-path name="update_files" path="." />
+</paths>

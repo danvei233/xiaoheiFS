@@ -27,10 +27,13 @@ func TestUserTierAutoRuleRow_ConditionsJSON_HasNoDefaultValueTag(t *testing.T) {
 	}
 	tag := field.Tag.Get("gorm")
 	if strings.Contains(tag, "default:") {
-		t.Fatalf("expected no default for TEXT column conditions_json, got: %s", tag)
+		t.Fatalf("expected no default for conditions_json, got: %s", tag)
 	}
-	if !strings.Contains(tag, "type:text") {
-		t.Fatalf("expected TEXT type tag for conditions_json, got: %s", tag)
+	// No explicit type pin: MySQL maps the plain string to LONGTEXT while
+	// Postgres/SQLite keep TEXT. Pinning type:text here would make MySQL's
+	// AutoMigrate shrink the upgraded LONGTEXT back to TEXT every startup.
+	if strings.Contains(tag, "type:text") {
+		t.Fatalf("expected no TEXT type pin for conditions_json, got: %s", tag)
 	}
 }
 

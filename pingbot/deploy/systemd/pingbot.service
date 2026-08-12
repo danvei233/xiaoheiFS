@@ -5,7 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
+# Run as a dedicated least-privilege user instead of root (see install.sh,
+# which creates the account and owns /opt/pingbot and /etc/pingbot to it).
+User=pingbot
+Group=pingbot
 WorkingDirectory=/opt/pingbot
 ExecStart=/opt/pingbot/pingbot -config /etc/pingbot/config.yaml
 Restart=always

@@ -1,0 +1,12 @@
+# Pingbot probe agent configuration template (Linux/systemd).
+# Copy to /etc/pingbot/config.yaml and fill in enroll_token (used only on first
+# run; after enrollment the probe_id/probe_secret returned by the backend are
+# persisted back into this file). Never commit a config that carries real
+# credentials.
+server_url: "https://pingbot.example.com"
+enroll_token: ""
+probe_id: 0
+probe_secret: ""
+hostname_alias: ""
+log_file_source: "file:logs"
+tls_insecure_skip_verify: false

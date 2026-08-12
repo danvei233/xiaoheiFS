@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -147,6 +148,12 @@ func (k *kycServer) Start(ctx context.Context, req *pluginv1.KycStartRequest) (*
 	if name == "" || idNumber == "" {
 		return nil, status.Error(codes.InvalidArgument, "params.name/params.id_number required")
 	}
+	// The callback receives the user's certified PII; only allow http(s) URLs
+	// with a host so an end-user-injectable callback_url cannot exfiltrate it
+	// to an arbitrary third party (M12).
+	if callbackURL != "" && !validCallbackURL(callbackURL) {
+		return nil, status.Error(codes.InvalidArgument, "invalid callback_url: must be an absolute http(s) URL with a host")
+	}
 	if outerOrderNo == "" {
 		outerOrderNo = fmt.Sprintf("KYC-%s-%d", strings.TrimSpace(req.GetUserId()), time.Now().Unix())
 	}
@@ -240,6 +247,25 @@ func main() {
 		pluginsdk.PluginKeyCore: &pluginsdk.CoreGRPCPlugin{Impl: core},
 		pluginsdk.PluginKeyKYC:  &pluginsdk.KycGRPCPlugin{Impl: kyc},
 	})
+}
+
+// validCallbackURL reports whether a callback/redirect URL is acceptable to
+// forward to the KYC provider: an absolute http(s) URL with a non-empty host.
+// It rejects javascript:/data:/file: and protocol-relative URLs.
+func validCallbackURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+	return strings.TrimSpace(u.Host) != ""
 }
 
 func newAliyunCloudAuthClient(cfg config) (*cloudauth.Client, error) {

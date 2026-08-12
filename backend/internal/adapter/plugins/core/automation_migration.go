@@ -3,6 +3,7 @@ package plugins
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -37,11 +38,11 @@ func MigrateLegacyAutomationToPlugins(ctx context.Context, settings appports.Set
 		return nil
 	}
 
-	// Ensure default goods type exists and bound (best-effort).
+	// Ensure default goods type exists and bound (best-effort). A read error must
+	// not be turned into a write: only create the default when the list succeeds
+	// and is empty.
 	if goodsTypes != nil {
-		if items, err := goodsTypes.ListGoodsTypes(ctx); err == nil && len(items) > 0 {
-			// no-op
-		} else {
+		if items, err := goodsTypes.ListGoodsTypes(ctx); err == nil && len(items) == 0 {
 			gt := &domain.GoodsType{
 				Code:                 "lightboat_vps",
 				Name:                 "轻舟VPS",
@@ -62,10 +63,15 @@ func MigrateLegacyAutomationToPlugins(ctx context.Context, settings appports.Set
 		}
 	}
 
+	timeout := parseIntDefault(timeoutSec, 12)
+	if timeout <= 0 {
+		// timeout_sec schema minimum is 1; 0/negative legacy values mean "use default".
+		timeout = 12
+	}
 	cfg := map[string]any{
 		"base_url":    baseURL,
 		"api_key":     apiKey,
-		"timeout_sec": parseIntDefault(timeoutSec, 12),
+		"timeout_sec": timeout,
 		"retry":       parseIntDefault(retry, 1),
 		"dry_run":     dryRun,
 	}
@@ -75,9 +81,30 @@ func MigrateLegacyAutomationToPlugins(ctx context.Context, settings appports.Set
 		return nil
 	}
 	if enabled {
-		_ = mgr.EnableInstance(ctx, "automation", "lightboat", DefaultInstanceID)
+		// When a trusted official key is configured, never AUTO-ENABLE a plugin
+		// whose on-disk content is not authenticated by it. CreateInstance above
+		// self-certifies whatever is on disk, so a malicious pre-placed
+		// automation/lightboat directory would otherwise be verified-by-itself and
+		// started here with no admin interaction. Keep it disabled and surface the
+		// condition so the operator explicitly re-imports/authorizes it.
+		if mgr.officialKeys != nil {
+			status, verr := VerifySignature(pluginDir, mgr.officialKeys)
+			if verr != nil || status != domain.PluginSignatureOfficial {
+				return fmt.Errorf("refusing to auto-enable unverified automation plugin (signature status=%q): re-import/authorize it explicitly", status)
+			}
+		}
+		if err := mgr.EnableInstance(ctx, "automation", "lightboat", DefaultInstanceID); err != nil {
+			// Do not mark migration complete when the plugin cannot be enabled;
+			// otherwise automation stays silently disabled and never retries.
+			return err
+		}
 	}
-	_ = settings.UpsertSetting(ctx, domain.Setting{Key: "automation_migrated_to_plugins", ValueJSON: "true"})
+	if err := settings.UpsertSetting(ctx, domain.Setting{Key: "automation_migrated_to_plugins", ValueJSON: "true"}); err != nil {
+		return err
+	}
+	// The api_key now lives encrypted in the plugin instance config; drop the
+	// legacy plaintext copy so the secret does not linger in settings.
+	_ = settings.UpsertSetting(ctx, domain.Setting{Key: "automation_api_key", ValueJSON: ""})
 	return nil
 }
 
@@ -103,9 +130,6 @@ func parseIntDefault(v string, def int) int {
 			return def
 		}
 		n = n*10 + int(ch-'0')
-	}
-	if n <= 0 {
-		return def
 	}
 	return n
 }

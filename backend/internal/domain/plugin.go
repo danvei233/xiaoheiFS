@@ -17,9 +17,14 @@ type PluginInstallation struct {
 	InstanceID      string
 	Enabled         bool
 	SignatureStatus PluginSignatureStatus
-	ConfigCipher    string
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	// ContentDigest is the sha256 of the canonical plugin file manifest recorded
+	// at install/import time. It is the tamper-evidence anchor for unsigned and
+	// untrusted plugins (which have no signature to re-check) and is re-verified
+	// on every start, separate from the signature status.
+	ContentDigest string
+	ConfigCipher string `json:"-"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 type PluginPaymentMethod struct {

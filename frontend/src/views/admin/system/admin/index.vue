@@ -281,15 +281,19 @@
   }
 
   async function fetchAdminTable(
-    params: AdminTableParams
+    params: AdminTableParams,
+    signal?: AbortSignal
   ): Promise<Api.Common.PaginatedResponse<AdminTableRow>> {
     const [groupsPayload, adminsPayload] = await Promise.all([
-      fetchPermissionGroups(),
-      fetchAdminAccounts({
-        limit: params.size,
-        offset: (params.current - 1) * params.size,
-        status: 'all'
-      })
+      fetchPermissionGroups(signal),
+      fetchAdminAccounts(
+        {
+          limit: params.size,
+          offset: (params.current - 1) * params.size,
+          status: 'all'
+        },
+        signal
+      )
     ])
     permissionGroups.value = groupsPayload.items || []
     const records = (adminsPayload.items || []).map(normalizeAdmin)

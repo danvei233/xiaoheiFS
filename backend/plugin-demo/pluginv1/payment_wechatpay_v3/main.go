@@ -350,11 +350,11 @@ func (p *payServer) QueryPayment(ctx context.Context, req *pluginv1.QueryPayment
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "wechat query failed: "+sanitizeErr(err))
 	}
-	ps, amount, rawJSON := mapWechatTradeState(resp)
+	ps, amount, tradeNo, rawJSON := mapWechatTradeState(resp)
 	return &pluginv1.PaymentQueryResponse{
 		Ok:      true,
 		Status:  ps,
-		TradeNo: "",
+		TradeNo: tradeNo,
 		Amount:  amount,
 		RawJson: rawJSON,
 	}, nil
@@ -375,17 +375,19 @@ func (p *payServer) Refund(ctx context.Context, req *pluginv1.RefundRpcRequest) 
 	}
 	cctx, cancel := context.WithTimeout(ctx, time.Duration(p.core.cfg.TimeoutSec)*time.Second)
 	defer cancel()
+
+	// WeChat requires amount.total to be the original order total, which the
+	// RefundRpcRequest does not carry. Resolve it by querying the order first;
+	// refunding with a guessed total would be rejected for partial refunds.
+	orderTotal, err := p.queryOrderTotal(cctx, method, tradeNo)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable, "wechat refund failed: "+sanitizeErr(err))
+	}
+
 	svc := refunddomestic.RefundsApiService{Client: p.core.client}
-	resp, _, err := svc.Create(cctx, refunddomestic.CreateRequest{
-		OutTradeNo:  core.String(tradeNo),
-		OutRefundNo: core.String(refundNo),
-		Reason:      core.String(strings.TrimSpace(req.GetReason())),
-		Amount: &refunddomestic.AmountReq{
-			Refund:   core.Int64(req.GetAmount()),
-			Total:    core.Int64(req.GetAmount()),
-			Currency: core.String("CNY"),
-		},
-	})
+	createReq := buildRefundCreateRequest(tradeNo, refundNo, req.GetAmount(), orderTotal)
+	createReq.Reason = core.String(strings.TrimSpace(req.GetReason()))
+	resp, _, err := svc.Create(cctx, *createReq)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable, "wechat refund failed: "+sanitizeErr(err))
 	}
@@ -396,6 +398,104 @@ func (p *payServer) Refund(ctx context.Context, req *pluginv1.RefundRpcRequest) 
 		Status:   pluginv1.PaymentStatus_PAYMENT_STATUS_REFUNDING,
 		RawJson:  string(raw),
 	}, nil
+}
+
+// validateNotifyIdentity rejects a verified WeChat notify that belongs to a
+// different appid/mchid than the configured one (L6). When the transaction
+// omits these fields the check is skipped for backward compatibility.
+func validateNotifyIdentity(txn *payments.Transaction, cfg config) error {
+	if txn == nil {
+		return nil
+	}
+	if cfg.AppID != "" && txn.Appid != nil && *txn.Appid != cfg.AppID {
+		return fmt.Errorf("wechat notify appid mismatch: got %q, want %q", *txn.Appid, cfg.AppID)
+	}
+	if cfg.MchID != "" && txn.Mchid != nil && *txn.Mchid != cfg.MchID {
+		return fmt.Errorf("wechat notify mchid mismatch: got %q, want %q", *txn.Mchid, cfg.MchID)
+	}
+	return nil
+}
+
+// queryOrderTotal fetches the original order total from WeChat for the given
+// trade identifier. A pure-digit trade_no is treated as a WeChat
+// transaction_id, anything else as a merchant out_trade_no.
+func (p *payServer) queryOrderTotal(ctx context.Context, method, tradeNo string) (int64, error) {
+	var resp *payments.Transaction
+	var err error
+	if isWechatTransactionID(tradeNo) {
+		switch method {
+		case "wechat_native":
+			svc := native.NativeApiService{Client: p.core.client}
+			resp, _, err = svc.QueryOrderById(ctx, native.QueryOrderByIdRequest{
+				TransactionId: core.String(tradeNo),
+				Mchid:         core.String(p.core.cfg.MchID),
+			})
+		case "wechat_jsapi":
+			svc := jsapi.JsapiApiService{Client: p.core.client}
+			resp, _, err = svc.QueryOrderById(ctx, jsapi.QueryOrderByIdRequest{
+				TransactionId: core.String(tradeNo),
+				Mchid:         core.String(p.core.cfg.MchID),
+			})
+		}
+	} else {
+		switch method {
+		case "wechat_native":
+			svc := native.NativeApiService{Client: p.core.client}
+			resp, _, err = svc.QueryOrderByOutTradeNo(ctx, native.QueryOrderByOutTradeNoRequest{
+				OutTradeNo: core.String(tradeNo),
+				Mchid:      core.String(p.core.cfg.MchID),
+			})
+		case "wechat_jsapi":
+			svc := jsapi.JsapiApiService{Client: p.core.client}
+			resp, _, err = svc.QueryOrderByOutTradeNo(ctx, jsapi.QueryOrderByOutTradeNoRequest{
+				OutTradeNo: core.String(tradeNo),
+				Mchid:      core.String(p.core.cfg.MchID),
+			})
+		}
+	}
+	if err != nil {
+		return 0, err
+	}
+	if resp == nil || resp.Amount == nil || resp.Amount.Total == nil {
+		return 0, fmt.Errorf("order query returned no total")
+	}
+	return *resp.Amount.Total, nil
+}
+
+// isWechatTransactionID reports whether tradeNo looks like a WeChat
+// transaction_id (a pure digit string). Merchant out_trade_no values are
+// alphanumeric order numbers in this system.
+func isWechatTransactionID(tradeNo string) bool {
+	tradeNo = strings.TrimSpace(tradeNo)
+	if tradeNo == "" {
+		return false
+	}
+	for _, r := range tradeNo {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// buildRefundCreateRequest builds the WeChat refund request with correct field
+// selection (transaction_id vs out_trade_no) and amount semantics
+// (amount.total = original order total, amount.refund = refund amount).
+func buildRefundCreateRequest(tradeNo, refundNo string, refundCents, orderTotal int64) *refunddomestic.CreateRequest {
+	req := &refunddomestic.CreateRequest{
+		OutRefundNo: core.String(refundNo),
+		Amount: &refunddomestic.AmountReq{
+			Refund:   core.Int64(refundCents),
+			Total:    core.Int64(orderTotal),
+			Currency: core.String("CNY"),
+		},
+	}
+	if isWechatTransactionID(tradeNo) {
+		req.TransactionId = core.String(tradeNo)
+	} else {
+		req.OutTradeNo = core.String(tradeNo)
+	}
+	return req
 }
 
 func (p *payServer) VerifyNotify(ctx context.Context, req *pluginv1.VerifyNotifyRequest) (*pluginv1.NotifyVerifyResult, error) {
@@ -421,6 +521,9 @@ func (p *payServer) VerifyNotify(ctx context.Context, req *pluginv1.VerifyNotify
 	defer cancel()
 	if _, err := nh.ParseNotifyRequest(cctx, httpReq, &transaction); err != nil {
 		return nil, status.Error(codes.InvalidArgument, "wechat notify verify failed: "+sanitizeErr(err))
+	}
+	if err := validateNotifyIdentity(&transaction, p.core.cfg); err != nil {
+		return nil, status.Error(codes.InvalidArgument, sanitizeErr(err))
 	}
 	ps := pluginv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED
 	if transaction.TradeState != nil {
@@ -590,9 +693,9 @@ func sanitizeErr(err error) string {
 	return s
 }
 
-func mapWechatTradeState(resp *payments.Transaction) (pluginv1.PaymentStatus, int64, string) {
+func mapWechatTradeState(resp *payments.Transaction) (pluginv1.PaymentStatus, int64, string, string) {
 	if resp == nil {
-		return pluginv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED, 0, ""
+		return pluginv1.PaymentStatus_PAYMENT_STATUS_UNSPECIFIED, 0, "", ""
 	}
 	raw, _ := json.Marshal(resp)
 	amount := int64(0)
@@ -603,7 +706,14 @@ func mapWechatTradeState(resp *payments.Transaction) (pluginv1.PaymentStatus, in
 	if resp.TradeState != nil {
 		state = *resp.TradeState
 	}
-	return paymentstatus.WeChatTradeStateToStatus(state), amount, string(raw)
+	// Surface the WeChat transaction_id so the host can refund by it (M3):
+	// refunding requires either the transaction_id or out_trade_no, and
+	// without this the host had no way to obtain it from QueryPayment.
+	tradeNo := ""
+	if resp.TransactionId != nil {
+		tradeNo = *resp.TransactionId
+	}
+	return paymentstatus.WeChatTradeStateToStatus(state), amount, tradeNo, string(raw)
 }
 
 func main() {

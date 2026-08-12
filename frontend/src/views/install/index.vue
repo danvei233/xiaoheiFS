@@ -60,6 +60,7 @@
 <script setup lang="ts">
   import notFoundImage from '@imgs/svg/404.svg'
   import { useInstallStore } from '@/stores/install'
+  import { useInstallWizardStore } from '@/stores/installWizard'
   import DbStep from './modules/db-step.vue'
   import SiteStep from './modules/site-step.vue'
   import AdminStep from './modules/admin-step.vue'
@@ -100,6 +101,11 @@
   onMounted(async () => {
     if (!install.loaded) await install.fetchStatus()
     if (install.installed) showNotFound.value = true
+  })
+
+  // H5：离开安装流程即清除内存中的 DBA 密码，避免在页面生命周期内继续驻留。
+  onBeforeUnmount(() => {
+    useInstallWizardStore().clearSecrets()
   })
 </script>
 

@@ -12,6 +12,10 @@ import '@styles/core/tailwind.css'
 import '@styles/index.scss'
 import '@utils/sys/console'
 
+// web_bundle_mobile F2：注册 ri 图标离线集合，内网/离线生产不再依赖
+// api.iconify.design 运行时拉取（图标不再空白）。
+import '@/utils/ui/iconify-loader'
+
 // iOS 上阻止双击缩放需要非 passive 监听
 document.addEventListener('touchstart', function () {}, { passive: false })
 

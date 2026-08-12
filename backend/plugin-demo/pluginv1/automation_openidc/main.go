@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log"
+	"math"
 	"math/big"
 	"os"
 	"strings"
@@ -28,6 +29,54 @@ func initLogger() {
 		return
 	}
 	pluginLog = log.New(f, "[openidc] ", log.LstdFlags)
+}
+
+// sensitiveBodyKeys lists request-body field names whose values must never be
+// written to plugin.log or embedded in the http_trace returned to the host
+// (H2/H3). CreateVM sends os_pass/vc_pass; ResetOSPassword/ReinstallVM send
+// password.
+var sensitiveBodyKeys = map[string]bool{
+	"os_pass":      true,
+	"vc_pass":      true,
+	"password":     true,
+	"passwd":       true,
+	"pwd":          true,
+	"api_key":      true,
+	"apikey":       true,
+	"secret":       true,
+	"access_token": true,
+}
+
+// redactSensitiveJSON returns a JSON string with sensitive field values
+// masked. Non-JSON bodies are never dumped raw — only their length is
+// returned, since form-encoded payloads can also carry credentials.
+func redactSensitiveJSON(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return fmt.Sprintf("<%d bytes>", len(raw))
+	}
+	redactSensitiveMap(m)
+	out, _ := json.Marshal(m)
+	return string(out)
+}
+
+func redactSensitiveMap(m map[string]any) {
+	for k, v := range m {
+		if isSensitiveKey(k) {
+			m[k] = "***"
+			continue
+		}
+		if sub, ok := v.(map[string]any); ok {
+			redactSensitiveMap(sub)
+		}
+	}
+}
+
+func isSensitiveKey(k string) bool {
+	return sensitiveBodyKeys[strings.ToLower(strings.TrimSpace(k))]
 }
 
 // ---- 配置 ----
@@ -64,11 +113,16 @@ type config struct {
 func fnv64(s string) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(s))
-	v := int64(h.Sum64())
-	if v < 0 {
-		v = -v // 保证正数，避免部分系统对负 ID 的处理问题
-	}
-	return v
+	return positiveID(h.Sum64())
+}
+
+// positiveID maps a uint64 hash to a non-negative int64 id. Masking off the
+// sign bit (instead of negating when v<0) avoids the MinInt64 overflow:
+// -v of math.MinInt64 overflows back to a negative value, which breaks the
+// "ids are always positive" contract and produces negative ids for inputs
+// whose hash has the sign bit set.
+func positiveID(v uint64) int64 {
+	return int64(v & uint64(math.MaxInt64))
 }
 
 // generateRandomPassword 生成指定长度的随机密码（字母+数字）
@@ -227,7 +281,7 @@ func (s *coreServer) ValidateConfig(_ context.Context, req *pluginv1.ValidateCon
 }
 
 func (s *coreServer) Init(_ context.Context, req *pluginv1.InitRequest) (*pluginv1.InitResponse, error) {
-	pluginLog.Printf("Init called, instance_id=%q, config_json=%s", req.GetInstanceId(), req.GetConfigJson())
+	pluginLog.Printf("Init called, instance_id=%q, config_json_len=%d", req.GetInstanceId(), len(req.GetConfigJson()))
 	if strings.TrimSpace(req.GetConfigJson()) != "" {
 		var cfg config
 		if err := json.Unmarshal([]byte(req.GetConfigJson()), &cfg); err != nil {
@@ -246,7 +300,7 @@ func (s *coreServer) Init(_ context.Context, req *pluginv1.InitRequest) (*plugin
 }
 
 func (s *coreServer) ReloadConfig(_ context.Context, req *pluginv1.ReloadConfigRequest) (*pluginv1.ReloadConfigResponse, error) {
-	pluginLog.Printf("ReloadConfig called, config_json=%s", req.GetConfigJson())
+	pluginLog.Printf("ReloadConfig called, config_json_len=%d", len(req.GetConfigJson()))
 	var cfg config
 	if err := json.Unmarshal([]byte(req.GetConfigJson()), &cfg); err != nil {
 		pluginLog.Printf("ReloadConfig: unmarshal failed: %v", err)
@@ -1476,16 +1530,45 @@ c, last, err := a.core.newClientWithTrace()
 		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationBackup, 0, len(backups))
-	for i, b := range backups {
+	for _, b := range backups {
 		createdAt := parseTimeToUnix(b.CreatedTime)
 		out = append(out, &pluginv1.AutomationBackup{
-			Id:            int64(i), // 用索引作为 ID
+			// Use a stable id derived from the backup name, NOT the list
+			// position: positional ids break when the list changes between
+			// List and Delete/Restore (M10).
+			Id:            backupID(b.BackupName),
 			Name:          b.BackupName,
 			CreatedAtUnix: createdAt,
 			State:         1,
 		})
 	}
 	return &pluginv1.ListBackupsResponse{Items: out}, nil
+}
+
+// backupID derives a stable id from a backup's provider-side name.
+func backupID(name string) int64 {
+	return fnv64(strings.TrimSpace(name))
+}
+
+// findBackupIndex locates a backup by its stable id, returning -1 when absent.
+func findBackupIndex(backups []BackupInfo, id int64) int {
+	for i, b := range backups {
+		if backupID(b.BackupName) == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// findSnapshotIndex locates a snapshot by its stable id, returning -1 when
+// absent.
+func findSnapshotIndex(snapshots []SnapshotInfo, id int64) int {
+	for i, s := range snapshots {
+		if snapshotID(s.SnapshotName) == id {
+			return i
+		}
+	}
+	return -1
 }
 
 // CreateBackup 创建备份
@@ -1508,7 +1591,7 @@ c, last, err := a.core.newClientWithTrace()
 }
 
 // DeleteBackup 删除备份
-// backup_id = 备份索引（对应 ListBackups 返回的 id）
+// backup_id = 备份稳定 id（由备份名派生，见 ListBackups）
 func (a *automationServer) DeleteBackup(ctx context.Context, req *pluginv1.DeleteBackupRequest) (*pluginv1.OperationResult, error) {
 	if a.core.cfg.DryRun {
 		return &pluginv1.OperationResult{Ok: true}, nil
@@ -1521,14 +1604,14 @@ c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	// 先获取备份列表，通过索引找到备份名称
+	// 先获取备份列表，通过稳定 id 找到备份名称（不能用列表位置：列表变动会删错对象，M10）
 	backups, listErr := c.ListBackups(ctx, hsName, vmUUID)
 	if listErr != nil {
 		return nil, wrapHTTPTraceErr(listErr, last)
 	}
-	idx := int(req.GetBackupId())
-	if idx < 0 || idx >= len(backups) {
-		return nil, fmt.Errorf("backup index %d out of range (total: %d)", idx, len(backups))
+	idx := findBackupIndex(backups, req.GetBackupId())
+	if idx < 0 {
+		return nil, fmt.Errorf("backup id %d not found (total: %d)", req.GetBackupId(), len(backups))
 	}
 	if err := c.DeleteBackup(ctx, hsName, vmUUID, backups[idx].BackupName); err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
@@ -1549,14 +1632,14 @@ c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	// 先获取备份列表，通过索引找到备份名称
+	// 先获取备份列表，通过稳定 id 找到备份名称（不能用列表位置，M10）
 	backups, listErr := c.ListBackups(ctx, hsName, vmUUID)
 	if listErr != nil {
 		return nil, wrapHTTPTraceErr(listErr, last)
 	}
-	idx := int(req.GetBackupId())
-	if idx < 0 || idx >= len(backups) {
-		return nil, fmt.Errorf("backup index %d out of range (total: %d)", idx, len(backups))
+	idx := findBackupIndex(backups, req.GetBackupId())
+	if idx < 0 {
+		return nil, fmt.Errorf("backup id %d not found (total: %d)", req.GetBackupId(), len(backups))
 	}
 	if err := c.RestoreBackup(ctx, hsName, vmUUID, backups[idx].BackupName); err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
@@ -1586,16 +1669,23 @@ c, last, err := a.core.newClientWithTrace()
 		return nil, wrapHTTPTraceErr(err, last)
 	}
 	out := make([]*pluginv1.AutomationSnapshot, 0, len(snapshots))
-	for i, s := range snapshots {
+	for _, s := range snapshots {
 		createdAt := parseTimeToUnix(s.CreatedTime)
 		out = append(out, &pluginv1.AutomationSnapshot{
-			Id:            int64(i),
+			// Stable id derived from the snapshot name, not the list position
+			// (M10).
+			Id:            snapshotID(s.SnapshotName),
 			Name:          s.SnapshotName,
 			CreatedAtUnix: createdAt,
 			State:         1,
 		})
 	}
 	return &pluginv1.ListSnapshotsResponse{Items: out}, nil
+}
+
+// snapshotID derives a stable id from a snapshot's provider-side name.
+func snapshotID(name string) int64 {
+	return fnv64(strings.TrimSpace(name))
 }
 
 // CreateSnapshot 创建快照
@@ -1618,7 +1708,7 @@ c, last, err := a.core.newClientWithTrace()
 }
 
 // DeleteSnapshot 删除快照
-// snapshot_id = 快照索引（对应 ListSnapshots 返回的 id）
+// snapshot_id = 快照稳定 id（由快照名派生，见 ListSnapshots）
 func (a *automationServer) DeleteSnapshot(ctx context.Context, req *pluginv1.DeleteSnapshotRequest) (*pluginv1.OperationResult, error) {
 	if a.core.cfg.DryRun {
 		return &pluginv1.OperationResult{Ok: true}, nil
@@ -1631,14 +1721,14 @@ c, last, err := a.core.newClientWithTrace()
 	if err != nil {
 		return nil, err
 	}
-	// 先获取快照列表，通过索引找到快照名称
+	// 先获取快照列表，通过稳定 id 找到快照名称（不能用列表位置，M10）
 	snapshots, listErr := c.ListSnapshots(ctx, hsName, vmUUID)
 	if listErr != nil {
 		return nil, wrapHTTPTraceErr(listErr, last)
 	}
-	idx := int(req.GetSnapshotId())
-	if idx < 0 || idx >= len(snapshots) {
-		return nil, fmt.Errorf("snapshot index %d out of range (total: %d)", idx, len(snapshots))
+	idx := findSnapshotIndex(snapshots, req.GetSnapshotId())
+	if idx < 0 {
+		return nil, fmt.Errorf("snapshot id %d not found (total: %d)", req.GetSnapshotId(), len(snapshots))
 	}
 	if err := c.DeleteSnapshot(ctx, hsName, vmUUID, snapshots[idx].SnapshotName); err != nil {
 		return nil, wrapHTTPTraceErr(err, last)
@@ -1659,14 +1749,14 @@ func (a *automationServer) RestoreSnapshot(ctx context.Context, req *pluginv1.Re
 	if err != nil {
 		return nil, err
 	}
-	// 先获取快照列表，通过索引找到快照名称
+	// 先获取快照列表，通过稳定 id 找到快照名称（不能用列表位置，M10）
 	snapshots, listErr := c.ListSnapshots(ctx, hsName, vmUUID)
 	if listErr != nil {
 		return nil, wrapHTTPTraceErr(listErr, last)
 	}
-	idx := int(req.GetSnapshotId())
-	if idx < 0 || idx >= len(snapshots) {
-		return nil, fmt.Errorf("snapshot index %d out of range (total: %d)", idx, len(snapshots))
+	idx := findSnapshotIndex(snapshots, req.GetSnapshotId())
+	if idx < 0 {
+		return nil, fmt.Errorf("snapshot id %d not found (total: %d)", req.GetSnapshotId(), len(snapshots))
 	}
 	if err := c.RestoreSnapshot(ctx, hsName, vmUUID, snapshots[idx].SnapshotName); err != nil {
 		return nil, wrapHTTPTraceErr(err, last)

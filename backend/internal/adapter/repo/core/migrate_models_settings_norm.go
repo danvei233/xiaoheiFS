@@ -60,6 +60,17 @@ type packageCapabilityRow struct {
 
 func (packageCapabilityRow) TableName() string { return "package_capabilities" }
 
+type goodsTypeCapabilityRow struct {
+	ID            int64     `gorm:"primaryKey;autoIncrement;column:id"`
+	GoodsTypeID   int64     `gorm:"column:goods_type_id;not null;uniqueIndex"`
+	ResizeEnabled *int      `gorm:"column:resize_enabled"`
+	RefundEnabled *int      `gorm:"column:refund_enabled"`
+	CreatedAt     time.Time `gorm:"column:created_at;not null;autoCreateTime"`
+	UpdatedAt     time.Time `gorm:"column:updated_at;not null;autoUpdateTime"`
+}
+
+func (goodsTypeCapabilityRow) TableName() string { return "goods_type_capabilities" }
+
 type permissionGroupPermissionRow struct {
 	ID                int64     `gorm:"primaryKey;autoIncrement;column:id"`
 	PermissionGroupID int64     `gorm:"column:permission_group_id;not null;index;uniqueIndex:idx_permission_group_permissions_unique,priority:1"`

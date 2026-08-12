@@ -60,6 +60,8 @@ export class HttpError extends Error {
   public readonly timestamp: string
   public readonly url?: string
   public readonly method?: string
+  /** 请求是否被调用方主动取消（AbortController / ERR_CANCELED），取消不应弹错误 toast */
+  public readonly canceled: boolean
 
   constructor(
     message: string,
@@ -68,6 +70,7 @@ export class HttpError extends Error {
       data?: unknown
       url?: string
       method?: string
+      canceled?: boolean
     }
   ) {
     super(message)
@@ -77,6 +80,7 @@ export class HttpError extends Error {
     this.timestamp = new Date().toISOString()
     this.url = options?.url
     this.method = options?.method
+    this.canceled = options?.canceled ?? false
   }
 
   public toLogData(): ErrorLogData {
@@ -114,6 +118,39 @@ const getErrorMessage = (status: number): string => {
 }
 
 /**
+ * 解析错误消息的优先级（纯函数，便于回归测试）：
+ *
+ *  1. 服务端返回的 `data.msg` / `data.error` / `data.message` —— 业务明细
+ *     （如"余额不足"）必须透传；兼容后端不同错误字段（H6）；
+ *  2. 按状态码查本地化文案 —— 服务端无 `msg` 时（nginx 502/504 返回 HTML、
+ *     后端遗漏 msg），显示 `httpMsg.badGateway` 这类本地化文案，而不是
+ *     axios 的英文原始消息（"Request failed with status code 502"）；
+ *  3. axios 原始 `error.message` —— 网络层语义信息；
+ *  4. 通用兜底。
+ *
+ * 这个顺序在 m054 L5 修复（服务端明细透传）与"无 msg 时不应回退到英文原文"
+ * 之间取得平衡。见 verify-r2 R-9。
+ */
+
+/** 从错误响应体提取服务端消息：兼容 `{msg}` / `{error}` / `{message}`（H6）。 */
+export function resolveServerMessage(data: unknown): string {
+  if (!data || typeof data !== 'object') return ''
+  const record = data as Record<string, unknown>
+  const value = record.msg ?? record.error ?? record.message
+  return typeof value === 'string' ? value : ''
+}
+export const resolveErrorMessage = (
+  dataMsg: string | undefined,
+  statusCode: number | undefined,
+  axiosMessage: string | undefined
+): string => {
+  if (dataMsg) return dataMsg
+  if (statusCode) return getErrorMessage(statusCode)
+  if (axiosMessage) return axiosMessage
+  return $t('httpMsg.requestFailed')
+}
+
+/**
  * 处理错误
  * @param error 错误对象
  * @returns 错误对象
@@ -121,12 +158,10 @@ const getErrorMessage = (status: number): string => {
 export function handleError(error: AxiosError<ErrorResponse>): never {
   // 处理取消的请求
   if (error.code === 'ERR_CANCELED') {
-    console.warn('Request cancelled:', error.message)
-    throw new HttpError($t('httpMsg.requestCancelled'), ApiStatus.error)
+    throw new HttpError($t('httpMsg.requestCancelled'), ApiStatus.error, { canceled: true })
   }
 
   const statusCode = error.response?.status
-  const errorMessage = error.response?.data?.msg || error.message
   const requestConfig = error.config
 
   // 处理网络错误
@@ -138,11 +173,10 @@ export function handleError(error: AxiosError<ErrorResponse>): never {
   }
 
   // 处理 HTTP 状态码错误
-  const message = statusCode
-    ? getErrorMessage(statusCode)
-    : errorMessage || $t('httpMsg.requestFailed')
+  const data = error.response.data
+  const message = resolveErrorMessage(resolveServerMessage(data), statusCode, error.message)
   throw new HttpError(message, statusCode || ApiStatus.error, {
-    data: error.response.data,
+    data,
     url: requestConfig?.url,
     method: requestConfig?.method?.toUpperCase()
   })

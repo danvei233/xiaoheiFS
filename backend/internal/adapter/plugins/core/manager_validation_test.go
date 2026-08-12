@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"xiaoheiplay/internal/domain"
@@ -131,6 +132,16 @@ func TestAutomationUpdateConfigBypassesPluginValidation(t *testing.T) {
 		t.Fatalf("update config: %v", err)
 	}
 
+	// The stored config is encrypted; the admin read path must redact the
+	// automation api_key (m068 F1) while keeping the non-secret fields.
+	stored, err := m.repo.GetPluginInstallation(context.Background(), "automation", "lightboat", "default")
+	if err != nil {
+		t.Fatalf("get stored installation: %v", err)
+	}
+	if stored.ConfigCipher == "" || stored.ConfigCipher == `{"base_url":"https://api.example.com","api_key":"secret","timeout_sec":10}` {
+		t.Fatalf("automation config is not stored encrypted: %q", stored.ConfigCipher)
+	}
+
 	got, err := m.GetConfigInstance(context.Background(), "automation", "lightboat", "default")
 	if err != nil {
 		t.Fatalf("get config: %v", err)
@@ -142,8 +153,103 @@ func TestAutomationUpdateConfigBypassesPluginValidation(t *testing.T) {
 	if cfg["base_url"] != "https://api.example.com" {
 		t.Fatalf("unexpected base_url: %v", cfg["base_url"])
 	}
-	if cfg["api_key"] != "secret" {
-		t.Fatalf("unexpected api_key: %v", cfg["api_key"])
+	if apiKey, ok := cfg["api_key"].(string); !ok || apiKey != "" {
+		t.Fatalf("automation api_key must be redacted on read, got %#v", cfg["api_key"])
+	}
+}
+
+// TestAutomationConfigUpdatePreservesAPIKeyWhenOmitted is the regression for
+// the silent api_key wipe: a PATCH that updates base_url (or any non-secret
+// field) WITHOUT resubmitting api_key must keep the stored key. The handler
+// reads the redacted config (api_key="") and writes it back, so the merge must
+// treat the empty api_key as "keep old value" — exactly like plugin-managed
+// secrets.
+func TestAutomationConfigUpdatePreservesAPIKeyWhenOmitted(t *testing.T) {
+	key := base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	cipher, err := cryptox.NewAESGCM(key)
+	if err != nil {
+		t.Fatalf("new cipher: %v", err)
+	}
+	initial, err := cipher.EncryptToString([]byte(`{"base_url":"https://api.example.com","api_key":"SECRET","timeout_sec":10,"retry":0,"dry_run":false}`))
+	if err != nil {
+		t.Fatalf("encrypt initial config: %v", err)
+	}
+	repo := &fakePluginInstallationRepo{
+		inst: domain.PluginInstallation{
+			Category:     "automation",
+			PluginID:     "lightboat",
+			InstanceID:   "default",
+			Enabled:      false,
+			ConfigCipher: initial,
+		},
+	}
+	m := NewManager(t.TempDir(), repo, cipher, nil)
+
+	// Mimic the handler: the read-back config has api_key redacted to "", and the
+	// PATCH only changes base_url without supplying a new key.
+	if err := m.UpdateConfigInstance(context.Background(), "automation", "lightboat", "default",
+		`{"base_url":"https://new.example.com","api_key":"","timeout_sec":10,"retry":0,"dry_run":false}`); err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+
+	stored, err := m.repo.GetPluginInstallation(context.Background(), "automation", "lightboat", "default")
+	if err != nil {
+		t.Fatalf("get stored installation: %v", err)
+	}
+	plain, err := m.decryptConfig(stored.ConfigCipher)
+	if err != nil {
+		t.Fatalf("decrypt stored config: %v", err)
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(plain), &cfg); err != nil {
+		t.Fatalf("invalid stored config json: %v", err)
+	}
+	if cfg["base_url"] != "https://new.example.com" {
+		t.Fatalf("base_url not updated: %v", cfg["base_url"])
+	}
+	if apiKey, ok := cfg["api_key"].(string); !ok || apiKey != "SECRET" {
+		t.Fatalf("api_key was lost when omitted from the update, got %#v", cfg["api_key"])
+	}
+}
+
+// TestAutomationConfigUpdateReplacesAPIKeyWhenProvided confirms the merge does
+// not block an explicit key rotation: a non-empty api_key in the update is
+// written through to the stored config.
+func TestAutomationConfigUpdateReplacesAPIKeyWhenProvided(t *testing.T) {
+	key := base64.RawURLEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+	cipher, err := cryptox.NewAESGCM(key)
+	if err != nil {
+		t.Fatalf("new cipher: %v", err)
+	}
+	initial, err := cipher.EncryptToString([]byte(`{"base_url":"https://api.example.com","api_key":"OLD","timeout_sec":10,"retry":0,"dry_run":false}`))
+	if err != nil {
+		t.Fatalf("encrypt initial config: %v", err)
+	}
+	repo := &fakePluginInstallationRepo{
+		inst: domain.PluginInstallation{
+			Category:     "automation",
+			PluginID:     "lightboat",
+			InstanceID:   "default",
+			Enabled:      false,
+			ConfigCipher: initial,
+		},
+	}
+	m := NewManager(t.TempDir(), repo, cipher, nil)
+
+	if err := m.UpdateConfigInstance(context.Background(), "automation", "lightboat", "default",
+		`{"base_url":"https://api.example.com","api_key":"NEW","timeout_sec":10,"retry":0,"dry_run":false}`); err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+	stored, err := m.repo.GetPluginInstallation(context.Background(), "automation", "lightboat", "default")
+	if err != nil {
+		t.Fatalf("get stored installation: %v", err)
+	}
+	plain, err := m.decryptConfig(stored.ConfigCipher)
+	if err != nil {
+		t.Fatalf("decrypt stored config: %v", err)
+	}
+	if !strings.Contains(plain, `"api_key":"NEW"`) {
+		t.Fatalf("rotated api_key not stored: %s", plain)
 	}
 }
 

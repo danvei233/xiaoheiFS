@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 import '../config/api_config.dart';
 import '../storage/storage_service.dart';
@@ -50,16 +51,19 @@ class ApiClient {
     // 错误处理拦截器
     _dio.interceptors.add(ErrorInterceptor());
 
-    // 日志拦截器 - 仅在Debug模式
-    _dio.interceptors.add(PrettyDioLogger(
-      requestHeader: true,
-      requestBody: true,
-      responseBody: true,
-      responseHeader: false,
-      error: true,
-      compact: true,
-      maxWidth: 90,
-    ));
+    // 日志拦截器 - 仅在Debug模式启用，release 构建不记录请求头/请求体/响应体，
+    // 避免 Bearer token、登录密码等敏感信息落入日志。
+    if (kDebugMode) {
+      _dio.interceptors.add(PrettyDioLogger(
+        requestHeader: true,
+        requestBody: true,
+        responseBody: true,
+        responseHeader: false,
+        error: true,
+        compact: true,
+        maxWidth: 90,
+      ));
+    }
   }
 
   /// 更新基础URL（用于用户切换服务器）

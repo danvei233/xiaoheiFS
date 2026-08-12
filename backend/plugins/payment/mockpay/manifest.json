@@ -2,7 +2,8 @@
   "plugin_id": "mockpay",
   "name": "MockPay Disk Plugin",
   "version": "1.0.0",
-  "description": "Local test-only payment plugin. click pass => paid.",
+  "test_only": true,
+  "description": "Local test-only payment plugin. click pass => paid. MUST NOT be bundled into production releases.",
   "binaries": {
     "windows_amd64": "bin/windows_amd64/plugin.exe",
     "linux_amd64": "bin/linux_amd64/plugin",
