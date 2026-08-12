@@ -2,6 +2,7 @@ package order_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -77,6 +78,82 @@ func TestOrderService_SubmitPaymentIdempotent(t *testing.T) {
 	}
 	if payment.ID != payment2.ID {
 		t.Fatalf("expected idempotent payment")
+	}
+}
+
+func TestOrderService_RejectsPaymentAmountMismatchWithoutMutation(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		pay  func(*apporder.OrderService, context.Context, int64, int64, appshared.PaymentInput) error
+	}{
+		{
+			name: "user submit",
+			pay: func(svc *apporder.OrderService, ctx context.Context, actorID, orderID int64, input appshared.PaymentInput) error {
+				_, err := svc.SubmitPayment(ctx, actorID, orderID, input, "mismatch-idem")
+				return err
+			},
+		},
+		{
+			name: "admin mark paid",
+			pay: func(svc *apporder.OrderService, ctx context.Context, actorID, orderID int64, input appshared.PaymentInput) error {
+				_, err := svc.MarkPaid(ctx, actorID, orderID, input)
+				return err
+			},
+		},
+	} {
+		for _, amount := range []int64{999, 1001} {
+			t.Run(tc.name+"/amount_"+fmt.Sprint(amount), func(t *testing.T) {
+				_, repo := testutil.NewTestDB(t, false)
+				user := testutil.CreateUser(t, repo, "amount-check", "amount-check@example.com", "pass")
+				ctx := context.Background()
+				order := domain.Order{
+					UserID:      user.ID,
+					OrderNo:     fmt.Sprintf("ORD-AMOUNT-%d", amount),
+					Status:      domain.OrderStatusPendingPayment,
+					TotalAmount: 1000,
+					Currency:    "CNY",
+				}
+				if err := repo.CreateOrder(ctx, &order); err != nil {
+					t.Fatalf("create order: %v", err)
+				}
+				if err := repo.CreateOrderItems(ctx, []domain.OrderItem{{
+					OrderID: order.ID, Amount: 1000, Status: domain.OrderItemStatusPendingPayment,
+					Action: "create", SpecJSON: "{}",
+				}}); err != nil {
+					t.Fatalf("create item: %v", err)
+				}
+
+				svc := apporder.NewService(repo, repo, repo, repo, repo, repo, repo, repo, repo, nil, nil, nil, repo, repo, nil, repo, repo, repo, nil, nil, nil)
+				err := tc.pay(svc, ctx, user.ID, order.ID, appshared.PaymentInput{
+					Method: "manual", Amount: amount, Currency: "CNY", TradeNo: fmt.Sprintf("TN-%d", amount),
+				})
+				if err != appshared.ErrInvalidInput {
+					t.Fatalf("expected ErrInvalidInput, got %v", err)
+				}
+
+				storedOrder, err := repo.GetOrder(ctx, order.ID)
+				if err != nil {
+					t.Fatalf("get order: %v", err)
+				}
+				if storedOrder.Status != domain.OrderStatusPendingPayment {
+					t.Fatalf("order status mutated to %q", storedOrder.Status)
+				}
+				items, err := repo.ListOrderItems(ctx, order.ID)
+				if err != nil {
+					t.Fatalf("list items: %v", err)
+				}
+				if len(items) != 1 || items[0].Status != domain.OrderItemStatusPendingPayment {
+					t.Fatalf("order items mutated: %#v", items)
+				}
+				payments, err := repo.ListPaymentsByOrder(ctx, order.ID)
+				if err != nil {
+					t.Fatalf("list payments: %v", err)
+				}
+				if len(payments) != 0 {
+					t.Fatalf("mismatched amount created payments: %#v", payments)
+				}
+			})
+		}
 	}
 }
 
