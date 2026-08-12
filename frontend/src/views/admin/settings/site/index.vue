@@ -288,22 +288,7 @@
     },
     { key: 'beian_info_list', label: '', span: 24 },
     { key: 'security_section', label: '', span: 24 },
-    { key: 'admin_path', label: '管理端路径', span: 24 },
-    // P3-47：analytics_code 是未校验的站点字段（存原始脚本，潜伏 XSS）。
-    // 只能作为纯文本 textarea 展示/保存，绝不能用 v-html 渲染到页面——
-    // 当前没有在任何地方 v-html 它，保持这个约束；如需在站点注入统计脚本，
-    // 必须由后端白名单/净化后处理。
-    {
-      key: 'analytics_code',
-      label: '统计代码',
-      type: 'input',
-      span: 24,
-      props: {
-        type: 'textarea',
-        rows: 4,
-        placeholder: '<script>...</' + 'script>'
-      }
-    }
+    { key: 'admin_path', label: '管理端路径', span: 24 }
   ])
 
   const formRules: FormRules<SiteSettingsForm> = {

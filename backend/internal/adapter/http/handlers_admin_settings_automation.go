@@ -289,13 +289,13 @@ func validateAndNormalizeSettingValue(key, value string) (string, error) {
 		}
 		return value, nil
 	case "analytics_code":
-		// P3-47: the field is displayed as plain text only and must never carry a
-		// <script> payload. Reject script/iframe/event-handler content so a future
-		// render path cannot become a stored XSS sink.
-		if strings.Contains(strings.ToLower(value), "<script") || strings.Contains(strings.ToLower(value), "<iframe") || strings.Contains(strings.ToLower(value), "onerror=") {
+		// analytics_code has no runtime consumer. Keep the compatibility setting,
+		// but reject any payload instead of maintaining an incomplete HTML
+		// blacklist that could become stored XSS if a render sink is added later.
+		if strings.TrimSpace(value) != "" {
 			return "", domain.ErrInvalidInput
 		}
-		return value, nil
+		return "", nil
 	default:
 		// P2-1: previously validateSettingJSONValue was dead code and unknown
 		// *_json / task.* / named-JSON keys passed straight through, so malformed
