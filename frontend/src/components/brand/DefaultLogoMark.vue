@@ -1,6 +1,5 @@
 <template>
   <svg
-    class="default-logo-mark"
     :width="size"
     :height="size"
     viewBox="0 0 64 64"
@@ -22,26 +21,20 @@
     />
     <path
       d="M25 31.2C25 28.7 27 26.7 29.5 26.7H37.8C40.3 26.7 42.3 28.7 42.3 31.2C42.3 33.7 40.3 35.7 37.8 35.7H29.5C27 35.7 25 33.7 25 31.2Z"
-      fill="var(--el-color-white)"
+      fill="white"
       opacity="0.18"
     />
   </svg>
 </template>
 
 <script setup lang="ts">
-  withDefaults(
-    defineProps<{
-      size?: number
-    }>(),
-    {
-      size: 22
-    }
-  )
+withDefaults(
+  defineProps<{
+    size?: number;
+  }>(),
+  {
+    size: 22
+  }
+);
 </script>
 
-<style lang="scss" scoped>
-  .default-logo-mark {
-    display: block;
-    color: var(--theme-color);
-  }
-</style>

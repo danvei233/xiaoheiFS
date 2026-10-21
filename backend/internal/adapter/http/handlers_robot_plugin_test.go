@@ -47,7 +47,6 @@ func TestHandlers_AdminPaymentPluginUpload(t *testing.T) {
 	admin := testutil.CreateAdmin(t, env.Repo, "adminplugin", "adminplugin@example.com", "pass", groupID)
 	token := testutil.IssueJWT(t, env.JWTSecret, admin.ID, "admin", time.Hour)
 	uploadPassword := getPluginUploadPassword(t, env)
-	setPaymentPluginDir(t, env)
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
@@ -196,15 +195,4 @@ func getPluginUploadPassword(t *testing.T, env *testutilhttp.Env) string {
 		t.Fatalf("payment_plugin_upload_password should not be empty in seed data")
 	}
 	return setting.ValueJSON
-}
-
-func setPaymentPluginDir(t *testing.T, env *testutilhttp.Env) {
-	t.Helper()
-	dir := filepath.Join(t.TempDir(), "plugins", "payment")
-	if err := env.Repo.UpsertSetting(context.Background(), domain.Setting{
-		Key:       "payment_plugin_dir",
-		ValueJSON: dir,
-	}); err != nil {
-		t.Fatalf("set payment_plugin_dir setting: %v", err)
-	}
 }

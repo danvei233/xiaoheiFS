@@ -81,6 +81,7 @@ func (s *Service) GetUser(id int64) (*User, error) {
 ```
 
 **Adding new errors**: Add to `internal/domain/errors.go`:
+
 ```go
 var (
     ErrNewFeatureNotEnabled = errors.New("new feature not enabled")
@@ -92,7 +93,7 @@ var (
 
 **Never** bypass layer boundaries. Follow the dependency direction:
 
-```
+```txt
 HTTP Handlers → Application Services → Repositories → Database
 ```
 
@@ -141,7 +142,7 @@ func (h *Handler) GetOrder(c *gin.Context) {
 ### Prerequisites
 
 - Go 1.25+
-- Node.js 20.19+ or 22.12+ (for frontend; Vite 7 requires it)
+- Node.js 18+ (for frontend)
 - MySQL / PostgreSQL / SQLite
 
 ### Backend
@@ -170,9 +171,9 @@ go test ./...
 # With coverage
 go test -cover ./...
 
-# Frontend — there is no test runner yet. The gate is the typecheck:
+# Frontend
 cd frontend
-npm run typecheck
+npm test
 ```
 
 ### Linting
@@ -183,7 +184,6 @@ golangci-lint run
 
 # Frontend
 npm run lint
-npm run lint:stylelint
 ```
 
 ## Pull Request Process
@@ -193,24 +193,63 @@ npm run lint:stylelint
    - Bugfix: `fix/###-bug-name`
    - Refactor: `refactor/###-description`
 
-2. **Write tests** for new functionality
+2. **Keep the PR narrowly scoped**
 
-3. **Ensure all tests pass**:
-   ```bash
-   go test ./...          # backend
-   npm run typecheck      # frontend — no test runner yet, keep this at zero errors
-   npm run build          # frontend must build
-   ```
+   A pull request must represent one coherent change that can be reviewed and validated on its own.
+
+   **Required rules:**
+   - Do not combine unrelated concerns in one PR (for example: template import + deployment changes + CI changes + docs rewrite)
+   - Do not submit large-scale "sweep" refactors without splitting them into incremental steps
+   - Do not vendor or copy an upstream template/application into the repository unless that is the explicit goal of the PR and the ownership, update strategy, and build impact are documented
+   - Do not mix "introduce a new subsystem" with "switch production build/release paths" in the same PR unless rollback and validation are both straightforward
+
+   **Refactors must be progressive:**
+   - Step 1: prepare infrastructure or compatibility layer
+   - Step 2: introduce the new implementation behind a clear boundary
+   - Step 3: switch callers/build paths
+   - Step 4: remove dead code only after the new path is verified
+
+   If a reviewer cannot explain the merge impact, test strategy, and rollback path after reading the PR description, the PR is too large.
+
+3. **Write tests** for new functionality
+
+4. **Ensure all tests pass**:
+    ```bash
+    go test ./...
+    npm test
+    ```
 
 4. **Run linter**:
+
    ```bash
    golangci-lint run
-   npm run lint && npm run lint:stylelint
+   npm run lint
    ```
 
-5. **Verify constitution compliance** (see checklist below)
+6. **Verify constitution compliance** (see checklist below)
 
-6. **Submit PR** with clear description
+7. **Submit PR** with clear description
+
+## PR Size And Reviewability
+
+The repository does not accept "vibe-coded" or poorly bounded mega-PRs.
+
+This includes PRs with one or more of the following signals:
+- Hundreds of files changed without a narrow functional boundary
+- Template or generated project imports mixed with manual integration work
+- Build, CI, runtime configuration, and product behavior changed all at once
+- Documentation claiming support for paths that the build or release pipeline does not yet produce
+- Reviewers needing AI assistance just to establish the basic risk surface
+
+These PRs are difficult to validate, difficult to roll back, and easy to merge in a broken intermediate state.
+
+**Contributors must instead prefer:**
+- Small PRs with one operationally testable goal
+- Explicit migration sequencing
+- Temporary compatibility shims when needed
+- Follow-up cleanup PRs after rollout is proven
+
+When in doubt, split the work. Reviewability is a quality requirement, not a preference.
 
 ## Constitution Compliance Checklist
 
@@ -223,10 +262,14 @@ Before submitting a PR, verify:
 - [ ] All dependencies injected via constructors
 - [ ] Tests written for new functionality
 - [ ] No sensitive data in logs
+- [ ] The PR has one clear purpose and does not mix unrelated concerns
+- [ ] Build, runtime, CI, and docs changes are either all verified together or split into separate PRs
+- [ ] Any new frontend/app/template import has an explicit ownership and cleanup strategy
+- [ ] The rollback path is obvious if the change fails after merge
 
 ## Architecture Overview
 
-```
+```tree
 backend/
 ├── cmd/
 │   └── server/          # Application entry point
@@ -252,25 +295,6 @@ backend/
 
 By contributing to this project, you agree to follow the principles defined in the constitution.
 
-**Author**: 星云猫 nebulamao
-
-## Frontend Conventions
-
-The web tier is a single Vue 3 SPA in `frontend/`, built on the Art Design Pro
-template (Element Plus). Constitution v1.1.0 records this as the UI standard.
-
-**Before writing any page, read `docs/frontend/adp-conventions.md`.** It is the
-extracted API reference for the template — `useTable`, `ArtTable`, `ArtSearchBar`,
-`ArtForm`, the `--art-*` custom properties, the route `meta` schema.
-
-Rules enforced in review:
-
-- List pages use `useTable` + `ArtTable` + `ArtTableHeader` + `ArtSearchBar`; no
-  hand-rolled fetch/pagination
-- No hardcoded colour literals, no `!important`; pages must be correct in both
-  light and dark themes
-- Pages live in `src/views/**` and declare `defineOptions({ name: '...' })`
-- Element Plus, the `Art*` components and the vue/router/pinia/vueuse APIs are
-  auto-imported — do not import them by hand
-- Do not add to `src/pages`, `src/layouts` or the legacy components at the top of
-  `src/components`; that is pre-migration code awaiting deletion
+| **Author** |
+| :---: |
+| 星云猫 nebulamao |

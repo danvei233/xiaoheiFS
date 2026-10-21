@@ -1,33 +1,33 @@
-﻿import { defineStore } from 'pinia'
+﻿import { defineStore } from "pinia";
 import {
   getRevenueAnalyticsDetails,
   getRevenueAnalyticsOverview,
   getRevenueAnalyticsTop,
   getRevenueAnalyticsTrend
-} from '@/services/admin'
+} from "@/services/admin";
 import type {
   RevenueAnalyticsDetailRecord,
   RevenueAnalyticsOverviewResponse,
   RevenueAnalyticsQuery,
   RevenueAnalyticsTopItem,
   RevenueAnalyticsTrendPoint
-} from '@/services/types'
+} from "@/services/types";
 
 const defaultQuery = (): RevenueAnalyticsQuery => {
-  const now = new Date()
-  const from = new Date(now.getTime() - 30 * 24 * 3600 * 1000)
+  const now = new Date();
+  const from = new Date(now.getTime() - 30 * 24 * 3600 * 1000);
   return {
     from_at: from.toISOString(),
     to_at: now.toISOString(),
-    level: 'overall',
+    level: "overall",
     page: 1,
     page_size: 20,
-    sort_field: 'paid_at',
-    sort_order: 'desc'
-  }
-}
+    sort_field: "paid_at",
+    sort_order: "desc"
+  };
+};
 
-export const useRevenueAnalyticsStore = defineStore('revenueAnalytics', {
+export const useRevenueAnalyticsStore = defineStore("revenueAnalytics", {
   state: () => ({
     loading: false,
     query: defaultQuery(),
@@ -39,31 +39,31 @@ export const useRevenueAnalyticsStore = defineStore('revenueAnalytics', {
   }),
   actions: {
     setQuery(partial: Partial<RevenueAnalyticsQuery>) {
-      this.query = { ...this.query, ...partial }
+      this.query = { ...this.query, ...partial };
     },
     async fetchOverview() {
-      this.loading = true
+      this.loading = true;
       try {
         const [overviewRes, trendRes, topRes] = await Promise.all([
           getRevenueAnalyticsOverview(this.query),
           getRevenueAnalyticsTrend(this.query),
           getRevenueAnalyticsTop(this.query)
-        ])
-        this.overview = overviewRes.data || {}
-        this.trend = trendRes.data?.items || []
-        this.top = topRes.data?.items || []
+        ]);
+        this.overview = overviewRes.data || {};
+        this.trend = trendRes.data?.items || [];
+        this.top = topRes.data?.items || [];
       } finally {
-        this.loading = false
+        this.loading = false;
       }
     },
     async fetchDetails() {
-      const res = await getRevenueAnalyticsDetails(this.query)
-      this.details = res.data?.items || []
-      this.detailTotal = Number(res.data?.total || 0)
+      const res = await getRevenueAnalyticsDetails(this.query);
+      this.details = res.data?.items || [];
+      this.detailTotal = Number(res.data?.total || 0);
     },
     async fetchAll() {
-      await this.fetchOverview()
-      await this.fetchDetails()
+      await this.fetchOverview();
+      await this.fetchDetails();
     }
   }
-})
+});

@@ -44,11 +44,7 @@ func TestInstallGate_RedirectsBeforeInstalled(t *testing.T) {
 	}
 }
 
-// Before installation completes, the installer must be reachable and able to load
-// its assets. Everything now comes out of the single ./static directory, and the
-// built app requests absolute /assets/... URLs, so the gate has to let those through
-// even though the visitor is not "in" /install/.
-func TestInstallGate_ServesInstallerFromStatic(t *testing.T) {
+func TestInstallGate_ServesInstallerFromAdminStatic(t *testing.T) {
 	lockDir := t.TempDir()
 	lockPath := filepath.Join(lockDir, "install.lock")
 
@@ -65,19 +61,18 @@ func TestInstallGate_ServesInstallerFromStatic(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chdir(cwd) })
 
-	if err := os.MkdirAll(filepath.Join("static", "assets"), 0o755); err != nil {
-		t.Fatalf("mkdir static: %v", err)
+	if err := os.MkdirAll(filepath.Join("static-admin", "assets"), 0o755); err != nil {
+		t.Fatalf("mkdir admin static: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join("static", "index.html"), []byte("INSTALL_INDEX"), 0o644); err != nil {
-		t.Fatalf("write index: %v", err)
+	if err := os.WriteFile(filepath.Join("static-admin", "index.html"), []byte("INSTALL_ADMIN_INDEX"), 0o644); err != nil {
+		t.Fatalf("write admin index: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join("static", "assets", "install.js"), []byte("INSTALL_ASSET_OK"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join("static-admin", "assets", "install.js"), []byte("INSTALL_ASSET_OK"), 0o644); err != nil {
 		t.Fatalf("write installer asset: %v", err)
 	}
 
 	env := testutilhttp.NewTestEnv(t, false)
 
-	// The gate canonicalises /install to /install/.
 	{
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/install", nil)
@@ -90,7 +85,6 @@ func TestInstallGate_ServesInstallerFromStatic(t *testing.T) {
 		}
 	}
 
-	// The installer route itself falls back to the SPA index.
 	{
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/install/", nil)
@@ -98,15 +92,14 @@ func TestInstallGate_ServesInstallerFromStatic(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)
 		}
-		if !strings.Contains(rec.Body.String(), "INSTALL_INDEX") {
+		if !strings.Contains(rec.Body.String(), "INSTALL_ADMIN_INDEX") {
 			t.Fatalf("expected installer index body, got: %q", rec.Body.String())
 		}
 	}
 
-	// Its assets are absolute URLs and must survive the gate.
 	{
 		rec := httptest.NewRecorder()
-		req := httptest.NewRequest(http.MethodGet, "/assets/install.js", nil)
+		req := httptest.NewRequest(http.MethodGet, "/install/assets/install.js", nil)
 		env.Router.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected 200, got %d", rec.Code)

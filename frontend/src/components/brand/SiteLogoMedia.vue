@@ -12,38 +12,38 @@
 </template>
 
 <script setup lang="ts">
-  import { computed } from 'vue'
-  import { useSiteStore } from '@/stores/site'
-  import DefaultLogoMark from '@/components/brand/DefaultLogoMark.vue'
+import { computed } from "vue";
+import { useSiteStore } from "@/stores/site";
+import DefaultLogoMark from "@/components/brand/DefaultLogoMark.vue";
 
-  const props = withDefaults(
-    defineProps<{
-      size?: number
-      alt?: string
-      src?: string
-    }>(),
-    {
-      size: 22,
-      alt: '',
-      src: ''
-    }
-  )
+const props = withDefaults(
+  defineProps<{
+    size?: number;
+    alt?: string;
+    src?: string;
+  }>(),
+  {
+    size: 22,
+    alt: "",
+    src: ""
+  }
+);
 
-  const site = useSiteStore()
-  const altText = computed(() => props.alt || site.siteName || 'logo')
-  const logoSrc = computed(() => (props.src || '').trim() || site.logoUrl)
-  const mediaStyle = computed(() => ({
-    width: `${props.size}px`,
-    height: `${props.size}px`
-  }))
+const site = useSiteStore();
+const altText = computed(() => props.alt || site.siteName || "logo");
+const logoSrc = computed(() => (props.src || "").trim() || site.logoUrl);
+const mediaStyle = computed(() => ({
+  width: `${props.size}px`,
+  height: `${props.size}px`
+}));
 </script>
 
-<style lang="scss" scoped>
-  .site-logo-media {
-    display: block;
-  }
+<style scoped>
+.site-logo-media {
+  display: block;
+}
 
-  .site-logo-img {
-    object-fit: contain;
-  }
+.site-logo-img {
+  object-fit: contain;
+}
 </style>

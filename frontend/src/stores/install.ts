@@ -1,12 +1,12 @@
-import { defineStore } from 'pinia'
-import { getInstallStatus } from '@/services/user'
+import { defineStore } from "pinia";
+import { getInstallStatus } from "@/services/user";
 
 interface InstallState {
-  loaded: boolean
-  installed: boolean
+  loaded: boolean;
+  installed: boolean;
 }
 
-export const useInstallStore = defineStore('install', {
+export const useInstallStore = defineStore("install", {
   state: (): InstallState => ({
     loaded: false,
     installed: true
@@ -15,14 +15,15 @@ export const useInstallStore = defineStore('install', {
   actions: {
     async fetchStatus() {
       try {
-        const res = await getInstallStatus()
-        this.installed = !!res.data?.installed
+        const res = await getInstallStatus();
+        this.installed = !!res.data?.installed;
       } catch {
         // If status API is unavailable, do not hard-block navigation.
-        this.installed = true
+        this.installed = true;
       } finally {
-        this.loaded = true
+        this.loaded = true;
       }
     }
   }
-})
+});
+

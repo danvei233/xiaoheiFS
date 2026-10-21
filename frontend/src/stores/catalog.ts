@@ -1,7 +1,7 @@
-import { defineStore } from 'pinia'
-import { getCatalog } from '@/services/user'
+import { defineStore } from "pinia";
+import { getCatalog } from "@/services/user";
 
-export const useCatalogStore = defineStore('catalog', {
+export const useCatalogStore = defineStore("catalog", {
   state: () => ({
     goodsTypes: [],
     regions: [],
@@ -14,17 +14,17 @@ export const useCatalogStore = defineStore('catalog', {
   }),
   actions: {
     async fetchCatalog() {
-      this.loading = true
+      this.loading = true;
       try {
-        const res = await getCatalog()
-        const data = res.data || {}
-        const rawGoodsTypes = data.goods_types || []
-        const rawRegions = data.regions || []
-        const rawLines = data.lines || []
-        const rawGroups = data.plan_groups || []
-        const rawPackages = data.packages || []
-        const rawImages = data.system_images || []
-        const rawCycles = data.billing_cycles || []
+        const res = await getCatalog();
+        const data = res.data || {};
+        const rawGoodsTypes = data.goods_types || [];
+        const rawRegions = data.regions || [];
+        const rawLines = data.lines || [];
+        const rawGroups = data.plan_groups || [];
+        const rawPackages = data.packages || [];
+        const rawImages = data.system_images || [];
+        const rawCycles = data.billing_cycles || [];
 
         this.goodsTypes = rawGoodsTypes.map((gt) => ({
           id: gt.id ?? gt.ID,
@@ -35,7 +35,7 @@ export const useCatalogStore = defineStore('catalog', {
           automation_category: gt.automation_category ?? gt.AutomationCategory,
           automation_plugin_id: gt.automation_plugin_id ?? gt.AutomationPluginID,
           automation_instance_id: gt.automation_instance_id ?? gt.AutomationInstanceID
-        }))
+        }));
 
         this.regions = rawRegions.map((region) => ({
           id: region.id ?? region.ID,
@@ -43,9 +43,9 @@ export const useCatalogStore = defineStore('catalog', {
           name: region.name ?? region.Name,
           code: region.code ?? region.Code,
           active: region.active ?? region.Active
-        }))
+        }));
 
-        const lineSource = rawLines.length ? rawLines : rawGroups
+        const lineSource = rawLines.length ? rawLines : rawGroups;
         this.lines = lineSource.map((line) => ({
           id: line.id ?? line.ID,
           goods_type_id: line.goods_type_id ?? line.GoodsTypeID,
@@ -72,7 +72,7 @@ export const useCatalogStore = defineStore('catalog', {
           visible: line.visible ?? line.Visible,
           capacity_remaining: line.capacity_remaining ?? line.CapacityRemaining,
           sort_order: line.sort_order ?? line.SortOrder
-        }))
+        }));
 
         this.planGroups = rawGroups.map((group) => ({
           id: group.id ?? group.ID,
@@ -87,7 +87,7 @@ export const useCatalogStore = defineStore('catalog', {
           active: group.active ?? group.Active,
           visible: group.visible ?? group.Visible,
           capacity_remaining: group.capacity_remaining ?? group.CapacityRemaining
-        }))
+        }));
 
         this.packages = rawPackages.map((pkg) => ({
           id: pkg.id ?? pkg.ID,
@@ -105,7 +105,7 @@ export const useCatalogStore = defineStore('catalog', {
           active: pkg.active ?? pkg.Active,
           visible: pkg.visible ?? pkg.Visible,
           capacity_remaining: pkg.capacity_remaining ?? pkg.CapacityRemaining
-        }))
+        }));
 
         this.systemImages = rawImages.map((img) => ({
           id: img.id ?? img.ID,
@@ -115,7 +115,7 @@ export const useCatalogStore = defineStore('catalog', {
           name: img.name ?? img.Name,
           type: img.type ?? img.Type,
           enabled: img.enabled ?? img.Enabled
-        }))
+        }));
 
         this.billingCycles = rawCycles.map((cycle) => ({
           id: cycle.id ?? cycle.ID,
@@ -126,10 +126,10 @@ export const useCatalogStore = defineStore('catalog', {
           max_qty: cycle.max_qty ?? cycle.MaxQty,
           active: cycle.active ?? cycle.Active,
           sort_order: cycle.sort_order ?? cycle.SortOrder
-        }))
+        }));
       } finally {
-        this.loading = false
+        this.loading = false;
       }
     }
   }
-})
+});

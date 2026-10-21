@@ -7,10 +7,11 @@
  * (for example reset/reinstall/template selection).
  */
 
-export type SystemImageRecordID = number
-export type AutomationImageID = number
+export type SystemImageRecordID = number;
+export type AutomationImageID = number;
 
 export interface SystemImageIDContract {
-  id: SystemImageRecordID
-  image_id: AutomationImageID
+  id: SystemImageRecordID;
+  image_id: AutomationImageID;
 }
+

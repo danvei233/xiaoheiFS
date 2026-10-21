@@ -1,9 +1,6 @@
 # Multi-stage build for Debian-based image
 # Stage 1: Build frontend
-# Vite 7 requires Node ^20.19.0 || >=22.12.0. node:20-* is a floating tag that
-# sat below 20.19 for most of its life, so pin to 22 to match CI and the
-# `engines` field in frontend/package.json.
-FROM node:22-bookworm as frontend-builder
+FROM node:20-bookworm as frontend-builder
 
 WORKDIR /app
 

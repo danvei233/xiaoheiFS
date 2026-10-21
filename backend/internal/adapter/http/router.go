@@ -38,16 +38,22 @@ func NewServer(handler *Handler, middleware *Middleware) *Server {
 	// block non-install API calls to avoid confusing errors.
 	r.Use(installGateMiddleware(handler))
 
-	// Serve the built frontend from ./static.
-	//
-	// The web tier is a single history-mode SPA carrying the public site, the auth
-	// pages, the user console at /console, the installer at /install and the admin
-	// console at the operator-configured admin_path. Requests that resolve to a file
-	// are served as-is; every other non-API GET falls back to index.html and the
-	// client router decides what to render, including which admin path is valid.
-	spaExcludedPrefixes := []string{"/api/", "/admin/api/", "/uploads/"}
-	r.Use(spaStaticFileMiddleware("./static", spaExcludedPrefixes))
-	r.NoRoute(spaIndexFallbackHandler("./static", spaExcludedPrefixes))
+	// Serve built frontend assets from ./static (Vite/SPA).
+	// - Public site assets are served from ./static.
+	// - Admin SPA assets are served from ./static-admin when the request path matches admin_path.
+	// - Otherwise, for non-API routes, fall back to the matching SPA index.html so routing works.
+	adminPathResolver := func() string {
+		if handler == nil {
+			return ""
+		}
+		return GetAdminPathFromSettings(handler.settingsSvc)
+	}
+	r.Use(spaStaticFileMiddleware("./static", "./static-admin", adminPathResolver,
+		[]string{"/api/", "/admin/api/", "/uploads/"},
+	))
+	r.NoRoute(spaIndexFallbackHandler("./static", "./static-admin", adminPathResolver,
+		[]string{"/api/", "/admin/api/", "/uploads/"},
+	))
 	for _, registrar := range defaultRouteRegistrars() {
 		registrar.Register(r, handler, middleware)
 	}
@@ -136,7 +142,13 @@ func installGateMiddleware(handler *Handler) gin.HandlerFunc {
 	}
 }
 
-func spaStaticFileMiddleware(staticDir string, excludedPrefixes []string) gin.HandlerFunc {
+func spaStaticFileMiddleware(
+	publicStaticDir string,
+	adminStaticDir string,
+	adminPathResolver func() string,
+	excludedPrefixes []string,
+) gin.HandlerFunc {
+
 	return func(c *gin.Context) {
 		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
 			c.Next()
@@ -151,8 +163,11 @@ func spaStaticFileMiddleware(staticDir string, excludedPrefixes []string) gin.Ha
 			}
 		}
 
-		selectedDir := staticDir
-		rel := strings.TrimPrefix(reqPath, "/")
+		selectedDir, rel := resolveSPATarget(reqPath, publicStaticDir, adminStaticDir, adminPathResolver)
+		if selectedDir == "" {
+			c.Next()
+			return
+		}
 
 		target := filepath.Join(selectedDir, filepath.FromSlash(rel))
 		targetAbs, err := filepath.Abs(target)
@@ -185,7 +200,12 @@ func spaStaticFileMiddleware(staticDir string, excludedPrefixes []string) gin.Ha
 	}
 }
 
-func spaIndexFallbackHandler(staticDir string, excludedPrefixes []string) gin.HandlerFunc {
+func spaIndexFallbackHandler(
+	publicStaticDir string,
+	adminStaticDir string,
+	adminPathResolver func() string,
+	excludedPrefixes []string,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		reqPath := c.Request.URL.Path
 		for _, p := range excludedPrefixes {
@@ -200,7 +220,20 @@ func spaIndexFallbackHandler(staticDir string, excludedPrefixes []string) gin.Ha
 			return
 		}
 
-		indexPath := filepath.Join(staticDir, "index.html")
+		adminPath := ""
+		if adminPathResolver != nil {
+			adminPath = normalizeAdminRequestPath(adminPathResolver())
+		}
+		if adminPath != "" && dirExists(adminStaticDir) {
+			if redirectTarget := buildAdminSPARedirectTarget(reqPath, adminPath, c.Request.URL.RawQuery); redirectTarget != "" {
+				c.Redirect(http.StatusTemporaryRedirect, redirectTarget)
+				return
+			}
+		}
+
+		selectedDir, _ := resolveSPATarget(reqPath, publicStaticDir, adminStaticDir, adminPathResolver)
+		indexPath := filepath.Join(selectedDir, "index.html")
+
 		if _, err := os.Stat(indexPath); err == nil {
 			applySPACacheHeaders(c, "index.html", true)
 			c.File(indexPath)
@@ -208,6 +241,101 @@ func spaIndexFallbackHandler(staticDir string, excludedPrefixes []string) gin.Ha
 		}
 		c.AbortWithStatus(http.StatusNotFound)
 	}
+}
+
+func resolveSPATarget(
+	reqPath string,
+	publicStaticDir string,
+	adminStaticDir string,
+	adminPathResolver func() string,
+) (string, string) {
+	if isInstallerSPAPrefix(reqPath) && dirExists(adminStaticDir) {
+		return adminStaticDir, trimInstallerSPAPrefix(reqPath)
+	}
+
+	adminPath := ""
+	if adminPathResolver != nil {
+		adminPath = normalizeAdminRequestPath(adminPathResolver())
+	}
+
+	if adminPath != "" && hasAdminSPAPrefix(reqPath, adminPath) && dirExists(adminStaticDir) {
+		adminPrefix := "/" + adminPath
+		rel := strings.TrimPrefix(reqPath, adminPrefix)
+		rel = strings.TrimPrefix(rel, "/")
+		return adminStaticDir, rel
+	}
+
+	return publicStaticDir, strings.TrimPrefix(reqPath, "/")
+}
+
+func isInstallerSPAPrefix(reqPath string) bool {
+	return reqPath == "/install" || reqPath == "/install/" || strings.HasPrefix(reqPath, "/install/")
+}
+
+func trimInstallerSPAPrefix(reqPath string) string {
+	rel := strings.TrimPrefix(reqPath, "/install")
+	return strings.TrimPrefix(rel, "/")
+}
+
+func normalizeAdminRequestPath(path string) string {
+	return strings.Trim(strings.TrimSpace(path), "/")
+}
+
+func hasAdminSPAPrefix(reqPath string, adminPath string) bool {
+	if adminPath == "" {
+		return false
+	}
+
+	adminPrefix := "/" + adminPath
+	return reqPath == adminPrefix || strings.HasPrefix(reqPath, adminPrefix+"/")
+}
+
+func dirExists(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+func buildAdminSPARedirectTarget(reqPath string, adminPath string, rawQuery string) string {
+	adminPrefix := "/" + adminPath
+	switch {
+	case reqPath == adminPrefix:
+		return appendQuery(adminPrefix+"/", rawQuery)
+	case !strings.HasPrefix(reqPath, adminPrefix+"/"):
+		return ""
+	}
+
+	rel := strings.TrimPrefix(reqPath, adminPrefix)
+	if rel == "/" || looksLikeStaticAssetPath(rel) {
+		return ""
+	}
+
+	target := adminPrefix + "/#" + rel
+	if rawQuery != "" {
+		target += "?" + rawQuery
+	}
+	return target
+}
+
+func looksLikeStaticAssetPath(rel string) bool {
+	trimmed := strings.TrimPrefix(rel, "/")
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "assets/") {
+		return true
+	}
+	return strings.Contains(filepath.Base(trimmed), ".")
+}
+
+func appendQuery(path string, rawQuery string) string {
+	if rawQuery == "" {
+		return path
+	}
+	return path + "?" + rawQuery
 }
 
 func applySPACacheHeaders(c *gin.Context, rel string, isIndex bool) {

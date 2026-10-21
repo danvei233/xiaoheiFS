@@ -8,7 +8,7 @@ Auto-generated from all feature plans. Last updated: 2026-02-21
 
 **Before writing or modifying any code, you MUST read the project constitution:**
 
-```
+```file
 constitution.md
 ```
 
@@ -27,6 +27,7 @@ The constitution defines **non-negotiable principles** that govern all developme
 ---
 
 ## Active Technologies
+
 - Go 1.25.0 (backend), TypeScript (frontend) + Gin, GORM, go-playground/validator, zerolog, Vue 3 + Pinia + Ant Design Vue + ECharts (001-revenue-analytics)
 - MySQL/PostgreSQL/SQLite via GORM (orders, order_payments, catalog hierarchy tables) (001-revenue-analytics)
 
@@ -49,50 +50,49 @@ npm test; npm run lint
 Go 1.25.0 (backend), TypeScript + Vue 3 (frontend): Follow standard conventions
 
 ## Recent Changes
+
 - 001-revenue-analytics: Added Go 1.25.0 (backend), TypeScript (frontend) + Gin, GORM, go-playground/validator, zerolog, Vue 3 + Pinia + Ant Design Vue + ECharts
 
 - main: Added Go 1.25.0 (backend), TypeScript + Vue 3 (frontend) + Gin, GORM, go-playground/validator, Vue + Pinia + Ant Design Vue, ECharts wrapper
 
 <!-- MANUAL ADDITIONS START -->
+## Additional Guardrails For Agents And Prompt Authors
 
-## Frontend (supersedes the auto-generated stack lines above)
+These rules exist to prevent low-discipline, high-volume changes that are easy to generate but hard to verify.
 
-The auto-generated sections above are stale: they predate the web-tier
-consolidation and still say "Ant Design Vue", and they list a `backend/ frontend/
-tests/` layout that never mentioned `adminweb/`.
+### Scope Control
 
-Current state:
+- Do not produce or accept mega-PRs that mix unrelated concerns in one change.
+- Do not combine template import, subsystem introduction, build pipeline changes, runtime configuration changes, and documentation rewrites in a single pass unless the user explicitly asks for that exact migration plan.
+- If the requested change touches multiple operational boundaries, split the work into incremental steps and complete one step at a time.
 
-- **`frontend/`** is the single web application — a history-mode SPA carrying the
-  public site, auth pages, user console (`/console`), installer (`/install`) and
-  the admin console (at the operator-configured `admin_path`). Built with npm; the
-  backend serves it from `./static`.
-- **UI standard is Element Plus via the Art Design Pro template**, not Ant Design
-  Vue. Constitution v1.1.0 records this change.
-  - Conventions (required reading before writing a page):
-    `docs/frontend/adp-conventions.md`
-  - Migration plan and rules: `docs/frontend/adp-migration-plan.md`
-- **`adminweb/`** is a legacy second SPA being folded into `frontend/`. Do not
-  build on it; it is deleted at the end of the migration.
+### No Blind Template Import
 
-While the migration is in flight, `frontend/src/pages`, `frontend/src/layouts` and
-the Ant Design components at the top level of `frontend/src/components` are dead
-code kept only as a porting reference. They are excluded from `tsconfig.json` and
-no route points at them. New pages go in `frontend/src/views`.
+- Do not copy entire upstream templates, starter projects, or generated applications into the repository unless the user explicitly requests vendoring and the update strategy is documented.
+- If only part of an upstream project is needed, extract the minimal required files instead of importing the whole tree.
+- Remove upstream branding, links, placeholder docs, and unused scaffolding before considering the work complete.
 
-Frontend commands (`frontend/package.json`) — note CONTRIBUTING.md's `npm test`
-does not exist here; there is no frontend test runner yet:
+### Reviewability Is Mandatory
 
-```bash
-npm run dev         # :5173, proxies /api, /admin/api, /sdk, /uploads to :8080
-npm run typecheck   # vue-tsc --noEmit — must stay at zero errors
-npm run lint        # eslint
-npm run build       # vite build -> frontend/dist
-```
+- Prefer changes that a human reviewer can understand, validate, and roll back without AI assistance.
+- If the resulting diff becomes too large to review confidently, stop and split the work.
+- Before finishing, verify that build paths, runtime paths, docs, and configuration are consistent. Do not leave a partially connected subsystem behind.
 
-Go note: the system `go` on this machine is 1.19; this project needs the 1.25
-toolchain at `/usr/local/go/bin/go`.
+### Prompting Guidance
 
+- Users should request one coherent objective at a time.
+- Avoid prompts such as "rebuild the whole admin side", "replace everything with a new template", or "fix all related issues in one PR".
+- Prefer prompts that specify a narrow outcome, validation method, and boundary of change.
+
+### Agent Behavior On Over-Broad Requests
+
+- If a request would likely create a poorly bounded or hard-to-review diff, do not execute it as one large change.
+- Instead, respond with a minimal staged breakdown and start with the first safe increment.
+- Treat reviewability, rollback clarity, and verification cost as hard engineering constraints, not optional polish.
+- Explicitly tell the user that broad, multi-boundary requests are very likely to produce a PR that will be rejected or sent back for splitting during review.
+- When giving that warning, be direct: say that the requested change is too large to review confidently as one unit and should be broken into smaller mergeable steps.
 <!-- MANUAL ADDITIONS END -->
 
-**Author**: 星云猫 nebulamao
+| **Author** |
+| :---: |
+| 星云猫 nebulamao |

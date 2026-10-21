@@ -4,124 +4,138 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-The web tier of xiaoheiFS (小黑云) — **one** Vue 3 SPA, served by the Go backend from
-`./static`, carrying four realms:
+Cloud VPS Console (小黑云控制台) - A Vue 3 full-stack web application for managing cloud VPS services with dual interfaces:
 
-| Realm | Routes | Auth |
-|---|---|---|
-| Public site | `/`, `/products`, `/help`, `/docs`, `/announcements`, `/activities`, `/tutorials`, `/:category/:slug` | none |
-| Commerce (public) | `/buy`, `/cart` | none until checkout |
-| Auth / installer | `/login`, `/register`, `/forgot-password`, `/reset-password`, `/install` | none |
-| User console | `/console/*` | `stores/auth` (`user_token`) |
-| Admin console | `/<admin_path>/*` — the prefix is an operator setting, resolved and registered at runtime | `stores/adminAuth` (`admin_token`) |
-
-Routing is **history mode**. The backend falls back to `index.html` for any non-API GET
-that does not resolve to a file, so there are no hash URLs anywhere.
-
-## UI standard: Art Design Pro (Element Plus)
-
-**Read `../docs/frontend/adp-conventions.md` before writing any page.** It is the extracted
-API reference for the template: `useTable`, `ArtTable`, `ArtTableHeader`, `ArtSearchBar`,
-`ArtForm`, the full `--art-*` custom property list, the route `meta` schema, and the
-gotchas that silently break things.
-
-Non-negotiable rules:
-
-- List pages use `useTable` + `ArtTable` + `ArtTableHeader` + `ArtSearchBar`. Do not
-  hand-roll fetch/pagination.
-- No hardcoded colours, no `!important`. Every page must be correct in light **and** dark.
-- Pages live in `src/views/**` — the template's component loader globs
-  `import.meta.glob('../../views/**/*.vue')`.
-- Every page declares `defineOptions({ name: 'XxxYyy' })`; the multi-tab cache needs it.
-
-Element Plus components, the `Art*` components, and the `vue` / `vue-router` / `pinia` /
-`@vueuse/core` APIs are all auto-imported — do not import them by hand.
+- **User Console** (`/console`) - Customer-facing VPS purchasing and management
+- **Admin Console** (`/admin`) - Operations staff interface for system management
 
 ## Development Commands
 
 ```bash
+# Install dependencies
 npm i
-npm run dev         # :5173
-npm run typecheck   # vue-tsc --noEmit — keep this at zero
-npm run lint        # eslint
-npm run lint:stylelint
-npm run build       # -> dist/, copied to ./static at deploy time
+
+# Development server (runs on port 5173)
+npm run dev
+
+# Production build
+npm run build
+
+# Preview production build
+npm run preview
 ```
 
-Node `20.19+` or `22.12+` (Vite 7). There is no frontend test runner yet, so
-CONTRIBUTING.md's `npm test` does not apply here.
+## API Proxy Configuration
 
-## API Proxy
+The development server proxies API requests to the backend (Go) at `http://localhost:8080`:
 
-Dev server proxies to the Go backend on `http://localhost:8080`: `/api`, `/admin/api`,
-`/sdk`, `/uploads`. `VITE_API_BASE` can point the built app at an absolute backend.
+- `/api` → `http://localhost:8080`
+- `/admin/api` → `http://localhost:8080`
+- `/sdk` → `http://localhost:8080`
 
-Note there are **no `.env` files**: the repository's root `.gitignore` swallows `.env*`,
-so the handful of template env vars are inlined via `define` in `vite.config.ts`.
+To connect directly to a backend, set:
 
-## Directory Structure
-
+```bash
+VITE_API_BASE=http://localhost:8080
 ```
+
+## Architecture
+
+### Directory Structure
+
+```tree
 src/
-├── assets/styles/     # ADP style system (tailwind.css holds the --art-* vars, SCSS mixins)
-├── components/
-│   ├── core/          # ADP component library — vendored, do not edit
-│   └── business/      # this project's shared components (Element Plus)
-├── config/ enums/ directives/ hooks/ locales/ plugins/   # ADP infrastructure
-├── router/
-│   ├── core/          # RouteRegistry / ComponentLoader / MenuProcessor
-│   ├── guards/        # three-realm guard: install gate, impersonation, auth, permissions
-│   ├── realm.ts       # realm resolution + admin-path prefixing
-│   ├── routes/        # static routes, split per area
-│   └── modules/       # admin menu-routes, registered dynamically
-├── services/          # API layer: http, user, admin, types, sse, adminPath
-├── store/             # ADP infrastructure stores (setting/worktab/menu/table/user)
-├── stores/            # business stores (auth/adminAuth/cart/orders/catalog/site/...)
-└── views/             # pages
+├── components/       # Reusable UI components (ProTable, StatusTag, Charts, etc.)
+├── layouts/          # UserLayout.vue and AdminLayout.vue
+├── pages/
+│   ├── auth/         # Login/Register pages
+│   ├── console/      # User-facing pages
+│   └── admin/        # Admin pages
+├── router/           # Vue Router with auth guards
+├── services/         # API layer (http.ts, user.ts, admin.ts, types.ts, sse.ts)
+├── stores/           # Pinia state management
+├── styles/           # Global theme.css with CSS variables
+├── App.vue           # Root component with route transitions
+└── main.ts           # Entry point
 ```
 
-**Two store directories, on purpose.** Always write the full path — `@/store/modules/*`
-for template infrastructure, `@/stores/*` for business state.
+### Key Integration Files
 
-### Legacy code being removed
+- **User API**: `src/services/user.ts`
+- **Admin API**: `src/services/admin.ts`
+- **HTTP Client**: `src/services/http.ts` - Axios instance with interceptors
+- **SSE**: `src/services/sse.ts` - Server-Sent Events for real-time order updates
+- **Types**: `src/services/types.ts` - All TypeScript interfaces
 
-`src/pages`, `src/layouts`, and the Ant Design components at the top level of
-`src/components` are the pre-migration UI. Nothing routes to them, they are excluded from
-`tsconfig.json`, and they exist only as a porting reference. Do not add to them; do not
-import from them. `ant-design-vue` is still in `package.json` for the same reason and is
-removed once the last page is converted.
+### State Management (Pinia)
 
-## API Layer Patterns
+All stores use `defineStore` with Options API. Key stores:
 
-- One Axios instance in `services/http.ts`; tokens are injected by URL prefix (`/api` →
-  user token, `/admin/api` → admin token), plus `X-API-Key` via the `withApiKey()` helper.
-- Interceptor contracts that must not be broken: admin 2FA gate
-  (`admin_2fa_required` / `admin_2fa_bind_required`), the real-name gate (single-instance
-  confirm → `/console/realname`), 401 logout-and-redirect with `redirect`, 5xx
-  notification. Errors are **always** re-rejected; callers `try/catch` for local state.
-- `services/sse.ts` is a hand-written SSE client over `fetch` + `ReadableStream` (needed
-  because `EventSource` cannot send `Authorization`), with `Last-Event-ID` resume and
-  backoff. Used by order detail and probe detail.
+- `auth.ts` / `adminAuth.ts` - User/Admin authentication (tokens in localStorage)
+- `cart.ts` - Shopping cart state
+- `catalog.ts` - Product catalog
+- `orders.ts` - Orders with SSE event streaming
+- `vps.ts` - VPS instances
+- `app.ts` - API keys configuration
 
-## Backend Field Naming
+### API Layer Patterns
 
-The Go backend returns `snake_case`, `camelCase` and `PascalCase` depending on whether a
-handler goes through a DTO or serialises a GORM model directly. Code uses `row.id ?? row.ID`
-and the interfaces in `services/types.ts` declare both. **This is a real contract — do not
-"normalise" it away.**
+- Centralized Axios instance in `services/http.ts`
+- Automatic Bearer token injection based on URL prefix (`/api` or `/admin/api`)
+- API Key support via `X-API-Key` header
+- Automatic 401 handling with redirect to login
+- Error messaging via Ant Design message/notification
+
+### Backend Compatibility
+
+The frontend supports field name variations from the Go backend:
+
+- Both camelCase and PascalCase (e.g., `id`/`ID`, `name`/`Name`)
+
+### Routing
+
+- Route guards for user and admin authentication
+- Lazy-loaded page components
+- Meta fields: `requiresUser`, `requiresAdmin`
+
+## Component Patterns
+
+- Vue 3 Composition API with `<script setup>`
+- Scoped CSS with CSS variables for theming
+- Ant Design components for UI
+- Custom components: ProTable (column visibility), StatusTag, ConfirmAction, FilterBar
 
 ## Key Settings Keys
 
-`robot_webhook_url`, `robot_webhook_key`, `smtp_host`, `smtp_port`, `smtp_user`,
-`smtp_pass`, `smtp_from`, `email_enabled`, `email_expire_enabled`, `expire_reminder_days`,
-`emergency_renew_days`, `emergency_renew_interval_hours`, `admin_path`.
+- `robot_webhook_url`, `robot_webhook_key`
+- `smtp_host`, `smtp_port`, `smtp_user`, `smtp_pass`, `smtp_from`
+- `email_enabled`, `email_expire_enabled`
+- `expire_reminder_days`
+- `emergency_renew_days`, `emergency_renew_interval_hours`
 
 ## API Endpoints
 
-**User** (`/api/v1/`): `captcha`, `auth/register`, `auth/login`, `me`, dashboard, catalog,
-cart, orders, `vps`, `vps/{id}/*`, `orders/{id}/events` (SSE), wallet, tickets,
-notifications, realname, CMS blocks/posts, settings.
+**User API** (`/api/v1/`):
 
-**Admin** (`/admin/api/v1/`): `auth/login`, users, orders (approve/reject/retry), VPS
-(lock/unlock/delete/resize/refresh/status/emergency-renew), catalog (regions, plan-groups,
-packages, system-images), settings, API keys, email templates, audit logs.
+- Auth: `captcha`, `auth/register`, `auth/login`, `me`
+- Dashboard, catalog, cart, orders
+- VPS: `vps`, `vps/{id}/*`, `vps/{id}/renew`, `vps/{id}/resize`
+- Order events: `orders/{id}/events` (SSE)
+
+**Admin API** (`/admin/api/v1/`):
+
+- Auth: `auth/login`
+- Users, orders (approve/reject/retry)
+- VPS (lock/unlock/delete/resize/refresh/status/emergency-renew)
+- Catalog: regions, plan-groups, packages, system-images
+- Settings, API keys, email templates, audit logs
+
+## Tech Stack
+
+- Vue 3.4.21 + Vite 5.2.6 + TypeScript 5.4.3
+- Vue Router 4.3.0 + Pinia 2.1.7
+- Ant Design Vue 4.2.1
+- Axios 1.6.8
+- ECharts 5.5.0
+- Day.js 1.11.10
+- CKEditor 5 / TinyMCE (rich text editors)

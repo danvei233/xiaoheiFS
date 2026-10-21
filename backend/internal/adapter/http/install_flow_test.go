@@ -34,9 +34,8 @@ func TestInstallRun_SQLite_FullFlow(t *testing.T) {
 			"path": sqlitePath,
 		},
 		"site": map[string]any{
-			"name":       "Install Test",
-			"url":        "http://localhost:8080",
-			"admin_path": "InstallAdmin01",
+			"name": "Install Test",
+			"url":  "http://localhost:8080",
 		},
 		"admin": map[string]any{
 			"username": "installer_admin",
@@ -67,8 +66,8 @@ func TestInstallRun_SQLite_FullFlow(t *testing.T) {
 	if !resp.OK {
 		t.Fatalf("install response not ok: %s", rec.Body.String())
 	}
-	if !resp.RestartNeed {
-		t.Fatalf("sqlite install should report restart_required")
+	if resp.RestartNeed {
+		t.Fatalf("sqlite should not require restart")
 	}
 	if strings.TrimSpace(resp.ConfigFile) == "" {
 		t.Fatalf("install response missing config_file")
@@ -145,9 +144,8 @@ func TestInstallRun_MySQL_FullFlow(t *testing.T) {
 			"dsn":  dsn,
 		},
 		"site": map[string]any{
-			"name":       "Install Test MySQL",
-			"url":        "http://localhost:8080",
-			"admin_path": "InstallAdmin02",
+			"name": "Install Test MySQL",
+			"url":  "http://localhost:8080",
 		},
 		"admin": map[string]any{
 			"username": "installer_admin_mysql",
