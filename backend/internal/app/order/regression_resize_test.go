@@ -18,12 +18,6 @@ type fakeResizeCatalogRepo struct {
 	regions  map[int64]domain.Region
 }
 
-// SetRegionActive 由上游 danvei233/xiaoheiFS 加进 ports.CatalogRepository，
-// 但这个 fake 没有同步实现，导致该测试包在上游就编译不过。补上空实现。
-func (f *fakeResizeCatalogRepo) SetRegionActive(ctx context.Context, id int64, active bool) error {
-	return nil
-}
-
 func (f *fakeResizeCatalogRepo) ListRegions(ctx context.Context) ([]domain.Region, error) {
 	return nil, nil
 }

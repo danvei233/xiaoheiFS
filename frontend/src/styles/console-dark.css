@@ -1,0 +1,389 @@
+/* ==================== Console Dark Mode Common Styles ==================== */
+
+/* Apply when document has console-dark class */
+.console-dark {
+  /* Card components */
+  .card,
+  .stat-card,
+  .status-card,
+  .content-card,
+  .elevated-card,
+  .metric-card {
+    background: var(--card);
+    border-color: var(--border);
+  }
+
+  /* Text colors */
+  .page-title,
+  .section-title,
+  .card-title,
+  .stat-value,
+  .text-primary {
+    color: var(--text-primary);
+  }
+
+  .page-subtitle,
+  .stat-label,
+  .text-secondary {
+    color: var(--text-secondary);
+  }
+
+  .text-tertiary {
+    color: var(--text-tertiary);
+  }
+
+  /* Ant Design table overrides */
+  .ant-table-wrapper {
+    background: transparent;
+  }
+
+  .ant-table {
+    background: var(--card) !important;
+    color: var(--text-primary);
+  }
+
+  .ant-table-container {
+    border-radius: var(--radius-md);
+  }
+
+  .ant-table-thead > tr > th {
+    background: var(--bg-tertiary) !important;
+    color: var(--text-primary);
+    border-bottom-color: var(--border);
+  }
+
+  .ant-table-tbody > tr > td {
+    background: var(--card) !important;
+    border-bottom-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .ant-table-tbody > tr:hover > td {
+    background: var(--bg-secondary) !important;
+  }
+
+  .ant-table-placeholder {
+    background: var(--card) !important;
+    color: var(--text-tertiary);
+  }
+
+  /* Ant Design modal overrides */
+  .ant-modal-content {
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+
+  .ant-modal-header {
+    background: var(--card);
+    border-bottom-color: var(--border);
+  }
+
+  .ant-modal-title {
+    color: var(--text-primary);
+  }
+
+  .ant-modal-close-x {
+    color: var(--text-secondary);
+  }
+
+  .ant-modal-close-x:hover {
+    color: var(--text-primary);
+  }
+
+  .ant-modal-body {
+    color: var(--text-secondary);
+  }
+
+  .ant-modal-footer {
+    background: var(--card);
+    border-top-color: var(--border);
+  }
+
+  /* Ant Design dropdown menus */
+  .ant-dropdown-menu {
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+
+  .ant-dropdown-menu-item,
+  .ant-dropdown-menu-submenu-title {
+    color: var(--text-primary);
+  }
+
+  .ant-dropdown-menu-item:hover,
+  .ant-dropdown-menu-submenu-title:hover {
+    background: var(--bg-secondary);
+  }
+
+  .ant-dropdown-menu-item-disabled {
+    color: var(--text-tertiary);
+  }
+
+  .ant-dropdown-menu-item-divider {
+    background: var(--border);
+  }
+
+  /* Ant Design tooltip */
+  .ant-tooltip-inner {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+  }
+
+  .ant-tooltip-arrow-content {
+    background: var(--bg-tertiary);
+  }
+
+  /* Ant Design tabs */
+  .ant-tabs-tab {
+    color: var(--text-secondary);
+  }
+
+  .ant-tabs-tab:hover {
+    color: var(--primary);
+  }
+
+  .ant-tabs-tab-active {
+    color: var(--primary);
+  }
+
+  .ant-tabs-ink-bar {
+    background: var(--primary);
+  }
+
+  /* Ant Design card overrides */
+  .ant-card {
+    background: var(--card);
+    border-color: var(--border);
+  }
+
+  .ant-card-head {
+    background: var(--card);
+    border-bottom-color: var(--border);
+  }
+
+  .ant-card-head-title {
+    color: var(--text-primary);
+  }
+
+  .ant-card-body {
+    color: var(--text-secondary);
+  }
+
+  .ant-card-small > .ant-card-head {
+    background: var(--card);
+    border-bottom-color: var(--border);
+  }
+
+  /* Ant Design input overrides */
+  .ant-input {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .ant-input:hover {
+    border-color: var(--primary-light);
+  }
+
+  .ant-input:focus,
+  .ant-input-focused {
+    background: var(--bg-tertiary);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+
+  .ant-input::placeholder {
+    color: var(--text-tertiary);
+  }
+
+  .ant-input-affix-wrapper {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .ant-input-affix-wrapper-focused {
+    background: var(--bg-tertiary);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+
+  .ant-input-affix-wrapper > input {
+    background: transparent;
+    color: var(--text-primary);
+  }
+
+  /* Ant Design select */
+  .ant-select-selector {
+    background: var(--bg-secondary) !important;
+    border-color: var(--border) !important;
+  }
+
+  .ant-select-selection-item {
+    color: var(--text-primary);
+  }
+
+  .ant-select-selection-placeholder {
+    color: var(--text-tertiary);
+  }
+
+  .ant-select-dropdown {
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+
+  .ant-select-item {
+    color: var(--text-primary);
+  }
+
+  .ant-select-item-option-selected {
+    background: var(--bg-secondary);
+  }
+
+  .ant-select-item-option-active {
+    background: var(--bg-tertiary);
+  }
+
+  /* Ant Design button overrides */
+  .ant-btn-default {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+    color: var(--text-primary);
+  }
+
+  .ant-btn-default:hover {
+    background: var(--bg-tertiary);
+    border-color: var(--primary);
+    color: var(--primary);
+  }
+
+  /* Ant Design pagination */
+  .ant-pagination-item {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .ant-pagination-item a {
+    color: var(--text-primary);
+  }
+
+  .ant-pagination-item:hover {
+    border-color: var(--primary);
+  }
+
+  .ant-pagination-item:hover a {
+    color: var(--primary);
+  }
+
+  .ant-pagination-item-active {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+
+  .ant-pagination-item-active a {
+    color: #fff;
+  }
+
+  .ant-pagination-prev,
+  .ant-pagination-next {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .ant-pagination-prev button,
+  .ant-pagination-next button {
+    color: var(--text-primary);
+  }
+
+  .ant-pagination-disabled {
+    background: var(--bg-tertiary);
+    border-color: var(--border);
+  }
+
+  .ant-pagination-disabled button {
+    color: var(--text-tertiary);
+  }
+
+  /* Ant Design badge */
+  .ant-badge-count {
+    background: var(--primary-gradient);
+    box-shadow: var(--shadow-glow-sm);
+  }
+
+  /* Ant Design tag */
+  .ant-tag {
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  /* Ant Design divider */
+  .ant-divider {
+    border-top-color: var(--border);
+  }
+
+  /* Ant Design empty state */
+  .ant-empty-description {
+    color: var(--text-tertiary);
+  }
+
+  /* Ant Design spin */
+  .ant-spin-dot-item {
+    background-color: var(--primary);
+  }
+
+  /* Form elements */
+  label {
+    color: var(--text-primary);
+  }
+
+  .ant-form-item-label > label {
+    color: var(--text-primary);
+  }
+
+  .ant-form-item-explain-error {
+    color: var(--danger);
+  }
+
+  /* Ant Design checkbox */
+  .ant-checkbox-wrapper {
+    color: var(--text-primary);
+  }
+
+  .ant-checkbox-inner {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .ant-checkbox-checked .ant-checkbox-inner {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+
+  .ant-checkbox:hover .ant-checkbox-inner {
+    border-color: var(--primary);
+  }
+
+  /* Ant Design radio */
+  .ant-radio-wrapper {
+    color: var(--text-primary);
+  }
+
+  .ant-radio-inner {
+    background: var(--bg-secondary);
+    border-color: var(--border);
+  }
+
+  .ant-radio-checked .ant-radio-inner {
+    background: var(--primary);
+    border-color: var(--primary);
+  }
+
+  /* Ant Design switch */
+  .ant-switch {
+    background: var(--bg-tertiary);
+  }
+
+  .ant-switch-checked {
+    background: var(--primary);
+  }
+}

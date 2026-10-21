@@ -1,7 +1,7 @@
-import { defineStore } from 'pinia'
-import { listOrders, getOrderDetail, refreshOrder } from '@/services/user'
+import { defineStore } from "pinia";
+import { listOrders, getOrderDetail, refreshOrder } from "@/services/user";
 
-export const useOrdersStore = defineStore('orders', {
+export const useOrdersStore = defineStore("orders", {
   state: () => ({
     items: [],
     loading: false,
@@ -12,26 +12,25 @@ export const useOrdersStore = defineStore('orders', {
   }),
   actions: {
     async fetchOrders(params) {
-      this.loading = true
+      this.loading = true;
       try {
-        const res = await listOrders(params)
-        // 列表接口有的返回 { items, total }，有的直接返回数组，两种都要兜住
-        const payload: { items?: unknown[]; total?: number } = res.data || {}
-        this.items = payload.items || []
-        this.total = payload.total || this.items.length
+        const res = await listOrders(params);
+        const payload = res.data || {};
+        this.items = payload.items || [];
+        this.total = payload.total || this.items.length;
       } finally {
-        this.loading = false
+        this.loading = false;
       }
     },
     async fetchOrderDetail(id) {
-      const res = await getOrderDetail(id)
-      this.currentOrder = res.data?.order || null
-      this.orderItems = res.data?.items || []
-      this.orderPayments = res.data?.payments || []
+      const res = await getOrderDetail(id);
+      this.currentOrder = res.data?.order || null;
+      this.orderItems = res.data?.items || [];
+      this.orderPayments = res.data?.payments || [];
     },
     async refreshOrder(id) {
-      await refreshOrder(id)
-      await this.fetchOrderDetail(id)
+      await refreshOrder(id);
+      await this.fetchOrderDetail(id);
     }
   }
-})
+});

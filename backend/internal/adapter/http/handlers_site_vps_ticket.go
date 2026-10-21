@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -97,41 +96,25 @@ func (h *Handler) VPSRefresh(c *gin.Context) {
 }
 
 func (h *Handler) VPSPanel(c *gin.Context) {
-	url, ok := h.vpsAccessURL(c, "panel_login", "面板登录", h.vpsSvc.GetPanelURL)
-	if !ok {
-		return
-	}
-	c.Redirect(http.StatusFound, url)
-}
-
-func (h *Handler) VPSPanelURL(c *gin.Context) {
-	url, ok := h.vpsAccessURL(c, "panel_login", "面板登录", h.vpsSvc.GetPanelURL)
-	if !ok {
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"url": url})
-}
-
-func (h *Handler) vpsAccessURL(c *gin.Context, feature string, label string, getter func(context.Context, domain.VPSInstance) (string, error)) (string, bool) {
 	var uri vpsIDURI
 	if err := c.ShouldBindUri(&uri); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
-		return "", false
+		return
 	}
 	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
-		return "", false
+		return
 	}
-	if h.denyIfFeatureDisabled(c, inst, feature, label) {
-		return "", false
+	if h.denyIfFeatureDisabled(c, inst, "panel_login", "面板登录") {
+		return
 	}
-	url, err := getter(c, inst)
+	url, err := h.vpsSvc.GetPanelURL(c, inst)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return "", false
+		return
 	}
-	return url, true
+	c.Redirect(http.StatusFound, url)
 }
 
 func (h *Handler) VPSMonitor(c *gin.Context) {
@@ -179,19 +162,25 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 }
 
 func (h *Handler) VPSVNC(c *gin.Context) {
-	url, ok := h.vpsAccessURL(c, "vnc", "VNC", h.vpsSvc.VNCURL)
-	if !ok {
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "vnc", "VNC") {
+		return
+	}
+	url, err := h.vpsSvc.VNCURL(c, inst)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	c.Redirect(http.StatusFound, url)
-}
-
-func (h *Handler) VPSVNCURL(c *gin.Context) {
-	url, ok := h.vpsAccessURL(c, "vnc", "VNC", h.vpsSvc.VNCURL)
-	if !ok {
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"url": url})
 }
 
 func (h *Handler) VPSStart(c *gin.Context) {

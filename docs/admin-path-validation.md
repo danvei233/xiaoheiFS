@@ -61,7 +61,7 @@ curl -X PATCH http://localhost:8080/admin/api/v1/settings \
 
 ## 前端集成
 
-前端登录页会自动从当前路由取出后台路径并随登录请求提交。
+前端已在 `Login.vue` 中完成适配，会自动从路由中获取当前路径并传递给登录API。
 
 ### 自动获取路径
 ```javascript
@@ -100,14 +100,9 @@ if (errorMsg?.includes("admin path")) {
 - **检查API**：`backend/internal/adapter/http/install.go` (CheckAdminPath函数)
 
 ### 前端
-- **登录页面**：`frontend/src/views/admin/auth/login/index.vue`
-- **路径解析与缓存**：`frontend/src/services/adminPath.ts`（`checkAdminPath` / `getCachedAdminPath` / `fetchAdminPath`）
-- **域解析与路由前缀**：`frontend/src/router/realm.ts`
-- **动态路由注册**：`frontend/src/router/guards/beforeEach.ts` 的 `registerAdminRoutes`
-- **认证 Store**：`frontend/src/stores/adminAuth.ts`
-- **API 服务**：`frontend/src/services/admin.ts`
-
-说明：后台路径是运行时决定的。前端拿到 `admin_path` 后，把管理端路由表的路径统一加上该前缀再注册到 Vue Router；服务端不再对该路径做任何特殊处理，只负责把 `index.html` 回落给它。
+- **登录页面**：`frontend/src/pages/admin/Login.vue` (第58-75行)
+- **认证Store**：`frontend/src/stores/adminAuth.ts`
+- **API服务**：`frontend/src/services/admin.ts`
 
 ## 测试
 

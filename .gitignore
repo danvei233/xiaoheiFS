@@ -114,16 +114,3 @@ Thumbs.db
 /mui2/
 /auroraboat-main/
 /CLAUDE.md
-
-# ============================================
-# Build caches / vendored template
-# ============================================
-/.gocache/
-/.adp-template/
-/.adp-work/
-/frontend/.vite-cache/
-/NEEDS.md
-/DONE-W*.md
-/FIXED-W*.md
-/w*-firstpage.md
-/w*-charts.md

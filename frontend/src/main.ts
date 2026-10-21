@@ -1,30 +1,15 @@
-import { createApp } from 'vue'
-import App from './App.vue'
+﻿import { createApp } from "vue";
+import { createPinia } from "pinia";
+import Antd from "ant-design-vue";
+import "ant-design-vue/dist/reset.css";
+import App from "./App.vue";
+import router from "./router";
+import "./styles/theme.css";
+import "./styles/admin.css";
 
-import { initStore } from './store'
-import { initRouter } from './router'
-import { setupGlobDirectives } from './directives'
-import { setupErrorHandle } from './utils/sys/error-handle'
-import { initializeTheme } from './hooks/core/useTheme'
-import language from './locales'
-
-import '@styles/core/tailwind.css'
-import '@styles/index.scss'
-import '@utils/sys/console'
-
-// iOS 上阻止双击缩放需要非 passive 监听
-document.addEventListener('touchstart', function () {}, { passive: false })
-
-const app = createApp(App)
-
-initStore(app)
-initRouter(app)
-setupGlobDirectives(app)
-setupErrorHandle(app)
-
-app.use(language)
-
-// 主题必须在 store 就绪之后初始化（它要读 settingStore 里持久化的偏好）
-initializeTheme()
-
-app.mount('#app')
+const app = createApp(App);
+app.use(createPinia());
+app.use(router);
+app.use(Antd);
+app.config.globalProperties.$t = () => "";
+app.mount("#app");

@@ -54,49 +54,6 @@ func TestMiddleware_RequireAdmin_Forbidden(t *testing.T) {
 	}
 }
 
-func TestMiddleware_RequireUser_RejectsAdminRole(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	mw := httpadapter.NewMiddleware("secret", nil, nil, nil, nil, nil)
-	r := gin.New()
-	r.GET("/me", mw.RequireUser(), func(c *gin.Context) { c.Status(http.StatusOK) })
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": int64(1),
-		"role":    "admin",
-		"exp":     time.Now().Add(time.Hour).Unix(),
-	})
-	signed, _ := token.SignedString([]byte("secret"))
-
-	req := httptest.NewRequest(http.MethodGet, "/me", nil)
-	req.Header.Set("Authorization", "Bearer "+signed)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("expected 403, got %d", rec.Code)
-	}
-}
-
-func TestMiddleware_RequireUser_DoesNotAcceptQueryToken(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	mw := httpadapter.NewMiddleware("secret", nil, nil, nil, nil, nil)
-	r := gin.New()
-	r.GET("/vps/:id/panel", mw.RequireUser(), func(c *gin.Context) { c.Status(http.StatusOK) })
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": int64(1),
-		"role":    "user",
-		"exp":     time.Now().Add(time.Hour).Unix(),
-	})
-	signed, _ := token.SignedString([]byte("secret"))
-
-	req := httptest.NewRequest(http.MethodGet, "/vps/1/panel?token="+signed, nil)
-	rec := httptest.NewRecorder()
-	r.ServeHTTP(rec, req)
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", rec.Code)
-	}
-}
-
 func TestMiddleware_RejectsNoneAlg(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	mw := httpadapter.NewMiddleware("secret", nil, nil, nil, nil, nil)

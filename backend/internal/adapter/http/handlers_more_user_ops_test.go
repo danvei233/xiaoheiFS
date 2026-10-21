@@ -88,10 +88,6 @@ func TestHandlers_UserOpsMore(t *testing.T) {
 	if rec.Code != http.StatusFound {
 		t.Fatalf("vps panel: %d", rec.Code)
 	}
-	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/panel-url", nil, token)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("vps panel url: %d", rec.Code)
-	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/monitor", nil, token)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("vps monitor: %d", rec.Code)
@@ -99,10 +95,6 @@ func TestHandlers_UserOpsMore(t *testing.T) {
 	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/vnc", nil, token)
 	if rec.Code != http.StatusFound {
 		t.Fatalf("vps vnc: %d", rec.Code)
-	}
-	rec = testutil.DoJSON(t, env.Router, http.MethodGet, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/vnc-url", nil, token)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("vps vnc url: %d", rec.Code)
 	}
 	rec = testutil.DoJSON(t, env.Router, http.MethodPost, "/api/v1/vps/"+testutil.Itoa(inst.ID)+"/start", nil, token)
 	if rec.Code != http.StatusOK {

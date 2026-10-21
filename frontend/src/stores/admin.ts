@@ -1,11 +1,13 @@
-import { defineStore } from 'pinia'
+import { defineStore } from "pinia";
 import {
   getAdminDashboardOverview,
   getAdminDashboardRevenue,
-  getAdminDashboardVpsStatus
-} from '@/services/admin'
+  getAdminDashboardVpsStatus,
+  listAdminOrders,
+  listAdminVps
+} from "@/services/admin";
 
-export const useAdminStore = defineStore('admin', {
+export const useAdminStore = defineStore("admin", {
   state: () => ({
     overview: {
       total_revenue: 0,
@@ -23,36 +25,40 @@ export const useAdminStore = defineStore('admin', {
 
   actions: {
     async fetchOverview() {
-      this.loading = true
+      this.loading = true;
       try {
-        const res = await getAdminDashboardOverview()
-        this.overview = res.data || this.overview
+        const res = await getAdminDashboardOverview();
+        this.overview = res.data || this.overview;
       } finally {
-        this.loading = false
+        this.loading = false;
       }
     },
 
     async fetchRevenue(params?: any) {
       try {
-        const period = params?.period || params?.granularity || 'day'
-        const res = await getAdminDashboardRevenue({ period })
-        this.revenue = res.data?.items || res.data?.points || []
+        const period = params?.period || params?.granularity || "day";
+        const res = await getAdminDashboardRevenue({ period });
+        this.revenue = res.data?.items || res.data?.points || [];
       } catch (error) {
-        console.error('Failed to fetch revenue data:', error)
+        console.error("Failed to fetch revenue data:", error);
       }
     },
 
     async fetchVpsStatus() {
       try {
-        const res = await getAdminDashboardVpsStatus()
-        this.vpsStatus = res.data?.items || res.data?.points || []
+        const res = await getAdminDashboardVpsStatus();
+        this.vpsStatus = res.data?.items || res.data?.points || [];
       } catch (error) {
-        console.error('Failed to fetch VPS status:', error)
+        console.error("Failed to fetch VPS status:", error);
       }
     },
 
     async fetchDashboardData(params?: any) {
-      await Promise.all([this.fetchOverview(), this.fetchRevenue(params), this.fetchVpsStatus()])
+      await Promise.all([
+        this.fetchOverview(),
+        this.fetchRevenue(params),
+        this.fetchVpsStatus()
+      ]);
     }
   }
-})
+});
