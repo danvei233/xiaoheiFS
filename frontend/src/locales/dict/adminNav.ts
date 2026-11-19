@@ -2,7 +2,7 @@ import type { Dict } from './shared';
 
 /** Admin console navigation, shell chrome and 2FA gate copy. */
 export const adminNav: Dict = {
-  'adminNav.overview': { zh: '总览', tw: '總覽', en: 'Overview', ja: '概要', ko: '개요', fr: 'Vue d’ensemble', de: 'Übersicht', es: 'Resumen', it: 'Panoramica', pt: 'Visão geral', ru: 'Обзор', ar: 'نظرة عامة' },
+  'adminNav.overview': { zh: '系统总览', tw: '系統總覽', en: 'System overview', ja: 'システム概要', ko: '시스템 개요', fr: 'Vue d’ensemble système', de: 'Systemübersicht', es: 'Resumen del sistema', it: 'Panoramica di sistema', pt: 'Visão geral do sistema', ru: 'Обзор системы', ar: 'نظرة عامة على النظام' },
   'adminNav.revenue': { zh: '收入统计', tw: '收入統計', en: 'Revenue analytics', ja: '収益分析', ko: '수익 통계', fr: 'Analyse des revenus', de: 'Umsatzanalyse', es: 'Analítica de ingresos', it: 'Analisi ricavi', pt: 'Análise de receita', ru: 'Аналитика доходов', ar: 'تحليلات الإيرادات' },
   'adminNav.trade': { zh: '交易资源', tw: '交易資源', en: 'Trade & resources', ja: '取引リソース', ko: '거래 및 리소스', fr: 'Transactions et ressources', de: 'Handel & Ressourcen', es: 'Comercio y recursos', it: 'Commercio e risorse', pt: 'Comércio e recursos', ru: 'Торговля и ресурсы', ar: 'التجارة والموارد' },
   'adminNav.orders': { zh: '订单审核', tw: '訂單審核', en: 'Order review', ja: '注文審査', ko: '주문 검토', fr: 'Vérification des commandes', de: 'Bestellprüfung', es: 'Revisión de pedidos', it: 'Verifica ordini', pt: 'Revisão de pedidos', ru: 'Проверка заказов', ar: 'مراجعة الطلبات' },
