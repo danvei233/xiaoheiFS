@@ -590,6 +590,7 @@ onUnmounted(() => {
   font-weight: 500;
   line-height: 1.1;
   letter-spacing: 0;
+  white-space: nowrap;
 }
 
 .sidebar-collapsed .sidebar-footer {

@@ -77,13 +77,13 @@ const structure: Record<ThemePreset, Omit<ThemeDefinition, "light" | "dark">> = 
     inputRadius: "8px", inputBorderWidth: "1px", rowPadding: "11px", headTransform: "uppercase",
     navActive: "bar", surfaceFilter: "none", canvasPattern: "none"
   },
-  // Soft toy: oversized radii, pill controls, candy shadows, springy hover, dotted canvas.
+  // Soft toy: rounded (not spherical) surfaces, pill controls, candy shadows, springy hover, dotted canvas.
   cute: {
-    radius: 24, controlRadius: 999, controlHeight: 44, density: 1.12, shape: "soft",
+    radius: 16, controlRadius: 14, controlHeight: 44, density: 1.12, shape: "soft",
     buttonRadius: "999px", buttonWeight: 700, buttonLetter: "0", buttonTransform: "translateY(-3px) scale(1.02)", buttonClip: "none",
-    cardRadius: "24px", cardBorderWidth: "1px", cardBorderStyle: "solid", cardShadow: "0 10px 24px rgb(24 120 99 / 12%)",
+    cardRadius: "16px", cardBorderWidth: "1px", cardBorderStyle: "solid", cardShadow: "0 10px 24px rgb(24 120 99 / 12%)",
     cardHoverShadow: "0 18px 38px rgb(24 120 99 / 20%)", cardHoverTransform: "translateY(-4px) rotate(-.4deg)",
-    inputRadius: "999px", inputBorderWidth: "1px", rowPadding: "13px", headTransform: "none",
+    inputRadius: "12px", inputBorderWidth: "1px", rowPadding: "13px", headTransform: "none",
     navActive: "pill", surfaceFilter: "none", canvasPattern: "dots"
   },
   // Liquid glass: translucent layered panes, refraction edge, inner highlight, blurred canvas.

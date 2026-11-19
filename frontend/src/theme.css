@@ -397,8 +397,8 @@ html[data-console-theme="gold"] .ant-select-item-option-selected:not(.ant-select
 html[data-console-theme="gold"] .ant-tabs-tab-active .ant-tabs-tab-btn { color: var(--theme-selection-color); }
 html[data-console-theme="gold"] .ant-pagination-item-active { border-color: var(--theme-selection-color); }
 html[data-console-theme="gold"] .ant-pagination-item-active a { color: var(--theme-selection-color); }
-html[data-console-theme="cute"] .console-layout :is(.card, .stat-card, .content-card, .metric-card, .ant-card) { border-radius: 22px; }
-html[data-console-theme="cute"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) { border-radius: 14px; }
+html[data-console-theme="cute"] .console-layout :is(.card, .stat-card, .content-card, .metric-card, .ant-card) { border-radius: 16px; }
+html[data-console-theme="cute"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) { border-radius: 12px; }
 html[data-console-theme="cute"] .console-layout .menu-item-active { box-shadow: inset 0 0 0 1px var(--border); }
 html[data-console-theme="cute"] :is(.ant-card-head, .ant-table-thead > tr > th) { background-image: linear-gradient(110deg, var(--theme-accent-soft), transparent 70%); }
 html[data-console-theme="glass"] :is(.ant-card, .card, .stat-card, .content-card, .metric-card, .ant-modal-content, .ant-drawer-content, .ant-popover-inner, .ant-tooltip-inner, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) {
@@ -766,7 +766,7 @@ html[data-console-theme="executive"] .ant-table-tbody > tr > td {
   font-variant-numeric: tabular-nums;
 }
 html[data-console-theme="executive"] .ant-table-tbody > tr:hover > td { background: color-mix(in srgb, var(--primary) 6%, var(--card)); }
-html[data-console-theme="executive"] .console-layout .menu-item {
+html[data-console-theme="executive"] .console-layout .sidebar:not(.sidebar-collapsed) .menu-item {
   height: 34px;
   margin: 0 8px 2px;
   padding-inline: 10px;
@@ -908,12 +908,12 @@ html[data-console-theme="cute"] .public-layout .btn-primary:hover {
   transform: translateY(-2px);
 }
 html[data-console-theme="cute"] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker) {
-  border-radius: 999px;
-  padding-inline: 18px;
+  border-radius: 12px;
+  padding-inline: 14px;
 }
 html[data-console-theme="cute"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card) {
   border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
-  border-radius: 22px;
+  border-radius: 16px;
   box-shadow: 0 6px 18px rgb(24 120 99 / 10%);
 }
 html[data-console-theme="cute"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card):hover {
@@ -923,16 +923,16 @@ html[data-console-theme="cute"] :is(.ant-card, .card, .feature-card, .product-ca
 html[data-console-theme="cute"] .ant-card-head {
   background: transparent;
   border-bottom: 1px solid var(--border);
-  border-radius: 22px 22px 0 0;
+  border-radius: 16px 16px 0 0;
 }
-html[data-console-theme="cute"] .ant-table-container { border-radius: 20px; overflow: hidden; }
+html[data-console-theme="cute"] .ant-table-container { border-radius: 14px; overflow: hidden; }
 html[data-console-theme="cute"] .ant-table-thead > tr > th {
   background: var(--theme-table-head-bg);
   border-bottom: 0;
 }
 html[data-console-theme="cute"] .ant-table-tbody > tr > td { border-bottom: 1px solid var(--theme-accent-soft); }
 html[data-console-theme="cute"] .ant-tag { border-radius: 999px; padding-inline: 10px; }
-html[data-console-theme="cute"] .console-layout .menu-item { border-radius: 999px; margin-inline: 8px; }
+html[data-console-theme="cute"] .console-layout .sidebar:not(.sidebar-collapsed) .menu-item { border-radius: 12px; margin-inline: 8px; }
 html[data-console-theme="cute"] .console-layout .menu-item-active { box-shadow: inset 0 0 0 1px var(--border); }
 
 /* ---------- glass · liquid glass: rim refraction, specular edge, frosted body ---------- */
