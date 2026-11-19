@@ -98,16 +98,11 @@
       <div class="appearance-popover language-popover">
         <fieldset>
           <legend>{{ t('appearance.language') }}</legend>
-          <div class="language-grid">
-            <label v-for="language in languages" :key="language.code" class="language-choice" :class="{ selected: localePreference === language.code }" :lang="language.code">
-              <input type="radio" :name="`appearance-language-${instanceId}`" :value="language.code" :checked="localePreference === language.code" @change="setLocale(language.code)" />
-              <span dir="auto"><strong>{{ language.label }}</strong><small>{{ language.englishLabel }}</small></span>
-              <CheckOutlined v-if="localePreference === language.code" class="choice-check" aria-hidden="true" />
-            </label>
-            <label class="language-choice language-auto" :class="{ selected: localePreference === 'auto' }">
-              <input type="radio" :name="`appearance-language-${instanceId}`" value="auto" :checked="localePreference === 'auto'" @change="setLocale('auto')" />
-              <span><strong>{{ t('appearance.browser') }}</strong><small>{{ locale }}</small></span>
-              <CheckOutlined v-if="localePreference === 'auto'" class="choice-check" aria-hidden="true" />
+          <div class="language-grid" dir="ltr">
+            <label v-for="language in languages" :key="language.code" class="language-choice" :class="{ selected: locale === language.code }" :lang="language.code">
+              <input type="radio" :name="`appearance-language-${instanceId}`" :value="language.code" :checked="locale === language.code" @change="setLocale(language.code)" />
+              <span class="language-name"><strong>{{ language.label }}</strong><small>{{ language.englishLabel }}</small></span>
+              <CheckOutlined v-if="locale === language.code" class="choice-check" aria-hidden="true" />
             </label>
           </div>
         </fieldset>
@@ -121,7 +116,7 @@ import { getCurrentInstance, ref } from 'vue';
 import { BgColorsOutlined, CheckOutlined, DesktopOutlined, GlobalOutlined } from '@ant-design/icons-vue';
 import { useAppStore, type FontStyle } from '@/stores/app';
 import { THEME_PRESETS, getThemeAppearance, type ThemePreset } from '@/theme';
-import { direction, languages, locale, localePreference, setLocale, t } from '@/locales';
+import { direction, languages, locale, setLocale, t } from '@/locales';
 import { themeDescriptions } from '@/locales/messages';
 
 const app = useAppStore();
@@ -459,7 +454,7 @@ function handleControlToggle(name: 'theme' | 'language', event: Event) {
 .language-popover { width: 356px; max-width: min(356px, calc(100vw - 24px)); padding: 10px; }
 .appearance-popover fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
 .appearance-popover legend { display: block; padding: 0 2px 8px; color: var(--text-secondary); font-size: 12px; font-weight: 650; }
-.language-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 4px; }
+.language-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 4px; direction: ltr; }
 .language-choice {
   position: relative;
   display: grid;
@@ -474,7 +469,7 @@ function handleControlToggle(name: 'theme' | 'language', event: Event) {
   cursor: pointer;
   transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
-.language-choice > span { grid-column: 1; min-width: 0; }
+.language-choice > span { grid-column: 1; min-width: 0; text-align: left; }
 .language-choice strong, .language-choice small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .language-choice strong { font-size: 13px; font-weight: 650; line-height: 1.35; }
 .language-choice small { margin-top: 1px; color: var(--text-secondary); font-size: 10px; line-height: 1.35; }
@@ -482,7 +477,6 @@ function handleControlToggle(name: 'theme' | 'language', event: Event) {
 .language-choice:hover { background: var(--bg-secondary); }
 .language-choice.selected { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
 .language-choice:focus-within { outline: 2px solid var(--primary); outline-offset: 1px; }
-.language-auto { grid-column: 1 / -1; min-height: 42px; }
 
 @media (max-width: 680px) {
   .appearance-settings { gap: 4px; }
