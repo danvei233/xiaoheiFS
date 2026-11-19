@@ -3,20 +3,20 @@
     <!-- Page Header -->
     <div class="page-header">
       <div class="page-header-left">
-        <h1 class="page-title">控制台总览</h1>
-        <p class="page-subtitle">查看您的云服务使用情况和账户信息</p>
+        <h1 class="page-title">{{ t('console.dashboard.title') }}</h1>
+        <p class="page-subtitle">{{ t('console.dashboard.subtitle') }}</p>
       </div>
       <div class="page-header-actions">
         <a-button @click="refreshDashboard" :loading="loading">
           <ReloadOutlined />
-          刷新
+          {{ t('common.refresh') }}
         </a-button>
       </div>
     </div>
 
     <!-- Stats Grid -->
     <div class="stats-section">
-      <div class="section-title">数据概览</div>
+      <div class="section-title">{{ t('console.dashboard.overview') }}</div>
       <div class="stats-grid">
         <router-link
           v-for="stat in mainStats"
@@ -40,7 +40,7 @@
 
     <!-- Status Cards -->
     <div class="status-section">
-      <div class="section-title">快捷入口</div>
+      <div class="section-title">{{ t('console.dashboard.shortcuts') }}</div>
       <div class="status-grid">
         <router-link
           v-for="item in quickActions"
@@ -66,9 +66,9 @@
         <div class="card-header">
           <div class="card-title">
             <LineChartOutlined />
-            <span>消费趋势</span>
+            <span>{{ t('console.dashboard.spendTrend') }}</span>
           </div>
-          <a-tag color="blue">近30天</a-tag>
+          <a-tag color="blue">{{ t('console.dashboard.last30Days') }}</a-tag>
         </div>
         <div class="chart-wrapper">
           <LineChart :data="charts.spendTrend" />
@@ -80,7 +80,7 @@
         <div class="card-header">
           <div class="card-title">
             <PieChartOutlined />
-            <span>订单分布</span>
+            <span>{{ t('console.dashboard.orderStatus') }}</span>
           </div>
         </div>
         <div class="chart-wrapper chart-wrapper-pie">
@@ -95,10 +95,10 @@
         <div class="expiring-header">
           <div class="expiring-title">
             <ClockCircleOutlined />
-            <span>即将到期</span>
+            <span>{{ t('console.dashboard.expiringSoon') }}</span>
           </div>
           <a-button type="link" size="small" @click="() => router.push('/console/vps')">
-            查看全部
+            {{ t('console.dashboard.viewAll') }}
             <RightOutlined />
           </a-button>
         </div>
@@ -112,7 +112,7 @@
           <template #description>
             <div class="empty-state">
               <CheckCircleOutlined />
-              <span>暂无即将到期的实例</span>
+              <span>{{ t('console.dashboard.noExpiring') }}</span>
             </div>
           </template>
         </a-empty>
@@ -166,6 +166,7 @@ import {
 import { Empty } from "ant-design-vue";
 import LineChart from "@/components/Charts/LineChart.vue";
 import PieChart from "@/components/Charts/PieChart.vue";
+import { t, locale } from "@/locales";
 
 const router = useRouter();
 const auth = useAuthStore();
@@ -186,7 +187,7 @@ const mainStats = computed(() => {
   return [
     {
       key: "balance",
-      label: "账户余额",
+      label: t('console.dashboard.balance'),
       value: formatMoney(balance, currency),
       color: "#0066FF",
       icon: WalletOutlined,
@@ -194,23 +195,23 @@ const mainStats = computed(() => {
     },
     {
       key: "vps",
-      label: "云服务器",
-      value: `${store.metrics.vps_total || 0} 台`,
+      label: t('console.dashboard.cloudServers'),
+      value: `${store.metrics.vps_total || 0} ${t('common.unitDevice')}`,
       color: "#059669",
       icon: CloudServerOutlined,
       route: "/console/vps"
     },
     {
       key: "orders",
-      label: "全部订单",
-      value: `${store.metrics.orders_total || 0} 单`,
+      label: t('console.dashboard.allOrders'),
+      value: `${store.metrics.orders_total || 0} ${t('common.unitOrder')}`,
       color: "#8b5cf6",
       icon: FileTextOutlined,
       route: "/console/orders"
     },
     {
       key: "spend",
-      label: "近30天消费",
+      label: t('console.dashboard.spend30d'),
       value: formatMoney(store.metrics.spend_30d, currency),
       color: "#f59e0b",
       icon: CreditCardOutlined,
@@ -222,42 +223,42 @@ const mainStats = computed(() => {
 const quickActions = computed(() => {
   const realnameStatus = store.metrics.realname_status;
   const realnameLabels = {
-    verified: "已认证",
-    failed: "未通过",
-    pending: "审核中",
-    disabled: "未启用",
-    unverified: "未认证"
+    verified: t('status.realname.verified'),
+    failed: t('status.realname.failed'),
+    pending: t('status.realname.pending'),
+    disabled: t('status.realname.disabled'),
+    unverified: t('status.realname.unverified')
   };
 
   return [
     {
       key: "realname",
-      label: "实名认证",
-      value: realnameLabels[realnameStatus] || "未认证",
+      label: t('nav.realname'),
+      value: realnameLabels[realnameStatus] || t('status.realname.unverified'),
       icon: SafetyOutlined,
       color: realnameStatus === "verified" ? "#059669" : "#f59e0b",
       route: "/console/realname"
     },
     {
       key: "expiring",
-      label: "即将到期",
-      value: `${store.metrics.expiring || 0} 台`,
+      label: t('console.dashboard.expiringSoon'),
+      value: `${store.metrics.expiring || 0} ${t('common.unitDevice')}`,
       icon: ClockCircleOutlined,
       color: store.metrics.expiring > 0 ? "#ef4444" : "#94a3b8",
       route: "/console/vps"
     },
     {
       key: "cart",
-      label: "购物车",
-      value: `${store.metrics.cart_items || 0} 件`,
+      label: t('console.dashboard.cartItems'),
+      value: `${store.metrics.cart_items || 0} ${t('common.unitItem')}`,
       icon: ShoppingCartOutlined,
       color: "#0066FF",
       route: "/console/cart"
     },
     {
       key: "pending",
-      label: "待处理",
-      value: `${(store.metrics.pending_orders || 0) + (store.metrics.pending_payment || 0)} 单`,
+      label: t('console.dashboard.pendingItems'),
+      value: `${(store.metrics.pending_orders || 0) + (store.metrics.pending_payment || 0)} ${t('common.unitOrder')}`,
       icon: FileTextOutlined,
       color: "#ec4899",
       route: "/console/orders"
@@ -276,7 +277,7 @@ const formatExpireTime = (value) => {
   if (!value) return "-";
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString("zh-CN", {
+  return dt.toLocaleString(locale.value, {
     hour12: false,
     month: "2-digit",
     day: "2-digit",
@@ -294,10 +295,9 @@ const isCritical = (value) => {
 const getExpireLabel = (value) => {
   if (!value) return "-";
   const daysLeft = Math.ceil((new Date(value).getTime() - Date.now()) / (24 * 3600 * 1000));
-  if (daysLeft <= 0) return "已到期";
-  if (daysLeft === 1) return "今天到期";
-  if (daysLeft <= 3) return `${daysLeft}天后`;
-  return `${daysLeft}天后`;
+  if (daysLeft <= 0) return t('expire.expired');
+  if (daysLeft === 1) return t('expire.today');
+  return t('common.daysLeft', { n: daysLeft });
 };
 
 const getExpireTagColor = (value) => {

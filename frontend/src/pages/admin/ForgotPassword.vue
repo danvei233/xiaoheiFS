@@ -62,15 +62,18 @@ const goToLogin = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 32px 24px;
+  background: var(--theme-canvas, var(--bg-primary));
+  color: var(--text-primary);
 }
 
 .auth-container {
-  width: 400px;
-  background: white;
-  border-radius: 12px;
+  width: min(420px, 100%);
   padding: 40px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  background: var(--theme-surface, var(--card));
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius, 12px);
+  box-shadow: var(--theme-shadow, none);
 }
 
 .auth-header {
@@ -81,13 +84,13 @@ const goToLogin = () => {
 .auth-title {
   font-size: 28px;
   font-weight: 600;
-  color: #1f2329;
+  color: var(--text-primary);
   margin: 0 0 8px;
 }
 
 .auth-subtitle {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -97,7 +100,7 @@ const goToLogin = () => {
 }
 
 .auth-footer a {
-  color: #1890ff;
+  color: var(--primary);
   text-decoration: none;
 }
 

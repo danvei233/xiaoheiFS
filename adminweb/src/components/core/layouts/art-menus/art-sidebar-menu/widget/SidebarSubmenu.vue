@@ -2,12 +2,13 @@
   <template v-for="(item, index) in filteredMenuItems" :key="getUniqueKey(item, index)">
     <ElSubMenu v-if="hasChildren(item)" :index="item.path || item.meta.title" :level="level">
       <template #title>
-        <div class="menu-icon flex-cc">
+        <div class="menu-icon flex-cc" :data-short="shortLabel(formatMenuTitle(item.meta.title))">
           <ArtSvgIcon
             :icon="item.meta.icon"
             :color="theme?.iconColor"
             :style="{ color: theme.iconColor }"
           />
+          <i class="menu-short">{{ shortLabel(formatMenuTitle(item.meta.title)) }}</i>
         </div>
         <span class="menu-name">
           {{ formatMenuTitle(item.meta.title) }}
@@ -30,12 +31,13 @@
       :level-item="level + 1"
       @click="goPage(item)"
     >
-      <div class="menu-icon flex-cc">
+      <div class="menu-icon flex-cc" :data-short="shortLabel(formatMenuTitle(item.meta.title))">
         <ArtSvgIcon
           :icon="item.meta.icon"
           :color="theme?.iconColor"
           :style="{ color: theme.iconColor }"
         />
+        <i class="menu-short">{{ shortLabel(formatMenuTitle(item.meta.title)) }}</i>
       </div>
       <div
         v-show="item.meta.showBadge && level === 0 && !menuOpen"
@@ -104,6 +106,14 @@
    * 只显示未隐藏的菜单项
    */
   const filteredMenuItems = computed(() => filterRoutes(props.list))
+
+  /** Collapsed rail shows a two-character abbreviation under each icon. */
+  const shortLabel = (label: string) => {
+    const text = String(label || '').trim()
+    if (!text) return ''
+    if (/[\u4e00-\u9fa5]/.test(text)) return text.slice(0, 2)
+    return text.split(/\s+/)[0].slice(0, 3).toUpperCase()
+  }
 
   /**
    * 跳转到指定页面

@@ -1,0 +1,1641 @@
+/* Shared theme skin: scoped by the persisted theme attribute, including portalled Ant components. */
+html[data-console-theme] body,
+html[data-console-theme] #app {
+  color: var(--text-primary);
+}
+html[data-console-theme] body { background: var(--theme-canvas); }
+
+/* Optional type treatment from the appearance panel. */
+html[data-console-font="mono"] :is(body, .public-layout, .console-layout, .auth-page) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+html[data-console-theme] :is(.public-layout, .login-page, .auth-page) { background: var(--theme-canvas); color: var(--text-primary); }
+
+/* Rebind the public shell's legacy local variables so the public and auth surfaces follow the same preset. */
+html[data-console-theme] .public-layout {
+  --color-bg: var(--bg-primary);
+  --color-bg-alt: var(--bg-secondary);
+  --color-header-bg: var(--theme-header-surface);
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
+  --color-accent: var(--theme-sidebar-accent);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-secondary);
+  --color-border: var(--border);
+}
+html[data-console-theme] .public-layout .public-header {
+  color: var(--theme-header-text);
+  background: var(--theme-header-surface);
+  border-color: var(--theme-header-border);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+html[data-console-theme] .public-layout :is(.logo-text, .main-nav a, .btn-ghost) { color: var(--theme-header-text); }
+html[data-console-theme] .public-layout .main-nav a:hover { color: var(--primary); }
+html[data-console-theme] .public-layout :is(.public-header, .public-footer) { border-color: var(--theme-header-border); }
+html[data-console-theme] .public-layout .btn-primary {
+  border-radius: var(--theme-control-radius);
+  background: var(--primary);
+  color: var(--theme-primary-foreground, #fff);
+  box-shadow: var(--theme-shadow);
+}
+html[data-console-theme] .public-layout .btn-primary:hover { background: var(--theme-primary-hover); }
+html[data-console-theme] .public-layout .btn-ghost { border-radius: var(--theme-control-radius); }
+html[data-console-theme] .public-layout .public-footer { background: var(--bg-secondary); color: var(--text-secondary); }
+
+/* Existing sign-in and registration pages use these shared semantic classes. */
+html[data-console-theme] :is(.login-card, .auth-card) {
+  border: var(--theme-border-width) solid var(--border);
+  border-radius: var(--theme-card-radius);
+  background: var(--theme-surface);
+  color: var(--text-primary);
+  box-shadow: var(--theme-shadow);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+html[data-console-theme] :is(.auth-banner, .auth-shell) {
+  border-color: var(--border);
+  border-radius: var(--theme-card-radius);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+html[data-console-theme] :is(.login-page, .auth-page) :is(.title, .section-title, .banner-title) { color: var(--text-primary); }
+html[data-console-theme] :is(.login-page, .auth-page) :is(.subtitle, .register-subtitle, .banner-desc, .stat-label, .auth-footer) { color: var(--text-secondary); }
+html[data-console-theme="gold"] .auth-card,
+html[data-console-theme="gold"] .login-card { border-color: #a88942; }
+html[data-console-theme="glass"] :is(.auth-card, .login-card, .register-card),
+html[data-console-theme="glass"] .register-card > .ant-card-body {
+  background: var(--theme-surface) !important;
+}
+
+/* Base controls: retain Ant Design's semantic colors for danger, success, warning, and validation states. */
+html[data-console-theme] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker, .ant-cascader-picker, .ant-mentions, .ant-checkbox-inner, .ant-radio-inner, .ant-switch) {
+  border-radius: var(--theme-control-radius);
+  transition: color 140ms ease, background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+/* Surfaces keep the card radius; pill-shaped controls must not turn dialogs into ellipses. */
+html[data-console-theme] :is(.ant-card, .ant-modal-content, .ant-drawer-content, .ant-popover-inner) {
+  border-radius: var(--theme-card-radius);
+}
+html[data-console-theme] .ant-btn {
+  min-height: var(--theme-control-height);
+  font-weight: 560;
+  box-shadow: none;
+}
+html[data-console-theme] .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--theme-primary-foreground, #fff);
+}
+html[data-console-theme] .ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled) {
+  border-color: var(--theme-primary-hover);
+  background: var(--theme-primary-hover);
+  color: var(--theme-primary-foreground, #fff);
+}
+html[data-console-theme] .ant-btn-primary:not(.ant-btn-dangerous):active:not(:disabled) {
+  border-color: var(--theme-primary-active);
+  background: var(--theme-primary-active);
+}
+html[data-console-theme] .ant-btn-default:not(.ant-btn-dangerous) {
+  border-color: var(--border-dark);
+  background: var(--theme-control-bg);
+  color: var(--text-primary);
+}
+html[data-console-theme] .ant-btn-default:not(.ant-btn-dangerous):hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--theme-control-hover);
+  color: var(--primary);
+}
+html[data-console-theme] .ant-btn-dangerous { border-radius: var(--theme-control-radius); }
+html[data-console-theme] .ant-btn:focus-visible,
+html[data-console-theme] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker, .ant-checkbox-input, .ant-radio-input, .ant-switch):focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+html[data-console-theme] .ant-btn:disabled,
+html[data-console-theme] .ant-btn[disabled] { cursor: not-allowed; box-shadow: none; transform: none; }
+html[data-console-theme] .ant-btn-loading { cursor: progress; }
+html[data-console-theme] :is(.ant-btn-primary, .ant-btn-default):hover:not(:disabled) { transform: translateY(-1px); }
+html[data-console-theme] :is(.ant-btn-primary, .ant-btn-default):active:not(:disabled) { transform: translateY(0); }
+
+html[data-console-theme] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker, .ant-cascader-picker, .ant-mentions) {
+  min-height: var(--theme-control-height);
+  border-color: var(--border);
+  background: var(--theme-control-bg);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+html[data-console-theme] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker, .ant-cascader-picker, .ant-mentions):hover {
+  border-color: var(--primary);
+}
+html[data-console-theme] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker, .ant-cascader-picker, .ant-mentions):focus,
+html[data-console-theme] :is(.ant-input-affix-wrapper-focused, .ant-input-number-focused, .ant-select-focused:not(.ant-select-status-error) .ant-select-selector, .ant-picker-focused:not(.ant-picker-status-error), .ant-cascader-picker-focused) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--theme-focus-ring);
+}
+html[data-console-theme] :is(.ant-input, .ant-input-affix-wrapper input, .ant-input-number-input, .ant-picker input, .ant-select-selection-item, .ant-select-selection-search-input) { color: var(--text-primary); }
+html[data-console-theme] :is(.ant-input, .ant-input-affix-wrapper input, .ant-picker input)::placeholder,
+html[data-console-theme] .ant-select-selection-placeholder { color: var(--text-secondary); opacity: .78; }
+html[data-console-theme] .ant-input-affix-wrapper > .ant-input { min-height: auto; border: 0; background: transparent; box-shadow: none; }
+html[data-console-theme] .ant-input-affix-wrapper-focused:not(.ant-input-affix-wrapper-status-error) { border-color: var(--primary); box-shadow: 0 0 0 3px var(--theme-focus-ring); }
+html[data-console-theme] :is(.ant-input-status-error, .ant-input-affix-wrapper-status-error, .ant-select-status-error .ant-select-selector, .ant-picker-status-error, .ant-form-item-has-error .ant-input, .ant-form-item-has-error .ant-input-affix-wrapper) { border-color: #ff4d4f; }
+html[data-console-theme] .ant-form-item-has-error :is(.ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker):focus { box-shadow: 0 0 0 2px #ff4d4f24; }
+html[data-console-theme] .ant-form-item-label > label { color: var(--text-primary); font-weight: 560; }
+html[data-console-theme] .ant-form-item-required::before { color: #ff4d4f; }
+html[data-console-theme] .ant-form-item-explain-error { color: #cf1322; }
+html[data-console-theme="minimal"] .ant-form-item { margin-bottom: 20px; }
+html[data-console-theme="executive"] .ant-form-item { margin-bottom: 14px; }
+html[data-console-theme="cute"] .ant-form-item { margin-bottom: 22px; }
+
+/* Select, calendar, autocomplete and other portalled menus follow the active surface. */
+html[data-console-theme] :is(.ant-select-dropdown, .ant-picker-dropdown, .ant-cascader-dropdown, .ant-dropdown, .ant-auto-complete, .ant-mentions-dropdown) {
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius);
+  background: var(--theme-surface);
+  box-shadow: var(--theme-shadow-popover);
+  color: var(--text-primary);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+html[data-console-theme] :is(.ant-select-item, .ant-picker-cell, .ant-cascader-menu-item, .ant-dropdown-menu-item) { color: var(--text-primary); }
+html[data-console-theme] :is(.ant-select-item-option-active:not(.ant-select-item-option-disabled), .ant-picker-cell-in-view:hover .ant-picker-cell-inner, .ant-cascader-menu-item:hover, .ant-dropdown-menu-item:hover) { background: var(--theme-table-row-hover); }
+html[data-console-theme] .ant-select-item-option-selected:not(.ant-select-item-option-disabled) { background: var(--theme-accent-soft); color: var(--primary); font-weight: 650; }
+
+/* Cards, tables and data density. */
+html[data-console-theme] :is(.ant-card, .card, .stat-card, .status-card, .content-card, .elevated-card, .metric-card) {
+  border: var(--theme-border-width) solid var(--border);
+  border-radius: var(--theme-card-radius);
+  background: var(--theme-surface);
+  color: var(--text-primary);
+  box-shadow: var(--theme-shadow);
+}
+html[data-console-theme] .ant-card-head { border-bottom-color: var(--border); background: var(--theme-table-head-bg); color: var(--text-primary); }
+html[data-console-theme] .ant-card-head-title { color: var(--text-primary); font-weight: 650; }
+html[data-console-theme] .ant-card-body { color: var(--text-primary); }
+html[data-console-theme] .ant-table-wrapper { color: var(--text-primary); }
+html[data-console-theme] .ant-table,
+html[data-console-theme] .ant-table-container,
+html[data-console-theme] .ant-table-content { background: var(--theme-surface); color: var(--text-primary); }
+html[data-console-theme] .ant-table-thead > tr > th {
+  padding-block: calc(12px * var(--theme-density));
+  border-bottom-color: var(--border);
+  background: var(--theme-table-head-bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .025em;
+}
+html[data-console-theme] .ant-table-tbody > tr > td {
+  padding-block: calc(12px * var(--theme-density));
+  border-bottom-color: var(--border);
+  color: var(--text-primary);
+}
+html[data-console-theme] .ant-table-tbody > tr:not(.ant-table-row-selected):hover > td { background: var(--theme-table-row-hover); }
+html[data-console-theme] .ant-table-placeholder .ant-table-cell { background: var(--theme-surface); color: var(--text-secondary); }
+html[data-console-theme] .ant-table-cell-fix-left,
+html[data-console-theme] .ant-table-cell-fix-right { background: var(--theme-surface); }
+html[data-console-theme] .ant-table-thead .ant-table-cell-fix-left,
+html[data-console-theme] .ant-table-thead .ant-table-cell-fix-right { background: var(--theme-table-head-bg); }
+html[data-console-theme="tech"] .ant-table-thead > tr > th { text-transform: uppercase; letter-spacing: .07em; }
+html[data-console-theme="executive"] :is(.ant-table-thead > tr > th, .ant-table-tbody > tr > td) { padding-block: 7px; }
+html[data-console-theme="executive"] :is(.ant-card, .content-card, .metric-card) { box-shadow: none; }
+
+/* Preserve semantic tag colors; only change shape and typographic weight. */
+html[data-console-theme] .ant-tag { border-radius: var(--theme-control-radius); font-weight: 600; }
+html[data-console-theme="minimal"] .ant-tag,
+html[data-console-theme="tech"] .ant-tag,
+html[data-console-theme="executive"] .ant-tag,
+html[data-console-theme="gold"] .ant-tag { border-radius: 2px; }
+html[data-console-theme="cute"] .ant-tag { border-radius: 999px; padding-inline: 9px; }
+html[data-console-theme="glass"] .ant-tag { backdrop-filter: var(--theme-backdrop); -webkit-backdrop-filter: var(--theme-backdrop); }
+
+/* Dialog surfaces and lightweight overlay elements. */
+html[data-console-theme] :is(.ant-modal-content, .ant-drawer-content, .ant-popover-inner, .ant-tooltip-inner) {
+  border: 1px solid var(--border);
+  background: var(--theme-surface);
+  color: var(--text-primary);
+  box-shadow: var(--theme-shadow-popover);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+html[data-console-theme] :is(.ant-modal-header, .ant-drawer-header, .ant-popover-title) { border-bottom-color: var(--border); background: transparent; color: var(--text-primary); }
+html[data-console-theme] :is(.ant-modal-title, .ant-drawer-title) { color: var(--text-primary); font-weight: 650; }
+html[data-console-theme] :is(.ant-modal-body, .ant-drawer-body, .ant-popover-inner-content, .ant-tooltip-inner) { color: var(--text-primary); }
+html[data-console-theme] .ant-tooltip-inner { border-radius: var(--theme-control-radius); }
+html[data-console-theme] :is(.ant-modal-close, .ant-drawer-close):hover { color: var(--primary); background: var(--theme-accent-soft); }
+
+/* Navigation, selection and status controls. */
+html[data-console-theme] .ant-menu { background: transparent; color: var(--text-primary); }
+html[data-console-theme] .ant-menu-item { border-radius: var(--theme-control-radius); transition: color 140ms ease, background-color 140ms ease; }
+html[data-console-theme] .ant-menu-item:not(.ant-menu-item-selected):hover { background: var(--theme-table-row-hover); color: var(--primary); }
+html[data-console-theme] .ant-menu-item-selected { background: var(--theme-accent-soft); color: var(--primary); font-weight: 650; }
+html[data-console-theme] .ant-tabs-tab { color: var(--text-secondary); }
+html[data-console-theme] .ant-tabs-tab:hover, html[data-console-theme] .ant-tabs-tab-active .ant-tabs-tab-btn { color: var(--primary); }
+html[data-console-theme] .ant-tabs-ink-bar { background: var(--primary); }
+html[data-console-theme] .ant-tabs-nav::before { border-bottom-color: var(--border); }
+html[data-console-theme] :is(.ant-pagination-item, .ant-pagination-prev, .ant-pagination-next) { border-color: var(--border); border-radius: var(--theme-control-radius); background: var(--theme-control-bg); }
+html[data-console-theme] :is(.ant-pagination-item a, .ant-pagination-prev button, .ant-pagination-next button) { color: var(--text-primary); }
+html[data-console-theme] .ant-pagination-item-active { border-color: var(--primary); background: var(--theme-accent-soft); }
+html[data-console-theme] .ant-pagination-item-active a { color: var(--primary); }
+html[data-console-theme] :is(.ant-pagination-disabled, .ant-pagination-disabled a, .ant-pagination-disabled button) { color: var(--text-secondary); opacity: .55; }
+html[data-console-theme] .ant-checkbox-wrapper,
+html[data-console-theme] .ant-radio-wrapper { color: var(--text-primary); }
+html[data-console-theme] :is(.ant-checkbox-inner, .ant-radio-inner) { border-color: var(--border-dark); background: var(--theme-control-bg); }
+html[data-console-theme] .ant-checkbox-checked .ant-checkbox-inner,
+html[data-console-theme] .ant-radio-checked .ant-radio-inner,
+html[data-console-theme] .ant-switch-checked { border-color: var(--primary); background: var(--primary); }
+html[data-console-theme] .ant-switch { background: var(--border-dark); }
+html[data-console-theme] .ant-switch-checked { background: var(--primary); }
+html[data-console-theme] :is(.ant-checkbox-disabled .ant-checkbox-inner, .ant-radio-disabled .ant-radio-inner, .ant-switch-disabled) { cursor: not-allowed; opacity: .55; }
+html[data-console-theme] .ant-steps-item-title { color: var(--text-primary); }
+html[data-console-theme] .ant-steps-item-description { color: var(--text-secondary); }
+html[data-console-theme] .ant-steps-item-process .ant-steps-item-icon { border-color: var(--primary); background: var(--primary); }
+html[data-console-theme] .ant-statistic-title { color: var(--text-secondary); }
+html[data-console-theme] .ant-statistic-content { color: var(--text-primary); }
+html[data-console-theme] .ant-badge-count { border-radius: 999px; }
+
+/* Console chrome remains aligned with the same palette as public and authentication pages. */
+html[data-console-theme] .console-layout {
+  background: var(--theme-canvas);
+  background-size: auto;
+  color: var(--text-primary);
+}
+html[data-console-theme="tech"] .console-layout { background-size: 32px 32px; }
+html[data-console-theme] .console-layout .main-content { background: transparent; }
+html[data-console-theme] .console-layout .sidebar,
+html[data-console-theme] .mobile-drawer .ant-drawer-content { background: var(--theme-sidebar); border-color: var(--border); }
+html[data-console-theme="glass"] .console-layout .sidebar,
+html[data-console-theme="glass"] .mobile-drawer .ant-drawer-content { background: var(--theme-surface); }
+html[data-console-theme] .console-layout :is(.sidebar, .top-header, .mobile-header) {
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+html[data-console-theme] .console-layout :is(.top-header, .mobile-header) {
+  background: var(--theme-header-surface);
+  border-color: var(--theme-header-border);
+  color: var(--theme-header-text);
+}
+html[data-console-theme] .console-layout :is(.brand-title, .user-name),
+html[data-console-theme] .mobile-drawer-header h2 { color: var(--theme-sidebar-text); }
+html[data-console-theme] .console-layout :is(.brand-subtitle, .user-role, .menu-group-title, .menu-item),
+html[data-console-theme] .mobile-drawer :is(.mobile-group-title, .mobile-menu-item) { color: var(--theme-sidebar-muted); }
+html[data-console-theme] .console-layout :is(.sidebar-header, .sidebar-footer),
+html[data-console-theme] .mobile-drawer-header { border-color: var(--border); }
+html[data-console-theme] .console-layout :is(.menu-item, .sidebar-user),
+html[data-console-theme] .mobile-drawer .mobile-menu-item { border-radius: 6px; }
+html[data-console-theme] .console-layout :is(.menu-item:hover, .menu-item-active, .sidebar-user:hover),
+html[data-console-theme] .mobile-drawer :is(.mobile-menu-item:hover, .mobile-menu-item-active) {
+  background: var(--theme-sidebar-active);
+  color: var(--theme-sidebar-accent);
+}
+html[data-console-theme] .console-layout .menu-item::before { background: var(--theme-sidebar-accent); }
+html[data-console-theme] .console-layout :is(.brand-logo, .menu-badge),
+html[data-console-theme] .mobile-drawer :is(.brand-logo, .mobile-menu-badge) {
+  border: 1px solid var(--theme-sidebar-accent);
+  border-radius: var(--theme-control-radius);
+  background: var(--theme-sidebar-active);
+  color: var(--theme-sidebar-accent);
+  box-shadow: none;
+}
+html[data-console-theme] .console-layout :is(.collapse-btn, .icon-btn, .user-btn, .header-search input, .search-results),
+html[data-console-theme] .notif-dropdown { border-radius: var(--theme-control-radius); }
+html[data-console-theme] .console-layout .header-search input:focus { background: var(--card); box-shadow: 0 0 0 3px var(--theme-focus-ring); }
+html[data-console-theme] .console-layout .search-results,
+html[data-console-theme] .notif-dropdown { border: 1px solid var(--border); background: var(--theme-surface); box-shadow: var(--theme-shadow-popover); }
+html[data-console-theme] .console-layout :is(.card, .stat-card, .status-card, .content-card, .elevated-card, .metric-card) {
+  border-color: var(--border);
+  border-radius: var(--theme-card-radius);
+  background: var(--theme-surface);
+  box-shadow: var(--theme-shadow);
+}
+html[data-console-theme] .console-layout :is(.page-title, .section-title, .card-title, .stat-value) { color: var(--text-primary); }
+html[data-console-theme] .console-layout :is(.page-subtitle, .stat-label) { color: var(--text-secondary); }
+
+/* Admin console reuses the console shell: same canvas, chrome, surface and control language. */
+html[data-console-theme] .admin-layout {
+  background: var(--theme-canvas);
+  color: var(--text-primary);
+}
+html[data-console-theme="tech"] .admin-layout { background-size: 32px 32px; }
+html[data-console-theme] .admin-layout :is(.header, .sider, .drawer-content) {
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+html[data-console-theme] .admin-layout .header {
+  background: var(--theme-header-surface);
+  border-color: var(--theme-header-border);
+  color: var(--theme-header-text);
+  box-shadow: none;
+}
+html[data-console-theme="tech"] .admin-layout .header { border-bottom: 2px solid var(--primary); }
+html[data-console-theme] .admin-layout .sider {
+  background: var(--theme-sidebar);
+  border-color: var(--border);
+}
+html[data-console-theme] .admin-layout .header :is(.brand-name, .user-name) { color: var(--theme-header-text); }
+html[data-console-theme] .admin-layout .sider :is(.ant-menu-item, .ant-menu-submenu-title) {
+  color: var(--theme-sidebar-muted);
+  border-radius: var(--theme-control-radius);
+}
+html[data-console-theme] .admin-layout .sider :is(.ant-menu-item:hover, .ant-menu-submenu-title:hover) {
+  background: var(--theme-sidebar-active) !important;
+  color: var(--theme-sidebar-text) !important;
+}
+html[data-console-theme] .admin-layout .sider .ant-menu-item-selected {
+  background: var(--theme-sidebar-active) !important;
+  color: var(--theme-sidebar-accent) !important;
+}
+html[data-console-theme] .admin-layout .sider .ant-menu-item-selected .anticon { color: var(--theme-sidebar-accent); }
+html[data-console-theme] .admin-layout :is(.ant-menu, .ant-menu-sub.ant-menu-inline) { background: transparent; }
+html[data-console-theme] .admin-layout .content { background: transparent; }
+html[data-console-theme] .admin-layout .header .ant-input-affix-wrapper {
+  background: var(--theme-control-bg) !important;
+  border-color: var(--theme-header-border) !important;
+}
+html[data-console-theme] .admin-layout .header .ant-input {
+  background: transparent !important;
+  color: var(--theme-header-text) !important;
+}
+html[data-console-theme] .admin-layout .header .ant-input::placeholder { color: var(--theme-header-muted) !important; }
+html[data-console-theme] .admin-layout .content .ant-breadcrumb {
+  background: var(--bg-secondary);
+  border-color: var(--border);
+  border-radius: var(--theme-control-radius);
+}
+html[data-console-theme] .admin-layout .content .ant-breadcrumb-link { color: var(--text-secondary); }
+html[data-console-theme] .admin-layout .content .ant-breadcrumb-separator { color: var(--text-tertiary); }
+html[data-console-theme] .admin-layout :is(.card, .stat-card, .content-card, .elevated-card, .metric-card, .filter-card) {
+  border-color: var(--border);
+  border-radius: var(--theme-card-radius);
+  background: var(--theme-surface);
+  box-shadow: var(--theme-shadow);
+}
+html[data-console-theme] .admin-layout :is(.page-title, .section-title, .card-title, .stat-value) { color: var(--text-primary); }
+html[data-console-theme] .admin-layout :is(.page-subtitle, .subtle, .stat-label) { color: var(--text-secondary); }
+
+/* Theme-specific visual languages: shape, density and material differ independently of hue. */
+html[data-console-theme="tech"] :is(.ant-card, .content-card, .metric-card, .ant-table-container) { border-radius: 2px; }
+html[data-console-theme="tech"] :is(.ant-card, .content-card, .metric-card) { border-inline-start: 2px solid var(--primary); }
+html[data-console-theme="tech"] .console-layout .top-header { border-bottom: 2px solid var(--primary); }
+html[data-console-theme="tech"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) { border-radius: 2px; }
+html[data-console-theme="executive"] .console-layout .top-header { border-bottom: 1px solid var(--theme-header-border); box-shadow: none; }
+html[data-console-theme="executive"] .console-layout .top-header :is(.brand-title, .user-name, .icon-btn) { color: var(--theme-header-text); }
+html[data-console-theme="executive"] .console-layout .sidebar { border-inline-end: 1px solid var(--border); }
+html[data-console-theme="gold"] .console-layout .top-header { border-bottom: 1px solid var(--theme-header-border); }
+html[data-console-theme="gold"] .console-layout .sidebar { border-inline-end: 1px solid var(--border); }
+html[data-console-theme="gold"] :is(.ant-btn-primary:not(.ant-btn-dangerous), .public-layout .btn-primary) {
+  box-shadow: 0 3px 10px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+html[data-console-theme="gold"] .console-layout :is(.page-title, .section-title) { letter-spacing: -.02em; font-weight: 760; }
+html[data-console-theme="gold"] .console-layout .buy-page :is(.config-card, .price-card, .summary-card) { border-radius: var(--theme-card-radius); }
+html[data-console-theme="gold"] .console-layout .buy-page .package-card { border-radius: 12px; }
+html[data-console-theme="gold"] .console-layout .buy-page .pkg-specs { border-radius: 10px; }
+html[data-console-theme="gold"] .console-layout .buy-page .addon-item { border-radius: 12px; }
+html[data-console-theme="gold"] .ant-tag { border-radius: 4px; }
+html[data-console-theme="gold"] :is(.ant-radio-checked .ant-radio-inner, .ant-checkbox-checked .ant-checkbox-inner) { border-color: var(--theme-selection-color); background-color: var(--theme-selection-color); }
+html[data-console-theme="gold"] .ant-radio-inner::after { background-color: #241a06; }
+html[data-console-theme="gold"] .ant-select-item-option-selected:not(.ant-select-item-option-disabled) { background: var(--theme-selection-soft); color: var(--text-primary); }
+html[data-console-theme="gold"] .ant-tabs-tab-active .ant-tabs-tab-btn { color: var(--theme-selection-color); }
+html[data-console-theme="gold"] .ant-pagination-item-active { border-color: var(--theme-selection-color); }
+html[data-console-theme="gold"] .ant-pagination-item-active a { color: var(--theme-selection-color); }
+html[data-console-theme="cute"] .console-layout :is(.card, .stat-card, .content-card, .metric-card, .ant-card) { border-radius: 22px; }
+html[data-console-theme="cute"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) { border-radius: 14px; }
+html[data-console-theme="cute"] .console-layout .menu-item-active { box-shadow: inset 0 0 0 1px var(--border); }
+html[data-console-theme="cute"] :is(.ant-card-head, .ant-table-thead > tr > th) { background-image: linear-gradient(110deg, var(--theme-accent-soft), transparent 70%); }
+html[data-console-theme="glass"] :is(.ant-card, .card, .stat-card, .content-card, .metric-card, .ant-modal-content, .ant-drawer-content, .ant-popover-inner, .ant-tooltip-inner, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) {
+  background-color: var(--theme-surface);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+  box-shadow: inset 0 1px 0 var(--theme-glass-highlight), var(--theme-shadow);
+}
+html[data-console-theme="glass"] :is(.ant-card, .ant-modal-content, .ant-drawer-content, .ant-popover-inner) { border-color: color-mix(in srgb, var(--border), #ffffff 35%); }
+html[data-console-theme="minimal"] .console-layout :is(.card, .stat-card, .content-card, .metric-card) { box-shadow: none; }
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-console-theme="glass"] { --theme-surface: var(--card); --theme-control-bg: var(--card); --theme-header-surface: var(--card); --theme-backdrop: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-console-theme="glass"] { --theme-surface: var(--card); --theme-control-bg: var(--card); --theme-header-surface: var(--card); --theme-backdrop: none; }
+  html[data-console-theme="glass"] :is(.ant-card, .ant-modal-content, .ant-drawer-content, .ant-popover-inner, .ant-tooltip-inner, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-console-theme] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-card, .ant-menu-item, .appearance-trigger, .appearance-choice, .theme-choice, .env-dot) {
+    transition: none;
+    animation: none;
+    scroll-behavior: auto;
+  }
+  html[data-console-theme] :is(.ant-btn-primary, .ant-btn-default):hover:not(:disabled) { transform: none; }
+}
+
+/* Gold: precision machinery — white surfaces, amber accents, mono micro-labels. */
+html[data-console-theme="gold"] .console-layout .top-header,
+html[data-console-theme="gold"] .public-layout .public-header {
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgb(23 32 51 / 4%);
+}
+html[data-console-theme="gold"] .console-layout .sidebar {
+  border-inline-end: 1px solid var(--border);
+}
+html[data-console-theme="gold"] .console-layout .sidebar .menu-item-active {
+  color: var(--theme-sidebar-accent);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+html[data-console-theme="gold"] .public-layout .main-nav a:is(:hover, .router-link-active) { color: var(--primary); }
+html[data-console-theme="gold"] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker, .ant-cascader-picker):hover,
+html[data-console-theme="gold"] :is(.ant-input-affix-wrapper-focused, .ant-input-number-focused, .ant-select-focused .ant-select-selector, .ant-picker-focused) {
+  border-color: var(--primary);
+}
+
+/* Purchase flow shares the same white surfaces with amber selection. */
+html[data-console-theme="gold"] .console-layout .buy-page { padding-block: 8px 28px; }
+html[data-console-theme="gold"] .console-layout .buy-page .page-title {
+  font-size: 26px;
+  font-weight: 720;
+  letter-spacing: -.03em;
+  line-height: 1.18;
+}
+html[data-console-theme="gold"] .console-layout .buy-page :is(.section-header, .summary-card .ant-card-head-title, .price-card .section-title) {
+  font-size: 16px;
+  font-weight: 660;
+  letter-spacing: -.01em;
+}
+html[data-console-theme="gold"] .console-layout .buy-page :is(.config-card, .price-card, .summary-card) {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius, 16px);
+  background: var(--card);
+  box-shadow: var(--theme-card-shadow, none);
+}
+html[data-console-theme="gold"] .console-layout .buy-page .config-card > .ant-card-body { padding: 26px; }
+html[data-console-theme="gold"] .console-layout .buy-page :is(.config-card, .price-card, .summary-card) :is(.ant-card-head, .ant-card-body) {
+  background: transparent;
+}
+html[data-console-theme="gold"] .console-layout .buy-page .steps-wrapper { padding: 4px 8px 10px; }
+html[data-console-theme="gold"] .console-layout .buy-page .steps-wrapper :is(.ant-steps-item-process .ant-steps-item-icon, .ant-steps-item-finish .ant-steps-item-icon) {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+html[data-console-theme="gold"] .console-layout .buy-page .steps-wrapper :is(.ant-steps-item-process, .ant-steps-item-finish) .ant-steps-icon { color: #241a06; }
+html[data-console-theme="gold"] .console-layout .buy-page .package-card {
+  min-height: 144px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: none;
+}
+html[data-console-theme="gold"] .console-layout .buy-page .package-card:hover:not(.disabled) { border-color: var(--primary); }
+html[data-console-theme="gold"] .console-layout .buy-page .package-card.selected {
+  border: 1px solid var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 40%, transparent), 0 8px 22px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+html[data-console-theme="gold"] .console-layout .buy-page .pkg-specs {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+}
+html[data-console-theme="gold"] .console-layout .buy-page .spec-value { font-variant-numeric: tabular-nums; }
+html[data-console-theme="gold"] .console-layout .buy-page .pkg-check { color: var(--primary); }
+html[data-console-theme="gold"] .console-layout .buy-page :is(.addon-item, .billing-card, .coupon-panel) {
+  border-color: var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+}
+html[data-console-theme="gold"] .console-layout .buy-page .summary-row { border-bottom: 1px solid var(--border); }
+html[data-console-theme="gold"] .console-layout .buy-page :is(.price-amount, .price-symbol, .price-row.total strong) { color: var(--primary); }
+html[data-console-theme="gold"] .console-layout .buy-page .summary-card .ant-btn-primary { min-height: 46px; border-radius: 12px; }
+@media (max-width: 768px) {
+  html[data-console-theme="gold"] .console-layout .buy-page { padding-block: 4px 24px; }
+  html[data-console-theme="gold"] .console-layout .buy-page .config-card > .ant-card-body { padding: 16px; }
+  html[data-console-theme="gold"] .console-layout .buy-page .package-card { min-height: 0; }
+}
+html[data-console-theme="tech"]:not(.console-dark) .console-layout :is(.ant-card, .content-card, .metric-card) { background-color: #ffffff; }
+@media (prefers-reduced-motion: reduce) {
+  html[data-console-theme] .console-layout .buy-page .package-card { transition: none; }
+}
+
+/* ==========================================================================
+   Structural identity per preset.
+   Each preset is a different component language: shape, stroke, elevation,
+   rhythm and material change, not just the hue.
+   ========================================================================== */
+
+/* Shared structural baseline: every preset drives these from --theme-* tokens. */
+html[data-console-theme] .ant-btn,
+html[data-console-theme] .public-layout .btn {
+  border-radius: var(--theme-btn-radius, var(--theme-control-radius));
+  font-weight: var(--theme-btn-weight, 600);
+  letter-spacing: var(--theme-btn-letter, 0);
+  clip-path: var(--theme-btn-clip, none);
+}
+html[data-console-theme] .ant-btn:not(:disabled):not([disabled]):hover,
+html[data-console-theme] .public-layout .btn:not(:disabled):hover {
+  transform: var(--theme-btn-transform, translateY(-1px));
+}
+html[data-console-theme] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .status-card, .content-card, .metric-card, .elevated-card) {
+  border-radius: var(--theme-card-radius, 8px);
+  border-width: var(--theme-card-border-width, 1px);
+  border-style: var(--theme-card-border-style, solid);
+  border-color: var(--border);
+  box-shadow: var(--theme-card-shadow, none);
+}
+html[data-console-theme] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card):hover {
+  box-shadow: var(--theme-card-hover-shadow, var(--theme-card-shadow, none));
+  transform: var(--theme-card-hover-transform, none);
+}
+html[data-console-theme] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker, .ant-cascader-picker) {
+  border-radius: var(--theme-input-radius, var(--theme-control-radius));
+}
+html[data-console-theme] .ant-table-thead > tr > th {
+  text-transform: var(--theme-head-transform, none);
+}
+
+/* ---------- minimal · hairline flat ---------- */
+html[data-console-theme="minimal"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker, .ant-input-number) {
+  border-radius: 4px;
+  box-shadow: none;
+}
+html[data-console-theme="minimal"] .ant-btn {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  font-weight: 500;
+  letter-spacing: 0;
+  box-shadow: none;
+}
+html[data-console-theme="minimal"] .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  box-shadow: none;
+}
+html[data-console-theme="minimal"] .ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled) {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+  transform: none;
+  box-shadow: none;
+}
+html[data-console-theme="minimal"] .public-layout .btn {
+  border-radius: 4px;
+  box-shadow: none;
+}
+html[data-console-theme="minimal"] .public-layout .btn-primary:hover { transform: none; box-shadow: none; }
+html[data-console-theme="minimal"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card) {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: none;
+}
+html[data-console-theme="minimal"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card):hover {
+  transform: none;
+  box-shadow: none;
+  border-color: var(--border-dark);
+}
+html[data-console-theme="minimal"] .ant-card-head {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+html[data-console-theme="minimal"] .ant-table-thead > tr > th {
+  background: transparent;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+  border-bottom: 1px solid var(--border);
+}
+html[data-console-theme="minimal"] .console-layout .menu-item::before { display: none; }
+html[data-console-theme="minimal"] .console-layout .menu-item-active { box-shadow: none; }
+
+/* ---------- tech · hard outline / blueprint ---------- */
+html[data-console-theme="tech"] body { background-size: 28px 28px; }
+html[data-console-theme="tech"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker, .ant-input-number, .ant-tag, .ant-modal-content) {
+  border-radius: 0;
+}
+html[data-console-theme="tech"] .ant-btn {
+  min-height: 32px;
+  border-radius: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+html[data-console-theme="tech"] .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+}
+html[data-console-theme="tech"] .ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 5px 0 -2px var(--primary);
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 9px 100%, 0 calc(100% - 9px));
+}
+html[data-console-theme="tech"] .public-layout .btn {
+  border-radius: 0;
+  font-size: 12px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+html[data-console-theme="tech"] .public-layout .btn-primary {
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+html[data-console-theme="tech"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card) {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+}
+html[data-console-theme="tech"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card)::before {
+  content: "";
+  position: absolute;
+  inset-block-start: -1px;
+  inset-inline-start: -1px;
+  width: 15px;
+  height: 15px;
+  border-block-start: 2px solid var(--primary);
+  border-inline-start: 2px solid var(--primary);
+  pointer-events: none;
+}
+html[data-console-theme="tech"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card):hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary), 0 10px 26px rgb(8 98 212 / 14%);
+  transform: none;
+}
+html[data-console-theme="tech"] .ant-card-head {
+  background: var(--theme-table-head-bg);
+  border-bottom: 1px solid var(--border);
+}
+html[data-console-theme="tech"] .ant-card-head-title {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+html[data-console-theme="tech"] .ant-table-thead > tr > th {
+  padding-block: 7px;
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--border);
+}
+html[data-console-theme="tech"] .ant-table-tbody > tr > td {
+  padding-block: 7px;
+  font-size: 13px;
+}
+
+/* ---------- executive · FrontPage "tech" language: navy chrome, hairlines, electronic blue ---------- */
+html[data-console-theme="executive"] :is(.page-title, .section-title, .ant-card-head-title, .brand-title, h1, h2, h3) {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+html[data-console-theme="executive"] .ant-btn {
+  min-height: 38px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
+}
+html[data-console-theme="executive"] .ant-btn:active:not(:disabled) { transform: scale(.98); }
+html[data-console-theme="executive"] .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: none;
+}
+html[data-console-theme="executive"] .ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled) {
+  border-color: #0f6997;
+  background: #0f6997;
+  color: #ffffff;
+  transform: none;
+  box-shadow: none;
+}
+html[data-console-theme="executive"] .ant-btn-default:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--primary) 6%, var(--card));
+}
+html[data-console-theme="executive"] .public-layout .btn {
+  border-radius: 6px;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+html[data-console-theme="executive"] .public-layout .btn-primary {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: none;
+}
+html[data-console-theme="executive"] .public-layout .btn-primary:hover {
+  background: #0f6997;
+  border-color: #0f6997;
+  color: #ffffff;
+  transform: none;
+  box-shadow: none;
+}
+html[data-console-theme="executive"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card) {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: none;
+}
+html[data-console-theme="executive"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card):hover {
+  border-color: color-mix(in srgb, var(--border) 55%, var(--text-primary));
+  box-shadow: 0 3px 14px rgb(13 40 66 / 10%);
+  transform: none;
+}
+html[data-console-theme="executive"] .ant-card-head {
+  padding-inline: 18px;
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+}
+html[data-console-theme="executive"] .ant-card-body { padding: 18px; }
+html[data-console-theme="executive"] .ant-table-thead > tr > th {
+  padding: 8px 14px;
+  background: var(--theme-table-head-bg);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+html[data-console-theme="executive"] .ant-table-tbody > tr > td {
+  padding: 11px 14px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+html[data-console-theme="executive"] .ant-table-tbody > tr:hover > td { background: color-mix(in srgb, var(--primary) 6%, var(--card)); }
+html[data-console-theme="executive"] .console-layout .menu-item {
+  height: 34px;
+  margin: 0 8px 2px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  letter-spacing: 0;
+}
+html[data-console-theme="executive"] .console-layout .menu-item-active {
+  color: var(--theme-sidebar-accent);
+  background: var(--theme-sidebar-active);
+  font-weight: 550;
+}
+html[data-console-theme="executive"] .console-layout .menu-group-title {
+  padding-inline: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+html[data-console-theme="executive"] :is(.ant-tabs-nav-list, .ant-tabs-card > .ant-tabs-nav .ant-tabs-nav-list) {
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--theme-table-head-bg);
+}
+html[data-console-theme="executive"] .ant-tabs-tab {
+  margin: 0 !important;
+  padding: 6px 14px !important;
+  border-radius: 999px !important;
+  font-size: 12.5px;
+}
+html[data-console-theme="executive"] .ant-tabs-tab-active { background: var(--primary); }
+html[data-console-theme="executive"] .ant-tabs-tab-active .ant-tabs-tab-btn { color: #ffffff !important; }
+html[data-console-theme="executive"] .ant-tabs-ink-bar { display: none; }
+
+/* ---------- gold · black & gold, light surfaces with dark gold chrome ---------- */
+html[data-console-theme="gold"] .ant-btn {
+  border-radius: 8px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+html[data-console-theme="gold"] :is(.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled), .public-layout .btn-primary) {
+  border: 1px solid color-mix(in srgb, var(--primary) 78%, #7a5200);
+  background: var(--primary);
+  color: #241a06;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 45%), 0 4px 12px color-mix(in srgb, var(--primary) 24%, transparent);
+}
+html[data-console-theme="gold"] :is(.ant-btn-primary:not(.ant-btn-dangerous):not(:disabled), .public-layout .btn-primary):hover {
+  border-color: color-mix(in srgb, var(--primary) 65%, #ffffff);
+  background: color-mix(in srgb, var(--primary) 88%, #ffffff);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%), 0 8px 18px color-mix(in srgb, var(--primary) 30%, transparent);
+}
+html[data-console-theme="gold"] :is(.ant-btn-primary:not(.ant-btn-dangerous), .public-layout .btn-primary):active {
+  transform: translateY(1px);
+  box-shadow: inset 0 2px 5px rgb(90 62 14 / 22%);
+}
+html[data-console-theme="gold"] .public-layout .btn { border-radius: 8px; font-weight: 650; }
+html[data-console-theme="gold"] .public-layout .btn-ghost {
+  border-color: var(--border);
+  color: var(--text-primary);
+}
+html[data-console-theme="gold"] .public-layout .btn-ghost:hover {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+html[data-console-theme="gold"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card) {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius, 14px);
+  background: var(--card);
+  overflow: hidden;
+}
+html[data-console-theme="gold"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card)::before {
+  content: "";
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--primary) 55%, transparent) 18%, color-mix(in srgb, var(--primary) 85%, #ffffff) 50%, color-mix(in srgb, var(--primary) 55%, transparent) 82%, transparent);
+  pointer-events: none;
+}
+html[data-console-theme="gold"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card):hover {
+  border-color: color-mix(in srgb, var(--primary) 60%, var(--border));
+  transform: translateY(-2px);
+}
+html[data-console-theme="gold"] .ant-card-head { background: transparent; border-bottom: 1px solid var(--border); }
+html[data-console-theme="gold"] .ant-card-head-title { font-weight: 660; letter-spacing: -.01em; color: var(--text-primary); }
+html[data-console-theme="gold"] .ant-table-thead > tr > th {
+  background: var(--theme-table-head-bg);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+html[data-console-theme="gold"] .ant-table-tbody > tr > td { border-bottom: 1px solid var(--border); }
+html[data-console-theme="gold"] .ant-table-tbody > tr:hover > td { background: var(--theme-table-row-hover); }
+html[data-console-theme="gold"] .ant-tag { border-radius: 4px; }
+html[data-console-theme="gold"] .console-layout .menu-item-active {
+  box-shadow: inset 2px 0 0 var(--theme-sidebar-accent);
+}
+
+
+/* Gold keeps the hero ornament in the same metal family instead of default sky blue. */
+html[data-console-theme="gold"] .hero-grid :is(.grid-line, .grid-line.horizontal) {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--primary) 16%, transparent) 20%, color-mix(in srgb, var(--primary) 16%, transparent) 80%, transparent);
+}
+html[data-console-theme="gold"] .hero-grid .grid-line.horizontal {
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--primary) 16%, transparent) 20%, color-mix(in srgb, var(--primary) 16%, transparent) 80%, transparent);
+}
+html[data-console-theme="gold"] .hero-glow {
+  background: radial-gradient(circle, color-mix(in srgb, var(--primary) 18%, transparent), transparent 68%);
+}
+
+/* ---------- cute · soft toy ---------- */
+html[data-console-theme="cute"] body { background-size: 18px 18px; }
+html[data-console-theme="cute"] .ant-btn {
+  min-height: 44px;
+  border-radius: 999px;
+  padding-inline: 22px;
+  font-weight: 700;
+}
+html[data-console-theme="cute"] .ant-btn:not(:disabled):hover {
+  transform: translateY(-2px);
+}
+html[data-console-theme="cute"] .ant-btn:not(:disabled):active {
+  transform: translateY(0) scale(.98);
+}
+html[data-console-theme="cute"] .public-layout .btn {
+  border-radius: 999px;
+  padding-inline: 24px;
+  font-weight: 700;
+}
+html[data-console-theme="cute"] .public-layout .btn-primary:hover {
+  transform: translateY(-2px);
+}
+html[data-console-theme="cute"] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker) {
+  border-radius: 999px;
+  padding-inline: 18px;
+}
+html[data-console-theme="cute"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card) {
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 22px;
+  box-shadow: 0 6px 18px rgb(24 120 99 / 10%);
+}
+html[data-console-theme="cute"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgb(24 120 99 / 16%);
+}
+html[data-console-theme="cute"] .ant-card-head {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  border-radius: 22px 22px 0 0;
+}
+html[data-console-theme="cute"] .ant-table-container { border-radius: 20px; overflow: hidden; }
+html[data-console-theme="cute"] .ant-table-thead > tr > th {
+  background: var(--theme-table-head-bg);
+  border-bottom: 0;
+}
+html[data-console-theme="cute"] .ant-table-tbody > tr > td { border-bottom: 1px solid var(--theme-accent-soft); }
+html[data-console-theme="cute"] .ant-tag { border-radius: 999px; padding-inline: 10px; }
+html[data-console-theme="cute"] .console-layout .menu-item { border-radius: 999px; margin-inline: 8px; }
+html[data-console-theme="cute"] .console-layout .menu-item-active { box-shadow: inset 0 0 0 1px var(--border); }
+
+/* ---------- glass · liquid glass: rim refraction, specular edge, frosted body ---------- */
+html[data-console-theme="glass"]:not(.console-dark) {
+  --theme-glass-tint: linear-gradient(140deg, rgb(255 255 255 / 50%), rgb(226 236 255 / 24%)) !important;
+  --theme-surface: rgb(248 251 255 / 38%) !important;
+  --theme-control-bg: rgb(255 255 255 / 42%) !important;
+  --theme-surface-filter: blur(18px) saturate(150%) !important;
+}
+html[data-console-theme="glass"].console-dark {
+  --theme-glass-tint: linear-gradient(140deg, rgb(120 140 190 / 22%), rgb(12 18 34 / 46%)) !important;
+  --theme-surface: rgb(24 32 52 / 42%) !important;
+  --theme-control-bg: rgb(38 48 72 / 44%) !important;
+  --theme-surface-filter: blur(18px) saturate(135%) !important;
+}
+html[data-console-theme="glass"] body { background-attachment: fixed; }
+html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 0;
+  border-radius: 28px;
+  background: var(--theme-glass-tint);
+  box-shadow: 0 26px 70px rgb(10 18 40 / 26%), 0 2px 8px rgb(10 18 40 / 10%);
+  transition: transform .28s cubic-bezier(.22,.7,.24,1), box-shadow .28s ease;
+}
+html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: rgb(255 255 255 / 6%);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  filter: url(#liquid-glass-refraction);
+}
+html[data-console-theme="glass"].console-dark :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card)::before {
+  background: rgb(255 255 255 / 3%);
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(152deg, rgb(255 255 255 / 0%) 6%, rgb(255 255 255 / 62%) 24%, rgb(255 255 255 / 8%) 42%, rgb(255 255 255 / 0%) 58%, rgb(255 255 255 / 44%) 86%, rgb(255 255 255 / 0%) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 58%), inset 0 0 22px rgb(255 255 255 / 6%);
+  pointer-events: none;
+}
+html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card) > :not(.feature-bg):not(.feature-glow) {
+  position: relative;
+  z-index: 3;
+}
+html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 32px 80px rgb(10 18 40 / 32%), 0 2px 8px rgb(10 18 40 / 12%), 0 0 0 1px rgb(255 255 255 / 18%);
+}
+
+html[data-console-theme="glass"] .ant-btn {
+  border: 1px solid var(--theme-glass-edge);
+  border-radius: 14px;
+  background: var(--theme-glass-tint);
+  backdrop-filter: blur(14px) saturate(165%);
+  -webkit-backdrop-filter: blur(14px) saturate(165%);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner), 0 10px 24px rgb(20 32 72 / 14%);
+}
+html[data-console-theme="glass"] .ant-btn-primary:not(.ant-btn-dangerous):not(:disabled) {
+  border: 1px solid var(--theme-glass-edge);
+  background: linear-gradient(135deg, rgb(255 255 255 / 22%), rgb(255 255 255 / 4%)), var(--primary);
+  color: var(--theme-primary-foreground, #ffffff);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%), 0 12px 30px rgb(67 90 199 / 34%);
+}
+html[data-console-theme="glass"] .public-layout .btn.btn-primary {
+  border: 1px solid var(--theme-glass-edge);
+  background-color: var(--primary) !important;
+  background-image: linear-gradient(135deg, rgb(255 255 255 / 22%), rgb(255 255 255 / 4%)) !important;
+  color: var(--theme-primary-foreground, #ffffff) !important;
+  backdrop-filter: blur(10px) saturate(160%);
+  -webkit-backdrop-filter: blur(10px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 55%), 0 12px 30px rgb(67 90 199 / 30%);
+}
+html[data-console-theme="glass"] .ant-btn-primary:not(.ant-btn-dangerous):hover:not(:disabled) {
+  background: linear-gradient(135deg, rgb(255 255 255 / 30%), rgb(255 255 255 / 8%)), var(--primary-hover);
+  transform: translateY(-1px);
+}
+html[data-console-theme="glass"] .public-layout .btn {
+  border: 1px solid var(--theme-glass-edge);
+  background: var(--theme-glass-tint);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner);
+}
+html[data-console-theme="glass"] :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker) {
+  border: 1px solid var(--theme-glass-edge);
+  background: var(--theme-glass-tint), var(--theme-control-bg);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner);
+}
+html[data-console-theme="glass"] :is(.ant-select-dropdown, .ant-picker-dropdown, .ant-dropdown, .ant-modal-content, .ant-drawer-content, .ant-popover-inner) {
+  border: 1px solid var(--theme-glass-edge);
+  background: var(--theme-glass-tint), var(--theme-surface);
+  backdrop-filter: var(--theme-surface-filter);
+  -webkit-backdrop-filter: var(--theme-surface-filter);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner), 0 24px 60px rgb(20 32 72 / 26%);
+}
+html[data-console-theme="glass"] :is(.ant-table, .ant-table-container, .ant-table-content) { background: transparent; }
+html[data-console-theme="glass"] .ant-table-thead > tr > th {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border-bottom: 1px solid var(--theme-glass-edge);
+}
+html[data-console-theme="glass"] .ant-table-tbody > tr > td { border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent); }
+html[data-console-theme="glass"] .console-layout .top-header,
+html[data-console-theme="glass"] .console-layout .sidebar,
+html[data-console-theme="glass"] .public-layout .public-header {
+  background: var(--theme-glass-tint), var(--theme-header-surface) !important;
+  backdrop-filter: var(--theme-surface-filter);
+  -webkit-backdrop-filter: var(--theme-surface-filter);
+  border-color: var(--theme-glass-edge) !important;
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner);
+}
+html[data-console-theme="glass"] .console-layout .menu-item-active {
+  background: color-mix(in srgb, var(--primary) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--theme-glass-edge);
+}
+
+/* Fallbacks keep the layered layout but drop blur and refraction. */
+@media (prefers-reduced-transparency: reduce) {
+  html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card) {
+    background: var(--card);
+  }
+  html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card)::before {
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: transparent;
+  }
+  html[data-console-theme="glass"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--theme-control-bg);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card) {
+    background: var(--card);
+  }
+  html[data-console-theme="glass"] :is(.ant-card, .card, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card, .floating-card)::before {
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-console-theme="cute"] .ant-btn:not(:disabled):hover,
+  html[data-console-theme="cute"] :is(.ant-card, .card, .stat-card):hover,
+  html[data-console-theme="gold"] :is(.ant-card, .card, .stat-card):hover,
+  html[data-console-theme="glass"] :is(.ant-card, .card, .stat-card):hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   Optional appearance switches, shared by all six presets.
+   data-console-surface="transparent" → translucent panes over the canvas.
+   data-console-rounded="off"        → square corners everywhere.
+   ========================================================================== */
+html[data-console-surface="transparent"] :is(
+  .ant-card, .ant-modal-content, .ant-drawer-content, .ant-table-container,
+  .ant-dropdown-menu, .ant-select-dropdown, .ant-popover-inner, .ant-message-notice-content,
+  .feature-card, .product-card, .plan-card, .pricing-card, .stat-card, .content-card, .metric-card, .elevated-card
+) {
+  background-color: var(--card);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+html[data-console-surface="transparent"] :is(.ant-table-thead > tr > th, .ant-table-tbody > tr > td) {
+  background-color: transparent;
+}
+html[data-console-surface="transparent"] :is(.ant-table-thead > tr > th) {
+  background-color: color-mix(in srgb, var(--card) 72%, transparent);
+}
+html[data-console-surface="transparent"] :is(.top-header, .mobile-header, .sidebar, .public-header) {
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-console-surface="transparent"] :is(.ant-card, .ant-modal-content, .ant-drawer-content, .ant-table-container, .feature-card, .product-card, .plan-card, .pricing-card, .stat-card) {
+    background-color: var(--theme-surface);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+html[data-console-rounded="off"] :is(
+  .ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-select-selector, .ant-picker,
+  .ant-card, .ant-modal-content, .ant-drawer-content, .ant-dropdown-menu, .ant-select-dropdown, .ant-popover-inner,
+  .ant-tag, .ant-alert, .ant-tabs-nav-list, .ant-tabs-tab, .ant-table-container, .ant-pagination-item,
+  .appearance-trigger, .appearance-popover, .theme-choice, .language-choice,
+  .package-card, .config-card, .price-card, .summary-card, .card, .feature-card, .product-card, .plan-card, .pricing-card,
+  .stat-card, .content-card, .metric-card, .elevated-card, .btn
+) {
+  border-radius: 2px !important;
+}
+html[data-console-rounded="off"] :is(.ant-btn-primary, .public-layout .btn-primary) {
+  clip-path: none !important;
+}
+
+/* Theme languages: form, navigation, icon treatment and rhythm diverge by preset. */
+
+/* Technical: compact drafting surface, measured lines, instrument-style controls. */
+html[data-console-theme="tech"] .console-layout .menu-group-title,
+html[data-console-theme="tech"] .ant-card-head-title,
+html[data-console-theme="tech"] .ant-table-thead > tr > th {
+  font-family: var(--font-mono);
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+html[data-console-theme="tech"] .console-layout :is(.ant-card, .card, .metric-card, .stat-card, .content-card, .status-card) {
+  border-radius: 0;
+  border-inline-start: 2px solid var(--primary);
+  background-image: linear-gradient(135deg, color-mix(in srgb, var(--primary) 4%, transparent), transparent 42%);
+  box-shadow: none;
+}
+html[data-console-theme="tech"] .console-layout .ant-statistic-content,
+html[data-console-theme="tech"] .console-layout .stat-value,
+html[data-console-theme="tech"] .console-layout .metric-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.045em;
+}
+html[data-console-theme="tech"] .public-layout .hero-glow { display: none; }
+html[data-console-theme="tech"] .public-layout .hero-grid :is(.grid-line, .grid-line.horizontal) { opacity: .38; }
+html[data-console-theme="tech"] .public-layout .hero-container { opacity: 1; }
+html[data-console-theme="tech"] .public-layout .grid-line,
+html[data-console-theme="tech"] .public-layout .grid-line.horizontal {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--primary) 18%, transparent) 20%, color-mix(in srgb, var(--primary) 18%, transparent) 80%, transparent);
+  animation-duration: 9s;
+}
+html[data-console-theme="tech"] .public-layout .hero-badge,
+html[data-console-theme="tech"] .public-layout .section-badge {
+  border-radius: 2px;
+  border-inline-start: 3px solid var(--primary);
+  background: var(--theme-accent-soft);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  animation: none;
+  box-shadow: none;
+}
+html[data-console-theme="tech"] .public-layout .hero-title { letter-spacing: -.045em; }
+html[data-console-theme="tech"] .public-layout .title-gradient {
+  background: none;
+  color: var(--theme-sidebar-accent);
+  -webkit-text-fill-color: var(--theme-sidebar-accent);
+}
+html[data-console-theme="tech"] .public-layout .feature-card {
+  padding: 26px;
+  border-radius: 0;
+  border-inline-start: 2px solid var(--primary);
+  box-shadow: none;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+html[data-console-theme="tech"] .public-layout .feature-card:hover {
+  transform: none;
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 4%, var(--card));
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+html[data-console-theme="tech"] .public-layout .feature-icon {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--primary);
+  border-radius: 0;
+  background: transparent;
+  color: var(--primary);
+  box-shadow: none;
+}
+
+/* Executive: measured whitespace, calm hierarchy and the FrontPage navy chrome. */
+html[data-console-theme="executive"] .console-layout :is(.ant-card, .card, .metric-card, .stat-card, .content-card, .status-card) {
+  border-radius: 8px;
+  border-inline-start: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: none;
+}
+html[data-console-theme="executive"] .console-layout :is(.page-title, .section-title) {
+  letter-spacing: -.025em;
+  font-weight: 620;
+}
+html[data-console-theme="executive"] .console-layout .ant-statistic-content,
+html[data-console-theme="executive"] .console-layout .stat-value,
+html[data-console-theme="executive"] .console-layout .metric-value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.035em;
+}
+html[data-console-theme="executive"] .public-layout .hero-grid :is(.grid-line, .grid-line.horizontal) { opacity: .12; }
+html[data-console-theme="executive"] .public-layout .hero-container { opacity: 1; }
+html[data-console-theme="executive"] .public-layout .hero-glow { display: none; }
+html[data-console-theme="executive"] .public-layout .hero-badge,
+html[data-console-theme="executive"] .public-layout .section-badge {
+  border-radius: 4px;
+  border-color: color-mix(in srgb, var(--primary) 20%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, var(--card));
+  color: var(--primary);
+  animation: none;
+  box-shadow: none;
+}
+html[data-console-theme="executive"] .public-layout .title-gradient {
+  background: none;
+  color: var(--theme-sidebar-accent);
+  -webkit-text-fill-color: var(--theme-sidebar-accent);
+}
+html[data-console-theme="executive"] .public-layout .feature-card {
+  border-radius: 8px;
+  box-shadow: none;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+html[data-console-theme="executive"] .public-layout .feature-card:hover {
+  transform: none;
+  box-shadow: 0 3px 14px rgb(13 40 66 / 10%);
+}
+html[data-console-theme="executive"] .public-layout .feature-icon {
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+  color: var(--primary);
+}
+
+/* Gold: Art Deco proportions, dark velvet surfaces and restrained metal inlays. */
+html[data-console-theme="gold"] :is(.page-title, .section-title, .ant-card-head-title, .hero-title, .public-layout h1, .public-layout h2) {
+  font-weight: 660;
+  letter-spacing: -.02em;
+}
+html[data-console-theme="gold"] .console-layout .menu-group-title,
+html[data-console-theme="gold"] .console-layout .ant-table-thead > tr > th {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+html[data-console-theme="gold"] .console-layout .menu-item-active { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+html[data-console-theme="gold"] .console-layout :is(.ant-card, .card, .metric-card, .stat-card, .content-card, .status-card) {
+  border-radius: var(--theme-card-radius, 10px);
+  border-color: var(--border);
+  background: var(--card);
+  box-shadow: var(--theme-card-shadow, none);
+}
+html[data-console-theme="gold"] .console-layout :is(.page-title, .section-title) {
+  letter-spacing: -.025em;
+  font-weight: 660;
+}
+html[data-console-theme="gold"] .console-layout :is(.ant-statistic-content, .stat-value, .metric-value) {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  letter-spacing: -.03em;
+}
+html[data-console-theme="gold"] .public-layout .hero-glow { opacity: .08; filter: blur(110px); }
+html[data-console-theme="gold"] .public-layout .hero-grid :is(.grid-line, .grid-line.horizontal) { opacity: .22; }
+html[data-console-theme="gold"] .public-layout .hero-container { opacity: 1; }
+html[data-console-theme="gold"] .public-layout .grid-line,
+html[data-console-theme="gold"] .public-layout .grid-line.horizontal {
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--primary) 18%, transparent) 20%, color-mix(in srgb, var(--primary) 18%, transparent) 80%, transparent);
+  animation-duration: 12s;
+}
+html[data-console-theme="gold"] .public-layout .hero-badge,
+html[data-console-theme="gold"] .public-layout .section-badge {
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  color: var(--theme-sidebar-accent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  animation: none;
+  box-shadow: none;
+}
+html[data-console-theme="gold"] .public-layout .title-gradient {
+  background: none;
+  color: var(--theme-sidebar-accent);
+  -webkit-text-fill-color: var(--theme-sidebar-accent);
+}
+html[data-console-theme="gold"] .public-layout .feature-card {
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius, 10px);
+  background: var(--card);
+  box-shadow: var(--theme-card-shadow, none);
+}
+html[data-console-theme="gold"] .public-layout .feature-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  transform: translateY(-2px);
+  box-shadow: var(--theme-card-hover-shadow, none);
+}
+html[data-console-theme="gold"] .public-layout .feature-icon {
+  width: 46px;
+  height: 46px;
+  border: 1px solid color-mix(in srgb, var(--primary) 30%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  color: var(--theme-sidebar-accent);
+}
+
+/* Cute: warm, tactile controls and quiet color; no wobble or candy-gloss overload. */
+html[data-console-theme="cute"] .console-layout .menu-group-title { letter-spacing: .015em; text-transform: none; }
+html[data-console-theme="cute"] .console-layout :is(.ant-card, .card, .metric-card, .stat-card, .content-card, .status-card) {
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--card) 93%, var(--primary));
+  box-shadow: 0 6px 18px rgb(24 120 99 / 9%);
+}
+html[data-console-theme="cute"] .public-layout .hero-glow { opacity: .08; filter: blur(120px); }
+html[data-console-theme="cute"] .public-layout .hero-grid :is(.grid-line, .grid-line.horizontal) { opacity: .12; }
+html[data-console-theme="cute"] .public-layout .hero-container { opacity: 1; }
+html[data-console-theme="cute"] .public-layout .grid-line,
+html[data-console-theme="cute"] .public-layout .grid-line.horizontal { opacity: .32; animation: none; }
+html[data-console-theme="cute"] .public-layout .hero-badge,
+html[data-console-theme="cute"] .public-layout .section-badge {
+  border: 1px solid color-mix(in srgb, var(--primary) 16%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
+  color: var(--primary);
+  animation: none;
+  box-shadow: none;
+}
+html[data-console-theme="cute"] .public-layout .title-gradient {
+  background: none;
+  color: var(--theme-sidebar-accent);
+  -webkit-text-fill-color: var(--theme-sidebar-accent);
+}
+html[data-console-theme="cute"] .public-layout .feature-card {
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--border));
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--card) 94%, var(--primary));
+  box-shadow: 0 6px 18px rgb(24 120 99 / 9%);
+}
+html[data-console-theme="cute"] .public-layout .feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgb(24 120 99 / 14%);
+}
+html[data-console-theme="cute"] .public-layout .feature-icon {
+  width: 50px;
+  height: 50px;
+  border: 1px solid color-mix(in srgb, var(--primary) 15%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--card));
+  color: var(--primary);
+}
+
+/* Liquid glass: consistent glass layers in the app shell, navigation and icon wells. */
+html[data-console-theme="glass"] .console-layout .sidebar {
+  background-image: linear-gradient(155deg, color-mix(in srgb, var(--theme-glass-inner) 55%, transparent), transparent 46%);
+}
+html[data-console-theme="glass"] .console-layout .top-header,
+html[data-console-theme="glass"] .console-layout .mobile-header {
+  background-image: linear-gradient(115deg, color-mix(in srgb, var(--theme-glass-inner) 55%, transparent), transparent 60%);
+}
+html[data-console-theme="glass"] .console-layout :is(.ant-card, .card, .metric-card, .stat-card, .content-card, .status-card) {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid var(--theme-glass-edge);
+  border-radius: 26px;
+  background: var(--theme-glass-tint), var(--theme-surface);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner), 0 18px 48px rgb(10 18 40 / 18%);
+}
+html[data-console-theme="glass"] .console-layout .page-title,
+html[data-console-theme="glass"] .public-layout .hero-title {
+  text-shadow: 0 1px 18px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+html[data-console-theme="glass"] .public-layout .hero-grid :is(.grid-line, .grid-line.horizontal) { opacity: .22; }
+html[data-console-theme="glass"] .public-layout .hero-container { opacity: 1; }
+html[data-console-theme="glass"] .public-layout .hero-glow { opacity: .18; filter: blur(110px); }
+html[data-console-theme="glass"] .public-layout .hero-badge,
+html[data-console-theme="glass"] .public-layout .section-badge {
+  border-color: var(--theme-glass-edge);
+  background: var(--theme-glass-tint), var(--theme-surface);
+  backdrop-filter: blur(14px) saturate(145%);
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
+  animation: none;
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner);
+}
+html[data-console-theme="glass"] .public-layout .title-gradient {
+  background: linear-gradient(110deg, var(--text-primary), var(--primary));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+html[data-console-theme="glass"] .public-layout .feature-card {
+  border: 1px solid var(--theme-glass-edge);
+  border-radius: 26px;
+  background: var(--theme-glass-tint), var(--theme-surface);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner), 0 18px 48px rgb(10 18 40 / 18%);
+}
+html[data-console-theme="glass"] .public-layout .feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner), 0 26px 64px rgb(10 18 40 / 24%);
+}
+html[data-console-theme="glass"] .public-layout .feature-icon {
+  width: 50px;
+  height: 50px;
+  border: 1px solid var(--theme-glass-edge);
+  border-radius: 16px;
+  background: var(--theme-glass-tint), var(--theme-surface);
+  color: var(--primary);
+  backdrop-filter: blur(10px) saturate(145%);
+  -webkit-backdrop-filter: blur(10px) saturate(145%);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner);
+}
+
+/* Authentication surfaces follow the same structural language as the app shell. */
+html[data-console-theme="tech"] :is(.login-card, .auth-card) {
+  border-radius: 0;
+  border-inline-start: 2px solid var(--primary);
+  box-shadow: none;
+}
+html[data-console-theme="tech"] :is(.login-card, .auth-card) :is(.ant-input, .ant-input-affix-wrapper, .ant-btn) { border-radius: 0; }
+html[data-console-theme="tech"] :is(.login-page, .auth-page) .auth-topbar {
+  background: #10243a;
+  color: #eff8ff;
+  border-color: #1d3c58;
+}
+html[data-console-theme="executive"] :is(.login-page, .auth-page) .auth-topbar {
+  background: #10243a;
+  color: #eff8ff;
+  border-color: #1d3c58;
+}
+html[data-console-theme="gold"] :is(.login-card, .auth-card) {
+  border-color: var(--border);
+  background: var(--card);
+  box-shadow: var(--theme-card-shadow, none);
+}
+html[data-console-theme="gold"] :is(.login-page, .auth-page) .auth-topbar {
+  background: #15120d;
+  color: #f4ecd9;
+  border-color: #2e2517;
+}
+html[data-console-theme="cute"] :is(.login-card, .auth-card, .auth-shell) {
+  border-radius: 24px;
+  box-shadow: 0 8px 24px rgb(24 120 99 / 10%);
+}
+html[data-console-theme="cute"] :is(.login-page, .auth-page) .auth-topbar {
+  background: color-mix(in srgb, var(--card) 92%, var(--primary));
+  border-color: color-mix(in srgb, var(--primary) 18%, var(--border));
+}
+html[data-console-theme="glass"] :is(.login-card, .auth-card, .auth-shell) {
+  border: 1px solid var(--theme-glass-edge);
+  background: var(--theme-glass-tint), var(--theme-surface);
+  backdrop-filter: var(--theme-backdrop);
+  -webkit-backdrop-filter: var(--theme-backdrop);
+  box-shadow: inset 0 1px 0 var(--theme-glass-inner), 0 24px 64px rgb(10 18 40 / 22%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-console-theme="glass"] :is(.console-layout .menu-icon, .mobile-menu-icon, .console-layout .sidebar, .console-layout .top-header, .console-layout .mobile-header) {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-console-theme="tech"] .public-layout .grid-line,
+  html[data-console-theme="gold"] .public-layout .grid-line,
+  html[data-console-theme="cute"] .public-layout .grid-line { animation: none; }
+}
+
+/* Theme-specific canvases replace the public page's fixed blue/orange hero wash. */
+html[data-console-theme="tech"] .public-layout .hero-section {
+  background-color: var(--bg-primary);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--primary) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--primary) 9%, transparent) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+html[data-console-theme="executive"] .public-layout .hero-section {
+  background: var(--bg-primary);
+}
+html[data-console-theme="gold"] .public-layout .hero-section {
+  background-color: var(--bg-primary);
+  background-image:
+    linear-gradient(135deg, transparent 49.7%, rgb(232 198 125 / 4%) 50%, transparent 50.3%),
+    linear-gradient(45deg, transparent 49.7%, rgb(232 198 125 / 3%) 50%, transparent 50.3%);
+  background-size: 44px 44px;
+}
+html[data-console-theme="cute"] .public-layout .hero-section {
+  background-color: var(--bg-primary);
+  background-image: radial-gradient(color-mix(in srgb, var(--primary) 13%, transparent) 1px, transparent 1.5px);
+  background-size: 22px 22px;
+}
+html[data-console-theme="glass"] .public-layout .hero-section {
+  background: var(--theme-canvas);
+  background-attachment: fixed;
+}
+html[data-console-theme="executive"] .public-layout .hero-title,
+html[data-console-theme="tech"] .public-layout .hero-title {
+  background: none;
+  color: var(--text-primary);
+}
+html[data-console-theme="gold"] .public-layout .hero-title {
+  font-weight: 720;
+  letter-spacing: -.03em;
+}
+html[data-console-theme="gold"] .public-layout .title-gradient {
+  text-shadow: none;
+}
+html[data-console-theme="gold"] .public-layout .hero-badge,
+html[data-console-theme="gold"] .public-layout .section-badge {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+html[data-console-theme="tech"] .public-layout .hero-glow,
+html[data-console-theme="executive"] .public-layout .hero-glow,
+html[data-console-theme="cute"] .public-layout .hero-glow { display: none; }
+
+/* Ant Design nests the real input inside an affix wrapper; only the wrapper owns the border,
+   radius, padding and focus ring, otherwise the field renders as two concentric frames. */
+html[data-console-theme] .ant-input-affix-wrapper > .ant-input,
+html[data-console-theme] .ant-input-affix-wrapper > input.ant-input,
+html[data-console-theme] .ant-input-affix-wrapper > textarea.ant-input {
+  min-height: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+html[data-console-theme] .ant-input-affix-wrapper { padding-inline: 14px; }
+html[data-console-theme] .ant-input-affix-wrapper > .ant-input:focus,
+html[data-console-theme] .ant-input-affix-wrapper > .ant-input:hover {
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+html[data-console-theme] .ant-input-affix-wrapper > .ant-input-password-icon,
+html[data-console-theme] .ant-input-affix-wrapper > .ant-input-suffix { margin-inline-start: 8px; }
+
+/* Select/picker values sit on a div, so a taller control height leaves the text
+   pinned to the top unless the selector and its item are explicitly centered. */
+html[data-console-theme] .ant-select-single .ant-select-selector {
+  display: flex;
+  align-items: center;
+  padding-block: 0;
+}
+html[data-console-theme] .ant-select-single :is(.ant-select-selection-item, .ant-select-selection-placeholder) {
+  display: flex;
+  height: auto;
+  align-items: center;
+  line-height: 1.4;
+}
+html[data-console-theme] .ant-select-single .ant-select-selector::after {
+  line-height: normal;
+}
+html[data-console-theme] .ant-select-single .ant-select-selection-search {
+  display: flex;
+  height: 100%;
+  align-items: center;
+}
+html[data-console-theme] .ant-select-single .ant-select-selection-search-input {
+  height: 100%;
+}
+html[data-console-theme] .ant-select-single .ant-select-selection-item > *,
+html[data-console-theme] .ant-select-single .ant-select-selection-item-content {
+  display: flex;
+  align-items: center;
+}
+html[data-console-theme] :is(.ant-picker, .ant-picker-input) {
+  align-items: center;
+}
+html[data-console-theme] .ant-picker-input > input {
+  align-self: center;
+}
+html[data-console-theme] .ant-select-single.ant-select-sm .ant-select-selector,
+html[data-console-theme] .ant-select-single.ant-select-lg .ant-select-selector {
+  min-height: var(--theme-control-height);
+}
+
+/* Dark chrome headers must not host light-on-light controls. */
+html[data-console-theme="executive"] :is(.console-layout .top-header, .console-layout .mobile-header, .public-layout .public-header, .admin-layout .header) :is(.collapse-btn, .icon-btn, .user-btn, .header-search, .header-search input, .search-hint, .appearance-trigger),
+html.console-dark :is(.console-layout .top-header, .console-layout .mobile-header, .public-layout .public-header, .admin-layout .header) :is(.collapse-btn, .icon-btn, .user-btn, .header-search, .header-search input, .search-hint, .appearance-trigger) {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 16%);
+  color: var(--theme-header-text, #fff);
+}
+html[data-console-theme="executive"] :is(.console-layout .top-header, .console-layout .mobile-header, .public-layout .public-header, .admin-layout .header) :is(.header-search input, .search-hint),
+html.console-dark :is(.console-layout .top-header, .console-layout .mobile-header, .public-layout .public-header, .admin-layout .header) :is(.header-search input, .search-hint) {
+  color: var(--theme-header-text, #fff);
+  background: transparent;
+}
+html[data-console-theme="executive"] :is(.console-layout .top-header, .console-layout .mobile-header, .public-layout .public-header, .admin-layout .header) .appearance-trigger:hover,
+html.console-dark :is(.console-layout .top-header, .console-layout .mobile-header, .public-layout .public-header, .admin-layout .header) .appearance-trigger:hover {
+  background: rgb(255 255 255 / 16%);
+  border-color: rgb(255 255 255 / 28%);
+}

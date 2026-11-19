@@ -34,6 +34,8 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { LanguageEnum } from '@/enums/appEnum'
+import { getDefaultLanguage, isAutomaticLanguage } from '@/locales'
+import { browserLanguage } from '@/locales/registry'
 import { router } from '@/router'
 import { useSettingStore } from './setting'
 import { useWorktabStore } from './worktab'
@@ -51,7 +53,8 @@ export const useUserStore = defineStore(
   'userStore',
   () => {
     // 语言设置
-    const language = ref(LanguageEnum.ZH)
+    const language = ref(getDefaultLanguage())
+    const languageAuto = ref(isAutomaticLanguage())
     // 登录状态
     const isLogin = ref(false)
     // 锁屏状态
@@ -94,9 +97,15 @@ export const useUserStore = defineStore(
      * 设置语言
      * @param lang 语言枚举值
      */
-    const setLanguage = (lang: LanguageEnum) => {
+    const setLanguage = (lang: LanguageEnum | 'auto') => {
+      languageAuto.value = lang === 'auto'
+      language.value = languageAuto.value ? browserLanguage() : (lang as LanguageEnum)
+      try {
+        localStorage.setItem('admin-language', lang)
+      } catch {
+        // Storage can be disabled; retain the preference for this session.
+      }
       setPageTitle(router.currentRoute.value)
-      language.value = lang
     }
 
     /**
@@ -170,7 +179,8 @@ export const useUserStore = defineStore(
       resetRouterState(500)
       // 跳转到登录页，携带当前路由作为 redirect 参数
       const currentRoute = router.currentRoute.value
-      const redirect = redirectPath || (currentRoute.path !== '/login' ? currentRoute.fullPath : undefined)
+      const redirect =
+        redirectPath || (currentRoute.path !== '/login' ? currentRoute.fullPath : undefined)
       router.push({
         name: 'Login',
         query: redirect ? { redirect } : undefined
@@ -206,6 +216,7 @@ export const useUserStore = defineStore(
     }
 
     return {
+      languageAuto,
       language,
       isLogin,
       isLock,

@@ -1,17 +1,4 @@
 <template>
-  <a-config-provider
-    :theme="{
-      algorithm: theme.darkAlgorithm,
-      token: {
-        colorText: '#f1f5f9',
-        colorTextSecondary: '#94a3b8',
-        colorTextTertiary: '#64748b',
-        colorBgContainer: '#111827',
-        colorBorder: '#1e293b',
-        colorPrimary: '#0ea5e9'
-      }
-    }"
-  >
     <div class="public-layout">
       <!-- Header -->
       <header class="public-header" :class="{ 'scrolled': isScrolled }">
@@ -42,6 +29,7 @@
         </div>
         <div class="header-right">
           <div class="header-actions">
+            <AppearanceSettings />
             <router-link v-if="!auth.token" to="/login" class="btn btn-ghost">
               {{ $t("auth.login") || "登录" }}
             </router-link>
@@ -77,17 +65,17 @@
     />
 
     </div>
-  </a-config-provider>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, reactive, computed } from 'vue'
-import { ConfigProvider, theme } from 'ant-design-vue'
+import { ref, onMounted, onUnmounted, reactive, computed, watch } from 'vue'
+import AppearanceSettings from '@/components/AppearanceSettings.vue'
 import { useAuthStore } from "@/stores/auth"
 import { useSiteStore } from "@/stores/site"
 import { getCmsBlocks, getSiteSettings } from "@/services/user"
 import FooterBlock from "@/components/cms/blocks/FooterBlock.vue"
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue"
+import { t } from "@/locales"
 
 const auth = useAuthStore()
 const site = useSiteStore()
@@ -113,48 +101,44 @@ const footerContent = reactive({
   badges: []
 })
 
-const defaultFooter = {
-  description: "专业的云服务提供商，为企业提供可靠、安全、高性能的云计算解决方案",
-  sections: [
-    {
-      title: "产品服务",
-      links: [
-        { label: "云服务器", url: "/products" },
-        { label: "对象存储", url: "/products" },
-        { label: "云数据库", url: "/products" },
-        { label: "CDN加速", url: "/products" }
-      ]
-    },
-    {
-      title: "资源中心",
-      links: [
-        { label: "开发文档", url: "/docs" },
-        { label: "帮助中心", url: "/help" },
-        { label: "产品公告", url: "/announcements" },
-        { label: "教程指南", url: "/tutorials" }
-      ]
-    },
-    {
-      title: "客户支持",
-      links: [
-        { label: "帮助中心", url: "/help" },
-        { label: "提交工单", url: "/console/tickets" },
-        { label: "联系我们", url: "#" },
-        { label: "服务状态", url: "#" }
-      ]
-    },
-    {
-      title: "关于我们",
-      links: [
-        { label: "关于我们", url: "#" },
-        { label: "加入我们", url: "#" },
-        { label: "隐私政策", url: "#" },
-        { label: "服务条款", url: "#" }
-      ]
-    }
-  ],
-  badges: ["99.99% Uptime", "SOC2 Certified"]
-}
+const defaultFooterSections = () => [
+  {
+    title: t('footer.section.products'),
+    links: [
+      { label: t('footer.link.cloudServer'), url: "/products" },
+      { label: t('footer.link.objectStorage'), url: "/products" },
+      { label: t('footer.link.cloudDatabase'), url: "/products" },
+      { label: t('footer.link.cdn'), url: "/products" }
+    ]
+  },
+  {
+    title: t('footer.section.resources'),
+    links: [
+      { label: t('footer.link.docs'), url: "/docs" },
+      { label: t('footer.link.help'), url: "/help" },
+      { label: t('footer.link.announcements'), url: "/announcements" },
+      { label: t('footer.link.tutorials'), url: "/tutorials" }
+    ]
+  },
+  {
+    title: t('footer.section.support'),
+    links: [
+      { label: t('footer.link.help'), url: "/help" },
+      { label: t('footer.link.ticket'), url: "/console/tickets" },
+      { label: t('footer.link.contact'), url: "#" },
+      { label: t('footer.link.serviceStatus'), url: "#" }
+    ]
+  },
+  {
+    title: t('footer.section.about'),
+    links: [
+      { label: t('footer.link.aboutUs'), url: "#" },
+      { label: t('footer.link.joinUs'), url: "#" },
+      { label: t('footer.link.privacy'), url: "#" },
+      { label: t('footer.link.terms'), url: "#" }
+    ]
+  }
+]
 
 const parseContentJson = (raw) => {
   if (!raw) return {}
@@ -183,11 +167,11 @@ const applyFooterBlock = (block) => {
 }
 
 const footerSections = computed(() =>
-  footerContent.sections && footerContent.sections.length > 0 ? footerContent.sections : defaultFooter.sections
+  footerContent.sections && footerContent.sections.length > 0 ? footerContent.sections : defaultFooterSections()
 )
 
 const footerBadges = computed(() =>
-  footerContent.badges && footerContent.badges.length > 0 ? footerContent.badges : defaultFooter.badges
+  footerContent.badges && footerContent.badges.length > 0 ? footerContent.badges : [t('footer.uptime'), t('footer.secure')]
 )
 
 const isExternalLink = (url) => /^https?:\/\//i.test(url)
@@ -236,24 +220,31 @@ const fetchSiteSettings = async () => {
   }
 }
 
+let footerRequest = 0
+const loadFooter = async () => {
+  const request = ++footerRequest
+  const lang = site.currentLang
+  footerContent.description = ""
+  footerContent.sections = []
+  footerContent.badges = []
+  try {
+    const res = await getCmsBlocks({ page: 'footer', lang })
+    if (request !== footerRequest || lang !== site.currentLang) return
+    applyFooterBlock((res.data?.items || []).find(item => item.type === 'footer'))
+  } catch { /* Keep the default footer if CMS content is unavailable. */ }
+}
+watch(() => site.currentLang, loadFooter)
+
 onMounted(async () => {
   window.addEventListener('scroll', handleScroll)
-  footerContent.description = defaultFooter.description
-  footerContent.sections = defaultFooter.sections
-  footerContent.badges = defaultFooter.badges
+  footerContent.description = ""
+  footerContent.sections = []
+  footerContent.badges = []
   
   // 先获取站点设置（版权信息作为备用）
   await fetchSiteSettings()
   
-  try {
-    const res = await getCmsBlocks({ page: "footer", lang: site.currentLang || "zh-CN" })
-    const items = res.data?.items || []
-    const footerBlock = items.find((item) => item.type === "footer")
-    // CMS blocks 中的备案信息会覆盖站点设置中的备案信息
-    applyFooterBlock(footerBlock)
-  } catch (error) {
-    // fallback to defaults
-  }
+  await loadFooter()
 })
 
 onUnmounted(() => {
@@ -265,15 +256,15 @@ onUnmounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Work+Sans:wght@300;400;500;600&display=swap');
 
 /* CSS Variables */
-:root {
-  --color-bg: #0a0e17;
-  --color-bg-alt: #111827;
-  --color-header-bg: rgba(10, 14, 23, 0.8);
-  --color-primary: #0ea5e9;
-  --color-primary-light: #38bdf8;
-  --color-text: #f1f5f9;
-  --color-text-muted: #94a3b8;
-  --color-border: #1e293b;
+.public-layout {
+  --color-bg: var(--bg-primary);
+  --color-bg-alt: var(--card);
+  --color-header-bg: var(--theme-surface);
+  --color-primary: var(--primary);
+  --color-primary-light: var(--primary);
+  --color-text: var(--text-primary);
+  --color-text-muted: var(--text-secondary);
+  --color-border: var(--border);
   --font-heading: 'Outfit', sans-serif;
   --font-body: 'Work Sans', sans-serif;
 }
@@ -282,14 +273,15 @@ onUnmounted(() => {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--color-bg);
+  background: var(--theme-canvas, var(--color-bg));
+  background-size: 32px 32px;
 }
 </style>
 
 <style>
 /* Global styles for public layout - not scoped */
 .public-layout {
-  color: #f1f5f9;
+  color: var(--color-text);
 }
 
 .public-layout .ant-typography,
@@ -300,23 +292,23 @@ onUnmounted(() => {
 }
 
 .public-layout :deep(.ant-typography) {
-  color: #f1f5f9;
+  color: var(--color-text);
 }
 
 .public-layout :deep(.ant-text-secondary) {
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 .public-layout :deep(.ant-form-item-label > label) {
-  color: #f1f5f9;
+  color: var(--color-text);
 }
 
 .public-layout :deep(.ant-form-item-explain) {
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 .public-layout :deep(.ant-empty-description) {
-  color: #94a3b8;
+  color: var(--color-text-muted);
 }
 
 /* Header */
@@ -371,7 +363,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--color-primary) 0%, #0284c7 100%);
+  background: var(--color-primary);
   border-radius: 10px;
   color: white;
 }
@@ -453,7 +445,7 @@ onUnmounted(() => {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--color-primary) 0%, #0284c7 100%);
+  background: var(--color-primary);
   color: white;
   box-shadow: 0 2px 12px rgba(14, 165, 233, 0.3);
 }
@@ -505,7 +497,7 @@ onUnmounted(() => {
 .footer-logo .logo-icon {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, var(--color-primary) 0%, #0284c7 100%);
+  background: var(--color-primary);
   border-radius: 12px;
 }
 
@@ -661,6 +653,17 @@ onUnmounted(() => {
     gap: 16px;
     text-align: center;
   }
+}
+
+@media (max-width: 420px) {
+  .header-container { gap: 8px; padding-inline: 10px; }
+  .header-left, .logo { min-width: 0; }
+  .header-left { gap: 8px; flex: 1 1 auto; overflow: hidden; }
+  .logo { gap: 7px; flex: 0 1 auto; }
+  .logo-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+  .header-right, .header-actions { min-width: 0; flex: 0 0 auto; }
+  .header-actions { gap: 5px; }
+  .header-actions .btn { flex: 0 0 auto; padding: 8px 9px; white-space: nowrap; font-size: 12px; }
 }
 </style>
 

@@ -73,7 +73,8 @@ export function useTheme() {
     const currentTheme = AppConfig.systemThemeStyles[theme as keyof SystemThemeTypes]
 
     if (currentTheme) {
-      el.setAttribute('class', currentTheme.className)
+      el.classList.remove('light', 'dark')
+      if (currentTheme.className) el.classList.add(currentTheme.className)
     }
 
     // 设置按钮颜色加深或变浅
@@ -145,7 +146,8 @@ export function initializeTheme() {
     // 设置主题 class
     const currentTheme = AppConfig.systemThemeStyles[actualTheme as keyof SystemThemeTypes]
     if (currentTheme) {
-      el.setAttribute('class', currentTheme.className)
+      el.classList.remove('light', 'dark')
+      if (currentTheme.className) el.classList.add(currentTheme.className)
     }
 
     // 设置主题颜色
@@ -155,20 +157,12 @@ export function initializeTheme() {
     document.documentElement.style.setProperty('--custom-radius', `${settingStore.customRadius}rem`)
   }
 
-  // 应用主题
+  // 恢复命名主题；颜色和圆角仍保留用户的独立自定义。
+  document.documentElement.dataset.theme = settingStore.appearanceTheme || 'minimal'
   applyThemeByMode()
 
-  // 如果是 AUTO 模式，监听系统主题变化（使用 VueUse 的响应式特性）
-  if (settingStore.systemThemeMode === SystemThemeEnum.AUTO) {
-    watch(
-      prefersDark,
-      () => {
-        // 只有在 AUTO 模式下才响应系统主题变化
-        if (settingStore.systemThemeMode === SystemThemeEnum.AUTO) {
-          applyThemeByMode()
-        }
-      },
-      { immediate: false }
-    )
-  }
+  // 始终注册监听，支持启动后从手动模式切换到自动模式。
+  watch([prefersDark, () => settingStore.systemThemeMode], () => {
+    if (settingStore.systemThemeMode === SystemThemeEnum.AUTO) applyThemeByMode()
+  })
 }

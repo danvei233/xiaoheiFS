@@ -37,7 +37,6 @@
       <div
         class="geo-element circle-top-right animate-fade-in-down"
         style="animation-delay: 0.5"
-        @click="themeAnimation"
       ></div>
 
       <!-- 装饰点 -->
@@ -73,7 +72,6 @@
 <script setup lang="ts">
   import loginIcon from '@imgs/svg/login_icon.svg'
   import { useSiteStore } from '@/store/modules/site'
-  import { themeAnimation } from '@/utils/ui/animation'
 
   // 定义 props
   defineProps<{

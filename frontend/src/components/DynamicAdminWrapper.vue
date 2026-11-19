@@ -94,7 +94,7 @@ watch(() => route.path, loadPage);
   justify-content: center;
   min-height: 400px;
   font-size: 16px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
 }
 
 .fade-enter-active,

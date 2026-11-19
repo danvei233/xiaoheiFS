@@ -1,6 +1,7 @@
 <!-- 混合菜单 -->
 <template>
-  <div class="relative box-border flex-c w-full overflow-hidden">
+  <!-- Keep physical scrolling LTR; menu labels retain their natural text direction. -->
+  <div class="relative box-border flex-c w-full overflow-hidden" dir="ltr">
     <!-- 左侧滚动按钮 -->
     <div v-show="showLeftArrow" class="button-arrow" @click="scroll('left')">
       <ElIcon>
@@ -32,6 +33,7 @@
               :class="item.isActive && '!text-theme'"
             />
             <span
+              dir="auto"
               class="text-md text-g-700 dark:text-g-800"
               :class="item.isActive && '!text-theme'"
             >

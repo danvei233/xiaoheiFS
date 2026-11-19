@@ -61,6 +61,7 @@
   }
 
   const CONFIG_ITEMS: ConfigItem[] = [
+    { comment: '外观主题', key: 'appearanceTheme' },
     { comment: '菜单类型', key: 'menuType', enumMap: ENUM_MAPS.menuType },
     { comment: '菜单展开宽度', key: 'menuOpenWidth' },
     { comment: '菜单是否展开', key: 'menuOpen' },
@@ -174,6 +175,7 @@
       settingStore.setDualMenuShowText(config.dualMenuShowText)
 
       // 主题相关 - 使用 switchThemeStyles 确保正确处理 AUTO 模式
+      settingStore.setAppearanceTheme(config.appearanceTheme)
       switchThemeStyles(config.systemThemeMode)
 
       // 等待主题切换完成后，根据实际应用的主题设置菜单主题

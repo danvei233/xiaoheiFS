@@ -87,27 +87,8 @@
           @click="toggleFullScreen"
         />
 
-        <!-- 国际化按钮 -->
-        <ElDropdown
-          @command="changeLanguage"
-          popper-class="langDropDownStyle"
-          v-if="shouldShowLanguage"
-        >
-          <ArtIconButton icon="ri:translate-2" class="language-btn text-[19px]" />
-          <template #dropdown>
-            <ElDropdownMenu>
-              <div v-for="item in languageOptions" :key="item.value" class="lang-btn-item">
-                <ElDropdownItem
-                  :command="item.value"
-                  :class="{ 'is-selected': locale === item.value }"
-                >
-                  <span class="menu-txt">{{ item.label }}</span>
-                  <ArtSvgIcon icon="ri:check-fill" v-if="locale === item.value" />
-                </ElDropdownItem>
-              </div>
-            </ElDropdownMenu>
-          </template>
-        </ElDropdown>
+        <!-- 外观、明暗模式和语言为三个独立入口 -->
+        <ThemePreferenceControls :show-language="shouldShowLanguage" />
 
         <!-- 通知按钮 -->
         <ArtIconButton
@@ -148,12 +129,6 @@
           </ElPopover>
         </div>
 
-        <!-- 主题切换按钮 -->
-        <ArtIconButton
-          v-if="shouldShowThemeToggle"
-          @click="themeAnimation"
-          :icon="isDark ? 'ri:sun-fill' : 'ri:moon-line'"
-        />
 
         <!-- 用户头像、菜单 -->
         <ArtUserMenu />
@@ -169,20 +144,17 @@
 </template>
 
 <script setup lang="ts">
-  import { useI18n } from 'vue-i18n'
   import { useRouter } from 'vue-router'
   import { useFullscreen, useWindowSize } from '@vueuse/core'
-  import { LanguageEnum, MenuTypeEnum } from '@/enums/appEnum'
+  import { MenuTypeEnum } from '@/enums/appEnum'
   import { useSettingStore } from '@/store/modules/setting'
   import { useSiteStore } from '@/store/modules/site'
-  import { useUserStore } from '@/store/modules/user'
   import { useMenuStore } from '@/store/modules/menu'
-  import { languageOptions } from '@/locales'
   import { mittBus } from '@/utils/sys'
-  import { themeAnimation } from '@/utils/ui/animation'
   import { useCommon } from '@/hooks/core/useCommon'
   import { useHeaderBar } from '@/hooks/core/useHeaderBar'
   import ArtUserMenu from './widget/ArtUserMenu.vue'
+  import ThemePreferenceControls from './widget/ThemePreferenceControls.vue'
 
   defineOptions({ name: 'ArtHeaderBar' })
 
@@ -190,12 +162,10 @@
   const isWindows = navigator.userAgent.includes('Windows')
 
   const router = useRouter()
-  const { locale } = useI18n()
   const { width } = useWindowSize()
 
   const settingStore = useSettingStore()
   const siteStore = useSiteStore()
-  const userStore = useUserStore()
   const menuStore = useMenuStore()
 
   // 顶部栏功能配置
@@ -210,14 +180,12 @@
     shouldShowChat,
     shouldShowLanguage,
     shouldShowSettings,
-    shouldShowThemeToggle,
     fastEnterMinWidth: headerBarFastEnterMinWidth
   } = useHeaderBar()
 
-  const { menuOpen, systemThemeColor, showSettingGuide, menuType, isDark, tabStyle } =
+  const { menuOpen, systemThemeColor, showSettingGuide, menuType, tabStyle } =
     storeToRefs(settingStore)
 
-  const { language } = storeToRefs(userStore)
   const { menuList } = storeToRefs(menuStore)
   const systemName = computed(() => siteStore.resolvedSiteName)
 
@@ -233,7 +201,6 @@
   const { isFullscreen, toggle: toggleFullscreen } = useFullscreen()
 
   onMounted(() => {
-    initLanguage()
     document.addEventListener('click', bodyCloseNotice)
   })
 
@@ -273,24 +240,6 @@
     setTimeout(() => {
       refresh()
     }, time)
-  }
-
-  /**
-   * 初始化语言设置
-   */
-  const initLanguage = (): void => {
-    locale.value = language.value
-  }
-
-  /**
-   * 切换系统语言
-   * @param {LanguageEnum} lang - 目标语言类型
-   */
-  const changeLanguage = (lang: LanguageEnum): void => {
-    if (locale.value === lang) return
-    locale.value = lang
-    userStore.setLanguage(lang)
-    reload(50)
   }
 
   /**

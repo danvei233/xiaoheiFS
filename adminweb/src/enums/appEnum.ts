@@ -57,7 +57,7 @@ export enum MenuThemeEnum {
  */
 export enum MenuWidth {
   /** 收起宽度 */
-  CLOSE = '64px'
+  CLOSE = '48px'
 }
 
 /**
@@ -67,7 +67,17 @@ export enum LanguageEnum {
   /** 中文 */
   ZH = 'zh',
   /** 英文 */
-  EN = 'en'
+  EN = 'en',
+  ZH_TW = 'zh-TW',
+  JA = 'ja',
+  KO = 'ko',
+  FR = 'fr',
+  DE = 'de',
+  ES = 'es',
+  IT = 'it',
+  PT = 'pt',
+  RU = 'ru',
+  AR = 'ar'
 }
 
 /**

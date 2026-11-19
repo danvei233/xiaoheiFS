@@ -4,7 +4,7 @@
     <div class="cart-header">
       <div class="header-left">
         <div class="title-section">
-          <h1 class="page-title">购物车</h1>
+          <h1 class="page-title">选购清单</h1>
           <p class="page-subtitle">{{ dataSource.length }} 件商品</p>
         </div>
       </div>

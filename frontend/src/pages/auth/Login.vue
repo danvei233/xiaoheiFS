@@ -1,6 +1,12 @@
 ﻿<template>
-  <a-config-provider :theme="{ algorithm: theme.darkAlgorithm }">
     <div class="login-page">
+      <header class="auth-topbar">
+        <router-link to="/" class="auth-topbar-brand">
+          <span class="auth-topbar-mark" aria-hidden="true"></span>
+          <span>{{ site.siteName }}</span>
+        </router-link>
+        <AppearanceSettings />
+      </header>
       <div class="login-card">
         <h1 class="title">用户登录</h1>
         <p class="subtitle">登录以访问控制台</p>
@@ -60,14 +66,15 @@
         </a-form>
       </div>
     </div>
-  </a-config-provider>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { message, theme } from "ant-design-vue";
+import { message } from "ant-design-vue";
+import AppearanceSettings from "@/components/AppearanceSettings.vue";
 import { useAuthStore } from "@/stores/auth";
+import { useSiteStore } from "@/stores/site";
 import { getAuthSettings, getCaptcha } from "@/services/user";
 import { INPUT_LIMITS } from "@/constants/inputLimits";
 
@@ -80,6 +87,7 @@ const form = reactive({
 const loginMode = ref("account");
 
 const auth = useAuthStore();
+const site = useSiteStore();
 const router = useRouter();
 const route = useRoute();
 
@@ -270,30 +278,78 @@ onMounted(() => {
 
 <style scoped>
 .login-page {
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: #0f172a;
+  padding: 88px 24px 40px;
+  background: var(--theme-canvas, var(--bg-primary));
+  color: var(--text-primary);
 }
 
 .login-card {
   width: 100%;
   max-width: 420px;
-  background: #111827;
-  border: 1px solid #1f2937;
-  border-radius: 14px;
+  background: var(--theme-surface, var(--card));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: var(--theme-backdrop);
   padding: 24px;
 }
 
+.auth-topbar {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 64px;
+  padding-inline: clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  color: var(--text-primary);
+  backdrop-filter: var(--theme-backdrop, blur(12px));
+  -webkit-backdrop-filter: var(--theme-backdrop, blur(12px));
+}
+
+.auth-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.auth-topbar-brand > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auth-topbar-mark {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: linear-gradient(140deg, var(--primary), color-mix(in srgb, var(--primary) 45%, #0b1220));
+  box-shadow: inset 0 1px 0 #ffffff66;
+}
+
 .title {
-  color: #f8fafc;
+  color: var(--text-primary);
   margin: 0;
 }
 
 .subtitle {
-  color: #94a3b8;
+  color: var(--text-secondary);
   margin: 8px 0 18px;
 }
 
@@ -305,14 +361,14 @@ onMounted(() => {
 .captcha-img {
   width: 120px;
   height: 40px;
-  border: 1px dashed #334155;
+  border: 1px dashed var(--border);
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   overflow: hidden;
-  color: #94a3b8;
+  color: var(--text-secondary);
 }
 
 .captcha-img img {
@@ -334,7 +390,7 @@ onMounted(() => {
 }
 
 .captcha-geetest-status {
-  color: #94a3b8;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 </style>
