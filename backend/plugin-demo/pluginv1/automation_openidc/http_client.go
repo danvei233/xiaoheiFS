@@ -892,7 +892,9 @@ func (c *Client) PowerVM(ctx context.Context, hsName, vmUUID, action string) err
 // HostAgent /api/client/status/{hs}/{vm} 返回的字段名在不同版本间可能不一致，
 // 因此先用 map[string]any 灵活解析，再通过多候选字段名提取值，确保兼容性。
 func (c *Client) GetVMStatus(ctx context.Context, hsName, vmUUID string) (map[string]any, error) {
-	resp, err := c.doRequest(ctx, http.MethodGet, "/api/client/status/"+hsName+"/"+vmUUID, nil)
+	// limit 为最近 N 分钟的历史采样；上游前端同样使用 30/180/360。
+	// 不传时部分版本只返回 power_status，history 恒为空。
+	resp, err := c.doRequest(ctx, http.MethodGet, "/api/client/status/"+hsName+"/"+vmUUID+"?limit=30", nil)
 	if err != nil {
 		return nil, err
 	}

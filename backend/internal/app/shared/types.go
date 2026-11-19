@@ -293,6 +293,7 @@ type AutomationProduct struct {
 }
 
 type AutomationMonitor struct {
+	Available      bool  `json:"available"`
 	CPUPercent     int   `json:"cpu"`
 	MemoryPercent  int   `json:"memory"`
 	BytesIn        int64 `json:"bytes_in"`

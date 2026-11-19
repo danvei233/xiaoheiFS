@@ -138,6 +138,46 @@ func ensureNATRule(ctx context.Context, c *Client, hsName, vmUUID string, lanPor
 	return lastErr
 }
 
+var postProvisionRunning sync.Map // map[int64]struct{}
+
+// runPostProvisionAsync 在后台补齐端口映射与首次开机。
+// 上游 natadd/powers 可能长时间不返回，放在 GetInstance 同步流程里会让主控
+// 一直卡在 RPC 超时，订单停留在「开通中」；这里改为后台执行并自行限时。
+func (a *automationServer) runPostProvisionAsync(instanceID int64, hsName, vmUUID, vmStatus string) {
+	if _, loaded := postProvisionRunning.LoadOrStore(instanceID, struct{}{}); loaded {
+		return
+	}
+	go func() {
+		defer postProvisionRunning.Delete(instanceID)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		c, err := a.core.newClient()
+		if err != nil {
+			pluginLog.Printf("[post-provision] 初始化客户端失败: %v", err)
+			return
+		}
+		if v, ok := pendingNAT.LoadAndDelete(instanceID); ok {
+			rule := v.(pendingNATRule)
+			if err := ensureNATRule(ctx, c, hsName, vmUUID, rule.lanPort); err != nil {
+				rule.attempts++
+				pluginLog.Printf("[post-provision] 自动映射端口失败 hs=%s vm=%s lan=%d (第%d次): %v",
+					hsName, vmUUID, rule.lanPort, rule.attempts, err)
+				if rule.attempts < 3 {
+					pendingNAT.Store(instanceID, rule)
+				}
+			}
+		}
+		if _, ok := pendingAutoStart.LoadAndDelete(instanceID); ok && !strings.EqualFold(strings.TrimSpace(vmStatus), "running") {
+			if err := c.PowerVM(ctx, hsName, vmUUID, "S_START"); err != nil {
+				pluginLog.Printf("[post-provision] 自动开机失败 hs=%s vm=%s: %v", hsName, vmUUID, err)
+				pendingAutoStart.Store(instanceID, struct{}{})
+			} else {
+				pluginLog.Printf("[post-provision] 自动开机成功 hs=%s vm=%s", hsName, vmUUID)
+			}
+		}
+	}()
+}
+
 // isRetryableCreateError 判断创建失败是否属于可按原参数重试的偶发错误。
 // 镜像文件不存在、参数错误等确定性失败不重试。
 func isRetryableCreateError(detail string) bool {
@@ -295,6 +335,7 @@ type coreServer struct {
 	instance  string
 	ids       *idStore
 	updatedAt time.Time
+	rebuildMu sync.Mutex
 }
 
 func (s *coreServer) GetManifest(_ context.Context, _ *pluginv1.Empty) (*pluginv1.Manifest, error) {
@@ -470,19 +511,27 @@ func (s *coreServer) resolveInstanceWithFallback(ctx context.Context, instanceID
 	if hs, vm, ok := s.ids.resolveInstance(instanceID); ok {
 		return hs, vm, nil
 	}
-	// 缓存未命中：遍历所有主机，重建缓存
+	// 缓存未命中：遍历所有主机，重建缓存。
+	// 用脱离主控取消的上下文执行，避免主控 RPC 超时把扫描中断后缓存永远建不起来。
+	s.rebuildMu.Lock()
+	defer s.rebuildMu.Unlock()
+	if hs, vm, ok := s.ids.resolveInstance(instanceID); ok {
+		return hs, vm, nil
+	}
+	scanCtx, scanCancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Minute)
+	defer scanCancel()
 	c, _, err := s.newClientWithTrace()
 	if err != nil {
 		return "", "", err
 	}
-	servers, err := c.ListServers(ctx)
+	servers, err := c.ListServers(scanCtx)
 	if err != nil {
 		return "", "", fmt.Errorf("resolve instance_id %d: list servers failed: %w", instanceID, err)
 	}
 	var failedHosts []string
 	for hs := range servers {
 		s.ids.lineID(hs) // 顺便缓存 line_id
-		vms, vmErr := c.ListVMs(ctx, hs)
+		vms, vmErr := c.ListVMs(scanCtx, hs)
 		if vmErr != nil {
 			failedHosts = append(failedHosts, fmt.Sprintf("%s(%v)", hs, vmErr))
 			continue
@@ -1068,30 +1117,9 @@ func (a *automationServer) GetInstance(ctx context.Context, req *pluginv1.GetIns
 	// VM 已就绪，创建成功，清理失败重试登记。
 	clearPendingCreate(req.GetInstanceId())
 
-	// 自动端口映射：VM 已纳管后 natadd 才会成功，最多尝试 3 轮。
-	if v, ok := pendingNAT.LoadAndDelete(instanceID); ok {
-		rule := v.(pendingNATRule)
-		if err := ensureNATRule(ctx, c, hsName, info.VMUUID, rule.lanPort); err != nil {
-			rule.attempts++
-			pluginLog.Printf("[GetInstance] 自动映射端口失败 hs=%s vm=%s lan=%d (第%d次): %v",
-				hsName, info.VMUUID, rule.lanPort, rule.attempts, err)
-			if rule.attempts < 3 {
-				pendingNAT.Store(instanceID, rule)
-			}
-		}
-	}
-
-	// 开通后的首次自动开机：只有 CreateInstance 登记过的实例才会执行一次，
-	// 用户后续手动关机不会被重新拉起。
-	if _, ok := pendingAutoStart.LoadAndDelete(instanceID); ok && strings.ToLower(info.Status) != "running" {
-		if startErr := c.PowerVM(ctx, hsName, info.VMUUID, "S_START"); startErr != nil {
-			pluginLog.Printf("[GetInstance] 自动开机失败 hs=%s vm=%s: %v", hsName, info.VMUUID, startErr)
-			pendingAutoStart.Store(instanceID, struct{}{}) // 允许后续轮询重试
-		} else {
-			pluginLog.Printf("[GetInstance] 自动开机成功 hs=%s vm=%s", hsName, info.VMUUID)
-			state = 2
-		}
-	}
+	// 端口映射与首次开机放到后台执行：上游 natadd 可能长时间不返回，
+	// 不能阻塞 GetInstance，否则主控会一直等到 RPC 超时，订单停留在「开通中」。
+	a.runPostProvisionAsync(instanceID, hsName, info.VMUUID, info.Status)
 
 	// 构建远程地址：public_addr:映射端口
 	// 查询主机 public_addr 和 NAT 规则，拼接为 "公网IP:宿主机端口" 格式
@@ -1479,11 +1507,14 @@ func (a *automationServer) GetMonitor(ctx context.Context, req *pluginv1.GetMoni
 	// 需要从 history 数组中取最新一条 HWStatus 进行解析。
 	// 同时兼容旧版直接返回扁平 map 的情况。
 	latestStatus := statusMap
+	available := true
 	if historyRaw, ok := statusMap["history"]; ok {
+		available = false
 		if historySlice, ok := historyRaw.([]any); ok && len(historySlice) > 0 {
 			// 取最后一条（最新的）HWStatus
 			if latestEntry, ok := historySlice[len(historySlice)-1].(map[string]any); ok {
 				latestStatus = latestEntry
+				available = true
 			}
 		}
 	}
@@ -1533,6 +1564,7 @@ func (a *automationServer) GetMonitor(ctx context.Context, req *pluginv1.GetMoni
 	}
 
 	raw := map[string]any{
+		"Available":    available,
 		"CpuStats":     cpuPercent,
 		"MemoryStats":  memPercent,
 		"StorageStats": storagePercent,

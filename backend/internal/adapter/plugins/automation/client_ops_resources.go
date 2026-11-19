@@ -398,6 +398,7 @@ func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (ap
 		return appshared.AutomationMonitor{}, nil
 	}
 	var raw struct {
+		Available    *bool           `json:"Available"`
 		StorageStats float64         `json:"StorageStats"`
 		NetworkStats json.RawMessage `json:"NetworkStats"`
 		CpuStats     float64         `json:"CpuStats"`
@@ -407,7 +408,12 @@ func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (ap
 		return appshared.AutomationMonitor{}, err
 	}
 	bytesIn, bytesOut := parseNetworkStats(raw.NetworkStats)
+	available := true
+	if raw.Available != nil {
+		available = *raw.Available
+	}
 	return appshared.AutomationMonitor{
+		Available:      available,
 		CPUPercent:     int(math.Round(raw.CpuStats)),
 		MemoryPercent:  int(math.Round(raw.MemoryStats)),
 		StoragePercent: int(math.Round(raw.StorageStats)),

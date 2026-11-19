@@ -83,7 +83,7 @@ func (r *GormRepo) CreateOrUpdateProvisionJob(ctx context.Context, job *domain.P
 		Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "order_item_id"}},
 			DoUpdates: clause.AssignmentColumns([]string{
-				"host_id", "host_name", "status", "attempts", "next_run_at", "last_error", "updated_at",
+				"host_id", "host_name", "status", "attempts", "next_run_at", "last_error", "created_at", "updated_at",
 			}),
 		}).
 		Create(&m).Error; err != nil {

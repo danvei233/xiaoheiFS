@@ -51,6 +51,9 @@ func (f *fakeResizeCatalogRepo) CreateRegion(ctx context.Context, region *domain
 func (f *fakeResizeCatalogRepo) UpdateRegion(ctx context.Context, region domain.Region) error {
 	return nil
 }
+func (f *fakeResizeCatalogRepo) SetRegionActive(ctx context.Context, id int64, active bool) error {
+	return nil
+}
 func (f *fakeResizeCatalogRepo) DeleteRegion(ctx context.Context, id int64) error {
 	return nil
 }

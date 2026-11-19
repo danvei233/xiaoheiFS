@@ -195,6 +195,7 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 			payload["automation_state"] = 0
 		}
 		payload["monitor_error"] = err.Error()
+		payload["monitor_available"] = false
 		payload["cpu"] = 0
 		payload["memory"] = 0
 		payload["bytes_in"] = int64(0)
@@ -203,6 +204,7 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 		c.JSON(http.StatusOK, payload)
 		return
 	}
+	payload["monitor_available"] = monitor.Available
 	payload["cpu"] = monitor.CPUPercent
 	payload["memory"] = monitor.MemoryPercent
 	payload["bytes_in"] = monitor.BytesIn

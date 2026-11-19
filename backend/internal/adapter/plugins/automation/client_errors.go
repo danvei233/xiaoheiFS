@@ -34,6 +34,15 @@ func mapRPCBusinessError(err error) error {
 	if err == nil {
 		return nil
 	}
+	if st, ok := status.FromError(err); ok {
+		switch st.Code() {
+		case codes.DeadlineExceeded, codes.Unavailable:
+			// Transport-level timeouts must stay retryable: the plugin may still
+			// be finishing the operation (async create tasks) even though the
+			// host-side deadline fired first.
+			return fmt.Errorf("%w: %s", appshared.ErrAutomationTransient, strings.TrimSpace(err.Error()))
+		}
+	}
 	if strings.Contains(err.Error(), "http_trace=") {
 		// Keep full upstream trace for automation logs.
 		return err

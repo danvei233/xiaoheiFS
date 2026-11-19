@@ -394,7 +394,8 @@
                 <span>CPU</span>
               </div>
             </template>
-            <LineChart :data="monitor.cpu" :color="'#1677ff'" height="180" />
+            <LineChart v-if="monitorAvailable" :data="monitor.cpu" :color="'#1677ff'" height="180" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
 
           <a-card class="monitor-panel" :bordered="false" :loading="loading">
@@ -404,7 +405,8 @@
                 <span>IO</span>
               </div>
             </template>
-            <LineChart :data="monitor.trafficOut" :color="'#fa8c16'" height="160" />
+            <LineChart v-if="monitorAvailable" :data="monitor.trafficOut" :color="'#fa8c16'" height="160" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
 
           <a-card class="monitor-panel" :bordered="false" :loading="loading">
@@ -414,7 +416,8 @@
                 <span>网络</span>
               </div>
             </template>
-            <LineChart :data="monitor.trafficIn" :color="'#52c41a'" height="160" />
+            <LineChart v-if="monitorAvailable" :data="monitor.trafficIn" :color="'#52c41a'" height="160" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
 
           <a-card class="monitor-panel" :bordered="false" :loading="loading">
@@ -424,7 +427,8 @@
                 <span>内存</span>
               </div>
             </template>
-            <LineChart :data="monitor.memory" :color="'#722ed1'" height="160" />
+            <LineChart v-if="monitorAvailable" :data="monitor.memory" :color="'#722ed1'" height="160" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
         </div>
       </a-tab-pane><a-tab-pane v-if="showFirewallTab" key="firewall">
@@ -2326,6 +2330,8 @@ const monitor = reactive({
   trafficIn: { labels: [], values: [] },
   trafficOut: { labels: [], values: [] }
 });
+// 上游是否真的上报了监控样本；没有样本时显示占位，而不是把 0 画成曲线。
+const monitorAvailable = ref(true);
 
 const currentCpu = computed(() => monitor.cpu.values[monitor.cpu.values.length - 1] || 0);
 const currentMemory = computed(() => monitor.memory.values[monitor.memory.values.length - 1] || 0);
@@ -2335,18 +2341,19 @@ const perfScore = computed(() => {
   const score = 100 - (cpu + mem) / 2;
   return Math.max(0, Math.min(100, Math.round(score)));
 });
-const perfNeedleDeg = computed(() => -90 + (perfScore.value / 100) * 180);
+const perfNeedleDeg = computed(() => (monitorAvailable.value ? -90 + (perfScore.value / 100) * 180 : 0));
 const perfLabel = computed(() => {
+  if (!monitorAvailable.value) return "暂无数据";
   if (perfScore.value >= 80) return "优";
   if (perfScore.value >= 60) return "良";
   if (perfScore.value >= 40) return "中";
   return "差";
 });
 const perfLabelClass = computed(() => ({
-  good: perfScore.value >= 80,
-  ok: perfScore.value >= 60 && perfScore.value < 80,
-  mid: perfScore.value >= 40 && perfScore.value < 60,
-  bad: perfScore.value < 40
+  good: monitorAvailable.value && perfScore.value >= 80,
+  ok: monitorAvailable.value && perfScore.value >= 60 && perfScore.value < 80,
+  mid: monitorAvailable.value && perfScore.value >= 40 && perfScore.value < 60,
+  bad: monitorAvailable.value && perfScore.value < 40
 }));
 const currentTrafficIn = computed(() => monitor.trafficIn.values[monitor.trafficIn.values.length - 1] || 0);
 const currentTrafficOut = computed(() => monitor.trafficOut.values[monitor.trafficOut.values.length - 1] || 0);
@@ -3382,6 +3389,11 @@ const fetchMonitor = async () => {
         spec: data.spec ?? store.current.spec
       };
     }
+    if (data.monitor_available === false) {
+      monitorAvailable.value = false;
+      return;
+    }
+    monitorAvailable.value = true;
     pushPoint(monitor.cpu, data.cpu);
     pushPoint(monitor.memory, data.memory);
     const trafficIn = Number(data.bytes_in ?? data.in_bytes ?? data.rx_bytes ?? data.in ?? 0);
