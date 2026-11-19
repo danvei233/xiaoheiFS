@@ -638,6 +638,9 @@ onUnmounted(() => {
   margin: 0;
   line-height: 1.2;
   letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-subtitle {
@@ -647,6 +650,9 @@ onUnmounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==================== Sidebar Navigation ==================== */
