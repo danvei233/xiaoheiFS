@@ -379,6 +379,7 @@ html[data-console-theme="tech"] .console-layout .top-header { border-bottom: 2px
 html[data-console-theme="tech"] :is(.ant-btn, .ant-input, .ant-input-affix-wrapper, .ant-select-selector, .ant-picker) { border-radius: 2px; }
 html[data-console-theme="executive"] .console-layout .top-header { border-bottom: 1px solid var(--theme-header-border); box-shadow: none; }
 html[data-console-theme="executive"] .console-layout .top-header :is(.brand-title, .user-name, .icon-btn) { color: var(--theme-header-text); }
+html[data-console-theme="executive"] .console-layout .top-header .brand-subtitle { color: var(--theme-header-muted); }
 html[data-console-theme="executive"] .console-layout .sidebar { border-inline-end: 1px solid var(--border); }
 html[data-console-theme="gold"] .console-layout .top-header { border-bottom: 1px solid var(--theme-header-border); }
 html[data-console-theme="gold"] .console-layout .sidebar { border-inline-end: 1px solid var(--border); }

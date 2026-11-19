@@ -8,20 +8,6 @@
     <div class="console-layout" :dir="direction">
       <!-- Sidebar -->
       <aside class="sidebar" :class="{ 'sidebar-collapsed': collapsed }">
-        <div class="sidebar-header">
-          <div class="brand-wrapper">
-            <div class="brand-logo">
-              <SiteLogoMedia :size="collapsed ? 24 : 28" />
-            </div>
-            <transition name="fade-slide">
-              <div v-if="!collapsed" class="brand-info">
-                <h1 class="brand-title">{{ brandName }}</h1>
-                <p class="brand-subtitle">{{ t('nav.console') }}</p>
-              </div>
-            </transition>
-          </div>
-        </div>
-
         <nav class="sidebar-nav">
           <div v-for="group in menuGroups" :key="group.title" class="menu-group">
             <div v-if="!collapsed && group.title" class="menu-group-title">
@@ -72,6 +58,15 @@
               <MenuUnfoldOutlined v-if="collapsed" />
               <MenuFoldOutlined v-else />
             </button>
+            <router-link to="/console" class="header-brand">
+              <span class="brand-logo">
+                <SiteLogoMedia :size="26" />
+              </span>
+              <span class="header-brand-text">
+                <span class="brand-title">{{ brandName }}</span>
+                <span class="brand-subtitle">{{ t('nav.console') }}</span>
+              </span>
+            </router-link>
             <div class="header-search">
               <SearchOutlined class="search-icon" />
               <input
@@ -541,7 +536,7 @@ onUnmounted(() => {
 .sidebar {
   position: fixed;
   inset-inline-start: 0;
-  top: 0;
+  top: 64px;
   bottom: 0;
   width: 188px;
   background: var(--theme-sidebar, #f8fafc);
@@ -554,16 +549,6 @@ onUnmounted(() => {
 
 .sidebar-collapsed {
   width: 52px;
-}
-
-.sidebar-collapsed .sidebar-header {
-  display: flex;
-  justify-content: center;
-  padding: 10px 0;
-}
-
-.sidebar-collapsed .brand-wrapper {
-  justify-content: center;
 }
 
 .sidebar-collapsed .sidebar-nav {
@@ -602,19 +587,6 @@ onUnmounted(() => {
   padding: 4px 0;
 }
 
-.sidebar-header {
-  padding: 14px 14px;
-  border-bottom: 1px solid var(--border, rgba(0, 0, 0, 0.06));
-  position: relative;
-  z-index: 1;
-}
-
-.brand-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .brand-logo {
   display: flex;
   width: 32px;
@@ -625,11 +597,6 @@ onUnmounted(() => {
   border-radius: 8px;
   background: var(--primary);
   color: var(--theme-primary-foreground, #fff);
-}
-
-.brand-info {
-  flex: 1;
-  min-width: 0;
 }
 
 .brand-title {
@@ -821,6 +788,7 @@ onUnmounted(() => {
 .main-wrapper {
   flex: 1;
   margin-inline-start: 188px;
+  padding-top: 64px;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
@@ -833,9 +801,10 @@ onUnmounted(() => {
 
 /* ==================== Top Header ==================== */
 .top-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 110;
   height: 64px;
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
@@ -845,6 +814,45 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
+}
+
+.header-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin-inline-end: 8px;
+  text-decoration: none;
+}
+
+.header-brand .brand-logo {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+}
+
+.header-brand-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.header-brand .brand-title {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-brand .brand-subtitle {
+  overflow: hidden;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-left {
@@ -1397,6 +1405,7 @@ onUnmounted(() => {
 
   .main-wrapper {
     margin-inline-start: 0;
+    padding-top: 0;
   }
 
   .sidebar-collapsed + .main-wrapper {
