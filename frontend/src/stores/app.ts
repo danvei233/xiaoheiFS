@@ -11,7 +11,7 @@ const THEME_FONT_STORAGE = "console_font_style";
 
 export type FontStyle = "mixed" | "mono";
 /** One-time marker: executive becomes the default preset. */
-const THEME_DEFAULT_MIGRATION = "console_theme_default_v3";
+const THEME_DEFAULT_MIGRATION = "console_theme_default_v4";
 
 function readPreference(key: string): string | null {
   try { return localStorage.getItem(key); } catch { return null; }
@@ -94,7 +94,7 @@ export const useAppStore = defineStore("app", {
         // 沉稳大气 replaced the old default; adopt it once for browsers that still store the previous default.
         if (!readPreference(THEME_DEFAULT_MIGRATION)) {
           const stored = readPreference(THEME_PRESET_STORAGE);
-          if (!stored || stored === "minimal") {
+          if (!stored || stored === "minimal" || stored === "tech") {
             this.themePreset = "executive";
             savePreference(THEME_PRESET_STORAGE, "executive");
           }

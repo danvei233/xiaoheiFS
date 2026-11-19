@@ -265,8 +265,6 @@ html[data-console-theme="tech"] .console-layout { background-size: 32px 32px; }
 html[data-console-theme] .console-layout .main-content { background: transparent; }
 html[data-console-theme] .console-layout .sidebar,
 html[data-console-theme] .mobile-drawer .ant-drawer-content { background: var(--theme-sidebar); border-color: var(--border); }
-html[data-console-theme="glass"] .console-layout .sidebar,
-html[data-console-theme="glass"] .mobile-drawer .ant-drawer-content { background: var(--theme-surface); }
 html[data-console-theme] .console-layout :is(.sidebar, .top-header, .mobile-header) {
   backdrop-filter: var(--theme-backdrop);
   -webkit-backdrop-filter: var(--theme-backdrop);

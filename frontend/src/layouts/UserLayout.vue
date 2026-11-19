@@ -275,7 +275,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
@@ -322,7 +322,25 @@ const cart = useCartStore();
 const app = useAppStore();
 const screens = Grid.useBreakpoint();
 
-const collapsed = ref(false);
+const SIDEBAR_COLLAPSED_KEY = "console_sidebar_collapsed";
+
+const readCollapsed = () => {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const collapsed = ref(readCollapsed());
+
+watch(collapsed, (value) => {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? "1" : "0");
+  } catch {
+    /* storage unavailable in private mode */
+  }
+});
 const mobileDrawerOpen = ref(false);
 const searchValue = ref('');
 const showSearchResults = ref(false);
@@ -355,8 +373,13 @@ const cartCount = computed(() => cart.items?.length || 0);
 const shortLabel = (label) => {
   const text = String(label || "").trim();
   if (!text) return "";
-  if (/[\u4e00-\u9fa5]/.test(text)) return text.slice(0, 2);
-  return text.split(/\s+/)[0].slice(0, 3).toUpperCase();
+  const latin = text.match(/^[A-Za-z0-9][A-Za-z0-9&+._/-]*/);
+  if (latin) {
+    const token = latin[0].toUpperCase();
+    return token.length <= 3 ? token : token.slice(0, 3);
+  }
+  const cjk = text.match(/[\u4e00-\u9fa5]{2}/);
+  return cjk ? cjk[0] : text.slice(0, 2);
 };
 
 const isActive = (path) => {
@@ -520,7 +543,7 @@ onUnmounted(() => {
   inset-inline-start: 0;
   top: 0;
   bottom: 0;
-  width: 208px;
+  width: 188px;
   background: var(--theme-sidebar, #f8fafc);
   display: flex;
   flex-direction: column;
@@ -790,7 +813,7 @@ onUnmounted(() => {
 /* ==================== Main Wrapper ==================== */
 .main-wrapper {
   flex: 1;
-  margin-inline-start: 208px;
+  margin-inline-start: 188px;
   display: flex;
   flex-direction: column;
   min-height: 100vh;

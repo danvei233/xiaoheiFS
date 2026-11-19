@@ -4,7 +4,7 @@ import type { ThemeConfig } from "ant-design-vue/es/config-provider/context";
 export type ThemeMode = "auto" | "light" | "dark";
 /** Stable theme identifiers shared with the appearance settings UI. */
 export type ThemePreset = "minimal" | "tech" | "executive" | "gold" | "cute" | "glass";
-export const THEME_PRESETS: readonly ThemePreset[] = ["minimal", "tech", "executive", "gold", "cute", "glass"];
+export const THEME_PRESETS: readonly ThemePreset[] = ["minimal", "executive", "tech", "gold", "cute", "glass"];
 
 type Palette = { primary: string; bg: string; surface: string; muted: string; border: string; text: string; secondary: string };
 
@@ -157,7 +157,10 @@ export function getThemeAppearance(preset: ThemePreset, dark: boolean, options: 
   const chrome = preset === "executive" ? (dark ? "#06111d" : "#10243a") : p.surface;
   const chromeText = preset === "executive" ? (dark ? "#eaf7ff" : "#eff8ff") : p.text;
   const chromeMuted = preset === "executive" ? (dark ? "#8eacbf" : "#a8c1d4") : p.secondary;
-  const sidebar = preset === "executive" ? (dark ? "#0a1928" : "#f7fafd") : chrome;
+  // The rail shares the canvas tint so it never reads as a white slab pasted on a colored page.
+  const sidebar = preset === "executive"
+    ? (dark ? "#0a1928" : "#f7fafd")
+    : mixHex(p.bg, p.muted, dark ? 0.5 : 0.45);
   const sidebarText = preset === "executive" && !dark ? p.text : chromeText;
   const sidebarMuted = preset === "executive" && !dark ? p.secondary : chromeMuted;
   const glassSurface = preset === "glass" ? `${p.surface}dc` : p.surface;
@@ -263,7 +266,7 @@ export function getThemeAppearance(preset: ThemePreset, dark: boolean, options: 
     "--theme-header-surface": transparent ? withAlpha(dark && !darkChrome ? p.surface : chrome, 0.72) : headerSurface,
     "--theme-header-text": chromeText, "--theme-header-muted": chromeMuted,
     "--theme-header-border": darkChrome ? (preset === "executive" ? (dark ? "#1b3a54" : "#1d3c58") : "#34465e") : p.border,
-    "--theme-sidebar": transparent ? withAlpha(chrome, 0.66) : sidebar,
+    "--theme-sidebar": transparent ? withAlpha(sidebar, 0.66) : sidebar,
     "--theme-sidebar-text": sidebarText,
     "--theme-sidebar-muted": sidebarMuted,
     "--theme-sidebar-accent": preset === "executive" ? (dark ? "#64d4f2" : "#116c9a")

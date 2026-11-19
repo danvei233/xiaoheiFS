@@ -111,7 +111,6 @@
             </label>
           </div>
         </fieldset>
-        <p class="appearance-note">{{ t('appearance.saved') }}</p>
       </div>
     </details>
   </div>
@@ -484,7 +483,6 @@ function handleControlToggle(name: 'theme' | 'language', event: Event) {
 .language-choice.selected { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); background: color-mix(in srgb, var(--primary) 8%, var(--card)); }
 .language-choice:focus-within { outline: 2px solid var(--primary); outline-offset: 1px; }
 .language-auto { grid-column: 1 / -1; min-height: 42px; }
-.appearance-note { margin: 6px 2px 0; color: var(--text-secondary); font-size: 10px; line-height: 1.4; }
 
 @media (max-width: 680px) {
   .appearance-settings { gap: 4px; }
