@@ -57,7 +57,7 @@ export enum MenuThemeEnum {
  */
 export enum MenuWidth {
   /** 收起宽度 */
-  CLOSE = '48px'
+  CLOSE = '52px'
 }
 
 /**
