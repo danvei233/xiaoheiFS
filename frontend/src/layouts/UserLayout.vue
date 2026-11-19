@@ -25,7 +25,7 @@
                 <transition name="fade-slide">
                   <span v-if="!collapsed" class="menu-label">{{ item.label }}</span>
                 </transition>
-                <span v-if="collapsed" class="menu-short">{{ shortLabel(item.label) }}</span>
+                <span v-if="collapsed" class="menu-short">{{ shortMenuLabel(item.label) }}</span>
                 <transition name="fade-slide">
                   <span v-if="!collapsed && item.badge" class="menu-badge">{{ item.badge }}</span>
                 </transition>
@@ -277,6 +277,7 @@ import { useSiteStore } from "@/stores/site";
 import { useCartStore } from "@/stores/cart";
 import { useAppStore } from "@/stores/app";
 import { t, locale, direction } from '@/locales';
+import { shortMenuLabel } from '@/lib/menuShort';
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
 import AppearanceSettings from "@/components/AppearanceSettings.vue";
 import { listNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead } from "@/services/user";
@@ -365,18 +366,6 @@ const menuGroups = computed(() => [
 const cartCount = computed(() => cart.items?.length || 0);
 
 /** Collapsed rail keeps a two-character abbreviation, mirroring the reference sidebar. */
-const shortLabel = (label) => {
-  const text = String(label || "").trim();
-  if (!text) return "";
-  const latin = text.match(/^[A-Za-z0-9][A-Za-z0-9&+._/-]*/);
-  if (latin) {
-    const token = latin[0].toUpperCase();
-    return token.length <= 3 ? token : token.slice(0, 3);
-  }
-  const cjk = text.match(/[\u4e00-\u9fa5]{2}/);
-  return cjk ? cjk[0] : text.slice(0, 2);
-};
-
 const isActive = (path) => {
   if (route.path.startsWith('/console/buy')) return path === '/console/vps';
   if (route.path.startsWith('/console/vps')) return path === '/console/vps';

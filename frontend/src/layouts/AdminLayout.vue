@@ -73,6 +73,7 @@
         collapsible
         :trigger="null"
         width="230"
+        :collapsed-width="56"
         @collapse="collapsed = $event"
       >
         <a-menu mode="inline" :selectedKeys="[selectedKey]" @click="onMenu">
@@ -861,6 +862,62 @@ onUnmounted(() => {
 
 .sider :deep(.ant-menu-item-selected .anticon) {
   color: var(--theme-sidebar-accent);
+}
+
+/* 折叠态：图标下方显示两字简称，与前台控制台保持一致 */
+.sider :deep(.admin-menu-icon) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+}
+
+.sider :deep(.admin-menu-short) {
+  display: none;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--theme-sidebar-muted);
+}
+
+.sider :deep(.ant-menu-inline-collapsed) {
+  width: 100% !important;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) .admin-menu-short {
+  display: block;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) > .ant-menu-item,
+.sider :deep(.ant-menu-inline-collapsed) > .ant-menu-submenu > .ant-menu-submenu-title {
+  position: relative;
+  display: block;
+  height: 56px;
+  padding: 0 !important;
+  line-height: 1.1;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) .ant-menu-item-icon {
+  position: absolute;
+  inset-inline: 0;
+  top: 7px;
+  display: flex;
+  width: auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) .ant-menu-item-icon :is(.anticon, svg) {
+  display: inline-flex;
+  line-height: 1;
 }
 
 /* ========== Sider 悬浮滚动条样式 ========== */
