@@ -4,14 +4,14 @@
     <div class="cart-header">
       <div class="header-left">
         <div class="title-section">
-          <h1 class="page-title">选购清单</h1>
-          <p class="page-subtitle">{{ dataSource.length }} 件商品</p>
+          <h1 class="page-title">{{ t('console.cart.title') }}</h1>
+          <p class="page-subtitle">{{ t('console.cart.items', { n: dataSource.length }) }}</p>
         </div>
       </div>
       <div class="header-actions">
         <a-button @click="cart.fetchCart" :loading="cart.loading">
           <ReloadOutlined />
-          刷新
+          {{ t('common.refresh') }}
         </a-button>
       </div>
     </div>
@@ -19,11 +19,11 @@
     <!-- Empty State -->
     <div v-if="!dataSource.length && !cart.loading" class="empty-state">
       <ShoppingCartOutlined class="empty-icon" />
-      <h3 class="empty-title">购物车是空的</h3>
-      <p class="empty-desc">添加商品到购物车开始下单</p>
+      <h3 class="empty-title">{{ t('console.cart.empty') }}</h3>
+      <p class="empty-desc">{{ t('console.cart.emptyDesc') }}</p>
       <a-button type="primary" @click="$router.push('/console/buy')" size="large">
         <ShoppingOutlined />
-        立即选购
+        {{ t('console.cart.goShop') }}
       </a-button>
     </div>
 
@@ -67,7 +67,7 @@
               <div class="item-specs">
                 <div class="spec-item">
                   <ApiOutlined class="spec-icon cpu" />
-                  <span>{{ getCpu(record) }}核</span>
+                  <span>{{ t('console.vps.cpuSpec', { n: getCpu(record) }) }}</span>
                 </div>
                 <div class="spec-item">
                   <DatabaseOutlined class="spec-icon memory" />
@@ -109,10 +109,10 @@
             <!-- Actions -->
             <template v-else-if="column.key === 'actions'">
               <a-popconfirm
-                title="确定要移除这个商品吗？"
+                :title="t('console.cart.removeConfirm')"
                 @confirm="cart.removeItem(record.id)"
-                ok-text="确定"
-                cancel-text="取消"
+                :ok-text="t('common.confirm')"
+                :cancel-text="t('common.cancel')"
               >
                 <a-button type="text" danger>
                   <DeleteOutlined />
@@ -128,40 +128,40 @@
         <div class="summary-card">
           <div class="summary-header">
             <FileTextOutlined class="summary-header-icon" />
-            <span>订单摘要</span>
+            <span>{{ t('console.cart.summary') }}</span>
           </div>
 
           <div class="summary-body">
             <div class="summary-row">
-              <span class="summary-label">商品数量</span>
+              <span class="summary-label">{{ t('console.cart.itemCount') }}</span>
               <span class="summary-value">{{ totalItems }}</span>
             </div>
 
             <div class="summary-row">
-              <span class="summary-label">小计</span>
+              <span class="summary-label">{{ t('console.cart.subtotal') }}</span>
               <span class="summary-value">¥{{ totalAmount.toFixed(2) }}</span>
             </div>
             <div class="summary-row">
-              <span class="summary-label">优惠码</span>
+              <span class="summary-label">{{ t('console.cart.coupon') }}</span>
               <a-space>
                 <a-input
                   v-model:value="couponCode"
                   size="small"
-                  placeholder="输入优惠码"
+                  :placeholder="t('console.cart.couponPlaceholder')"
                   style="width: 140px"
                 />
-                <a-button size="small" :loading="couponLoading" @click="applyCoupon">使用</a-button>
+                <a-button size="small" :loading="couponLoading" @click="applyCoupon">{{ t('console.cart.use') }}</a-button>
               </a-space>
             </div>
             <div class="summary-row" v-if="couponPreview">
-              <span class="summary-label">优惠</span>
+              <span class="summary-label">{{ t('console.cart.discount') }}</span>
               <span class="summary-value" style="color: var(--success)">-¥{{ Number(couponPreview.discount || 0).toFixed(2) }}</span>
             </div>
 
             <a-divider class="summary-divider" />
 
             <div class="summary-row summary-total">
-              <span class="summary-label">总计</span>
+              <span class="summary-label">{{ t('console.cart.total') }}</span>
               <span class="summary-value summary-price">¥{{ payableTotal.toFixed(2) }}</span>
             </div>
           </div>
@@ -175,12 +175,12 @@
             class="checkout-btn"
           >
             <CheckCircleOutlined />
-            立即下单
+            {{ t('console.cart.checkout') }}
           </a-button>
 
           <div class="summary-footer">
             <SafetyCertificateOutlined />
-            <span>安全支付 · 即时开通</span>
+            <span>{{ t('console.cart.securePay') }}</span>
           </div>
         </div>
       </div>
@@ -195,6 +195,7 @@ import { useCatalogStore } from "@/stores/catalog";
 import { createOrderFromCartWithCoupon, previewCoupon } from "@/services/user";
 import { message } from "ant-design-vue";
 import { useRouter } from "vue-router";
+import { t } from "@/locales";
 import {
   ShoppingCartOutlined,
   ReloadOutlined,
@@ -220,14 +221,14 @@ const couponCode = ref("");
 const couponLoading = ref(false);
 const couponPreview = ref(null);
 
-const columns = [
-  { title: "商品", dataIndex: "package", key: "package", width: 280 },
-  { title: "系统镜像", dataIndex: "system", key: "system", width: 180 },
-  { title: "配置", key: "specs", width: 360 },
-  { title: "数量", key: "quantity", width: 120, align: "center" },
-  { title: "金额", key: "price", width: 140, align: "right" },
+const columns = computed(() => [
+  { title: t('console.cart.product'), dataIndex: "package", key: "package", width: 280 },
+  { title: t('console.cart.systemImage'), dataIndex: "system", key: "system", width: 180 },
+  { title: t('console.vps.spec'), key: "specs", width: 360 },
+  { title: t('common.quantity'), key: "quantity", width: 120, align: "center" },
+  { title: t('common.amount'), key: "price", width: 140, align: "right" },
   { title: "", key: "actions", width: 60, align: "center" }
-];
+]);
 
 const dataSource = computed(() =>
   cart.items.map((item) => ({
@@ -248,12 +249,12 @@ const findSystemImage = (systemId) => {
 
 const getPackageName = (packageId) => {
   const pkg = findPackage(packageId);
-  return pkg?.name || `套餐 #${packageId}`;
+  return pkg?.name || t('console.cart.packageFallback', { id: packageId });
 };
 
 const getSystemName = (systemId) => {
   const img = findSystemImage(systemId);
-  return img?.name || `系统 #${systemId}`;
+  return img?.name || t('console.cart.systemFallback', { id: systemId });
 };
 
 const getCpu = (item) => {
@@ -287,10 +288,10 @@ const getBandwidth = (item) => {
 const getDuration = (item) => {
   const spec = item.spec;
   if (spec?.duration_months) {
-    return `${spec.duration_months}个月`;
+    return t('console.cart.durationMonths', { n: spec.duration_months });
   }
   if (spec?.cycle_qty && spec?.billing_cycle_id) {
-    return `周期${spec.cycle_qty}`;
+    return t('console.cart.cycle', { n: spec.cycle_qty });
   }
   return "-";
 };
@@ -302,14 +303,14 @@ const formatSpec = (spec, item) => {
   const mem = getMemory(item);
   const disk = getDisk(item);
   const bw = getBandwidth(item);
-  if (cpu) parts.push(`CPU ${cpu}`);
-  if (mem) parts.push(`内存 ${mem}G`);
-  if (disk) parts.push(`磁盘 ${disk}G`);
-  if (bw) parts.push(`带宽 ${bw}M`);
+  if (cpu) parts.push(t('console.vps.cpuSpec', { n: cpu }));
+  if (mem) parts.push(t('console.vps.memSpec', { n: mem }));
+  if (disk) parts.push(t('console.vps.diskSpec', { n: disk }));
+  if (bw) parts.push(t('console.vps.bwSpec', { n: bw }));
   if (spec.duration_months) {
-    parts.push(`时长 ${spec.duration_months} 个月`);
+    parts.push(t('console.cart.duration', { n: spec.duration_months }));
   } else if (spec.cycle_qty && spec.billing_cycle_id) {
-    parts.push(`周期 ${spec.cycle_qty} x ID ${spec.billing_cycle_id}`);
+    parts.push(t('console.cart.cycle', { n: spec.cycle_qty }) + ` x ID ${spec.billing_cycle_id}`);
   }
   return parts.length ? parts.join(" / ") : "-";
 };
@@ -337,13 +338,13 @@ const submitOrder = async () => {
     const coupon = (couponCode.value || "").trim();
     const res = await createOrderFromCartWithCoupon(coupon ? { coupon_code: coupon } : undefined, `order-${Date.now()}`);
     const orderId = res.data?.order?.id || res.data?.order?.ID || res.data?.id || res.data?.ID;
-    message.success("订单已创建");
+    message.success(t('console.cart.orderCreated'));
     if (orderId) {
       router.push(`/console/orders/${orderId}`);
     }
     cart.fetchCart();
   } catch (err) {
-    message.error(err?.response?.data?.message || "下单失败");
+    message.error(err?.response?.data?.message || t('console.cart.orderFailed'));
   } finally {
     submitting.value = false;
   }
@@ -352,17 +353,17 @@ const submitOrder = async () => {
 const applyCoupon = async () => {
   const code = (couponCode.value || "").trim();
   if (!code) {
-    message.warning("请先输入优惠码");
+    message.warning(t('console.cart.couponRequired'));
     return;
   }
   couponLoading.value = true;
   try {
     const res = await previewCoupon({ coupon_code: code });
     couponPreview.value = res.data || null;
-    message.success("优惠码已应用");
+    message.success(t('console.cart.couponApplied'));
   } catch (err) {
     couponPreview.value = null;
-    message.error(err?.response?.data?.error || "优惠码不可用");
+    message.error(err?.response?.data?.error || t('console.cart.couponInvalid'));
   } finally {
     couponLoading.value = false;
   }

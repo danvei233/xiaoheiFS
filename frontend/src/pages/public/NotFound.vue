@@ -10,9 +10,9 @@
       </div>
 
       <div class="error-content">
-        <h1 class="error-title">页面未找到</h1>
+        <h1 class="error-title">{{ $t('notFound.title') || '页面未找到' }}</h1>
         <p class="error-description">
-          抱歉，您访问的页面不存在或已被移除
+          {{ $t('notFound.description') || '抱歉，您访问的页面不存在或已被移除' }}
         </p>
 
         <div class="error-actions">
@@ -21,14 +21,14 @@
               <path d="M2 6L8 2L14 6V13C14 13.5304 13.7893 14.0391 13.4142 14.4142C13.0391 14.7893 12.5304 15 12 15H4C3.46957 15 2.96086 14.7893 2.58579 14.4142C2.21071 14.0391 2 13.5304 2 13V6Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M6 15V9H10V15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            返回首页
+            {{ $t('notFound.backHome') || '返回首页' }}
           </a>
           <button @click="goBack" class="btn btn-secondary">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M8 14L2 8L8 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M2 8H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            返回上一页
+            {{ $t('notFound.goBack') || '返回上一页' }}
           </button>
         </div>
       </div>

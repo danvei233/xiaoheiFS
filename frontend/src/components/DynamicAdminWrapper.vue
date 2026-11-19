@@ -3,7 +3,7 @@
     <template #default>
       <Transition name="fade" mode="out-in">
         <component :is="pageComponent" v-if="pageComponent" :key="route.path" />
-        <div v-else class="loading">加载中...</div>
+        <div v-else class="loading">{{ t('common.loading') }}</div>
       </Transition>
     </template>
   </AdminLayout>
@@ -14,6 +14,7 @@ import { ref, watch, defineAsyncComponent } from "vue";
 import type { Component } from "vue";
 import { useRoute } from "vue-router";
 import AdminLayout from "@/layouts/AdminLayout.vue";
+import { t } from "@/locales";
 
 const route = useRoute();
 const pageComponent = ref<Component | null>(null);

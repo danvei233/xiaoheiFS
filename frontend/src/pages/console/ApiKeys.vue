@@ -3,13 +3,13 @@
     <!-- Page Header -->
     <div class="page-header">
       <div class="page-header-left">
-        <h1 class="page-title">API 密钥管理</h1>
-        <p class="page-subtitle">管理用于开放接口鉴权的 AKID/Key 凭证</p>
+        <h1 class="page-title">{{ t('console.apiKeys.title') }}</h1>
+        <p class="page-subtitle">{{ t('console.apiKeys.subtitle') }}</p>
       </div>
       <div class="page-header-actions">
         <a-button type="primary" @click="openCreate">
           <template #icon><PlusOutlined /></template>
-          创建新密钥
+          {{ t('console.apiKeys.create') }}
         </a-button>
       </div>
     </div>
@@ -20,13 +20,13 @@
         <InfoCircleOutlined />
       </div>
       <div class="info-content">
-        <div class="info-title">签名鉴权规范</div>
+        <div class="info-title">{{ t('console.apiKeys.signSpec') }}</div>
         <div class="info-desc">
           <span class="code-tag">X-AKID</span>
           <span class="code-tag">X-Timestamp</span>
           <span class="code-tag">X-Nonce</span>
           <span class="code-tag">X-Signature</span>
-          <a-tag color="success" size="small">时间窗: ±300 秒</a-tag>
+          <a-tag color="success" size="small">{{ t('console.apiKeys.timeWindow') }}</a-tag>
         </div>
       </div>
     </div>
@@ -36,9 +36,9 @@
       <div class="card-header">
         <div class="card-title">
           <KeyOutlined />
-          <span>密钥列表</span>
+          <span>{{ t('console.apiKeys.list') }}</span>
         </div>
-        <div class="table-count" v-if="rows.length > 0">{{ rows.length }} 个密钥</div>
+        <div class="table-count" v-if="rows.length > 0">{{ t('console.apiKeys.count', { n: rows.length }) }}</div>
       </div>
       <a-table
         :columns="columns"
@@ -50,7 +50,7 @@
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
-            <a-badge :status="record.status === 'active' ? 'success' : 'default'" :text="record.status === 'active' ? '已启用' : '已停用'" />
+            <a-badge :status="record.status === 'active' ? 'success' : 'default'" :text="record.status === 'active' ? t('common.enabled') : t('common.disabled')" />
           </template>
           <template v-else-if="column.key === 'name'">
             <div class="name-cell">
@@ -61,7 +61,7 @@
           <template v-else-if="column.key === 'akid'">
             <div class="akid-cell">
               <code class="akid-code">{{ record.akid }}</code>
-              <a-tooltip title="复制">
+              <a-tooltip :title="t('common.copy')">
                 <a-button type="text" size="small" @click="copyText(record.akid)">
                   <CopyOutlined />
                 </a-button>
@@ -75,14 +75,14 @@
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space :size="8">
-              <a-tooltip :title="record.status === 'active' ? '停用密钥' : '启用密钥'">
+              <a-tooltip :title="record.status === 'active' ? t('console.apiKeys.disableKey') : t('console.apiKeys.enableKey')">
                 <a-button @click="toggleStatus(record)" :type="record.status === 'active' ? 'default' : 'primary'" size="small">
                   <template #icon>
                     <component :is="record.status === 'active' ? StopOutlined : PlayCircleOutlined" />
                   </template>
                 </a-button>
               </a-tooltip>
-              <a-popconfirm title="确认删除该密钥？删除后无法恢复" @confirm="remove(record)" ok-text="确认删除" cancel-text="取消">
+              <a-popconfirm :title="t('console.apiKeys.deleteConfirm')" @confirm="remove(record)" :ok-text="t('console.apiKeys.confirmDelete')" :cancel-text="t('common.cancel')">
                 <a-button danger size="small">
                   <template #icon><DeleteOutlined /></template>
                 </a-button>
@@ -95,8 +95,8 @@
             <template #description>
               <div class="empty-state">
                 <KeyOutlined class="empty-icon" />
-                <span>暂无 API 密钥</span>
-                <a-button type="link" @click="openCreate">创建第一个密钥</a-button>
+                <span>{{ t('console.apiKeys.noKeys') }}</span>
+                <a-button type="link" @click="openCreate">{{ t('console.apiKeys.createFirst') }}</a-button>
               </div>
             </template>
           </a-empty>
@@ -109,7 +109,7 @@
       <div class="card-header">
         <div class="card-title">
           <CodeOutlined />
-          <span>签名算法示例</span>
+          <span>{{ t('console.apiKeys.signExample') }}</span>
         </div>
         <a-tag color="blue">Node.js</a-tag>
       </div>
@@ -123,23 +123,23 @@
       v-model:open="createOpen"
       title=""
       @ok="create"
-      :ok-text="'创建密钥'"
-      :cancel-text="'取消'"
+      :ok-text="t('console.apiKeys.createKey')"
+      :cancel-text="t('common.cancel')"
       centered
     >
       <div class="modal-header">
         <div class="modal-icon">
           <PlusOutlined />
         </div>
-        <h3>创建新 API 密钥</h3>
-        <p>生成新的 AKID/Key 凭证对，Key 仅在创建时展示一次</p>
+        <h3>{{ t('console.apiKeys.createTitle') }}</h3>
+        <p>{{ t('console.apiKeys.createDesc') }}</p>
       </div>
       <a-form layout="vertical">
-        <a-form-item label="密钥名称" required>
+        <a-form-item :label="t('console.apiKeys.keyName')" required>
           <a-input
             v-model:value="createForm.name"
             maxlength="64"
-            placeholder="例如：生产环境-订单服务"
+            :placeholder="t('console.apiKeys.keyNamePlaceholder')"
             size="large"
           />
         </a-form-item>
@@ -158,13 +158,13 @@
         <a-alert
           type="warning"
           show-icon
-          message="重要提示"
-          description="窗口关闭后将无法再次查看 Key，请务必立即复制保存"
+          :message="t('console.apiKeys.important')"
+          :description="t('console.apiKeys.keyWarning')"
           class="secret-alert"
         />
         <div class="secret-form">
           <div class="secret-field">
-            <label class="field-label">AKID (访问密钥ID)</label>
+            <label class="field-label">{{ t('console.apiKeys.akid') }}</label>
             <div class="field-input-wrapper">
               <a-input :value="newKey.akid" readonly size="large" class="readonly-input" />
               <a-button @click="copyText(newKey.akid)">
@@ -173,7 +173,7 @@
             </div>
           </div>
           <div class="secret-field secret-field-highlight">
-            <label class="field-label">Key (访问密钥)</label>
+            <label class="field-label">{{ t('console.apiKeys.key') }}</label>
             <div class="field-input-wrapper">
               <a-input :value="newKey.key" readonly size="large" class="readonly-input" />
               <a-button type="primary" @click="copyKey">
@@ -183,10 +183,10 @@
           </div>
         </div>
         <div class="secret-actions">
-          <a-button size="large" @click="secretOpen = false">关闭窗口</a-button>
+          <a-button size="large" @click="secretOpen = false">{{ t('console.apiKeys.closeWindow') }}</a-button>
           <a-button type="primary" size="large" @click="copyKey">
             <template #icon><CopyOutlined /></template>
-            复制 Key
+            {{ t('console.apiKeys.copyKey') }}
           </a-button>
         </div>
       </div>
@@ -208,6 +208,7 @@ import {
   CodeOutlined
 } from "@ant-design/icons-vue";
 import { createUserApiKey, deleteUserApiKey, listUserApiKeys, updateUserApiKeyStatus } from "@/services/user";
+import { t, locale } from "@/locales";
 
 const loading = ref(false);
 const rows = ref([]);
@@ -216,14 +217,14 @@ const secretOpen = ref(false);
 const createForm = reactive({ name: "" });
 const newKey = reactive({ akid: "", key: "" });
 
-const columns = [
+const columns = computed(() => [
   { title: "ID", dataIndex: "id", key: "id", width: 70, className: "id-column" },
-  { title: "名称", dataIndex: "name", key: "name" },
+  { title: t('common.name'), dataIndex: "name", key: "name" },
   { title: "AKID", dataIndex: "akid", key: "akid", width: 280 },
-  { title: "状态", dataIndex: "status", key: "status", width: 110 },
-  { title: "最近使用", dataIndex: "last_used_at", key: "last_used_at", width: 170 },
-  { title: "操作", key: "action", width: 150, className: "action-column" }
-];
+  { title: t('common.status'), dataIndex: "status", key: "status", width: 110 },
+  { title: t('console.apiKeys.lastUsed'), dataIndex: "last_used_at", key: "last_used_at", width: 170 },
+  { title: t('common.actions'), key: "action", width: 150, className: "action-column" }
+]);
 
 const signSnippet = computed(
   () => `import crypto from "crypto";
@@ -247,7 +248,7 @@ const sig = crypto.createHmac("sha256", process.env.OPEN_KEY)
 const formatTime = (v) => {
   const d = new Date(v);
   if (Number.isNaN(d.getTime())) return String(v || "");
-  return d.toLocaleString('zh-CN', {
+  return d.toLocaleString(locale.value, {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -274,7 +275,7 @@ const openCreate = () => {
 const create = async () => {
   const name = String(createForm.name || "").trim();
   if (!name) {
-    message.error("请输入密钥名称");
+    message.error(t('console.apiKeys.nameRequired'));
     return;
   }
   const res = await createUserApiKey({ name, scopes: [] });
@@ -288,24 +289,24 @@ const create = async () => {
 const toggleStatus = async (record) => {
   const next = record.status === "active" ? "disabled" : "active";
   await updateUserApiKeyStatus(record.id, { status: next });
-  message.success(record.status === "active" ? "密钥已停用" : "密钥已启用");
+  message.success(record.status === "active" ? t('console.apiKeys.keyDisabled') : t('console.apiKeys.keyEnabled'));
   await fetchData();
 };
 
 const remove = async (record) => {
   await deleteUserApiKey(record.id);
-  message.success("密钥已删除");
+  message.success(t('console.apiKeys.keyDeleted'));
   await fetchData();
 };
 
 const copyKey = async () => {
   await navigator.clipboard.writeText(newKey.key || "");
-  message.success("Key 已复制到剪贴板");
+  message.success(t('console.apiKeys.keyCopied'));
 };
 
 const copyText = async (text) => {
   await navigator.clipboard.writeText(text || "");
-  message.success("已复制到剪贴板");
+  message.success(t('common.copiedToClipboard'));
 };
 
 onMounted(fetchData);

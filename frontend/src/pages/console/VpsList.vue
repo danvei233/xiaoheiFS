@@ -494,7 +494,7 @@ const statusOptions = computed(() => [
   { label: t('console.vps.reinstallFailed'), value: "reinstall_failed" },
   { label: t('console.vps.failed'), value: "failed" },
   { label: t('console.vps.deleting'), value: "deleting" }
-];
+]);
 
 const statusTabs = computed(() => [
   { label: t('console.vps.running'), value: "running" },

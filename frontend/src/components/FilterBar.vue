@@ -4,8 +4,8 @@
       <a-segmented :options="tabOptions" v-model:value="tabValue" @change="onTabChange" />
     </div>
     <div class="filter-bar">
-      <a-input-search v-model:value="local.keyword" placeholder="关键词搜索" style="width: 220px" @search="emitSearch" />
-      <a-select v-model:value="local.status" placeholder="状态" style="width: 160px" allow-clear>
+      <a-input-search v-model:value="local.keyword" :placeholder="t('common.keywordSearch')" style="width: 220px" @search="emitSearch" />
+      <a-select v-model:value="local.status" :placeholder="t('common.status')" style="width: 160px" allow-clear>
         <a-select-option v-for="item in statusOptions" :key="item.value" :value="item.value">
           {{ item.label }}
         </a-select-option>
@@ -14,14 +14,14 @@
       <a-popover trigger="click" placement="bottomLeft">
         <template #content>
           <slot name="advanced">
-            <div class="subtle">无高级筛选项</div>
+            <div class="subtle">{{ t('common.noAdvancedFilter') }}</div>
           </slot>
         </template>
-        <a-button>高级筛选</a-button>
+        <a-button>{{ t('common.advancedFilter') }}</a-button>
       </a-popover>
-      <a-button @click="emitReset">重置</a-button>
-      <a-button @click="$emit('refresh')">刷新</a-button>
-      <a-button v-if="showExport" @click="$emit('export')">导出 CSV</a-button>
+      <a-button @click="emitReset">{{ t('common.reset') }}</a-button>
+      <a-button @click="$emit('refresh')">{{ t('common.refresh') }}</a-button>
+      <a-button v-if="showExport" @click="$emit('export')">{{ t('common.exportCsv') }}</a-button>
       <slot name="actions" />
     </div>
   </a-card>
@@ -29,6 +29,7 @@
 
 <script setup>
 import { computed, reactive, ref, watch } from "vue";
+import { t } from "@/locales";
 
 const props = defineProps({
   filters: { type: Object, required: true },
@@ -49,7 +50,7 @@ const local = reactive({
 const tabOptions = computed(() => {
   if (!props.statusTabs.length) return [];
   return [
-    { label: "全部", value: "all" },
+    { label: t('common.all'), value: "all" },
     ...props.statusTabs.map((item) => ({ label: item.label, value: item.value }))
   ];
 });

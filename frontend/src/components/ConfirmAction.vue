@@ -5,9 +5,14 @@
 </template>
 
 <script setup>
-defineProps({
-  title: { type: String, default: "确认操作?" }
+import { computed } from "vue";
+import { t } from "@/locales";
+
+const props = defineProps({
+  title: { type: String, default: "" }
 });
 
 defineEmits(["confirm"]);
+
+const title = computed(() => props.title || t('common.confirmAction'));
 </script>

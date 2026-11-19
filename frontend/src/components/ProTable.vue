@@ -1,10 +1,10 @@
 ﻿<template>
   <a-card class="card">
     <div class="table-toolbar flex space-between">
-      <div class="subtle">共 {{ pagination.total }} 条</div>
+      <div class="subtle">{{ t('common.total', { n: pagination.total }) }}</div>
       <div class="flex gap-8">
         <a-dropdown>
-          <a-button>列设置</a-button>
+          <a-button>{{ t('common.columnSettings') }}</a-button>
           <template #overlay>
             <a-menu>
               <a-menu-item v-for="col in columns" :key="col.key" @click="toggleColumn(col.key)">
@@ -39,6 +39,7 @@
 <script setup>
 import { computed, ref } from "vue";
 import { Grid } from "ant-design-vue";
+import { t } from "@/locales";
 
 const props = defineProps({
   columns: { type: Array, required: true },
