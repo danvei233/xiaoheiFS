@@ -1638,3 +1638,78 @@ html.console-dark :is(.console-layout .top-header, .console-layout .mobile-heade
   background: rgb(255 255 255 / 16%);
   border-color: rgb(255 255 255 / 28%);
 }
+
+/* The admin shell search field follows the chrome instead of staying white. */
+html[data-console-theme="executive"] .admin-layout .header .header-search-wrapper :is(.header-search, .ant-input-affix-wrapper, .ant-input),
+html.console-dark .admin-layout .header .header-search-wrapper :is(.header-search, .ant-input-affix-wrapper, .ant-input) {
+  background: rgb(255 255 255 / 8%) !important;
+  border-color: rgb(255 255 255 / 16%) !important;
+  color: var(--theme-header-text, #fff) !important;
+  box-shadow: none !important;
+}
+html[data-console-theme="executive"] .admin-layout .header .header-search-wrapper :is(.ant-input-affix-wrapper:hover, .ant-input-affix-wrapper-focused),
+html.console-dark .admin-layout .header .header-search-wrapper :is(.ant-input-affix-wrapper:hover, .ant-input-affix-wrapper-focused) {
+  background: rgb(255 255 255 / 14%) !important;
+  border-color: rgb(255 255 255 / 26%) !important;
+}
+
+/* ==========================================================================
+   主题控件材质：开关、勾选与输入随预设改变形状与工艺，而不只是换主色。
+   同一套规则同时作用于 antd 控件和外观面板里的自定义开关。
+   ========================================================================== */
+
+/* ---------- 简约纯白：细线、小圆角 ---------- */
+html[data-console-theme="minimal"] :is(.ant-switch, .theme-switch) { border-radius: 5px; }
+html[data-console-theme="minimal"] .ant-switch .ant-switch-handle::before { border-radius: 3px; }
+html[data-console-theme="minimal"] .theme-switch::after { border-radius: 3px; }
+html[data-console-theme="minimal"] :is(.ant-checkbox-inner, .ant-radio-inner) { border-radius: 3px; }
+
+/* ---------- 科技简约：方角、硬边框、等宽大写 ---------- */
+html[data-console-theme="tech"] :is(.ant-switch, .theme-switch) {
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+html[data-console-theme="tech"] :is(.ant-switch .ant-switch-handle::before, .theme-switch::after) { border-radius: 0; }
+html[data-console-theme="tech"] :is(.ant-checkbox-inner, .ant-radio-inner, .ant-tag) { border-radius: 0; }
+html[data-console-theme="tech"] .ant-btn { letter-spacing: .06em; text-transform: uppercase; }
+
+/* ---------- 沉稳大气：克制的小圆角 + 内描边 ---------- */
+html[data-console-theme="executive"] :is(.ant-switch, .theme-switch) { border-radius: 6px; }
+html[data-console-theme="executive"] .ant-switch .ant-switch-handle::before { border-radius: 4px; }
+html[data-console-theme="executive"] .theme-switch::after { border-radius: 4px; }
+
+/* ---------- 黑金质感（机械朋克）：切角、金线、铆钉 ---------- */
+html[data-console-theme="gold"] :is(.ant-switch, .theme-switch) {
+  border-radius: 1px;
+  background-image:
+    radial-gradient(circle at 4px 50%, color-mix(in srgb, var(--primary) 60%, #fff) 1px, transparent 1.6px),
+    radial-gradient(circle at calc(100% - 4px) 50%, color-mix(in srgb, var(--primary) 60%, #fff) 1px, transparent 1.6px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 50%, transparent);
+}
+html[data-console-theme="gold"] :is(.ant-switch .ant-switch-handle::before, .theme-switch::after) {
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent);
+}
+html[data-console-theme="gold"] :is(.ant-checkbox-inner, .ant-radio-inner, .ant-tag) { border-radius: 1px; }
+
+/* ---------- 可爱清爽：胶囊、软阴影 ---------- */
+html[data-console-theme="cute"] :is(.ant-switch, .theme-switch) {
+  border-radius: 999px;
+  box-shadow: 0 3px 9px color-mix(in srgb, var(--primary) 26%, transparent);
+}
+html[data-console-theme="cute"] :is(.ant-switch .ant-switch-handle::before, .theme-switch::after) {
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgba(20, 60, 48, .2);
+}
+html[data-console-theme="cute"] :is(.ant-checkbox-inner, .ant-tag) { border-radius: 999px; }
+
+/* ---------- 透明炫酷：磨砂玻璃、内高光 ---------- */
+html[data-console-theme="glass"] :is(.ant-switch, .theme-switch) {
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .68),
+    inset 0 0 0 1px color-mix(in srgb, var(--primary) 26%, transparent),
+    0 6px 18px rgba(31, 38, 80, .14);
+}
+html[data-console-theme="glass"] :is(.ant-switch .ant-switch-handle::before, .theme-switch::after) { border-radius: 999px; }
+html[data-console-theme="glass"] :is(.ant-checkbox-inner, .ant-radio-inner) { border-radius: 5px; }

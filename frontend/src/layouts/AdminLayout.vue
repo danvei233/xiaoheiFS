@@ -42,14 +42,6 @@
         </div>
         <AppearanceSettings />
         <a-space :size="12">
-          <a-tag color="blue">Admin</a-tag>
-          <a-tooltip :title="t('adminNav.notifications')">
-            <a-badge :count="5" size="small">
-              <a-button type="text" shape="circle">
-                <BellOutlined />
-              </a-button>
-            </a-badge>
-          </a-tooltip>
             <a-tooltip :title="t('adminNav.helpCenter')">
               <a-button type="text" shape="circle" @click="goHelp">
                 <QuestionCircleOutlined />

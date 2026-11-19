@@ -786,3 +786,67 @@ html[data-theme='glass'] .el-picker-panel {
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+// 主题控件材质：开关、勾选、输入与按钮随预设改变形状与工艺，而不只是换主色。
+html[data-theme='minimal'] {
+  .el-switch__core { border-radius: 5px; }
+  .el-switch__action { border-radius: 3px; }
+  :is(.el-checkbox__inner, .el-radio__inner) { border-radius: 3px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 5px; }
+}
+
+html[data-theme='tech'] {
+  .el-switch__core {
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 55%, transparent);
+  }
+  .el-switch__action { border-radius: 0; }
+  :is(.el-checkbox__inner, .el-radio__inner, .el-tag) { border-radius: 0; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 0; }
+  .el-button { letter-spacing: .06em; text-transform: uppercase; }
+}
+
+html[data-theme='executive'] {
+  .el-switch__core { border-radius: 6px; }
+  .el-switch__action { border-radius: 4px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 3px; }
+}
+
+html[data-theme='gold'] {
+  .el-switch__core {
+    border-radius: 1px;
+    background-image:
+      radial-gradient(circle at 4px 50%, color-mix(in srgb, var(--el-color-primary) 62%, #fff) 1px, transparent 1.6px),
+      radial-gradient(circle at calc(100% - 4px) 50%, color-mix(in srgb, var(--el-color-primary) 62%, #fff) 1px, transparent 1.6px);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 50%, transparent);
+  }
+  .el-switch__action { border-radius: 2px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 55%, transparent); }
+  :is(.el-checkbox__inner, .el-radio__inner, .el-tag) { border-radius: 1px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) {
+    border-radius: 0;
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  }
+}
+
+html[data-theme='cute'] {
+  .el-switch__core {
+    border-radius: 999px;
+    box-shadow: 0 3px 9px color-mix(in srgb, var(--el-color-primary) 26%, transparent);
+  }
+  .el-switch__action { border-radius: 999px; }
+  :is(.el-checkbox__inner, .el-tag) { border-radius: 999px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 999px; }
+}
+
+html[data-theme='glass'] {
+  .el-switch__core {
+    border-radius: 12px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, .68),
+      inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 26%, transparent),
+      0 6px 18px rgba(31, 38, 80, .14);
+  }
+  .el-switch__action { border-radius: 999px; }
+  :is(.el-checkbox__inner, .el-radio__inner) { border-radius: 5px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner, .el-tag) { border-radius: 12px; }
+}
