@@ -114,3 +114,11 @@ Thumbs.db
 /mui2/
 /auroraboat-main/
 /CLAUDE.md
+
+# ============================================
+# 本地运行产物与临时文件
+# ============================================
+/backend/server.exe
+/backend/internal/adapter/http/plugins/payment/demo.exe
+/frontend/public/tmp-shot*.png
+/.codebuddy/
