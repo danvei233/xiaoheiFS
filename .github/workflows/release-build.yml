@@ -23,7 +23,8 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ github.event_name }}" == "release" ]]; then
-            echo "value=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+            tag="${{ github.event.release.tag_name }}"
+            echo "value=$tag" >> "$GITHUB_OUTPUT"
           else
             echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
           fi
@@ -63,7 +64,7 @@ jobs:
         run: |
           Write-Host "[2/3] Build built-in plugins..."
           Push-Location backend
-          
+
           $pluginList = @(
             "payment/ezpay",
             "payment/wechatpay_v3",
@@ -78,11 +79,11 @@ jobs:
             "automation/xiaohei_proxy",
             "automation/mofang_openapi"
           )
-          
+
           $env:CGO_ENABLED = "0"
           $env:GOOS = "windows"
           $env:GOARCH = "amd64"
-          
+
           foreach ($id in $pluginList) {
             $pkg = "./plugin-demo/pluginv1/$($id -replace '/', '_')"
             $outDir = Join-Path "plugins/$id" "bin/windows_amd64"
@@ -98,8 +99,10 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "[3/3] Organize plugins directory..."
-          Remove-Item -Recurse -Force build\windows\plugins -ErrorAction SilentlyContinue
-          Copy-Item -Path backend\plugins -Destination build\windows\plugins -Recurse -Force
+          $PluginsOut = "build\windows\plugins"
+          Remove-Item -Recurse -Force $PluginsOut -ErrorAction SilentlyContinue
+          $PluginsSrc = "backend\plugins"
+          Copy-Item -Path $PluginsSrc -Destination $PluginsOut -Recurse -Force
 
       # --- 打包 ---
       - name: Package
@@ -107,22 +110,23 @@ jobs:
         run: |
           $tag = "${{ needs.prepare.outputs.tag }}"
           Write-Host "Packaging for Windows (tag: $tag)..."
-          
+
           New-Item -ItemType Directory -Force dist | Out-Null
           $zip = "dist/xiaohei-$tag-windows-amd64.zip"
           if (Test-Path $zip) { Remove-Item -Force $zip }
-          
+
           Push-Location build\windows
           $repoRoot = (Resolve-Path ../..).Path
           $dest = Join-Path $repoRoot $zip
-          
-          Compress-Archive -Path server.exe, static, plugins -DestinationPath $dest -Force
+
+          $archiveItems = "server.exe", "static", "plugins"
+          Compress-Archive -Path $archiveItems -DestinationPath $dest -Force
           Pop-Location
-          
+
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
           $name = Split-Path $zip -Leaf
           echo "$hash  $name" | Set-Content "$zip.sha256" -NoNewline
-          
+
           Write-Host "Package created: $zip"
 
       # --- 上传产物 ---
@@ -169,11 +173,11 @@ jobs:
         run: |
           echo "[2/3] Build built-in plugins..."
           cd backend
-          
+
           go env -w CGO_ENABLED=0
           go env -w GOOS=linu
           go env -w GOARCH=amd64
-          
+
           PLUGIN_LIST=(
             "payment/ezpay"
             "payment/wechatpay_v3"
@@ -188,7 +192,7 @@ jobs:
             "automation/xiaohei_proxy"
             "automation/mofang_openapi"
           )
-          
+
           for id in "${PLUGIN_LIST[@]}"; do
             pkg="./plugin-demo/pluginv1/${id//\//_}"
             out_dir="plugins/$id/bin/linux_amd64"
@@ -212,14 +216,14 @@ jobs:
         run: |
           tag="${{ needs.prepare.outputs.tag }}"
           echo "Packaging for Linux (tag: $tag)..."
-          
+
           mkdir -p dist
           out="dist/xiaohei-$tag-linux-amd64.tar.gz"
           tar -C build/linux -czf "$out" server static plugins
-          
+
           hash="$(sha256sum "$out" | cut -d' ' -f1)"
           echo "$hash  $(basename "$out")" > "$out.sha256"
-          
+
           echo "Package created: $out"
 
       # --- 上传产物 ---
@@ -252,7 +256,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # --- 阶段 1: 构建主程序 (前端复用 Linux 构建，后端交叉编译) ---
+      # --- 阶段 1: 构建主程序 (后端交叉编译) ---
       - name: Build main program
         shell: bash
         run: |
@@ -260,7 +264,7 @@ jobs:
           # 构建前端 (静态资源，所有平台通用)
           chmod +x script/build-linux.sh
           ./script/build-linux.sh
-          
+
           # 交叉编译后端
           echo "  Cross-compiling backend for FreeBSD..."
           cd backend
@@ -276,11 +280,11 @@ jobs:
         run: |
           echo "[2/3] Build built-in plugins (FreeBSD cross)..."
           cd backend
-          
+
           go env -w CGO_ENABLED=0
           go env -w GOOS=freebsd
           go env -w GOARCH=amd64
-          
+
           PLUGIN_LIST=(
             "payment/ezpay"
             "payment/wechatpay_v3"
@@ -295,7 +299,7 @@ jobs:
             "automation/xiaohei_proxy"
             "automation/mofang_openapi"
           )
-          
+
           for id in "${PLUGIN_LIST[@]}"; do
             pkg="./plugin-demo/pluginv1/${id//\//_}"
             out_dir="plugins/$id/bin/freebsd_amd64"
@@ -319,14 +323,14 @@ jobs:
         run: |
           tag="${{ needs.prepare.outputs.tag }}"
           echo "Packaging for FreeBSD (tag: $tag)..."
-          
+
           mkdir -p dist
           out="dist/xiaohei-$tag-freebsd-amd64.tar.gz"
           tar -C build/freebsd -czf "$out" server static plugins
-          
+
           hash="$(sha256sum "$out" | cut -d' ' -f1)"
           echo "$hash  $(basename "$out")" > "$out.sha256"
-          
+
           echo "Package created: $out"
 
       # --- 上传产物 ---
@@ -366,7 +370,7 @@ jobs:
       - name: List artifacts
         shell: bash
         run: |
-          echo "Uploading the following files to release ${{ needs.prepare.outputs.tag }}:"
+          echo "Uploading files to release ${{ needs.prepare.outputs.tag }}:"
           ls -la dist/
 
       - name: Upload to release
@@ -374,4 +378,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          gh release upload "${{ needs.prepare.outputs.tag }}" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "${{ needs.prepare.outputs.tag }}" dist/* \
+            --clobber --repo "$GITHUB_REPOSITORY"
