@@ -1,7 +1,6 @@
 ﻿import axios from "axios";
 import { message, notification, Modal } from "ant-design-vue";
 import { useAuthStore } from "@/stores/auth";
-import { useAdminAuthStore } from "@/stores/adminAuth";
 import { useAppStore } from "@/stores/app";
 import { navigateReplace } from "@/services/navigate";
 
@@ -21,15 +20,10 @@ const isAuthLoginRequest = (url: string): boolean => {
 
 http.interceptors.request.use((config) => {
   const user = useAuthStore();
-  const admin = useAdminAuthStore();
   const app = useAppStore();
   if (config.url?.startsWith("/api") && user.token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${user.token}`;
-  }
-  if (config.url?.startsWith("/admin/api") && admin.token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${admin.token}`;
   }
   if (config.headers && "X-Use-Api-Key" in config.headers) {
     if (app.adminApiKey) {
@@ -44,7 +38,6 @@ http.interceptors.response.use(
   (res) => res,
   (error) => {
     const status = error?.response?.status;
-    const errCode = error?.response?.data?.code;
     const msg = error?.response?.data?.error || error?.response?.data?.message || error?.message || "Request failed";
     const url = error?.config?.url || "";
     const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
