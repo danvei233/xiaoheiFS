@@ -155,7 +155,7 @@
                     inactive-text="停用"
                     inline-prompt
                     :disabled="isCatalogReadonly || !hasPermission('region.set_active')"
-                    @change="(v: boolean) => toggleRegionActive(row, v)"
+                    @change="(v: string | number | boolean) => toggleRegionActive(row, Boolean(v))"
                   />
                 </template>
               </ElTableColumn>
@@ -617,12 +617,8 @@
 
 <script setup lang="ts">
   import type { AdminPluginRecord, CatalogGoodsType, CatalogSystemImage } from '@/api/admin'
-  import {
-    createDefaultSystemImageDialogForm
-  } from '@/components/business/system-image-dialog/model'
-  import type {
-    SystemImageDialogFormValue as SystemImageFormValue
-  } from '@/components/business/system-image-dialog/model'
+  import { createDefaultSystemImageDialogForm } from '@/components/business/system-image-dialog/model'
+  import type { SystemImageDialogFormValue as SystemImageFormValue } from '@/components/business/system-image-dialog/model'
   import {
     bulkDeleteAdminBillingCycles,
     bulkDeleteAdminPackages,
