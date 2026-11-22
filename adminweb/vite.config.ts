@@ -31,7 +31,8 @@ export default ({ mode }: { mode: string }) => {
     define: {
       __APP_VERSION__: JSON.stringify(VITE_VERSION)
     },
-    base: VITE_BASE_URL,
+    // admin_path 是运行时配置，构建期无法确定，用相对 base 让资源落在 /{admin_path}/assets/
+    base: VITE_BASE_URL || './',
     server: {
       port: Number(VITE_PORT),
       proxy: {
