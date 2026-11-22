@@ -19,15 +19,15 @@ export const marketingRoutes: AppRouteRecord = {
         keepAlive: true,
         roles: ['R_SUPER', 'R_ADMIN'],
         authList: [
-          { title: '查看优惠组', authMark: 'coupon_group.list' },
-          { title: '创建优惠组', authMark: 'coupon_group.create' },
-          { title: '更新优惠组', authMark: 'coupon_group.update' },
-          { title: '删除优惠组', authMark: 'coupon_group.delete' },
-          { title: '查看优惠券', authMark: 'coupon.list' },
-          { title: '创建优惠券', authMark: 'coupon.create' },
-          { title: '更新优惠券', authMark: 'coupon.update' },
-          { title: '删除优惠券', authMark: 'coupon.delete' },
-          { title: '批量生成优惠券', authMark: 'coupon.batch_generate' }
+          { title: '查看优惠组', authMark: 'coupon_groups.list' },
+          { title: '创建优惠组', authMark: 'coupon_groups.create' },
+          { title: '更新优惠组', authMark: 'coupon_groups.update' },
+          { title: '删除优惠组', authMark: 'coupon_groups.delete' },
+          { title: '查看优惠券', authMark: 'coupons.list' },
+          { title: '创建优惠券', authMark: 'coupons.create' },
+          { title: '更新优惠券', authMark: 'coupons.update' },
+          { title: '删除优惠券', authMark: 'coupons.delete' },
+          { title: '批量生成优惠券', authMark: 'coupons.batch_generate' }
         ]
       }
     }

@@ -940,9 +940,9 @@
   const canView = computed(() =>
     hasAdminPermission(info.value?.buttons, [
       'goods_type.list',
-      'region.list',
+      'regions.list',
       'plan_group.list',
-      'package.list',
+      'packages.list',
       'system_image.list',
       'billing_cycle.list'
     ])

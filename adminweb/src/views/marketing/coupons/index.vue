@@ -357,20 +357,20 @@
   const batchForm = ref<CouponBatchFormValue>(createDefaultBatchForm())
 
   const canView = computed(() =>
-    hasAdminPermission(info.value?.buttons, ['coupon_group.list', 'coupon.list'])
+    hasAdminPermission(info.value?.buttons, ['coupon_groups.list', 'coupons.list'])
   )
   const canManageGroups = computed(() =>
     hasAdminPermission(info.value?.buttons, [
-      'coupon_group.create',
-      'coupon_group.update',
-      'coupon_group.delete'
+      'coupon_groups.create',
+      'coupon_groups.update',
+      'coupon_groups.delete'
     ])
   )
   const canManageCoupons = computed(() =>
-    hasAdminPermission(info.value?.buttons, ['coupon.create', 'coupon.update', 'coupon.delete'])
+    hasAdminPermission(info.value?.buttons, ['coupons.create', 'coupons.update', 'coupons.delete'])
   )
   const canBatchGenerate = computed(() =>
-    hasAdminPermission(info.value?.buttons, ['coupon.batch_generate'])
+    hasAdminPermission(info.value?.buttons, ['coupons.batch_generate'])
   )
 
   const groupOptions = computed<SelectOption[]>(() =>

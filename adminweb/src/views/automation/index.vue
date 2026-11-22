@@ -182,7 +182,7 @@
   })
 
   const canViewLines = computed(() => hasAdminPermission(info.value?.buttons, ['line.list']))
-  const canViewPackages = computed(() => hasAdminPermission(info.value?.buttons, ['package.list']))
+  const canViewPackages = computed(() => hasAdminPermission(info.value?.buttons, ['packages.list']))
   const canViewImages = computed(() =>
     hasAdminPermission(info.value?.buttons, ['system_image.list'])
   )
@@ -202,7 +202,7 @@
     canViewLines.value ? '统计当前线路记录数量。' : '缺少 `line.list` 权限。'
   )
   const packageMetricHelp = computed(() =>
-    canViewPackages.value ? '统计当前套餐记录数量。' : '缺少 `package.list` 权限。'
+    canViewPackages.value ? '统计当前套餐记录数量。' : '缺少 `packages.list` 权限。'
   )
   const imageMetricHelp = computed(() =>
     canViewImages.value ? '统计当前系统镜像记录数量。' : '缺少 `system_image.list` 权限。'
