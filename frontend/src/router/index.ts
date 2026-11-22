@@ -2,9 +2,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import { Modal } from "ant-design-vue";
 import PublicLayout from "@/layouts/PublicLayout.vue";
 import UserLayout from "@/layouts/UserLayout.vue";
-import AdminLayout from "@/layouts/AdminLayout.vue";
 import { useAuthStore } from "@/stores/auth";
-import { useAdminAuthStore } from "@/stores/adminAuth";
 import { useInstallStore } from "@/stores/install";
 
 const router = createRouter({
@@ -79,8 +77,8 @@ const router = createRouter({
     },
     {
       path: "/:pathMatch(.*)*",
-      name: "dynamic-route",
-      component: () => import("@/pages/public/DynamicRoute.vue")
+      name: "not-found",
+      component: () => import("@/pages/public/NotFound.vue")
     }
   ]
 });
@@ -123,17 +121,11 @@ router.beforeEach(async (to) => {
       return { name: "login", query: { redirect: to.fullPath } };
     }
   }
-  if (to.meta.requiresAdmin) {
-    const admin = useAdminAuthStore();
-    if (!admin.token) {
-      return { name: "admin-login", query: { redirect: to.fullPath } };
-    }
-  }
   return true;
 });
 
 let chunkErrorPrompted = false;
-router.onError((err, to) => {
+router.onError((err) => {
   const msg = String((err as any)?.message || err || "");
   // Common in production when a chunk is missing/stale (e.g. after deployment) or a route-level import fails.
   if (

@@ -20,6 +20,30 @@ func TestInferPermissionCode(t *testing.T) {
 	}
 }
 
+// 管理端 UI 会拿这些权限码做菜单/按钮门禁，推导不出就等于永远无法授予。
+func TestInferPermissionCodeCoversAdminUI(t *testing.T) {
+	cases := []struct {
+		method, path, want string
+	}{
+		{"GET", "/admin/api/v1/cms/categories", "cms_category.list"},
+		{"POST", "/admin/api/v1/cms/posts", "cms_post.create"},
+		{"PATCH", "/admin/api/v1/cms/blocks/:id", "cms_block.update"},
+		{"DELETE", "/admin/api/v1/cms/blocks/:id", "cms_block.delete"},
+		{"GET", "/admin/api/v1/sms/templates", "sms_template.list"},
+		{"GET", "/admin/api/v1/sms-templates", "sms_template.list"},
+		{"PATCH", "/admin/api/v1/plugins/payment-methods", "payment.update"},
+		{"POST", "/admin/api/v1/coupons/batch-generate", "coupons.batch_generate"},
+		{"POST", "/admin/api/v1/user-tiers/rebuild", "user_tiers.rebuild"},
+		{"PUT", "/admin/api/v1/goods-types/:id", "goods_type.update"},
+	}
+	for _, tc := range cases {
+		code, ok := InferPermissionCode(tc.method, tc.path)
+		if !ok || code != tc.want {
+			t.Errorf("%s %s: got (%v, %q), want %q", tc.method, tc.path, ok, code, tc.want)
+		}
+	}
+}
+
 func TestBuildFromRoutes(t *testing.T) {
 	routes := []gin.RouteInfo{
 		{Method: "GET", Path: "/admin/api/v1/users"},

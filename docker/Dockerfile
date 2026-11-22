@@ -13,7 +13,19 @@ COPY frontend/public ./public
 COPY frontend/tsconfig.json frontend/index.html frontend/vite.config.ts ./
 RUN npm run build
 
-# Stage 2: Build backend
+# Stage 2: Build admin SPA (adminweb)
+FROM node:20-bookworm as adminweb-builder
+
+WORKDIR /app
+
+COPY adminweb/package.json adminweb/pnpm-lock.yaml ./adminweb/
+WORKDIR /app/adminweb
+RUN corepack enable && corepack prepare pnpm@10 --activate && pnpm install --frozen-lockfile
+
+COPY adminweb/ ./
+RUN VITE_BUILD_OUT_DIR=/app/static-admin pnpm build
+
+# Stage 3: Build backend
 FROM golang:1.25-bookworm as backend-builder
 
 WORKDIR /app
@@ -25,7 +37,7 @@ RUN go mod download
 COPY backend/ .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server
 
-# Stage 3: Create runtime image
+# Stage 4: Create runtime image
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -37,6 +49,9 @@ WORKDIR /app
 
 # Copy frontend dist
 COPY --from=frontend-builder /app/frontend/dist ./static
+
+# Copy admin SPA dist (served under the configured admin_path)
+COPY --from=adminweb-builder /app/static-admin ./static-admin
 
 # Copy backend binary
 COPY --from=backend-builder /app/backend/server .

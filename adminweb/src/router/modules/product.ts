@@ -20,9 +20,9 @@ export const productRoutes: AppRouteRecord = {
         roles: ['R_SUPER', 'R_ADMIN'],
         authList: [
           { title: '商品类型', authMark: 'goods_type.list' },
-          { title: '地区', authMark: 'region.list' },
+          { title: '地区', authMark: 'regions.list' },
           { title: '线路', authMark: 'plan_group.list' },
-          { title: '套餐', authMark: 'package.list' },
+          { title: '套餐', authMark: 'packages.list' },
           { title: '系统镜像', authMark: 'system_image.list' },
           { title: '计费周期', authMark: 'billing_cycle.list' }
         ]

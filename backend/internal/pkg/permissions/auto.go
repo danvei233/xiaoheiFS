@@ -71,6 +71,8 @@ var actionFriendlyName = map[string]string{
 	"refresh":                    "刷新",
 	"sync":                       "同步",
 	"test":                       "测试",
+	"batch_generate":             "批量生成",
+	"rebuild":                    "重建",
 	"set_system_images":          "设置镜像",
 	"change_password":            "修改密码",
 	"overview":                   "概览",
@@ -105,6 +107,8 @@ var actionSortOrder = map[string]int{
 	"refresh":                    19,
 	"sync":                       20,
 	"test":                       21,
+	"batch_generate":             32,
+	"rebuild":                    33,
 	"set_system_images":          22,
 	"change_password":            23,
 	"overview":                   24,
@@ -262,7 +266,15 @@ func moduleFromSegments(segments []string) string {
 		return "upload"
 	case "payments":
 		return "payment"
+	case "sms":
+		if len(segments) > 1 && segments[1] == "templates" {
+			return "sms_template"
+		}
+		return "sms"
 	case "plugins":
+		if len(segments) > 1 && segments[1] == "payment-methods" {
+			return "payment"
+		}
 		return "plugin"
 	case "server":
 		return "server"
@@ -345,6 +357,41 @@ func actionFromSegments(method string, segments []string) (string, bool) {
 		return "", false
 	}
 	if segments[0] == "payments" && len(segments) > 1 && segments[1] == "providers" {
+		switch method {
+		case "GET":
+			return "list", true
+		case "PATCH":
+			return "update", true
+		}
+		return "", false
+	}
+	if segments[0] == "cms" && len(segments) > 1 {
+		switch method {
+		case "GET":
+			return "list", true
+		case "POST":
+			return "create", true
+		case "PATCH", "PUT":
+			return "update", true
+		case "DELETE":
+			return "delete", true
+		}
+		return "", false
+	}
+	if segments[0] == "sms" && len(segments) > 1 && segments[1] == "templates" {
+		switch method {
+		case "GET":
+			return "list", true
+		case "POST":
+			return "create", true
+		case "PATCH", "PUT":
+			return "update", true
+		case "DELETE":
+			return "delete", true
+		}
+		return "", false
+	}
+	if segments[0] == "plugins" && len(segments) == 2 && segments[1] == "payment-methods" {
 		switch method {
 		case "GET":
 			return "list", true
@@ -487,6 +534,12 @@ func actionFromSegments(method string, segments []string) (string, bool) {
 		if segments[1] == "sync" && method == "POST" {
 			return "sync", true
 		}
+		if segments[1] == "batch-generate" && method == "POST" {
+			return "batch_generate", true
+		}
+		if segments[1] == "rebuild" && method == "POST" {
+			return "rebuild", true
+		}
 		if segments[1] == "system-images" && method == "POST" {
 			return "set_system_images", true
 		}
@@ -510,7 +563,7 @@ func actionFromSegments(method string, segments []string) (string, bool) {
 			switch method {
 			case "GET":
 				return "view", true
-			case "PATCH":
+			case "PATCH", "PUT":
 				return "update", true
 			case "DELETE":
 				return "delete", true
