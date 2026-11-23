@@ -3,13 +3,13 @@
     <!-- Header -->
     <div class="page-header">
       <div class="header-content">
-        <h1 class="page-title">我的订单</h1>
-        <p class="page-subtitle">{{ pagination.total }} 个订单</p>
+        <h1 class="page-title">{{ t('console.orders.title') }}</h1>
+        <p class="page-subtitle">{{ t('console.orders.count', { n: pagination.total }) }}</p>
       </div>
       <div class="header-actions">
         <a-button @click="fetchData" :loading="loading">
           <ReloadOutlined />
-          刷新
+          {{ t('common.refresh') }}
         </a-button>
       </div>
     </div>
@@ -36,7 +36,7 @@
           total: pagination.total,
           showSizeChanger: true,
           showQuickJumper: true,
-          showTotal: (total) => `共 ${total} 条`
+          showTotal: (total) => t('common.total', { n: total })
         }"
         @change="onTableChange"
         class="orders-table"
@@ -79,7 +79,7 @@
             <a-space>
               <a-button type="link" @click="goDetail(record)">
                 <EyeOutlined />
-                详情
+                {{ t('common.detail') }}
               </a-button>
               <a-button
                 v-if="canCancel(record)"
@@ -88,7 +88,7 @@
                 @click="cancelItem(record)"
               >
                 <CloseCircleOutlined />
-                撤销
+                {{ t('console.orders.cancel') }}
               </a-button>
             </a-space>
           </template>
@@ -113,21 +113,21 @@
 
         <div class="card-body">
           <div class="card-row">
-            <span class="card-label">订单号</span>
+            <span class="card-label">{{ t('console.orders.orderNo') }}</span>
             <span class="card-value">{{ item.order_no || '-' }}</span>
           </div>
           <div class="card-row">
-            <span class="card-label">金额</span>
+            <span class="card-label">{{ t('common.amount') }}</span>
             <span class="card-value card-amount">¥{{ item.total_amount }}</span>
           </div>
           <div class="card-row">
-            <span class="card-label">创建时间</span>
+            <span class="card-label">{{ t('common.createdAt') }}</span>
             <span class="card-value">{{ item.created_at }}</span>
           </div>
           <div class="card-actions">
             <a-button size="small" @click="goDetail(item)">
               <EyeOutlined />
-              详情
+              {{ t('common.detail') }}
             </a-button>
             <a-button
               v-if="canCancel(item)"
@@ -136,7 +136,7 @@
               @click="cancelItem(item)"
             >
               <CloseCircleOutlined />
-              撤销
+              {{ t('console.orders.cancel') }}
             </a-button>
           </div>
         </div>
@@ -152,6 +152,7 @@ import { useRouter } from "vue-router";
 import { useOrdersStore } from "@/stores/orders";
 import { cancelOrder } from "@/services/user";
 import { message, Modal } from "ant-design-vue";
+import { t } from "@/locales";
 import {
   ReloadOutlined,
   FileTextOutlined,
@@ -166,21 +167,21 @@ const store = useOrdersStore();
 const activeTab = ref('all');
 const pagination = reactive({ current: 1, pageSize: 10, total: 0 });
 
-const tabOptions = [
-  { label: '全部', value: 'all' },
-  { label: '待支付', value: 'pending_payment' },
-  { label: '待审核', value: 'pending_review' },
-  { label: '开通中', value: 'provisioning' },
-  { label: '已完成', value: 'active' }
-];
+const tabOptions = computed(() => [
+  { label: t('common.all'), value: 'all' },
+  { label: t('status.pendingPayment'), value: 'pending_payment' },
+  { label: t('status.pendingReview'), value: 'pending_review' },
+  { label: t('status.provisioning'), value: 'provisioning' },
+  { label: t('status.activeService'), value: 'active' }
+]);
 
-const columns = [
-  { title: '订单', dataIndex: 'id', key: 'id', width: 200 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 140 },
-  { title: '金额', dataIndex: 'total_amount', key: 'amount', width: 140 },
-  { title: '创建时间', dataIndex: 'created_at', key: 'created_at' },
-  { title: '操作', key: 'actions', width: 180, align: 'right' }
-];
+const columns = computed(() => [
+  { title: t('console.orders.order'), dataIndex: 'id', key: 'id', width: 200 },
+  { title: t('common.status'), dataIndex: 'status', key: 'status', width: 140 },
+  { title: t('common.amount'), dataIndex: 'total_amount', key: 'amount', width: 140 },
+  { title: t('common.createdAt'), dataIndex: 'created_at', key: 'created_at' },
+  { title: t('common.actions'), key: 'actions', width: 180, align: 'right' }
+]);
 
 const dataSource = computed(() =>
   store.items.map((row) => ({
@@ -226,14 +227,14 @@ const canCancel = (record) => ["pending_payment", "pending_review"].includes(rec
 const cancelItem = (record) => {
   if (!record?.id) return;
   Modal.confirm({
-    title: "撤销订单",
-    content: "撤销后订单将变为已取消，无法继续支付。确认撤销吗？",
-    okText: "确认撤销",
+    title: t('console.orders.cancelTitle'),
+    content: t('console.orders.cancelDesc'),
+    okText: t('console.orders.confirmCancel'),
     okButtonProps: { danger: true },
-    cancelText: "暂不撤销",
+    cancelText: t('console.orders.keepCancel'),
     onOk: async () => {
       await cancelOrder(record.id);
-      message.success("订单已撤销");
+      message.success(t('console.orders.cancelled'));
       fetchData();
     }
   });

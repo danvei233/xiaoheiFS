@@ -39,6 +39,7 @@ import { setElementThemeColor } from '@/utils/ui'
 import { useCeremony } from '@/hooks/core/useCeremony'
 import { StorageConfig } from '@/utils'
 import { SETTING_DEFAULT_CONFIG } from '@/config/setting'
+import { appearanceThemes, type AppearanceTheme } from '@/config/appearance'
 
 /**
  * 系统设置状态管理
@@ -57,6 +58,15 @@ export const useSettingStore = defineStore(
     /** 双菜单是否显示文本 */
     const dualMenuShowText = ref(SETTING_DEFAULT_CONFIG.dualMenuShowText)
 
+    const appearanceTheme = ref<AppearanceTheme>(SETTING_DEFAULT_CONFIG.appearanceTheme)
+    const setAppearanceTheme = (theme: AppearanceTheme) => {
+      if (!Object.hasOwn(appearanceThemes, theme)) return
+      appearanceTheme.value = theme
+      document.documentElement.dataset.theme = theme
+      setElementTheme(appearanceThemes[theme].color)
+      setCustomRadius(appearanceThemes[theme].radius)
+    }
+
     // 主题相关设置
     /** 系统主题类型 */
     const systemThemeType = ref(SETTING_DEFAULT_CONFIG.systemThemeType)
@@ -65,7 +75,7 @@ export const useSettingStore = defineStore(
     /** 菜单主题类型 */
     const menuThemeType = ref(SETTING_DEFAULT_CONFIG.menuThemeType)
     /** 系统主题颜色 */
-    const systemThemeColor = ref(SETTING_DEFAULT_CONFIG.systemThemeColor)
+    const systemThemeColor = ref<string>(SETTING_DEFAULT_CONFIG.systemThemeColor)
 
     // 界面显示设置
     /** 是否显示菜单按钮 */
@@ -376,6 +386,8 @@ export const useSettingStore = defineStore(
     }
 
     return {
+      appearanceTheme,
+      setAppearanceTheme,
       menuType,
       menuOpenWidth,
       systemThemeType,

@@ -30,6 +30,8 @@ import { StorageKeyManager } from '@/utils/storage/storage-key-manager'
 // 同步导入语言文件
 import enMessages from './langs/en.json'
 import zhMessages from './langs/zh.json'
+import { browserLanguage, matchLanguage, shellMessages } from './registry'
+export { languageOptions } from './registry'
 
 /**
  * 存储键管理器实例
@@ -48,16 +50,33 @@ const messages = {
  * 语言选项列表
  * 用于语言切换下拉框
  */
-export const languageOptions = [
-  { value: LanguageEnum.ZH, label: '简体中文' },
-  { value: LanguageEnum.EN, label: 'English' }
-]
+// Language options are supplied by the shared registry.
 
 /**
  * 从存储中获取语言设置
  * @returns 语言设置，如果获取失败则返回默认语言
  */
-const getDefaultLanguage = (): LanguageEnum => {
+export const isAutomaticLanguage = (): boolean => {
+  try {
+    const preference = localStorage.getItem('admin-language')
+    if (preference) return preference === 'auto'
+    const stored = localStorage.getItem(storageKeyManager.getStorageKey('user'))
+    if (stored && JSON.parse(stored).language) return false
+    const legacy = getSystemStorage()
+    return !legacy || !JSON.parse(legacy)?.user?.language
+  } catch {
+    return true
+  }
+}
+
+export const getDefaultLanguage = (): LanguageEnum => {
+  try {
+    const preference = localStorage.getItem('admin-language')
+    if (preference === 'auto') return browserLanguage()
+    if (preference && matchLanguage(preference)) return matchLanguage(preference)!
+  } catch {
+    return browserLanguage()
+  }
   // 尝试从版本化的存储中获取语言设置
   try {
     const storageKey = storageKeyManager.getStorageKey('user')
@@ -87,8 +106,7 @@ const getDefaultLanguage = (): LanguageEnum => {
   }
 
   // 返回默认语言
-  console.debug('[i18n] 使用默认语言:', LanguageEnum.ZH)
-  return LanguageEnum.ZH
+  return browserLanguage()
 }
 
 /**
@@ -98,7 +116,7 @@ const i18nOptions: I18nOptions = {
   locale: getDefaultLanguage(),
   legacy: false,
   globalInjection: true,
-  fallbackLocale: LanguageEnum.ZH,
+  fallbackLocale: LanguageEnum.EN,
   messages
 }
 
@@ -106,6 +124,9 @@ const i18nOptions: I18nOptions = {
  * i18n 实例
  */
 const i18n: I18n = createI18n(i18nOptions)
+for (const [locale, messages] of Object.entries(shellMessages)) {
+  i18n.global.mergeLocaleMessage(locale, messages)
+}
 
 /**
  * 翻译函数类型

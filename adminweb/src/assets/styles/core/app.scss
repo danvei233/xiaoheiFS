@@ -1,3 +1,499 @@
+@use 'sass:list';
+
+// 六套外观共享 Element Plus 和业务卡片令牌。
+$appearances: (
+  minimal: (
+    #f7f8fa,
+    #ffffff,
+    #15181d,
+    #20242c
+  ),
+  tech: (
+    #edf6fc,
+    #fafdff,
+    #0c1725,
+    #142539
+  ),
+  executive: (
+    #f0f2f6,
+    #ffffff,
+    #131a28,
+    #202c40
+  ),
+  'gold': (
+    #f6f8fc,
+    #ffffff,
+    #17150e,
+    #272318
+  ),
+  cute: (
+    #effaf5,
+    #fbfffd,
+    #10231e,
+    #19362e
+  ),
+  glass: (
+    #f0effb,
+    #ffffffdd,
+    #171628,
+    #29253bdd
+  )
+);
+@each $name, $palette in $appearances {
+  html[data-theme='#{$name}'] {
+    --default-bg-color: #{list.nth($palette, 1)};
+    --default-box-color: #{list.nth($palette, 2)};
+    --el-bg-color-page: var(--default-bg-color);
+    --el-bg-color: var(--default-box-color);
+    --el-fill-color-blank: var(--default-box-color);
+    &.dark {
+      --default-bg-color: #{list.nth($palette, 3)};
+      --default-box-color: #{list.nth($palette, 4)};
+    }
+  }
+}
+html[data-theme='glass'] .art-card,
+html[data-theme='glass'] .page-content {
+  backdrop-filter: blur(18px);
+}
+@supports not (backdrop-filter: blur(1px)) {
+  html[data-theme='glass'] { --default-box-color: #ffffff; }
+  html[data-theme='glass'].dark { --default-box-color: #29253b; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html[data-theme='glass'] { --default-box-color: #ffffff; }
+  html[data-theme='glass'].dark { --default-box-color: #29253b; }
+  html[data-theme='glass'] .art-card,
+  html[data-theme='glass'] .page-content { backdrop-filter: none; }
+}
+html[data-theme='tech'] .page-content {
+  border-top: 2px solid var(--el-color-primary) !important;
+}
+
+// 六种主题除了色板，也定义组件密度、边框、表面材质和布局细节。
+html[data-theme='minimal'] {
+  --theme-text: #20242c;
+  --theme-muted-text: #667085;
+  --theme-surface: #ffffff;
+  --theme-surface-soft: #f5f7fa;
+  --theme-table-head: #f4f6f9;
+  --theme-table-hover: #f7f9fc;
+  --theme-border: #e1e6ed;
+  --theme-hover: #edf1f5;
+  --theme-active: #e9edf2;
+  --theme-control-height: 36px;
+  --theme-control-radius: 7px;
+  --theme-card-radius: 10px;
+  --theme-card-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+
+html[data-theme='tech'] {
+  --theme-text: #15314b;
+  --theme-muted-text: #54728c;
+  --theme-surface: #fafdff;
+  --theme-surface-soft: #eff7fc;
+  --theme-table-head: #e5f1f9;
+  --theme-table-hover: #eef7fc;
+  --theme-border: #cbdce9;
+  --theme-hover: #e3f1fa;
+  --theme-active: #d8ebf7;
+  --theme-control-height: 34px;
+  --theme-control-radius: 4px;
+  --theme-card-radius: 6px;
+  --theme-card-shadow: 0 2px 8px rgb(29 87 126 / 7%);
+  --theme-card-border-style: solid;
+}
+
+html[data-theme='executive'] {
+  --theme-text: #1e2b3d;
+  --theme-muted-text: #596b82;
+  --theme-surface: #ffffff;
+  --theme-surface-soft: #f1f4f8;
+  --theme-table-head: #e5ebf2;
+  --theme-table-hover: #f1f5f9;
+  --theme-border: #d2dbe6;
+  --theme-hover: #e7edf4;
+  --theme-active: #dce5ef;
+  --theme-control-height: 32px;
+  --theme-control-radius: 3px;
+  --theme-card-radius: 5px;
+  --theme-card-shadow: 0 2px 5px rgb(17 34 56 / 6%);
+  --theme-card-border-style: solid;
+}
+
+html[data-theme='gold'] {
+  --theme-text: #0f1838;
+  --theme-muted-text: #65718a;
+  --theme-surface: #ffffff;
+  --theme-surface-soft: #f2f5fa;
+  --theme-table-head: #eef2f7;
+  --theme-table-hover: #f6f8fc;
+  --theme-border: #dce3ed;
+  --theme-hover: #edf2f8;
+  --theme-active: #e5edf7;
+  --theme-control-height: 46px;
+  --theme-control-radius: 8px;
+  --theme-card-radius: 12px;
+  --theme-card-shadow: 0 2px 8px rgb(15 24 56 / 5%);
+  --theme-card-border-style: solid;
+}
+
+html.light[data-theme='gold'] {
+  --theme-selection-color: #3784f6;
+  --theme-selection-soft: #eef5ff;
+  --theme-sidebar-accent: var(--theme-selection-color);
+  --theme-sidebar-active: var(--theme-selection-soft);
+  --theme-hover: #edf3fc;
+  --theme-active: #e3edfd;
+  --art-hover-color: var(--theme-hover);
+  --art-active-color: var(--theme-active);
+  --art-el-active-color: var(--theme-active);
+}
+
+html[data-theme='cute'] {
+  --theme-text: #18372f;
+  --theme-muted-text: #5d7d73;
+  --theme-surface: #fbfffd;
+  --theme-surface-soft: #e7f6ef;
+  --theme-table-head: #e1f3ea;
+  --theme-table-hover: #effaf4;
+  --theme-border: #cde6d9;
+  --theme-hover: #e2f5eb;
+  --theme-active: #d6efe2;
+  --theme-control-height: 38px;
+  --theme-control-radius: 12px;
+  --theme-card-radius: 18px;
+  --theme-card-shadow: 0 5px 16px rgb(37 112 85 / 8%);
+  --theme-card-border-style: solid;
+}
+
+html[data-theme='glass'] {
+  --theme-text: #27243a;
+  --theme-muted-text: #706b88;
+  --theme-surface: rgb(255 255 255 / 76%);
+  --theme-surface-soft: rgb(247 246 255 / 80%);
+  --theme-table-head: rgb(236 234 250 / 90%);
+  --theme-table-hover: rgb(241 240 253 / 84%);
+  --theme-border: rgb(151 143 197 / 28%);
+  --theme-hover: rgb(234 231 250 / 88%);
+  --theme-active: rgb(224 220 245 / 92%);
+  --theme-control-height: 36px;
+  --theme-control-radius: 11px;
+  --theme-card-radius: 18px;
+  --theme-card-shadow: 0 12px 32px rgb(52 42 105 / 9%);
+  --theme-card-border-style: solid;
+}
+
+html.dark[data-theme='minimal'] {
+  --theme-text: #e5e7eb;
+  --theme-muted-text: #a1a9b7;
+  --theme-surface: #20242c;
+  --theme-surface-soft: #252a33;
+  --theme-table-head: #292f39;
+  --theme-table-hover: #2b323d;
+  --theme-border: #383f4b;
+  --theme-hover: #303742;
+  --theme-active: #37404d;
+}
+
+html.dark[data-theme='tech'] {
+  --theme-text: #deedf8;
+  --theme-muted-text: #9ebbd0;
+  --theme-surface: #142539;
+  --theme-surface-soft: #192d42;
+  --theme-table-head: #1d354c;
+  --theme-table-hover: #1e3a53;
+  --theme-border: #34516b;
+  --theme-hover: #24435d;
+  --theme-active: #2a4e6b;
+}
+
+html.dark[data-theme='executive'] {
+  --theme-text: #e7edf5;
+  --theme-muted-text: #a8b6c8;
+  --theme-surface: #202c40;
+  --theme-surface-soft: #253348;
+  --theme-table-head: #2c3d54;
+  --theme-table-hover: #2a3b51;
+  --theme-border: #3a4c63;
+  --theme-hover: #31445d;
+  --theme-active: #3a506c;
+}
+
+html.dark[data-theme='gold'] {
+  --theme-text: #f2e9d0;
+  --theme-muted-text: #c2b28b;
+  --theme-surface: #272318;
+  --theme-surface-soft: #302a1d;
+  --theme-table-head: #3a321e;
+  --theme-table-hover: #39311f;
+  --theme-border: #584a2a;
+  --theme-hover: #453a22;
+  --theme-active: #514327;
+}
+
+html.dark[data-theme='cute'] {
+  --theme-text: #e2f6ec;
+  --theme-muted-text: #a4c9b8;
+  --theme-surface: #19362e;
+  --theme-surface-soft: #1d4036;
+  --theme-table-head: #244a3d;
+  --theme-table-hover: #254c3f;
+  --theme-border: #386450;
+  --theme-hover: #2c5648;
+  --theme-active: #356452;
+}
+
+html.dark[data-theme='glass'] {
+  --theme-text: #eeeafd;
+  --theme-muted-text: #bcb5dc;
+  --theme-surface: rgb(41 37 59 / 78%);
+  --theme-surface-soft: rgb(50 45 72 / 82%);
+  --theme-table-head: rgb(57 51 83 / 92%);
+  --theme-table-hover: rgb(62 55 91 / 86%);
+  --theme-border: rgb(173 162 221 / 27%);
+  --theme-hover: rgb(67 59 98 / 88%);
+  --theme-active: rgb(78 69 111 / 92%);
+}
+
+// 把外观 tokens 连接到 Element Plus 与现有业务布局变量。
+html[data-theme] {
+  --default-border: var(--theme-border);
+  --default-border-dashed: var(--theme-border);
+  --art-card-border: var(--theme-border);
+  --art-gray-100: var(--theme-surface-soft);
+  --art-gray-200: var(--theme-surface-soft);
+  --art-gray-300: var(--theme-border);
+  --art-gray-400: var(--theme-border);
+  --art-gray-500: var(--theme-muted-text);
+  --art-gray-600: var(--theme-muted-text);
+  --art-gray-700: var(--theme-text);
+  --art-gray-800: var(--theme-text);
+  --art-gray-900: var(--theme-text);
+  --art-hover-color: var(--theme-hover);
+  --art-active-color: var(--theme-active);
+  --art-el-active-color: var(--theme-active);
+  --default-box-color: var(--theme-surface);
+  --el-bg-color: var(--theme-surface);
+  --el-bg-color-overlay: var(--theme-surface);
+  --el-bg-color-page: var(--default-bg-color);
+  --el-fill-color-blank: var(--theme-surface);
+  --el-fill-color-light: var(--theme-surface-soft);
+  --el-fill-color-lighter: var(--theme-table-head);
+  --el-fill-color: var(--theme-hover);
+  --el-border-color: var(--theme-border);
+  --el-border-color-light: var(--theme-border);
+  --el-border-color-lighter: var(--theme-border);
+  --el-text-color-primary: var(--theme-text);
+  --el-text-color-regular: var(--theme-text);
+  --el-text-color-secondary: var(--theme-muted-text);
+  --el-text-color-placeholder: var(--theme-muted-text);
+  --theme-shadow: var(--theme-card-shadow);
+}
+
+html.dark[data-theme] {
+  --art-gray-100: #191d23;
+  --art-gray-200: var(--theme-surface-soft);
+  --art-gray-300: var(--theme-border);
+  --art-gray-800: var(--theme-text);
+  --art-gray-900: var(--theme-text);
+}
+
+html[data-theme='executive'] #app-header {
+  color: #f4f7fb;
+  background: #14263d !important;
+  border-bottom: 1px solid #263a53;
+  box-shadow: 0 2px 8px rgb(13 29 48 / 12%);
+}
+
+html[data-theme='executive'] #app-header .art-svg-icon,
+html[data-theme='executive'] #app-header p,
+html[data-theme='executive'] #app-header span {
+  color: inherit;
+}
+
+/* Light mode removes both theme classes; target the absence of .dark instead of .light. */
+html:not(.dark)[data-theme='executive'] .layout-sidebar {
+  color: #10243a;
+  background: #f7fafd;
+  border-right-color: #d8e2ec;
+}
+
+html:not(.dark)[data-theme='executive'] .layout-sidebar .menu-left,
+html:not(.dark)[data-theme='executive'] .layout-sidebar .header {
+  color: #10243a;
+  background: #f7fafd !important;
+}
+
+html:not(.dark)[data-theme='executive'] .layout-sidebar .el-menu {
+  color: #10243a;
+  background: #f7fafd !important;
+  --el-menu-bg-color: #f7fafd !important;
+  --el-menu-text-color: #10243a !important;
+  --el-menu-hover-bg-color: #eaf1f7 !important;
+  --el-menu-active-color: #116c9a !important;
+}
+
+html[data-theme='executive'] #app-header .theme-preference-trigger:hover {
+  color: #ffffff;
+  background: #213852;
+}
+
+html.light[data-theme='tech'] #app-header {
+  color: #153b5b;
+  background: #deeffa !important;
+  border-bottom: 1px solid #c2ddec;
+}
+
+html.light[data-theme='tech'] #app-header .art-svg-icon,
+html.light[data-theme='tech'] #app-header p,
+html.light[data-theme='tech'] #app-header span {
+  color: inherit;
+}
+
+html.light[data-theme='gold'] #app-header {
+  color: #0f1838;
+  background: #ffffff !important;
+  border-bottom: 1px solid #dce3ed;
+  box-shadow: 0 1px 3px rgb(15 24 56 / 4%);
+}
+
+html.light[data-theme='gold'] #app-header .art-svg-icon,
+html.light[data-theme='gold'] #app-header p,
+html.light[data-theme='gold'] #app-header span {
+  color: inherit;
+}
+
+html[data-theme='executive'] .el-table {
+  --el-table-header-bg-color: var(--theme-table-head);
+  --el-table-row-hover-bg-color: var(--theme-table-hover);
+  --el-table-border-color: var(--theme-border);
+  font-size: 12px;
+}
+
+html[data-theme='executive'] .el-table--default .el-table__cell {
+  padding: 7px 0;
+}
+
+html[data-theme='tech'] .page-content,
+html[data-theme='tech'] .art-table-card {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 90%), var(--theme-shadow) !important;
+}
+
+html[data-theme='tech'] .el-table th.el-table__cell {
+  border-bottom: 2px solid var(--theme-border);
+  letter-spacing: 0.02em;
+}
+
+html[data-theme='gold'] .art-card,
+html[data-theme='gold'] .page-content,
+html[data-theme='gold'] .art-table-card {
+  border-color: var(--theme-border) !important;
+}
+
+html[data-theme='gold'] .el-button--primary {
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+html[data-theme='cute'] .art-card,
+html[data-theme='cute'] .art-card-sm,
+html[data-theme='cute'] .art-card-xs,
+html[data-theme='cute'] .page-content {
+  border-radius: var(--theme-card-radius) !important;
+  box-shadow: var(--theme-shadow);
+}
+
+html[data-theme='glass'] .art-card,
+html[data-theme='glass'] .art-card-sm,
+html[data-theme='glass'] .art-card-xs,
+html[data-theme='glass'] .page-content,
+html[data-theme='glass'] .art-table-card,
+html[data-theme='glass'] #app-header,
+html[data-theme='glass'] .layout-sidebar {
+  background-color: var(--theme-surface) !important;
+  border-color: var(--theme-border) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 52%), var(--theme-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+
+html[data-theme='glass'] .el-dialog,
+html[data-theme='glass'] .el-drawer,
+html[data-theme='glass'] .el-dropdown-menu,
+html[data-theme='glass'] .el-popper,
+html[data-theme='glass'] .el-message-box,
+html[data-theme='glass'] .el-select__popper,
+html[data-theme='glass'] .el-picker-panel {
+  background-color: var(--theme-surface) !important;
+  border-color: var(--theme-border) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 52%), var(--theme-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html[data-theme='glass'] {
+    --theme-surface: #ffffff;
+    --theme-surface-soft: #f7f6ff;
+    --theme-table-head: #eceafa;
+    --theme-table-hover: #f1effd;
+    --theme-border: #978fc5;
+    --theme-hover: #eae7fa;
+    --theme-active: #e0dcf5;
+  }
+
+  html.dark[data-theme='glass'] {
+    --theme-surface: #29253b;
+    --theme-surface-soft: #322d48;
+    --theme-table-head: #393353;
+    --theme-table-hover: #3e375b;
+    --theme-border: #635b8c;
+    --theme-hover: #433b62;
+    --theme-active: #4e456f;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html[data-theme='glass'] {
+    --theme-surface: #ffffff;
+    --theme-surface-soft: #f7f6ff;
+    --theme-table-head: #eceafa;
+    --theme-table-hover: #f1effd;
+    --theme-border: #978fc5;
+    --theme-hover: #eae7fa;
+    --theme-active: #e0dcf5;
+  }
+
+  html.dark[data-theme='glass'] {
+    --theme-surface: #29253b;
+    --theme-surface-soft: #322d48;
+    --theme-table-head: #393353;
+    --theme-table-hover: #3e375b;
+    --theme-border: #635b8c;
+    --theme-hover: #433b62;
+    --theme-active: #4e456f;
+  }
+
+  html[data-theme='glass'] .art-card,
+  html[data-theme='glass'] .art-card-sm,
+  html[data-theme='glass'] .art-card-xs,
+  html[data-theme='glass'] .page-content,
+  html[data-theme='glass'] .art-table-card,
+  html[data-theme='glass'] #app-header,
+  html[data-theme='glass'] .layout-sidebar,
+  html[data-theme='glass'] .el-dialog,
+  html[data-theme='glass'] .el-drawer,
+  html[data-theme='glass'] .el-dropdown-menu,
+  html[data-theme='glass'] .el-popper,
+  html[data-theme='glass'] .el-message-box,
+  html[data-theme='glass'] .el-select__popper,
+  html[data-theme='glass'] .el-picker-panel {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
 // 全局样式
 // 顶部进度条颜色
 #nprogress .bar {
@@ -289,4 +785,68 @@
   * {
     -webkit-tap-highlight-color: transparent;
   }
+}
+
+// 主题控件材质：开关、勾选、输入与按钮随预设改变形状与工艺，而不只是换主色。
+html[data-theme='minimal'] {
+  .el-switch__core { border-radius: 5px; }
+  .el-switch__action { border-radius: 3px; }
+  :is(.el-checkbox__inner, .el-radio__inner) { border-radius: 3px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 5px; }
+}
+
+html[data-theme='tech'] {
+  .el-switch__core {
+    border-radius: 0;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 55%, transparent);
+  }
+  .el-switch__action { border-radius: 0; }
+  :is(.el-checkbox__inner, .el-radio__inner, .el-tag) { border-radius: 0; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 0; }
+  .el-button { letter-spacing: .06em; text-transform: uppercase; }
+}
+
+html[data-theme='executive'] {
+  .el-switch__core { border-radius: 6px; }
+  .el-switch__action { border-radius: 4px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 3px; }
+}
+
+html[data-theme='gold'] {
+  .el-switch__core {
+    border-radius: 1px;
+    background-image:
+      radial-gradient(circle at 4px 50%, color-mix(in srgb, var(--el-color-primary) 62%, #fff) 1px, transparent 1.6px),
+      radial-gradient(circle at calc(100% - 4px) 50%, color-mix(in srgb, var(--el-color-primary) 62%, #fff) 1px, transparent 1.6px);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 50%, transparent);
+  }
+  .el-switch__action { border-radius: 2px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 55%, transparent); }
+  :is(.el-checkbox__inner, .el-radio__inner, .el-tag) { border-radius: 1px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) {
+    border-radius: 0;
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  }
+}
+
+html[data-theme='cute'] {
+  .el-switch__core {
+    border-radius: 999px;
+    box-shadow: 0 3px 9px color-mix(in srgb, var(--el-color-primary) 26%, transparent);
+  }
+  .el-switch__action { border-radius: 999px; }
+  :is(.el-checkbox__inner, .el-tag) { border-radius: 999px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner) { border-radius: 999px; }
+}
+
+html[data-theme='glass'] {
+  .el-switch__core {
+    border-radius: 12px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, .68),
+      inset 0 0 0 1px color-mix(in srgb, var(--el-color-primary) 26%, transparent),
+      0 6px 18px rgba(31, 38, 80, .14);
+  }
+  .el-switch__action { border-radius: 999px; }
+  :is(.el-checkbox__inner, .el-radio__inner) { border-radius: 5px; }
+  :is(.el-button, .el-input__wrapper, .el-select__wrapper, .el-textarea__inner, .el-tag) { border-radius: 12px; }
 }

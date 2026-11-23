@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	appports "xiaoheiplay/internal/app/ports"
@@ -33,6 +34,8 @@ type Manager struct {
 	cipher       *cryptox.AESGCM
 	repo         appports.PluginInstallationRepository
 	runtime      *Runtime
+	// restartMu 串行化自愈重启，避免多个并发 RPC 同时拉起同一个插件实例。
+	restartMu sync.Mutex
 }
 
 func NewManager(baseDir string, repo appports.PluginInstallationRepository, cipher *cryptox.AESGCM, officialKeys []ed25519.PublicKey) *Manager {
@@ -86,6 +89,50 @@ func (m *Manager) EnsureRunning(ctx context.Context, category, pluginID, instanc
 		cfg = "{}"
 	}
 	return m.runtime.Start(ctx, category, pluginID, instanceID, cfg)
+}
+
+// RestartInstance 强制重启插件实例：清理运行时缓存后用持久化配置重新拉起。
+// 用于插件进程崩溃/被外部结束后，RPC 连接失效时的自愈。
+func (m *Manager) RestartInstance(ctx context.Context, category, pluginID, instanceID string) error {
+	if m.repo == nil {
+		return fmt.Errorf("plugin repo missing")
+	}
+	category = strings.TrimSpace(category)
+	pluginID = strings.TrimSpace(pluginID)
+	instanceID = strings.TrimSpace(instanceID)
+	if category == "" || pluginID == "" || instanceID == "" {
+		return fmt.Errorf("invalid input")
+	}
+	// 并发失败的 RPC 只允许一个真正执行重启。
+	m.restartMu.Lock()
+	defer m.restartMu.Unlock()
+
+	// 其它请求可能刚刚完成重启，进程存活时直接复用，避免重复拉起。
+	if rp, ok := m.runtime.GetRunning(category, pluginID, instanceID); ok && rp != nil &&
+		rp.client != nil && !rp.client.Exited() {
+		return nil
+	}
+
+	inst, err := m.repo.GetPluginInstallation(ctx, category, pluginID, instanceID)
+	if err != nil {
+		return err
+	}
+	if !inst.Enabled {
+		return fmt.Errorf("plugin instance disabled")
+	}
+	cfg, err := m.decryptConfig(inst.ConfigCipher)
+	if err != nil {
+		if !isPluginCipherAuthFailed(err) {
+			return err
+		}
+		cfg = "{}"
+	}
+	if strings.TrimSpace(cfg) == "" {
+		cfg = "{}"
+	}
+	m.runtime.Stop(category, pluginID, instanceID)
+	_, err = m.runtime.Start(ctx, category, pluginID, inst.InstanceID, cfg)
+	return err
 }
 
 func (m *Manager) GetAutomationClient(ctx context.Context, pluginID, instanceID string) (pluginv1.AutomationServiceClient, *pluginv1.Manifest, error) {

@@ -3,13 +3,13 @@
     <!-- Header -->
     <div class="page-header">
       <div class="header-content">
-        <h1 class="page-title">我的工单</h1>
-        <p class="page-subtitle">技术支持与问题反馈</p>
+        <h1 class="page-title">{{ t('console.tickets.title') }}</h1>
+        <p class="page-subtitle">{{ t('console.tickets.subtitle') }}</p>
       </div>
       <div class="header-actions">
         <a-button type="primary" @click="showCreateModal">
           <PlusOutlined />
-          新建工单
+          {{ t('console.tickets.create') }}
         </a-button>
       </div>
     </div>
@@ -36,7 +36,7 @@
           pageSize: pagination.pageSize,
           total: pagination.total,
           showSizeChanger: true,
-          showTotal: (total) => `共 ${total} 条`
+          showTotal: (total) => t('common.total', { n: total })
         }"
         row-key="id"
         @change="handleTableChange"
@@ -58,19 +58,19 @@
           <template v-else-if="column.key === 'status'">
             <a-tag v-if="record.status === 'open'" color="processing">
               <ClockCircleOutlined />
-              待处理
+              {{ t('common.pending') }}
             </a-tag>
             <a-tag v-else-if="record.status === 'waiting_user'" color="warning">
               <ExclamationCircleOutlined />
-              等待回复
+              {{ t('console.tickets.waitingReply') }}
             </a-tag>
             <a-tag v-else-if="record.status === 'waiting_admin'" color="purple">
               <SyncOutlined spin />
-              处理中
+              {{ t('common.processing') }}
             </a-tag>
             <a-tag v-else-if="record.status === 'closed'" color="default">
               <CheckCircleOutlined />
-              已关闭
+              {{ t('console.tickets.closed') }}
             </a-tag>
             <a-tag v-else>
               {{ record.status }}
@@ -105,7 +105,7 @@
           <template v-else-if="column.key === 'actions'">
             <a-button type="link" @click="router.push(`/console/tickets/${record.id}`)">
               <EyeOutlined />
-              查看
+              {{ t('common.view') }}
             </a-button>
           </template>
         </template>
@@ -115,38 +115,38 @@
     <!-- Create Modal -->
     <a-modal
       v-model:open="createModalVisible"
-      title="新建工单"
+      :title="t('console.tickets.create')"
       :confirm-loading="creating"
       @ok="handleCreate"
       @cancel="resetForm"
       width="540px"
     >
       <a-form ref="formRef" :model="form" layout="vertical">
-        <a-form-item label="标题" name="subject" :rules="[{ required: true, message: '请输入工单标题' }]">
+        <a-form-item :label="t('common.title')" name="subject" :rules="[{ required: true, message: t('console.tickets.subjectRequired') }]">
           <a-input
             v-model:value="form.subject"
-            placeholder="简要描述您的问题"
+            :placeholder="t('console.tickets.subjectPlaceholder')"
             size="large"
             :maxlength="INPUT_LIMITS.TICKET_SUBJECT"
             show-count
           />
         </a-form-item>
 
-        <a-form-item label="描述" name="content" :rules="[{ required: true, message: '请输入问题描述' }]">
+        <a-form-item :label="t('common.description')" name="content" :rules="[{ required: true, message: t('console.tickets.contentRequired') }]">
           <a-textarea
             v-model:value="form.content"
-            placeholder="详细描述您的问题"
+            :placeholder="t('console.tickets.contentPlaceholder')"
             :rows="5"
             :maxlength="INPUT_LIMITS.TICKET_CONTENT"
             show-count
           />
         </a-form-item>
 
-        <a-form-item label="关联资源" name="resources">
+        <a-form-item :label="t('console.tickets.resources')" name="resources">
           <a-select
             v-model:value="form.resources"
             mode="multiple"
-            placeholder="选择相关 VPS 实例"
+            :placeholder="t('console.tickets.selectVps')"
             :filter-option="filterOption"
             show-search
             allow-clear
@@ -160,7 +160,7 @@
                   <a-tag size="small">{{ region }}</a-tag>
                 </div>
                 <div class="vps-option-specs">
-                  <span>{{ cpu }}核</span>
+                  <span>{{ t('console.vps.cpuSpec', { n: cpu }) }}</span>
                   <span>{{ memory }}GB</span>
                   <span>{{ disk }}GB</span>
                   <span>{{ bandwidth }}Mbps</span>
@@ -192,6 +192,7 @@ import {
 } from "@ant-design/icons-vue";
 import { listTickets, createTicket, listVps } from "@/services/user";
 import { INPUT_LIMITS } from "@/constants/inputLimits";
+import { t } from "@/locales";
 
 const router = useRouter();
 const formRef = ref();
@@ -216,20 +217,20 @@ const form = ref({
   resources: [] as number[]
 });
 
-const columns = [
-  { title: '工单', dataIndex: 'subject', key: 'subject', width: 280 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 140 },
-  { title: '最后回复', dataIndex: 'last_message', key: 'last_message', width: 280, ellipsis: true },
-  { title: '关联资源', dataIndex: 'resources', key: 'resources', width: 100 },
-  { title: '创建时间', dataIndex: 'created_at', key: 'created_at', width: 180 },
-  { title: '操作', key: 'actions', width: 100 }
-];
+const columns = computed(() => [
+  { title: t('console.tickets.ticket'), dataIndex: 'subject', key: 'subject', width: 280 },
+  { title: t('common.status'), dataIndex: 'status', key: 'status', width: 140 },
+  { title: t('console.tickets.lastReply'), dataIndex: 'last_message', key: 'last_message', width: 280, ellipsis: true },
+  { title: t('console.tickets.resources'), dataIndex: 'resources', key: 'resources', width: 100 },
+  { title: t('common.createdAt'), dataIndex: 'created_at', key: 'created_at', width: 180 },
+  { title: t('common.actions'), key: 'actions', width: 100 }
+]);
 
 const tabOptions = computed(() => [
-  { label: '全部', value: 'all' },
-  { label: '待处理', value: 'open' },
-  { label: '处理中', value: 'waiting_admin' },
-  { label: '已关闭', value: 'closed' }
+  { label: t('common.all'), value: 'all' },
+  { label: t('common.pending'), value: 'open' },
+  { label: t('common.processing'), value: 'waiting_admin' },
+  { label: t('console.tickets.closed'), value: 'closed' }
 ]);
 
 const vpsOptions = computed(() =>
@@ -319,11 +320,11 @@ const handleCreate = async () => {
   creating.value = true;
   try {
     if (String(form.value.subject || "").length > INPUT_LIMITS.TICKET_SUBJECT) {
-      message.error(`工单标题长度不能超过 ${INPUT_LIMITS.TICKET_SUBJECT} 个字符`);
+      message.error(t('console.tickets.subjectTooLong', { n: INPUT_LIMITS.TICKET_SUBJECT }));
       return;
     }
     if (String(form.value.content || "").length > INPUT_LIMITS.TICKET_CONTENT) {
-      message.error(`工单内容长度不能超过 ${INPUT_LIMITS.TICKET_CONTENT} 个字符`);
+      message.error(t('console.tickets.contentTooLong', { n: INPUT_LIMITS.TICKET_CONTENT }));
       return;
     }
     const payload: any = {
@@ -339,12 +340,12 @@ const handleCreate = async () => {
       }));
     }
     const res = await createTicket(payload);
-    message.success('工单创建成功');
+    message.success(t('console.tickets.created'));
     createModalVisible.value = false;
     resetForm();
     router.push(`/console/tickets/${res.data.ticket.id}`);
   } catch (error: any) {
-    message.error(error.response?.data?.error || '创建失败');
+    message.error(error.response?.data?.error || t('console.tickets.createFailed'));
   } finally {
     creating.value = false;
   }

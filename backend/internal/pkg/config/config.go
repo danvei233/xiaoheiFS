@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,13 +94,22 @@ func Load() Config {
 		}
 	}
 
+	// 密钥回写目标必须是「本次真正加载的那个配置文件」，而不是进程当前目录。
+	// 否则当工作目录与配置文件目录不一致（如 systemd 未设置 WorkingDirectory、
+	// 从其他目录启动二进制）时，每次启动都会读到不含密钥的配置、重新生成密钥，
+	// 再写到另一个文件，导致重启后全部 JWT 失效——用户被迫重新登录。
+	secretPath := resolveSecretPersistPath(configPath)
 	if strings.TrimSpace(cfg.JWTSecret) == "" {
 		cfg.JWTSecret = generateSecret()
-		_ = persistJWTSecret(cfg.JWTSecret)
+		if err := persistSecretKey(secretPath, "jwt_secret", cfg.JWTSecret); err != nil {
+			log.Printf("config: persist jwt_secret to %s failed: %v (existing sessions will be invalidated on next restart)", secretPath, err)
+		}
 	}
 	if strings.TrimSpace(cfg.PluginMasterKey) == "" {
 		cfg.PluginMasterKey = generateSecret()
-		_ = persistPluginMasterKey(cfg.PluginMasterKey)
+		if err := persistSecretKey(secretPath, "plugin_master_key", cfg.PluginMasterKey); err != nil {
+			log.Printf("config: persist plugin_master_key to %s failed: %v (plugin secrets become unreadable after restart)", secretPath, err)
+		}
 	}
 
 	return cfg
@@ -363,75 +373,57 @@ func generateSecret() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func persistJWTSecret(secret string) error {
-	path := localConfigYAML
+// resolveSecretPersistPath 决定自动生成的密钥往哪个配置文件回写。
+//
+// 优先写回 Load() 实际加载的文件；只有在完全没有配置文件时（安装引导阶段）
+// 才回到当前目录，此时下一阶段的安装器会把 DB 配置合并进同一个文件。
+func resolveSecretPersistPath(configPath string) string {
+	if p := strings.TrimSpace(configPath); p != "" {
+		return p
+	}
 	switch {
 	case fileExists(localConfigYAML):
-		path = localConfigYAML
+		return localConfigYAML
 	case fileExists(localConfigYML):
-		path = localConfigYML
+		return localConfigYML
 	case fileExists(localConfigJSON):
-		path = localConfigJSON
+		return localConfigJSON
 	default:
-		path = localConfigYAML
+		return localConfigYAML
 	}
-
-	if strings.HasSuffix(strings.ToLower(path), ".json") {
-		out := map[string]any{}
-		if existing, err := os.ReadFile(path); err == nil {
-			_ = json.Unmarshal(existing, &out)
-		}
-		out["jwt_secret"] = secret
-		b, err := json.MarshalIndent(out, "", "  ")
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(path, b, 0o600)
-	}
-
-	out := map[string]any{}
-	if existing, err := os.ReadFile(path); err == nil {
-		_ = yaml.Unmarshal(existing, &out)
-	}
-	out["jwt_secret"] = secret
-	b, err := yaml.Marshal(&out)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, b, 0o600)
 }
 
-func persistPluginMasterKey(key string) error {
-	path := localConfigYAML
-	switch {
-	case fileExists(localConfigYAML):
-		path = localConfigYAML
-	case fileExists(localConfigYML):
-		path = localConfigYML
-	case fileExists(localConfigJSON):
-		path = localConfigJSON
-	default:
+// persistSecretKey 把密钥合并写入指定配置文件，保留文件里已有的其他配置项。
+func persistSecretKey(path, key, value string) error {
+	if strings.TrimSpace(path) == "" {
 		path = localConfigYAML
 	}
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+
+	out := map[string]any{}
+	if existing, err := os.ReadFile(path); err == nil {
+		if strings.HasSuffix(strings.ToLower(path), ".json") {
+			_ = json.Unmarshal(existing, &out)
+		} else {
+			_ = yaml.Unmarshal(existing, &out)
+		}
+	}
+	if out == nil {
+		out = map[string]any{}
+	}
+	out[key] = value
 
 	if strings.HasSuffix(strings.ToLower(path), ".json") {
-		out := map[string]any{}
-		if existing, err := os.ReadFile(path); err == nil {
-			_ = json.Unmarshal(existing, &out)
-		}
-		out["plugin_master_key"] = key
 		b, err := json.MarshalIndent(out, "", "  ")
 		if err != nil {
 			return err
 		}
 		return os.WriteFile(path, b, 0o600)
 	}
-
-	out := map[string]any{}
-	if existing, err := os.ReadFile(path); err == nil {
-		_ = yaml.Unmarshal(existing, &out)
-	}
-	out["plugin_master_key"] = key
 	b, err := yaml.Marshal(&out)
 	if err != nil {
 		return err

@@ -3,25 +3,27 @@
 </template>
 
 <script setup>
+import { computed } from "vue";
 import StatusTag from "@/components/StatusTag.vue";
+import { t } from "@/locales";
 
 defineProps({
   status: { type: String, default: "" }
 });
 
-const textMap = {
-  running: "运行中",
-  stopped: "关机",
-  locked: "锁定",
-  expired_locked: "已到期",
-  normal: "正常",
-  abuse: "滥用",
-  fraud: "欺诈",
-  provisioning: "创建中",
-  active: "已开通",
-  reinstalling: "重装系统中",
-  reinstall_failed: "重装系统失败",
-  failed: "创建失败",
-  deleting: "删除中"
-};
+const textMap = computed(() => ({
+  running: t('status.running'),
+  stopped: t('console.vps.stopped'),
+  locked: t('console.vps.locked'),
+  expired_locked: t('status.expired'),
+  normal: t('status.normal'),
+  abuse: t('status.abuse'),
+  fraud: t('status.fraud'),
+  provisioning: t('status.creating'),
+  active: t('status.activated'),
+  reinstalling: t('status.reinstalling'),
+  reinstall_failed: t('status.reinstallFailed'),
+  failed: t('status.createFailed'),
+  deleting: t('status.deleting')
+}));
 </script>

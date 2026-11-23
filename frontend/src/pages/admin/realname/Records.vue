@@ -10,6 +10,7 @@
 
     <a-card :bordered="false">
       <ProTable
+        plain
         :columns="columns"
         :data-source="records"
         :loading="loading"

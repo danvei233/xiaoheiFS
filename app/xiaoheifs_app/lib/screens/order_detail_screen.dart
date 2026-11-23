@@ -762,7 +762,8 @@ class _ActionBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final canApprove = status == 'pending_review' || status == 'rejected';
     final canReject = status == 'pending_review';
-    final canRetry = status == 'failed';
+    final canRetry =
+        status == 'approved' || status == 'provisioning' || status == 'failed';
     final canDelete =
         status == 'pending_review' ||
         status == 'rejected' ||

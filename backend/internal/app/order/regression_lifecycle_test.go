@@ -9,6 +9,7 @@ import (
 	apprealname "xiaoheiplay/internal/app/realname"
 	appvps "xiaoheiplay/internal/app/vps"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/testutil"
 )
 
 type fakeLifecycleSettingsRepo struct {
@@ -275,6 +276,8 @@ func (f *fakeLifecycleRealNameRepo) UpdateRealNameStatus(ctx context.Context, id
 }
 
 type fakeLifecycleAutomationClient struct {
+	testutil.AutomationInfraStub
+
 	RenewCalls []struct {
 		HostID int64
 		Next   time.Time
@@ -337,7 +340,7 @@ func (f *fakeLifecycleAutomationClient) ResetOSPassword(ctx context.Context, hos
 func (f *fakeLifecycleAutomationClient) ListSnapshots(ctx context.Context, hostID int64) ([]AutomationSnapshot, error) {
 	return nil, nil
 }
-func (f *fakeLifecycleAutomationClient) CreateSnapshot(ctx context.Context, hostID int64) error {
+func (f *fakeLifecycleAutomationClient) CreateSnapshot(ctx context.Context, hostID int64, name string, description string) error {
 	return nil
 }
 func (f *fakeLifecycleAutomationClient) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
@@ -358,8 +361,8 @@ func (f *fakeLifecycleAutomationClient) DeleteBackup(ctx context.Context, hostID
 func (f *fakeLifecycleAutomationClient) RestoreBackup(ctx context.Context, hostID int64, backupID int64) error {
 	return nil
 }
-func (f *fakeLifecycleAutomationClient) ListFirewallRules(ctx context.Context, hostID int64) ([]AutomationFirewallRule, error) {
-	return nil, nil
+func (f *fakeLifecycleAutomationClient) ListFirewallRules(ctx context.Context, hostID int64) ([]AutomationFirewallRule, AutomationFirewallState, error) {
+	return nil, nil, nil
 }
 func (f *fakeLifecycleAutomationClient) AddFirewallRule(ctx context.Context, req AutomationFirewallRuleCreate) error {
 	return nil

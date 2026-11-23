@@ -12,13 +12,63 @@ import (
 	"xiaoheiplay/internal/domain"
 )
 
-type vpsFirewallRuleCreatePayload struct {
-	Direction string `json:"direction" binding:"required,max=32"`
-	Protocol  string `json:"protocol" binding:"required,max=32"`
-	Method    string `json:"method" binding:"required,max=32"`
-	Port      string `json:"port" binding:"required,max=64"`
-	IP        string `json:"ip" binding:"required,max=128"`
+// vpsFirewallRulePayload 防火墙规则请求体。
+// 与平台防火墙语义对齐后，方向/协议/来源/端口都允许留空表示「任意」，
+// 因此除 action 外不再强制必填。
+type vpsFirewallRulePayload struct {
+	Direction string `json:"direction" binding:"omitempty,max=32"`
+	Protocol  string `json:"protocol" binding:"omitempty,max=32"`
+	Method    string `json:"method" binding:"omitempty,max=32"`
+	Port      string `json:"port" binding:"omitempty,max=64"`
+	IP        string `json:"ip" binding:"omitempty,max=128"`
 	Priority  *int   `json:"priority"`
+	Enable    *bool  `json:"enable"`
+	Dest      string `json:"dest" binding:"omitempty,max=128"`
+	Sport     string `json:"sport" binding:"omitempty,max=64"`
+	Comment   string `json:"comment" binding:"omitempty,max=256"`
+	Macro     string `json:"macro" binding:"omitempty,max=64"`
+	Iface     string `json:"iface" binding:"omitempty,max=64"`
+}
+
+// toCreate 转换为服务层入参。缺省值语义：
+// 方向 in、动作 ACCEPT（防火墙规则默认放行，避免误锁死实例）、启用。
+func (p vpsFirewallRulePayload) toCreate() appshared.AutomationFirewallRuleCreate {
+	direction := strings.ToLower(strings.TrimSpace(p.Direction))
+	if direction == "" || direction == "in" || direction == "inbound" {
+		direction = "in"
+	} else {
+		direction = "out"
+	}
+	method := strings.ToUpper(strings.TrimSpace(p.Method))
+	switch method {
+	case "ACCEPT", "DROP", "REJECT":
+	default:
+		method = "ACCEPT"
+	}
+	enable := true
+	if p.Enable != nil {
+		enable = *p.Enable
+	}
+	req := appshared.AutomationFirewallRuleCreate{
+		Direction: direction,
+		Protocol:  strings.ToLower(strings.TrimSpace(p.Protocol)),
+		Method:    method,
+		Port:      strings.TrimSpace(p.Port),
+		IP:        strings.TrimSpace(p.IP),
+		Enable:    enable,
+		Dest:      strings.TrimSpace(p.Dest),
+		Sport:     strings.TrimSpace(p.Sport),
+		Comment:   strings.TrimSpace(p.Comment),
+		Macro:     strings.TrimSpace(p.Macro),
+		Iface:     strings.TrimSpace(p.Iface),
+	}
+	if req.Protocol == "all" {
+		req.Protocol = ""
+	}
+	if p.Priority != nil {
+		req.Priority = *p.Priority
+	}
+	return req
 }
 
 type vpsIDURI struct {
@@ -145,6 +195,7 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 			payload["automation_state"] = 0
 		}
 		payload["monitor_error"] = err.Error()
+		payload["monitor_available"] = false
 		payload["cpu"] = 0
 		payload["memory"] = 0
 		payload["bytes_in"] = int64(0)
@@ -153,6 +204,7 @@ func (h *Handler) VPSMonitor(c *gin.Context) {
 		c.JSON(http.StatusOK, payload)
 		return
 	}
+	payload["monitor_available"] = monitor.Available
 	payload["cpu"] = monitor.CPUPercent
 	payload["memory"] = monitor.MemoryPercent
 	payload["bytes_in"] = monitor.BytesIn
@@ -388,7 +440,21 @@ func (h *Handler) VPSSnapshots(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"data": items})
 	case http.MethodPost:
-		if err := h.vpsSvc.CreateSnapshot(c, inst); err != nil {
+		if h.denyIfFeatureReadonly(c, inst, "snapshot", "快照") {
+			return
+		}
+		// 请求体可选：留空时由平台生成默认快照名。
+		var payload struct {
+			Name        string `json:"name" binding:"omitempty,max=40"`
+			Description string `json:"description" binding:"omitempty,max=256"`
+		}
+		if c.Request.ContentLength > 0 {
+			if err := bindJSON(c, &payload); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+				return
+			}
+		}
+		if err := h.vpsSvc.CreateSnapshot(c, inst, payload.Name, payload.Description); err != nil {
 			status := http.StatusBadRequest
 			if errors.Is(err, appshared.ErrNotSupported) {
 				status = http.StatusNotImplemented
@@ -416,6 +482,9 @@ func (h *Handler) VPSSnapshotDelete(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "snapshot", "快照") {
 		return
 	}
+	if h.denyIfFeatureReadonly(c, inst, "snapshot", "快照") {
+		return
+	}
 	if err := h.vpsSvc.DeleteSnapshot(c, inst, uri.SnapshotID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
@@ -439,6 +508,9 @@ func (h *Handler) VPSSnapshotRestore(c *gin.Context) {
 		return
 	}
 	if h.denyIfFeatureDisabled(c, inst, "snapshot", "快照") {
+		return
+	}
+	if h.denyIfFeatureReadonly(c, inst, "snapshot", "快照") {
 		return
 	}
 	if err := h.vpsSvc.RestoreSnapshot(c, inst, uri.SnapshotID); err != nil {
@@ -479,6 +551,9 @@ func (h *Handler) VPSBackups(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"data": items})
 	case http.MethodPost:
+		if h.denyIfFeatureReadonly(c, inst, "backup", "备份") {
+			return
+		}
 		if err := h.vpsSvc.CreateBackup(c, inst); err != nil {
 			status := http.StatusBadRequest
 			if errors.Is(err, appshared.ErrNotSupported) {
@@ -507,6 +582,9 @@ func (h *Handler) VPSBackupDelete(c *gin.Context) {
 	if h.denyIfFeatureDisabled(c, inst, "backup", "备份") {
 		return
 	}
+	if h.denyIfFeatureReadonly(c, inst, "backup", "备份") {
+		return
+	}
 	if err := h.vpsSvc.DeleteBackup(c, inst, uri.BackupID); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, appshared.ErrNotSupported) {
@@ -530,6 +608,9 @@ func (h *Handler) VPSBackupRestore(c *gin.Context) {
 		return
 	}
 	if h.denyIfFeatureDisabled(c, inst, "backup", "备份") {
+		return
+	}
+	if h.denyIfFeatureReadonly(c, inst, "backup", "备份") {
 		return
 	}
 	if err := h.vpsSvc.RestoreBackup(c, inst, uri.BackupID); err != nil {
@@ -559,7 +640,7 @@ func (h *Handler) VPSFirewallRules(c *gin.Context) {
 	}
 	switch c.Request.Method {
 	case http.MethodGet:
-		items, err := h.vpsSvc.ListFirewallRules(c, inst)
+		items, state, err := h.vpsSvc.ListFirewallRules(c, inst)
 		if err != nil {
 			status := http.StatusBadRequest
 			if errors.Is(err, appshared.ErrNotSupported) {
@@ -568,28 +649,17 @@ func (h *Handler) VPSFirewallRules(c *gin.Context) {
 			c.JSON(status, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"data": items})
+		c.JSON(http.StatusOK, gin.H{"data": items, "state": state})
 	case http.MethodPost:
-		var payload vpsFirewallRuleCreatePayload
+		if h.denyIfFeatureReadonly(c, inst, "firewall", "防火墙") {
+			return
+		}
+		var payload vpsFirewallRulePayload
 		if err := bindJSON(c, &payload); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
 			return
 		}
-		req := appshared.AutomationFirewallRuleCreate{
-			Direction: strings.TrimSpace(payload.Direction),
-			Protocol:  strings.TrimSpace(payload.Protocol),
-			Method:    strings.TrimSpace(payload.Method),
-			Port:      strings.TrimSpace(payload.Port),
-			IP:        strings.TrimSpace(payload.IP),
-		}
-		if payload.Priority != nil {
-			req.Priority = *payload.Priority
-		}
-		if req.Direction == "" || req.Protocol == "" || req.Method == "" || req.Port == "" || req.IP == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
-			return
-		}
-		if err := h.vpsSvc.AddFirewallRule(c, inst, req); err != nil {
+		if err := h.vpsSvc.AddFirewallRule(c, inst, payload.toCreate()); err != nil {
 			status := http.StatusBadRequest
 			if errors.Is(err, appshared.ErrNotSupported) {
 				status = http.StatusNotImplemented
@@ -601,6 +671,82 @@ func (h *Handler) VPSFirewallRules(c *gin.Context) {
 	default:
 		c.JSON(http.StatusMethodNotAllowed, gin.H{"error": domain.ErrMethodNotAllowed.Error()})
 	}
+}
+
+// VPSFirewallUpdate 按平台规则位序更新防火墙规则
+func (h *Handler) VPSFirewallUpdate(c *gin.Context) {
+	var uri vpsFirewallRuleURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidInput.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "firewall", "防火墙") {
+		return
+	}
+	if h.denyIfFeatureReadonly(c, inst, "firewall", "防火墙") {
+		return
+	}
+	var payload vpsFirewallRulePayload
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	if err := h.vpsSvc.UpdateFirewallRule(c, inst, uri.RuleID, payload.toCreate()); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, appshared.ErrNotSupported) {
+			status = http.StatusNotImplemented
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// VPSFirewallOptions 保存防火墙总开关与默认策略
+func (h *Handler) VPSFirewallOptions(c *gin.Context) {
+	var uri vpsIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidId.Error()})
+		return
+	}
+	inst, err := h.vpsSvc.Get(c, uri.ID, getUserID(c))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": domain.ErrNotFound.Error()})
+		return
+	}
+	if h.denyIfFeatureDisabled(c, inst, "firewall", "防火墙") {
+		return
+	}
+	if h.denyIfFeatureReadonly(c, inst, "firewall", "防火墙") {
+		return
+	}
+	var payload struct {
+		Enable    *bool  `json:"enable"`
+		PolicyIn  string `json:"policy_in" binding:"omitempty,oneof=ACCEPT DROP REJECT accept drop reject"`
+		PolicyOut string `json:"policy_out" binding:"omitempty,oneof=ACCEPT DROP REJECT accept drop reject"`
+	}
+	if err := bindJSON(c, &payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	if payload.Enable == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
+		return
+	}
+	if err := h.vpsSvc.SetFirewallOptions(c, inst, *payload.Enable, payload.PolicyIn, payload.PolicyOut); err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, appshared.ErrNotSupported) {
+			status = http.StatusNotImplemented
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) VPSFirewallDelete(c *gin.Context) {
@@ -615,6 +761,9 @@ func (h *Handler) VPSFirewallDelete(c *gin.Context) {
 		return
 	}
 	if h.denyIfFeatureDisabled(c, inst, "firewall", "防火墙") {
+		return
+	}
+	if h.denyIfFeatureReadonly(c, inst, "firewall", "防火墙") {
 		return
 	}
 	if err := h.vpsSvc.DeleteFirewallRule(c, inst, uri.RuleID); err != nil {
@@ -655,6 +804,9 @@ func (h *Handler) VPSPortMappings(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"data": items})
 	case http.MethodPost:
+		if h.denyIfFeatureReadonly(c, inst, "port_mapping", "端口映射") {
+			return
+		}
 		var payload map[string]any
 		if err := bindJSON(c, &payload); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -755,6 +907,9 @@ func (h *Handler) VPSPortMappingDelete(c *gin.Context) {
 		return
 	}
 	if h.denyIfFeatureDisabled(c, inst, "port_mapping", "端口映射") {
+		return
+	}
+	if h.denyIfFeatureReadonly(c, inst, "port_mapping", "端口映射") {
 		return
 	}
 	if err := h.vpsSvc.DeletePortMapping(c, inst, uri.MappingID); err != nil {

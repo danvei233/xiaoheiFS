@@ -341,7 +341,7 @@
               </div>
               <a-space style="width: 100%" direction="vertical" :size="12">
                 <a-button size="large" block @click="addToCart" :disabled="!canCheckout">
-                  加入购物车
+                  加入待购清单
                 </a-button>
                 <a-button type="primary" size="large" block @click="createOrderNow" :disabled="!canCheckout">
                   立即下单
@@ -685,7 +685,7 @@ const addToCart = async () => {
     spec: buildOrderSpecPayload(),
     qty: form.qty
   });
-  message.success("已加入购物车");
+  message.success("已加入待购清单");
 };
 
 const buildPreviewItems = () => [

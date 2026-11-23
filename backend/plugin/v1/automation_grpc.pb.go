@@ -23,6 +23,8 @@ const (
 	AutomationService_ListLines_FullMethodName           = "/plugin.v1.AutomationService/ListLines"
 	AutomationService_ListPackages_FullMethodName        = "/plugin.v1.AutomationService/ListPackages"
 	AutomationService_ListImages_FullMethodName          = "/plugin.v1.AutomationService/ListImages"
+	AutomationService_UpsertPackage_FullMethodName       = "/plugin.v1.AutomationService/UpsertPackage"
+	AutomationService_DeletePackage_FullMethodName       = "/plugin.v1.AutomationService/DeletePackage"
 	AutomationService_CreateInstance_FullMethodName      = "/plugin.v1.AutomationService/CreateInstance"
 	AutomationService_GetInstance_FullMethodName         = "/plugin.v1.AutomationService/GetInstance"
 	AutomationService_ListInstancesSimple_FullMethodName = "/plugin.v1.AutomationService/ListInstancesSimple"
@@ -53,7 +55,30 @@ const (
 	AutomationService_RestoreSnapshot_FullMethodName     = "/plugin.v1.AutomationService/RestoreSnapshot"
 	AutomationService_ListFirewallRules_FullMethodName   = "/plugin.v1.AutomationService/ListFirewallRules"
 	AutomationService_AddFirewallRule_FullMethodName     = "/plugin.v1.AutomationService/AddFirewallRule"
+	AutomationService_UpdateFirewallRule_FullMethodName  = "/plugin.v1.AutomationService/UpdateFirewallRule"
 	AutomationService_DeleteFirewallRule_FullMethodName  = "/plugin.v1.AutomationService/DeleteFirewallRule"
+	AutomationService_SetFirewallOptions_FullMethodName  = "/plugin.v1.AutomationService/SetFirewallOptions"
+	AutomationService_ListNetworkCards_FullMethodName    = "/plugin.v1.AutomationService/ListNetworkCards"
+	AutomationService_CreateNetworkCard_FullMethodName   = "/plugin.v1.AutomationService/CreateNetworkCard"
+	AutomationService_UpdateNetworkCard_FullMethodName   = "/plugin.v1.AutomationService/UpdateNetworkCard"
+	AutomationService_DeleteNetworkCard_FullMethodName   = "/plugin.v1.AutomationService/DeleteNetworkCard"
+	AutomationService_ListDataDisks_FullMethodName       = "/plugin.v1.AutomationService/ListDataDisks"
+	AutomationService_AttachDataDisk_FullMethodName      = "/plugin.v1.AutomationService/AttachDataDisk"
+	AutomationService_DetachDataDisk_FullMethodName      = "/plugin.v1.AutomationService/DetachDataDisk"
+	AutomationService_DeleteDataDisk_FullMethodName      = "/plugin.v1.AutomationService/DeleteDataDisk"
+	AutomationService_ListISOs_FullMethodName            = "/plugin.v1.AutomationService/ListISOs"
+	AutomationService_MountISO_FullMethodName            = "/plugin.v1.AutomationService/MountISO"
+	AutomationService_UnmountISO_FullMethodName          = "/plugin.v1.AutomationService/UnmountISO"
+	AutomationService_ListReverseProxies_FullMethodName  = "/plugin.v1.AutomationService/ListReverseProxies"
+	AutomationService_CreateReverseProxy_FullMethodName  = "/plugin.v1.AutomationService/CreateReverseProxy"
+	AutomationService_UpdateReverseProxy_FullMethodName  = "/plugin.v1.AutomationService/UpdateReverseProxy"
+	AutomationService_DeleteReverseProxy_FullMethodName  = "/plugin.v1.AutomationService/DeleteReverseProxy"
+	AutomationService_GetBootOrder_FullMethodName        = "/plugin.v1.AutomationService/GetBootOrder"
+	AutomationService_SetBootOrder_FullMethodName        = "/plugin.v1.AutomationService/SetBootOrder"
+	AutomationService_ListPCIDevices_FullMethodName      = "/plugin.v1.AutomationService/ListPCIDevices"
+	AutomationService_SetupPCIDevice_FullMethodName      = "/plugin.v1.AutomationService/SetupPCIDevice"
+	AutomationService_ListUSBDevices_FullMethodName      = "/plugin.v1.AutomationService/ListUSBDevices"
+	AutomationService_SetupUSBDevice_FullMethodName      = "/plugin.v1.AutomationService/SetupUSBDevice"
 )
 
 // AutomationServiceClient is the client API for AutomationService service.
@@ -65,6 +90,9 @@ type AutomationServiceClient interface {
 	ListLines(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListLinesResponse, error)
 	ListPackages(ctx context.Context, in *ListPackagesRequest, opts ...grpc.CallOption) (*ListPackagesResponse, error)
 	ListImages(ctx context.Context, in *ListImagesRequest, opts ...grpc.CallOption) (*ListImagesResponse, error)
+	// Catalog write-back (optional)
+	UpsertPackage(ctx context.Context, in *UpsertPackageRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeletePackage(ctx context.Context, in *DeletePackageRequest, opts ...grpc.CallOption) (*OperationResult, error)
 	// Instance lifecycle
 	CreateInstance(ctx context.Context, in *CreateInstanceRequest, opts ...grpc.CallOption) (*CreateInstanceResponse, error)
 	GetInstance(ctx context.Context, in *GetInstanceRequest, opts ...grpc.CallOption) (*GetInstanceResponse, error)
@@ -100,7 +128,36 @@ type AutomationServiceClient interface {
 	// Firewall (optional)
 	ListFirewallRules(ctx context.Context, in *ListFirewallRulesRequest, opts ...grpc.CallOption) (*ListFirewallRulesResponse, error)
 	AddFirewallRule(ctx context.Context, in *AddFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	UpdateFirewallRule(ctx context.Context, in *UpdateFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error)
 	DeleteFirewallRule(ctx context.Context, in *DeleteFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	SetFirewallOptions(ctx context.Context, in *SetFirewallOptionsRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	// Network cards (optional)
+	ListNetworkCards(ctx context.Context, in *ListNetworkCardsRequest, opts ...grpc.CallOption) (*ListNetworkCardsResponse, error)
+	CreateNetworkCard(ctx context.Context, in *CreateNetworkCardRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	UpdateNetworkCard(ctx context.Context, in *UpdateNetworkCardRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeleteNetworkCard(ctx context.Context, in *DeleteNetworkCardRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	// Data disks (optional)
+	ListDataDisks(ctx context.Context, in *ListDataDisksRequest, opts ...grpc.CallOption) (*ListDataDisksResponse, error)
+	AttachDataDisk(ctx context.Context, in *AttachDataDiskRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DetachDataDisk(ctx context.Context, in *DetachDataDiskRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeleteDataDisk(ctx context.Context, in *DeleteDataDiskRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	// ISO images (optional)
+	ListISOs(ctx context.Context, in *ListISOsRequest, opts ...grpc.CallOption) (*ListISOsResponse, error)
+	MountISO(ctx context.Context, in *MountISORequest, opts ...grpc.CallOption) (*OperationResult, error)
+	UnmountISO(ctx context.Context, in *UnmountISORequest, opts ...grpc.CallOption) (*OperationResult, error)
+	// Reverse proxy (optional)
+	ListReverseProxies(ctx context.Context, in *ListReverseProxiesRequest, opts ...grpc.CallOption) (*ListReverseProxiesResponse, error)
+	CreateReverseProxy(ctx context.Context, in *CreateReverseProxyRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	UpdateReverseProxy(ctx context.Context, in *UpdateReverseProxyRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	DeleteReverseProxy(ctx context.Context, in *DeleteReverseProxyRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	// Boot order (optional)
+	GetBootOrder(ctx context.Context, in *GetBootOrderRequest, opts ...grpc.CallOption) (*GetBootOrderResponse, error)
+	SetBootOrder(ctx context.Context, in *SetBootOrderRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	// PCI / USB passthrough (optional)
+	ListPCIDevices(ctx context.Context, in *ListPCIDevicesRequest, opts ...grpc.CallOption) (*ListPCIDevicesResponse, error)
+	SetupPCIDevice(ctx context.Context, in *SetupPCIDeviceRequest, opts ...grpc.CallOption) (*OperationResult, error)
+	ListUSBDevices(ctx context.Context, in *ListUSBDevicesRequest, opts ...grpc.CallOption) (*ListUSBDevicesResponse, error)
+	SetupUSBDevice(ctx context.Context, in *SetupUSBDeviceRequest, opts ...grpc.CallOption) (*OperationResult, error)
 }
 
 type automationServiceClient struct {
@@ -145,6 +202,26 @@ func (c *automationServiceClient) ListImages(ctx context.Context, in *ListImages
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListImagesResponse)
 	err := c.cc.Invoke(ctx, AutomationService_ListImages_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) UpsertPackage(ctx context.Context, in *UpsertPackageRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_UpsertPackage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) DeletePackage(ctx context.Context, in *DeletePackageRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_DeletePackage_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -451,10 +528,240 @@ func (c *automationServiceClient) AddFirewallRule(ctx context.Context, in *AddFi
 	return out, nil
 }
 
+func (c *automationServiceClient) UpdateFirewallRule(ctx context.Context, in *UpdateFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_UpdateFirewallRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *automationServiceClient) DeleteFirewallRule(ctx context.Context, in *DeleteFirewallRuleRequest, opts ...grpc.CallOption) (*OperationResult, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(OperationResult)
 	err := c.cc.Invoke(ctx, AutomationService_DeleteFirewallRule_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) SetFirewallOptions(ctx context.Context, in *SetFirewallOptionsRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_SetFirewallOptions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) ListNetworkCards(ctx context.Context, in *ListNetworkCardsRequest, opts ...grpc.CallOption) (*ListNetworkCardsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNetworkCardsResponse)
+	err := c.cc.Invoke(ctx, AutomationService_ListNetworkCards_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) CreateNetworkCard(ctx context.Context, in *CreateNetworkCardRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_CreateNetworkCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) UpdateNetworkCard(ctx context.Context, in *UpdateNetworkCardRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_UpdateNetworkCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) DeleteNetworkCard(ctx context.Context, in *DeleteNetworkCardRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_DeleteNetworkCard_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) ListDataDisks(ctx context.Context, in *ListDataDisksRequest, opts ...grpc.CallOption) (*ListDataDisksResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDataDisksResponse)
+	err := c.cc.Invoke(ctx, AutomationService_ListDataDisks_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) AttachDataDisk(ctx context.Context, in *AttachDataDiskRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_AttachDataDisk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) DetachDataDisk(ctx context.Context, in *DetachDataDiskRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_DetachDataDisk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) DeleteDataDisk(ctx context.Context, in *DeleteDataDiskRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_DeleteDataDisk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) ListISOs(ctx context.Context, in *ListISOsRequest, opts ...grpc.CallOption) (*ListISOsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListISOsResponse)
+	err := c.cc.Invoke(ctx, AutomationService_ListISOs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) MountISO(ctx context.Context, in *MountISORequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_MountISO_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) UnmountISO(ctx context.Context, in *UnmountISORequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_UnmountISO_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) ListReverseProxies(ctx context.Context, in *ListReverseProxiesRequest, opts ...grpc.CallOption) (*ListReverseProxiesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListReverseProxiesResponse)
+	err := c.cc.Invoke(ctx, AutomationService_ListReverseProxies_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) CreateReverseProxy(ctx context.Context, in *CreateReverseProxyRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_CreateReverseProxy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) UpdateReverseProxy(ctx context.Context, in *UpdateReverseProxyRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_UpdateReverseProxy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) DeleteReverseProxy(ctx context.Context, in *DeleteReverseProxyRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_DeleteReverseProxy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) GetBootOrder(ctx context.Context, in *GetBootOrderRequest, opts ...grpc.CallOption) (*GetBootOrderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBootOrderResponse)
+	err := c.cc.Invoke(ctx, AutomationService_GetBootOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) SetBootOrder(ctx context.Context, in *SetBootOrderRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_SetBootOrder_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) ListPCIDevices(ctx context.Context, in *ListPCIDevicesRequest, opts ...grpc.CallOption) (*ListPCIDevicesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPCIDevicesResponse)
+	err := c.cc.Invoke(ctx, AutomationService_ListPCIDevices_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) SetupPCIDevice(ctx context.Context, in *SetupPCIDeviceRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_SetupPCIDevice_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) ListUSBDevices(ctx context.Context, in *ListUSBDevicesRequest, opts ...grpc.CallOption) (*ListUSBDevicesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUSBDevicesResponse)
+	err := c.cc.Invoke(ctx, AutomationService_ListUSBDevices_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *automationServiceClient) SetupUSBDevice(ctx context.Context, in *SetupUSBDeviceRequest, opts ...grpc.CallOption) (*OperationResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OperationResult)
+	err := c.cc.Invoke(ctx, AutomationService_SetupUSBDevice_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -470,6 +777,9 @@ type AutomationServiceServer interface {
 	ListLines(context.Context, *Empty) (*ListLinesResponse, error)
 	ListPackages(context.Context, *ListPackagesRequest) (*ListPackagesResponse, error)
 	ListImages(context.Context, *ListImagesRequest) (*ListImagesResponse, error)
+	// Catalog write-back (optional)
+	UpsertPackage(context.Context, *UpsertPackageRequest) (*OperationResult, error)
+	DeletePackage(context.Context, *DeletePackageRequest) (*OperationResult, error)
 	// Instance lifecycle
 	CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error)
 	GetInstance(context.Context, *GetInstanceRequest) (*GetInstanceResponse, error)
@@ -505,7 +815,36 @@ type AutomationServiceServer interface {
 	// Firewall (optional)
 	ListFirewallRules(context.Context, *ListFirewallRulesRequest) (*ListFirewallRulesResponse, error)
 	AddFirewallRule(context.Context, *AddFirewallRuleRequest) (*OperationResult, error)
+	UpdateFirewallRule(context.Context, *UpdateFirewallRuleRequest) (*OperationResult, error)
 	DeleteFirewallRule(context.Context, *DeleteFirewallRuleRequest) (*OperationResult, error)
+	SetFirewallOptions(context.Context, *SetFirewallOptionsRequest) (*OperationResult, error)
+	// Network cards (optional)
+	ListNetworkCards(context.Context, *ListNetworkCardsRequest) (*ListNetworkCardsResponse, error)
+	CreateNetworkCard(context.Context, *CreateNetworkCardRequest) (*OperationResult, error)
+	UpdateNetworkCard(context.Context, *UpdateNetworkCardRequest) (*OperationResult, error)
+	DeleteNetworkCard(context.Context, *DeleteNetworkCardRequest) (*OperationResult, error)
+	// Data disks (optional)
+	ListDataDisks(context.Context, *ListDataDisksRequest) (*ListDataDisksResponse, error)
+	AttachDataDisk(context.Context, *AttachDataDiskRequest) (*OperationResult, error)
+	DetachDataDisk(context.Context, *DetachDataDiskRequest) (*OperationResult, error)
+	DeleteDataDisk(context.Context, *DeleteDataDiskRequest) (*OperationResult, error)
+	// ISO images (optional)
+	ListISOs(context.Context, *ListISOsRequest) (*ListISOsResponse, error)
+	MountISO(context.Context, *MountISORequest) (*OperationResult, error)
+	UnmountISO(context.Context, *UnmountISORequest) (*OperationResult, error)
+	// Reverse proxy (optional)
+	ListReverseProxies(context.Context, *ListReverseProxiesRequest) (*ListReverseProxiesResponse, error)
+	CreateReverseProxy(context.Context, *CreateReverseProxyRequest) (*OperationResult, error)
+	UpdateReverseProxy(context.Context, *UpdateReverseProxyRequest) (*OperationResult, error)
+	DeleteReverseProxy(context.Context, *DeleteReverseProxyRequest) (*OperationResult, error)
+	// Boot order (optional)
+	GetBootOrder(context.Context, *GetBootOrderRequest) (*GetBootOrderResponse, error)
+	SetBootOrder(context.Context, *SetBootOrderRequest) (*OperationResult, error)
+	// PCI / USB passthrough (optional)
+	ListPCIDevices(context.Context, *ListPCIDevicesRequest) (*ListPCIDevicesResponse, error)
+	SetupPCIDevice(context.Context, *SetupPCIDeviceRequest) (*OperationResult, error)
+	ListUSBDevices(context.Context, *ListUSBDevicesRequest) (*ListUSBDevicesResponse, error)
+	SetupUSBDevice(context.Context, *SetupUSBDeviceRequest) (*OperationResult, error)
 	mustEmbedUnimplementedAutomationServiceServer()
 }
 
@@ -527,6 +866,12 @@ func (UnimplementedAutomationServiceServer) ListPackages(context.Context, *ListP
 }
 func (UnimplementedAutomationServiceServer) ListImages(context.Context, *ListImagesRequest) (*ListImagesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListImages not implemented")
+}
+func (UnimplementedAutomationServiceServer) UpsertPackage(context.Context, *UpsertPackageRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertPackage not implemented")
+}
+func (UnimplementedAutomationServiceServer) DeletePackage(context.Context, *DeletePackageRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeletePackage not implemented")
 }
 func (UnimplementedAutomationServiceServer) CreateInstance(context.Context, *CreateInstanceRequest) (*CreateInstanceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CreateInstance not implemented")
@@ -618,8 +963,77 @@ func (UnimplementedAutomationServiceServer) ListFirewallRules(context.Context, *
 func (UnimplementedAutomationServiceServer) AddFirewallRule(context.Context, *AddFirewallRuleRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method AddFirewallRule not implemented")
 }
+func (UnimplementedAutomationServiceServer) UpdateFirewallRule(context.Context, *UpdateFirewallRuleRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateFirewallRule not implemented")
+}
 func (UnimplementedAutomationServiceServer) DeleteFirewallRule(context.Context, *DeleteFirewallRuleRequest) (*OperationResult, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteFirewallRule not implemented")
+}
+func (UnimplementedAutomationServiceServer) SetFirewallOptions(context.Context, *SetFirewallOptionsRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetFirewallOptions not implemented")
+}
+func (UnimplementedAutomationServiceServer) ListNetworkCards(context.Context, *ListNetworkCardsRequest) (*ListNetworkCardsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNetworkCards not implemented")
+}
+func (UnimplementedAutomationServiceServer) CreateNetworkCard(context.Context, *CreateNetworkCardRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateNetworkCard not implemented")
+}
+func (UnimplementedAutomationServiceServer) UpdateNetworkCard(context.Context, *UpdateNetworkCardRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateNetworkCard not implemented")
+}
+func (UnimplementedAutomationServiceServer) DeleteNetworkCard(context.Context, *DeleteNetworkCardRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteNetworkCard not implemented")
+}
+func (UnimplementedAutomationServiceServer) ListDataDisks(context.Context, *ListDataDisksRequest) (*ListDataDisksResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListDataDisks not implemented")
+}
+func (UnimplementedAutomationServiceServer) AttachDataDisk(context.Context, *AttachDataDiskRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method AttachDataDisk not implemented")
+}
+func (UnimplementedAutomationServiceServer) DetachDataDisk(context.Context, *DetachDataDiskRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method DetachDataDisk not implemented")
+}
+func (UnimplementedAutomationServiceServer) DeleteDataDisk(context.Context, *DeleteDataDiskRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteDataDisk not implemented")
+}
+func (UnimplementedAutomationServiceServer) ListISOs(context.Context, *ListISOsRequest) (*ListISOsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListISOs not implemented")
+}
+func (UnimplementedAutomationServiceServer) MountISO(context.Context, *MountISORequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method MountISO not implemented")
+}
+func (UnimplementedAutomationServiceServer) UnmountISO(context.Context, *UnmountISORequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnmountISO not implemented")
+}
+func (UnimplementedAutomationServiceServer) ListReverseProxies(context.Context, *ListReverseProxiesRequest) (*ListReverseProxiesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListReverseProxies not implemented")
+}
+func (UnimplementedAutomationServiceServer) CreateReverseProxy(context.Context, *CreateReverseProxyRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateReverseProxy not implemented")
+}
+func (UnimplementedAutomationServiceServer) UpdateReverseProxy(context.Context, *UpdateReverseProxyRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateReverseProxy not implemented")
+}
+func (UnimplementedAutomationServiceServer) DeleteReverseProxy(context.Context, *DeleteReverseProxyRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteReverseProxy not implemented")
+}
+func (UnimplementedAutomationServiceServer) GetBootOrder(context.Context, *GetBootOrderRequest) (*GetBootOrderResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetBootOrder not implemented")
+}
+func (UnimplementedAutomationServiceServer) SetBootOrder(context.Context, *SetBootOrderRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetBootOrder not implemented")
+}
+func (UnimplementedAutomationServiceServer) ListPCIDevices(context.Context, *ListPCIDevicesRequest) (*ListPCIDevicesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListPCIDevices not implemented")
+}
+func (UnimplementedAutomationServiceServer) SetupPCIDevice(context.Context, *SetupPCIDeviceRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetupPCIDevice not implemented")
+}
+func (UnimplementedAutomationServiceServer) ListUSBDevices(context.Context, *ListUSBDevicesRequest) (*ListUSBDevicesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListUSBDevices not implemented")
+}
+func (UnimplementedAutomationServiceServer) SetupUSBDevice(context.Context, *SetupUSBDeviceRequest) (*OperationResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetupUSBDevice not implemented")
 }
 func (UnimplementedAutomationServiceServer) mustEmbedUnimplementedAutomationServiceServer() {}
 func (UnimplementedAutomationServiceServer) testEmbeddedByValue()                           {}
@@ -710,6 +1124,42 @@ func _AutomationService_ListImages_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AutomationServiceServer).ListImages(ctx, req.(*ListImagesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_UpsertPackage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertPackageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).UpsertPackage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_UpsertPackage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).UpsertPackage(ctx, req.(*UpsertPackageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_DeletePackage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeletePackageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).DeletePackage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_DeletePackage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).DeletePackage(ctx, req.(*DeletePackageRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1254,6 +1704,24 @@ func _AutomationService_AddFirewallRule_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AutomationService_UpdateFirewallRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateFirewallRuleRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).UpdateFirewallRule(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_UpdateFirewallRule_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).UpdateFirewallRule(ctx, req.(*UpdateFirewallRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AutomationService_DeleteFirewallRule_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteFirewallRuleRequest)
 	if err := dec(in); err != nil {
@@ -1268,6 +1736,402 @@ func _AutomationService_DeleteFirewallRule_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AutomationServiceServer).DeleteFirewallRule(ctx, req.(*DeleteFirewallRuleRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_SetFirewallOptions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetFirewallOptionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).SetFirewallOptions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_SetFirewallOptions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).SetFirewallOptions(ctx, req.(*SetFirewallOptionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_ListNetworkCards_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNetworkCardsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).ListNetworkCards(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_ListNetworkCards_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).ListNetworkCards(ctx, req.(*ListNetworkCardsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_CreateNetworkCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateNetworkCardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).CreateNetworkCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_CreateNetworkCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).CreateNetworkCard(ctx, req.(*CreateNetworkCardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_UpdateNetworkCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateNetworkCardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).UpdateNetworkCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_UpdateNetworkCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).UpdateNetworkCard(ctx, req.(*UpdateNetworkCardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_DeleteNetworkCard_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteNetworkCardRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).DeleteNetworkCard(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_DeleteNetworkCard_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).DeleteNetworkCard(ctx, req.(*DeleteNetworkCardRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_ListDataDisks_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDataDisksRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).ListDataDisks(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_ListDataDisks_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).ListDataDisks(ctx, req.(*ListDataDisksRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_AttachDataDisk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AttachDataDiskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).AttachDataDisk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_AttachDataDisk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).AttachDataDisk(ctx, req.(*AttachDataDiskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_DetachDataDisk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DetachDataDiskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).DetachDataDisk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_DetachDataDisk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).DetachDataDisk(ctx, req.(*DetachDataDiskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_DeleteDataDisk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteDataDiskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).DeleteDataDisk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_DeleteDataDisk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).DeleteDataDisk(ctx, req.(*DeleteDataDiskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_ListISOs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListISOsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).ListISOs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_ListISOs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).ListISOs(ctx, req.(*ListISOsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_MountISO_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MountISORequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).MountISO(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_MountISO_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).MountISO(ctx, req.(*MountISORequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_UnmountISO_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnmountISORequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).UnmountISO(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_UnmountISO_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).UnmountISO(ctx, req.(*UnmountISORequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_ListReverseProxies_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListReverseProxiesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).ListReverseProxies(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_ListReverseProxies_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).ListReverseProxies(ctx, req.(*ListReverseProxiesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_CreateReverseProxy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateReverseProxyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).CreateReverseProxy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_CreateReverseProxy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).CreateReverseProxy(ctx, req.(*CreateReverseProxyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_UpdateReverseProxy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateReverseProxyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).UpdateReverseProxy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_UpdateReverseProxy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).UpdateReverseProxy(ctx, req.(*UpdateReverseProxyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_DeleteReverseProxy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteReverseProxyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).DeleteReverseProxy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_DeleteReverseProxy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).DeleteReverseProxy(ctx, req.(*DeleteReverseProxyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_GetBootOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBootOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).GetBootOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_GetBootOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).GetBootOrder(ctx, req.(*GetBootOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_SetBootOrder_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetBootOrderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).SetBootOrder(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_SetBootOrder_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).SetBootOrder(ctx, req.(*SetBootOrderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_ListPCIDevices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPCIDevicesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).ListPCIDevices(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_ListPCIDevices_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).ListPCIDevices(ctx, req.(*ListPCIDevicesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_SetupPCIDevice_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetupPCIDeviceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).SetupPCIDevice(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_SetupPCIDevice_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).SetupPCIDevice(ctx, req.(*SetupPCIDeviceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_ListUSBDevices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUSBDevicesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).ListUSBDevices(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_ListUSBDevices_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).ListUSBDevices(ctx, req.(*ListUSBDevicesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AutomationService_SetupUSBDevice_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetupUSBDeviceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AutomationServiceServer).SetupUSBDevice(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AutomationService_SetupUSBDevice_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AutomationServiceServer).SetupUSBDevice(ctx, req.(*SetupUSBDeviceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1294,6 +2158,14 @@ var AutomationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListImages",
 			Handler:    _AutomationService_ListImages_Handler,
+		},
+		{
+			MethodName: "UpsertPackage",
+			Handler:    _AutomationService_UpsertPackage_Handler,
+		},
+		{
+			MethodName: "DeletePackage",
+			Handler:    _AutomationService_DeletePackage_Handler,
 		},
 		{
 			MethodName: "CreateInstance",
@@ -1416,8 +2288,100 @@ var AutomationService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AutomationService_AddFirewallRule_Handler,
 		},
 		{
+			MethodName: "UpdateFirewallRule",
+			Handler:    _AutomationService_UpdateFirewallRule_Handler,
+		},
+		{
 			MethodName: "DeleteFirewallRule",
 			Handler:    _AutomationService_DeleteFirewallRule_Handler,
+		},
+		{
+			MethodName: "SetFirewallOptions",
+			Handler:    _AutomationService_SetFirewallOptions_Handler,
+		},
+		{
+			MethodName: "ListNetworkCards",
+			Handler:    _AutomationService_ListNetworkCards_Handler,
+		},
+		{
+			MethodName: "CreateNetworkCard",
+			Handler:    _AutomationService_CreateNetworkCard_Handler,
+		},
+		{
+			MethodName: "UpdateNetworkCard",
+			Handler:    _AutomationService_UpdateNetworkCard_Handler,
+		},
+		{
+			MethodName: "DeleteNetworkCard",
+			Handler:    _AutomationService_DeleteNetworkCard_Handler,
+		},
+		{
+			MethodName: "ListDataDisks",
+			Handler:    _AutomationService_ListDataDisks_Handler,
+		},
+		{
+			MethodName: "AttachDataDisk",
+			Handler:    _AutomationService_AttachDataDisk_Handler,
+		},
+		{
+			MethodName: "DetachDataDisk",
+			Handler:    _AutomationService_DetachDataDisk_Handler,
+		},
+		{
+			MethodName: "DeleteDataDisk",
+			Handler:    _AutomationService_DeleteDataDisk_Handler,
+		},
+		{
+			MethodName: "ListISOs",
+			Handler:    _AutomationService_ListISOs_Handler,
+		},
+		{
+			MethodName: "MountISO",
+			Handler:    _AutomationService_MountISO_Handler,
+		},
+		{
+			MethodName: "UnmountISO",
+			Handler:    _AutomationService_UnmountISO_Handler,
+		},
+		{
+			MethodName: "ListReverseProxies",
+			Handler:    _AutomationService_ListReverseProxies_Handler,
+		},
+		{
+			MethodName: "CreateReverseProxy",
+			Handler:    _AutomationService_CreateReverseProxy_Handler,
+		},
+		{
+			MethodName: "UpdateReverseProxy",
+			Handler:    _AutomationService_UpdateReverseProxy_Handler,
+		},
+		{
+			MethodName: "DeleteReverseProxy",
+			Handler:    _AutomationService_DeleteReverseProxy_Handler,
+		},
+		{
+			MethodName: "GetBootOrder",
+			Handler:    _AutomationService_GetBootOrder_Handler,
+		},
+		{
+			MethodName: "SetBootOrder",
+			Handler:    _AutomationService_SetBootOrder_Handler,
+		},
+		{
+			MethodName: "ListPCIDevices",
+			Handler:    _AutomationService_ListPCIDevices_Handler,
+		},
+		{
+			MethodName: "SetupPCIDevice",
+			Handler:    _AutomationService_SetupPCIDevice_Handler,
+		},
+		{
+			MethodName: "ListUSBDevices",
+			Handler:    _AutomationService_ListUSBDevices_Handler,
+		},
+		{
+			MethodName: "SetupUSBDevice",
+			Handler:    _AutomationService_SetupUSBDevice_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

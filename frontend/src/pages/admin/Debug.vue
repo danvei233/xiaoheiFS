@@ -688,7 +688,7 @@ onMounted(() => {
 
 .hint {
   margin-left: 8px;
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--text-secondary);
 }
 
 .tab-toolbar {
@@ -707,9 +707,9 @@ onMounted(() => {
 /* 顶部信息栏 */
 .modal-header-info {
   padding: 14px 16px;
-  background: #ffffff;
-  border-radius: 12px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--theme-surface, var(--card));
+  border-radius: var(--theme-card-radius, 12px);
+  border: 1px solid var(--border);
 }
 
 .info-item {
@@ -720,18 +720,18 @@ onMounted(() => {
 
 .info-label {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--text-secondary);
   font-weight: 400;
 }
 
 .info-value {
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--text-primary);
   font-weight: 500;
 }
 
 .subtle {
-  color: rgba(0, 0, 0, 0.45);
+  color: var(--text-secondary);
 }
 
 /* 左右布局 */
@@ -747,22 +747,22 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 12px;
+  background: var(--theme-surface, var(--card));
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius, 12px);
   overflow: hidden;
 }
 
 .panel-header {
   padding: 14px 18px;
-  background: rgba(0, 0, 0, 0.02);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
 }
 
 .panel-title {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--text-primary);
   letter-spacing: 0.3px;
 }
 
@@ -771,7 +771,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #fafbfc;
+  background: var(--bg-secondary);
 }
 
 .panel-body :deep(.http-request-bar) {
@@ -841,7 +841,7 @@ onMounted(() => {
 }
 
 .html-preview {
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   height: 300px;
@@ -869,20 +869,20 @@ onMounted(() => {
   background: transparent;
   border: none;
   border-radius: 8px 8px 0 0;
-  color: rgba(0, 0, 0, 0.65);
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
   transition: all 0.15s ease;
 }
 
 .panel-body :deep(.ant-tabs-tab:hover) {
-  color: rgba(0, 0, 0, 0.88);
-  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
 }
 
 .panel-body :deep(.ant-tabs-tab-active) {
-  color: #1677ff;
-  background: #fff;
+  color: var(--primary);
+  background: var(--theme-surface, var(--card));
 }
 
 .panel-body :deep(.ant-tabs-ink-bar) {
@@ -890,7 +890,7 @@ onMounted(() => {
 }
 
 .panel-body :deep(.ant-tabs-content) {
-  background: #fff;
+  background: var(--theme-surface, var(--card));
   border-radius: 0 0 8px 8px;
   padding: 16px;
 }

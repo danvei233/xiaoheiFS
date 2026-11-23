@@ -1,5 +1,6 @@
 ﻿import { defineStore } from "pinia";
 import { getCmsBlocks, getCmsPosts, getSiteSettings } from "@/services/user";
+import { locale, setLocale, t } from "@/locales";
 
 interface SiteState {
   siteName: string;
@@ -26,7 +27,7 @@ export const useSiteStore = defineStore("site", {
     siteName: "小黑云控制台",
     logoUrl: "",
     faviconUrl: "",
-    language: "zh-CN",
+    language: locale.value,
     maintenanceMode: false,
     maintenanceMessage: "",
     blocks: {},
@@ -41,18 +42,11 @@ export const useSiteStore = defineStore("site", {
 
     headerNavItems(): SiteNavItem[] {
       const raw = this.settings?.site_nav_items;
-      const fallback: SiteNavItem[] =
-        this.language === "en-US"
-          ? [
-              { label: "Products", url: "/products", target: "_self" },
-              { label: "Docs", url: "/docs", target: "_self" },
-              { label: "Help", url: "/help", target: "_self" }
-            ]
-          : [
-              { label: "产品", url: "/products", target: "_self" },
-              { label: "文档", url: "/docs", target: "_self" },
-              { label: "帮助", url: "/help", target: "_self" }
-            ];
+      const fallback: SiteNavItem[] = [
+        { label: t('nav.products'), url: '/products', target: '_self' },
+        { label: t('nav.docs'), url: '/docs', target: '_self' },
+        { label: t('nav.help'), url: '/help', target: '_self' }
+      ];
       if (!raw) return fallback;
       try {
         const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
@@ -76,7 +70,19 @@ export const useSiteStore = defineStore("site", {
 
   actions: {
     setLang(lang?: string) {
-      this.language = lang || navigator.language || "zh-CN";
+      if (lang) setLocale(lang);
+      this.syncLocale();
+    },
+
+    syncLocale() {
+      if (this.language === locale.value) return;
+      this.language = locale.value;
+      const pages = Object.keys(this.blocks);
+      const categories = Object.keys(this.posts);
+      this.blocks = {};
+      this.posts = {};
+      pages.forEach(page => { void this.fetchBlocks(page); });
+      categories.forEach(category => { void this.fetchPosts(category === 'all' ? undefined : category); });
     },
 
     async fetchSettings() {
@@ -103,18 +109,22 @@ export const useSiteStore = defineStore("site", {
     },
 
     async fetchBlocks(page?: string) {
+      const language = this.language;
+      const cache = this.blocks;
       try {
-        const res = await getCmsBlocks({ page: page || "home", lang: this.language });
-        this.blocks[page || "home"] = res.data?.items || [];
+        const res = await getCmsBlocks({ page: page || "home", lang: language });
+        if (this.language === language && this.blocks === cache) this.blocks[page || "home"] = res.data?.items || [];
       } catch (error) {
         console.error("Failed to fetch CMS blocks:", error);
       }
     },
 
     async fetchPosts(categoryKey?: string) {
+      const language = this.language;
+      const cache = this.posts;
       try {
-        const res = await getCmsPosts({ category_key: categoryKey, lang: this.language, limit: 100, offset: 0 });
-        this.posts[categoryKey || "all"] = res.data?.items || [];
+        const res = await getCmsPosts({ category_key: categoryKey, lang: language, limit: 100, offset: 0 });
+        if (this.language === language && this.posts === cache) this.posts[categoryKey || "all"] = res.data?.items || [];
       } catch (error) {
         console.error("Failed to fetch CMS posts:", error);
       }

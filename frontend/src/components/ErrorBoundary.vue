@@ -3,11 +3,11 @@
   <slot v-if="!hasError" />
   <div v-else class="error-boundary">
     <div class="error-card">
-      <div class="title">页面渲染失败</div>
-      <div class="desc">通常是接口返回异常或前端运行时错误导致。可先刷新重试。</div>
+      <div class="title">{{ t('common.renderFailed') }}</div>
+      <div class="desc">{{ t('common.renderFailedDesc') }}</div>
       <pre v-if="message" class="message">{{ message }}</pre>
       <div class="actions">
-        <a-button type="primary" @click="reload">刷新页面</a-button>
+        <a-button type="primary" @click="reload">{{ t('common.reloadPage') }}</a-button>
       </div>
     </div>
   </div>
@@ -16,6 +16,7 @@
 
 <script setup lang="ts">
 import { onErrorCaptured, ref } from "vue";
+import { t } from "@/locales";
 
 const hasError = ref(false);
 const message = ref("");

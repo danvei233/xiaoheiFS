@@ -335,7 +335,7 @@
       </a-form>
     </a-drawer>
 
-    <a-drawer v-model:open="lineOpen" title="线路" width="520" @close="resetLine">
+    <a-drawer v-model:open="lineOpen" title="线路" width="560" @close="resetLineWithFlags">
       <a-form layout="vertical">
         <a-form-item label="地区"><a-select v-model:value="lineForm.region_id">
             <a-select-option v-for="region in regions" :key="region.id" :value="region.id">{{ region.name }}</a-select-option>
@@ -372,6 +372,32 @@
           <a-col :span="8"><a-form-item label="带宽最小"><a-input-number v-model:value="lineForm.add_bw_min" :min="-1" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="带宽最大"><a-input-number v-model:value="lineForm.add_bw_max" :min="0" style="width: 100%" /></a-form-item></a-col>
           <a-col :span="8"><a-form-item label="带宽步进"><a-input-number v-model:value="lineForm.add_bw_step" :min="1" style="width: 100%" /></a-form-item></a-col>
+        </a-row>
+        <a-divider />
+        <div class="section-title">插件功能开关</div>
+        <div class="subtle" style="margin-bottom: 8px">
+          「跟随默认」由后端按功能的内置策略决定（PCI/USB 默认关闭，网卡/数据盘/光盘/快照默认只读）；
+          「只读」时实例详情页 tab 可见但用户不能创建/修改；「关闭」时整块 tab 不显示，接口也会被拒绝。
+        </div>
+        <a-row :gutter="12">
+          <a-col v-for="item in LINE_FEATURE_OPTIONS" :key="item.key" :span="12">
+            <a-form-item>
+              <template #label>
+                <span>{{ item.label }}</span>
+                <a-tag v-if="item.default === 'off'" color="red" style="margin-left: 6px">默认关闭</a-tag>
+                <a-tag v-else-if="item.default === 'read'" color="orange" style="margin-left: 6px">默认只读</a-tag>
+              </template>
+              <a-select v-model:value="lineFeatureFlags[item.key]" size="small">
+                <a-select-option value="default">
+                  跟随默认（{{ LINE_FEATURE_DEFAULT_LABEL[item.default] }}）
+                </a-select-option>
+                <a-select-option value="off">关闭（不显示）</a-select-option>
+                <a-select-option value="read">只读（可见不可改）</a-select-option>
+                <a-select-option value="write">完全可用</a-select-option>
+              </a-select>
+              <div class="subtle" style="margin-top: 2px">{{ item.hint }}</div>
+            </a-form-item>
+          </a-col>
         </a-row>
         <a-form-item label="启用"><a-switch v-model:checked="lineForm.active" /></a-form-item>
         <a-form-item label="可见"><a-switch v-model:checked="lineForm.visible" /></a-form-item>
@@ -799,8 +825,64 @@ const lineForm = reactive({
   active: true,
   visible: true,
   capacity_remaining: -1,
-  image_ids: []
+  image_ids: [],
+  // 插件功能开关：undefined/缺省 = 跟随插件能力；true = 强制开启；false = 强制关闭并隐藏页面 tab
+  feature_flags: {}
 });
+
+// 线路级可开关的插件功能清单（key / default 必须与后端 automationFeatureCatalog 一致）
+// default: off = 默认关闭（不显示 tab）；read = 默认只读；write = 默认完全可用
+const LINE_FEATURE_OPTIONS = [
+  { key: "firewall", label: "防火墙", hint: "虚拟机防火墙规则", default: "write" },
+  { key: "port_mapping", label: "端口映射", hint: "NAT 端口转发", default: "write" },
+  { key: "snapshot", label: "快照", hint: "平台原生快照", default: "read" },
+  { key: "backup", label: "备份", hint: "备份与还原", default: "write" },
+  { key: "nic", label: "网卡管理", hint: "查看/增删网卡与 IP", default: "read" },
+  { key: "disk", label: "数据盘", hint: "查看/挂载数据盘", default: "read" },
+  { key: "iso", label: "光盘管理", hint: "查看/挂载 ISO", default: "read" },
+  { key: "reverse_proxy", label: "反向代理", hint: "域名反向代理", default: "write" },
+  { key: "boot_order", label: "启动顺序", hint: "调整启动项顺序", default: "write" },
+  { key: "pci", label: "PCI 直通", hint: "PCI / GPU 直通，默认关闭", default: "off" },
+  { key: "usb", label: "USB 直通", hint: "USB 设备直通，默认关闭", default: "off" }
+];
+
+const LINE_FEATURE_DEFAULT_LABEL = { off: "关闭", read: "只读", write: "完全" };
+
+// 四态选择：default = 跟随默认策略；read = 只读（可见不可改）；write = 完全可用；off = 关闭（隐藏整个 tab）
+const lineFeatureFlags = reactive({});
+
+const resetLineFeatureFlags = () => {
+  Object.keys(lineFeatureFlags).forEach((key) => delete lineFeatureFlags[key]);
+  LINE_FEATURE_OPTIONS.forEach((item) => {
+    lineFeatureFlags[item.key] = "default";
+  });
+};
+resetLineFeatureFlags();
+
+const normalizeLineFeatureMode = (raw) => {
+  if (typeof raw === "boolean") return raw ? "write" : "off";
+  const value = String(raw ?? "").toLowerCase();
+  return ["off", "read", "write"].includes(value) ? value : "";
+};
+
+const applyLineFeatureFlags = (raw) => {
+  resetLineFeatureFlags();
+  if (!raw || typeof raw !== "object") return;
+  Object.keys(raw).forEach((key) => {
+    if (!(key in lineFeatureFlags)) return;
+    const mode = normalizeLineFeatureMode(raw[key]);
+    if (mode) lineFeatureFlags[key] = mode;
+  });
+};
+
+const collectLineFeatureFlags = () => {
+  const out = {};
+  LINE_FEATURE_OPTIONS.forEach((item) => {
+    const value = lineFeatureFlags[item.key];
+    if (value === "read" || value === "write" || value === "off") out[item.key] = value;
+  });
+  return out;
+};
 const packageForm = reactive({
   id: null,
   name: "",
@@ -1094,7 +1176,8 @@ const load = async () => {
     add_bw_step: row.add_bw_step ?? row.AddBwStep,
     active: row.active ?? row.Active,
     visible: row.visible ?? row.Visible,
-    capacity_remaining: row.capacity_remaining ?? row.CapacityRemaining
+    capacity_remaining: row.capacity_remaining ?? row.CapacityRemaining,
+    feature_flags: row.feature_flags ?? row.FeatureFlags ?? null
   }));
   packages.value = (packageRes.data?.items || []).map((row) => ({
     id: row.id ?? row.ID,
@@ -1510,8 +1593,9 @@ const bulkRemoveRegions = () => {
 const openLine = async (record) => {
   if (record) {
     Object.assign(lineForm, record);
+    applyLineFeatureFlags(record.feature_flags);
   } else {
-    resetLine();
+    resetLineWithFlags();
   }
   lineOpen.value = true;
   if (record?.id) {
@@ -1548,10 +1632,15 @@ const resetLine = () =>
     capacity_remaining: -1,
     image_ids: []
   });
+// 注意：resetLine 之后要同步重置功能开关，否则新增线路会带着上一条的开关状态
+const resetLineWithFlags = () => {
+  resetLine();
+  resetLineFeatureFlags();
+};
 
 const submitLine = async () => {
   const imageIDs = Array.isArray(lineForm.image_ids) ? lineForm.image_ids : [];
-  const payload = normalizeLinePayload(lineForm);
+  const payload = { ...normalizeLinePayload(lineForm), feature_flags: collectLineFeatureFlags() };
   let res;
   if (lineForm.id) {
     res = await updateLine(lineForm.id, payload);

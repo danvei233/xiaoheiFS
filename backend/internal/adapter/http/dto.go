@@ -73,6 +73,12 @@ type PlanGroupDTO struct {
 	Visible           bool    `json:"visible"`
 	CapacityRemaining int     `json:"capacity_remaining"`
 	SortOrder         int     `json:"sort_order"`
+	// FeatureFlags 线路级插件功能开关（仅包含被显式切换过的键），取值：
+	//   "off"   关闭，能力列表移除，前端整块 tab 不显示；
+	//   "read"  只读，tab 可见但禁止创建/修改/删除；
+	//   "write" 完全可用；
+	// 缺省表示跟随该功能的默认策略。
+	FeatureFlags featureFlagMap `json:"feature_flags,omitempty"`
 }
 
 type PackageDTO struct {
@@ -328,7 +334,10 @@ type VPSCapabilitiesDTO struct {
 }
 
 type VPSAutomationCapabilityDTO struct {
-	Features            []string          `json:"features"`
+	Features []string `json:"features"`
+	// ReadonlyFeatures 是 Features 的子集：这些功能对用户只读，
+	// 前端隐藏创建/修改/删除入口，后端拒绝一切写操作。
+	ReadonlyFeatures    []string          `json:"readonly_features,omitempty"`
 	NotSupportedReasons map[string]string `json:"not_supported_reasons,omitempty"`
 }
 

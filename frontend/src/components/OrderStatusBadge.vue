@@ -3,21 +3,23 @@
 </template>
 
 <script setup>
+import { computed } from "vue";
 import StatusTag from "@/components/StatusTag.vue";
+import { t } from "@/locales";
 
 defineProps({
   status: { type: String, default: "" }
 });
 
-const textMap = {
-  draft: "草稿",
-  pending_payment: "待支付",
-  pending_review: "待审核",
-  approved: "已通过",
-  provisioning: "开通中",
-  active: "已完成",
-  rejected: "已驳回",
-  canceled: "已取消",
-  failed: "失败"
-};
+const textMap = computed(() => ({
+  draft: t('status.draft'),
+  pending_payment: t('status.pendingPayment'),
+  pending_review: t('status.pendingReview'),
+  approved: t('status.approved'),
+  provisioning: t('status.provisioning'),
+  active: t('status.activeService'),
+  rejected: t('status.rejected'),
+  canceled: t('status.canceled'),
+  failed: t('status.failed')
+}));
 </script>

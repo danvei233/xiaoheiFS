@@ -1,6 +1,12 @@
 <template>
-  <a-config-provider :theme="darkTheme">
-    <div class="auth-page register-page console-dark">
+    <div class="auth-page register-page">
+      <header class="auth-topbar">
+        <router-link to="/" class="auth-topbar-brand">
+          <SiteLogoMedia :size="22" />
+          <span>{{ site.siteName }}</span>
+        </router-link>
+        <AppearanceSettings />
+      </header>
       <div class="auth-shell">
         <div class="auth-banner register-banner">
           <div class="banner-content">
@@ -9,36 +15,36 @@
             </div>
             <div class="banner-text">
               <p class="banner-eyebrow">XIAOHEI CLOUD</p>
-              <h1 class="banner-title">注册账户</h1>
-              <p class="banner-desc">开启您的云端之旅</p>
+              <h1 class="banner-title">{{ t('auth.registerTitle') }}</h1>
+              <p class="banner-desc">{{ t('auth.bannerDesc') }}</p>
             </div>
             <div class="banner-divider"></div>
             <div class="banner-stats">
               <div class="stat-item">
                 <span class="stat-value">99.9%</span>
-                <span class="stat-label">服务可用性</span>
+                <span class="stat-label">{{ t('auth.availability') }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-value">100+</span>
-                <span class="stat-label">数据中心</span>
+                <span class="stat-label">{{ t('auth.dataCenters') }}</span>
               </div>
               <div class="stat-item">
                 <span class="stat-value">24/7</span>
-                <span class="stat-label">技术支持</span>
+                <span class="stat-label">{{ t('auth.techSupport') }}</span>
               </div>
             </div>
           </div>
         </div>
         <a-card class="auth-card register-card" :bordered="false">
         <div class="card-header">
-          <h2 class="section-title">创建账户</h2>
-          <p class="register-subtitle">填写以下信息完成注册</p>
+          <h2 class="section-title">{{ t('auth.createAccount') }}</h2>
+          <p class="register-subtitle">{{ t('auth.registerSubtitle') }}</p>
         </div>
         <a-alert
           v-if="!settings.register_enabled"
           type="warning"
           show-icon
-          message="当前已关闭注册"
+          :message="t('auth.registrationClosed')"
           style="margin-bottom: 16px"
         />
         <a-form :model="form" layout="vertical" @finish="onSubmit" class="register-form">
@@ -47,15 +53,15 @@
             v-model:activeKey="activeRegisterTab"
             class="register-tabs"
           >
-            <a-tab-pane key="email" tab="邮箱注册" />
-            <a-tab-pane key="sms" tab="手机号注册" />
+            <a-tab-pane key="email" :tab="t('auth.emailTab')" />
+            <a-tab-pane key="sms" :tab="t('auth.smsTab')" />
           </a-tabs>
           <a-form-item
-            label="用户名"
+            :label="t('common.username')"
             name="username"
-            :rules="[{ required: isRequired('username'), message: '请输入用户名' }]"
+            :rules="[{ required: isRequired('username'), message: t('auth.usernameRequired') }]"
           >
-            <a-input v-model:value="form.username" placeholder="请输入用户名" size="large">
+            <a-input v-model:value="form.username" :placeholder="t('auth.usernamePlaceholder')" size="large">
               <template #prefix>
                 <UserOutlined />
               </template>
@@ -63,18 +69,18 @@
           </a-form-item>
           <a-form-item
             v-if="showEmailField"
-            :label="verifyChannel === 'email' ? '邮箱' : '邮箱（选填）'"
+            :label="verifyChannel === 'email' ? t('common.email') : t('auth.emailOptional')"
             name="email"
-            :rules="[{ required: verifyChannel === 'email', message: '请输入邮箱' }]"
+            :rules="[{ required: verifyChannel === 'email', message: t('auth.emailRequired') }]"
           >
-            <a-input v-model:value="form.email" placeholder="请输入邮箱地址" size="large">
+            <a-input v-model:value="form.email" :placeholder="t('auth.emailPlaceholder')" size="large">
               <template #prefix>
                 <MailOutlined />
               </template>
             </a-input>
           </a-form-item>
-          <a-form-item v-if="showField('qq')" label="QQ" name="qq" :rules="[{ required: isRequired('qq'), message: '请输入QQ' }]">
-            <a-input v-model:value="form.qq" placeholder="请输入QQ号" size="large">
+          <a-form-item v-if="showField('qq')" label="QQ" name="qq" :rules="[{ required: isRequired('qq'), message: t('auth.qqRequired') }]">
+            <a-input v-model:value="form.qq" :placeholder="t('auth.qqPlaceholder')" size="large">
               <template #prefix>
                 <QqOutlined />
               </template>
@@ -82,22 +88,22 @@
           </a-form-item>
           <a-form-item
             v-if="showPhoneField"
-            label="手机号"
+            :label="t('common.phone')"
             name="phone"
-            :rules="[{ required: isRequired('phone') || verifyChannel === 'sms', message: '请输入手机号' }]"
+            :rules="[{ required: isRequired('phone') || verifyChannel === 'sms', message: t('auth.phoneRequired') }]"
           >
-            <a-input v-model:value="form.phone" placeholder="请输入手机号" size="large">
+            <a-input v-model:value="form.phone" :placeholder="t('auth.phonePlaceholder')" size="large">
               <template #prefix>
                 <PhoneOutlined />
               </template>
             </a-input>
           </a-form-item>
           <a-form-item
-            label="密码"
+            :label="t('common.password')"
             name="password"
-            :rules="[{ required: isRequired('password'), message: '请输入密码' }]"
+            :rules="[{ required: isRequired('password'), message: t('auth.passwordRequired') }]"
           >
-            <a-input-password v-model:value="form.password" placeholder="请设置登录密码" size="large">
+            <a-input-password v-model:value="form.password" :placeholder="t('auth.passwordSetPlaceholder')" size="large">
               <template #prefix>
                 <LockOutlined />
               </template>
@@ -105,119 +111,64 @@
           </a-form-item>
           <a-form-item
             v-if="settings.register_captcha_enabled"
-            :label="settings.captcha_provider === 'geetest' ? '行为验证码' : '图形验证码'"
+            :label="settings.captcha_provider === 'geetest' ? t('auth.behaviorCaptcha') : t('auth.imageCaptcha')"
             name="captcha_code"
-            :rules="settings.captcha_provider === 'geetest' ? [] : [{ required: true, message: '请输入验证码' }]"
+            :rules="settings.captcha_provider === 'geetest' ? [] : [{ required: true, message: t('auth.captchaRequired') }]"
           >
             <div v-if="settings.captcha_provider !== 'geetest'" class="captcha">
-              <a-input v-model:value="form.captcha_code" placeholder="请输入验证码" size="large" class="captcha-input" />
+              <a-input v-model:value="form.captcha_code" :placeholder="t('auth.captchaPlaceholder')" size="large" class="captcha-input" />
               <div class="captcha-img" @click="refreshCaptcha">
                 <img v-if="captchaImage" :src="captchaImage" alt="captcha" />
-                <span v-else>加载中</span>
+                <span v-else>{{ t('common.loading') }}</span>
               </div>
             </div>
             <div v-else class="captcha-geetest">
               <a-button @click="verifyGeeTest" :disabled="!geetest.ready" :loading="geetest.loading" block>
-                {{ geetest.passed ? "已通过验证，点击重试" : "点击完成极验验证" }}
+                {{ geetest.passed ? t('auth.geetestPassed') : t('auth.geetestClick') }}
               </a-button>
-              <span class="captcha-geetest-status">{{ geetest.passed ? "验证通过" : "未验证" }}</span>
+              <span class="captcha-geetest-status">{{ geetest.passed ? t('auth.geetestVerified') : t('auth.geetestUnverified') }}</span>
             </div>
           </a-form-item>
           <a-form-item
             v-if="verifyChannels.length > 0"
-            :label="verifyChannel === 'email' ? '邮箱验证码' : '短信验证码'"
+            :label="verifyChannel === 'email' ? t('auth.verifyCodeEmail') : t('auth.verifyCodeSms')"
             name="verify_code"
-            :rules="[{ required: true, message: '请输入验证码' }]"
+            :rules="[{ required: true, message: t('auth.captchaRequired') }]"
           >
             <div class="verify-code">
-              <a-input v-model:value="form.verify_code" placeholder="请输入验证码" size="large" class="verify-input" />
+              <a-input v-model:value="form.verify_code" :placeholder="t('auth.captchaPlaceholder')" size="large" class="verify-input" />
               <a-button :disabled="sendCooling || !canSendCode" @click="sendCode" size="large" class="verify-btn">
-                {{ sendCooling ? `${sendCount}s` : "获取验证码" }}
+                {{ sendCooling ? `${sendCount}s` : t('auth.getCode') }}
               </a-button>
             </div>
           </a-form-item>
           <a-button type="primary" html-type="submit" block :loading="loading" size="large" class="submit-btn">
-            立即注册
+            {{ t('auth.registerButton') }}
           </a-button>
         </a-form>
         <div class="auth-footer">
-          <span>已有账号？</span>
-          <router-link to="/login" class="login-link">立即登录</router-link>
+          <span>{{ t('auth.haveAccount') }}</span>
+          <router-link to="/login" class="login-link">{{ t('auth.loginNow') }}</router-link>
         </div>
       </a-card>
     </div>
   </div>
-  </a-config-provider>
 </template>
 
 <script setup>
 import { reactive, ref, onMounted, computed, watch } from "vue";
-import { message, ConfigProvider, theme } from "ant-design-vue";
+import { message } from "ant-design-vue";
+import AppearanceSettings from "@/components/AppearanceSettings.vue";
 import { UserOutlined, MailOutlined, LockOutlined, PhoneOutlined, QqOutlined } from "@ant-design/icons-vue";
 import { getCaptcha, userRegister, getAuthSettings, requestRegisterCode } from "@/services/user";
 import { useRouter } from "vue-router";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
+import { useSiteStore } from "@/stores/site";
 import { INPUT_LIMITS } from "@/constants/inputLimits";
+import { t } from "@/locales";
 
 const router = useRouter();
-
-const darkTheme = {
-  algorithm: theme.darkAlgorithm,
-  token: {
-    colorPrimary: '#3b82f6',
-    colorBgBase: '#1e2433',
-    colorBgContainer: '#1e2433',
-    colorBgElevated: '#252b3d',
-    colorBorder: '#2d3748',
-    colorText: '#f1f5f9',
-    colorTextSecondary: '#94a3b8',
-    colorTextTertiary: '#64748b',
-    colorTextQuaternary: '#4a5568',
-    colorBorderSecondary: '#374151',
-    colorFillAlter: '#252b3d',
-    colorFillContent: '#252b3d',
-    colorFillTextHover: 'rgba(59, 130, 246, 0.08)',
-    colorFill: '#252b3d',
-    colorFillTertiary: '#2d3748',
-    colorBgLayout: '#0f1419',
-    colorBgSpotlight: '#252b3d',
-    borderRadius: 8,
-    fontSize: 14,
-    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto',
-  },
-  components: {
-    Input: {
-      colorBgContainer: '#252b3d',
-      colorBorder: '#2d3748',
-      colorTextPlaceholder: '#64748b',
-      colorText: '#f1f5f9',
-    },
-    InputNumber: {
-      colorBgContainer: '#252b3d',
-      colorBorder: '#2d3748',
-    },
-    Select: {
-      colorBgElevated: '#252b3d',
-      colorBgSpotlight: '#2d3748',
-    },
-    Button: {
-      colorPrimary: '#3b82f6',
-      colorPrimaryHover: '#60a5fa',
-      colorPrimaryActive: '#2563eb',
-      colorBgTextHover: 'rgba(59, 130, 246, 0.08)',
-    },
-    Alert: {
-      colorWarningBg: 'rgba(245, 158, 11, 0.15)',
-      colorWarningBorder: 'rgba(245, 158, 11, 0.3)',
-      colorWarningText: '#fbbf24',
-    },
-    Tabs: {
-      inkBarColor: '#3b82f6',
-      itemActiveColor: '#3b82f6',
-      itemSelectedColor: '#3b82f6',
-    },
-  },
-};
+const site = useSiteStore();
 
 const loading = ref(false);
 const captchaId = ref("");
@@ -334,19 +285,19 @@ const initGeeTest = async (captchaID) => {
         });
         captchaObj.onError(() => {
           resetGeeTestResult();
-          message.error("极验初始化失败");
+          message.error(t('auth.geetestInitFailed'));
         });
         resolve(true);
       }
     );
   }).catch(() => {
-    message.error("极验脚本加载失败");
+    message.error(t('auth.geetestScriptFailed'));
   });
 };
 
 const verifyGeeTest = async () => {
   if (!geetest.widget || !geetest.ready) {
-    message.warning("极验尚未就绪，请稍后");
+    message.warning(t('auth.geetestNotReady'));
     return;
   }
   geetest.loading = true;
@@ -405,7 +356,7 @@ watch(verifyChannel, (v) => {
 const sendCode = async () => {
   if (!canSendCode.value || sendCooling.value) return;
   if (settings.register_captcha_enabled && settings.captcha_provider === "geetest" && !geetest.passed) {
-    message.warning("请先完成极验验证");
+    message.warning(t('auth.completeGeetest'));
     return;
   }
   sendCooling.value = true;
@@ -422,7 +373,7 @@ const sendCode = async () => {
       pass_token: geetest.pass_token,
       gen_time: geetest.gen_time
     });
-    message.success("验证码已发送");
+    message.success(t('auth.codeSent'));
     form.captcha_code = "";
     await refreshCaptcha();
     sendTimer = setInterval(() => {
@@ -434,7 +385,7 @@ const sendCode = async () => {
       }
     }, 1000);
   } catch (error) {
-    message.error("发送失败，请稍后重试");
+    message.error(t('auth.sendFailed'));
     sendCooling.value = false;
     await refreshCaptcha();
   }
@@ -444,31 +395,31 @@ const onSubmit = async () => {
   loading.value = true;
   try {
     if (!settings.register_enabled) {
-      message.warning("当前已关闭注册");
+      message.warning(t('auth.registrationClosed'));
       return;
     }
     if (String(form.username || "").length > INPUT_LIMITS.USERNAME) {
-      message.error(`用户名长度不能超过 ${INPUT_LIMITS.USERNAME} 个字符`);
+      message.error(t('auth.usernameTooLong', { n: INPUT_LIMITS.USERNAME }));
       return;
     }
     if (String(form.email || "").length > INPUT_LIMITS.EMAIL) {
-      message.error(`邮箱长度不能超过 ${INPUT_LIMITS.EMAIL} 个字符`);
+      message.error(t('auth.emailTooLong', { n: INPUT_LIMITS.EMAIL }));
       return;
     }
     if (String(form.qq || "").length > INPUT_LIMITS.QQ) {
-      message.error(`QQ 长度不能超过 ${INPUT_LIMITS.QQ} 个字符`);
+      message.error(t('auth.qqTooLong', { n: INPUT_LIMITS.QQ }));
       return;
     }
     if (String(form.phone || "").length > INPUT_LIMITS.PHONE) {
-      message.error(`手机号长度不能超过 ${INPUT_LIMITS.PHONE} 个字符`);
+      message.error(t('auth.phoneTooLong', { n: INPUT_LIMITS.PHONE }));
       return;
     }
     if (String(form.password || "").length > INPUT_LIMITS.PASSWORD) {
-      message.error(`密码长度不能超过 ${INPUT_LIMITS.PASSWORD} 个字符`);
+      message.error(t('auth.passwordTooLong', { n: INPUT_LIMITS.PASSWORD }));
       return;
     }
     if (settings.register_captcha_enabled && settings.captcha_provider === "geetest" && !geetest.passed) {
-      message.warning("请先完成极验验证");
+      message.warning(t('auth.completeGeetest'));
       return;
     }
     await userRegister({
@@ -486,7 +437,7 @@ const onSubmit = async () => {
       gen_time: geetest.gen_time,
       verify_code: form.verify_code
     });
-    message.success("注册成功，请登录");
+    message.success(t('auth.registerSuccess'));
     router.replace("/login");
   } finally {
     loading.value = false;
@@ -498,12 +449,49 @@ onMounted(loadSettings);
 
 <style scoped>
 .auth-page {
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  background: var(--bg-primary);
+  padding: 88px 24px 40px;
+  background: var(--theme-canvas, var(--bg-primary));
+  color: var(--text-primary);
+}
+
+.auth-topbar {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 64px;
+  padding-inline: clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  color: var(--text-primary);
+  backdrop-filter: var(--theme-backdrop, blur(12px));
+  -webkit-backdrop-filter: var(--theme-backdrop, blur(12px));
+}
+
+.auth-topbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.auth-topbar-brand > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .auth-shell {
@@ -519,8 +507,8 @@ onMounted(loadSettings);
 
 .auth-banner {
   padding: 0;
-  background: #1a1f2e;
-  color: #fff;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -535,9 +523,9 @@ onMounted(loadSettings);
   right: 0;
   bottom: 0;
   background:
-    radial-gradient(circle at 20% 30%, rgba(59, 130, 246, 0.04) 0%, transparent 40%),
-    radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.03) 0%, transparent 35%),
-    radial-gradient(circle at 60% 80%, rgba(59, 130, 246, 0.02) 0%, transparent 30%);
+    radial-gradient(circle at 20% 30%, var(--theme-accent-soft) 0%, transparent 40%),
+    radial-gradient(circle at 80% 20%, var(--theme-accent-soft) 0%, transparent 35%),
+    radial-gradient(circle at 60% 80%, var(--theme-accent-soft) 0%, transparent 30%);
   pointer-events: none;
 }
 
@@ -549,8 +537,8 @@ onMounted(loadSettings);
   right: 0;
   bottom: 0;
   background-image:
-    linear-gradient(45deg, transparent 48%, rgba(59, 130, 246, 0.015) 50%, transparent 52%),
-    linear-gradient(-45deg, transparent 48%, rgba(59, 130, 246, 0.015) 50%, transparent 52%);
+    linear-gradient(45deg, transparent 48%, var(--theme-accent-soft) 50%, transparent 52%),
+    linear-gradient(-45deg, transparent 48%, var(--theme-accent-soft) 50%, transparent 52%);
   background-size: 60px 60px;
   pointer-events: none;
   opacity: 0.5;
@@ -570,11 +558,11 @@ onMounted(loadSettings);
   width: 48px;
   height: 48px;
   border-radius: var(--radius-md);
-  background: rgba(59, 130, 246, 0.15);
+  background: var(--theme-accent-soft);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #3b82f6;
+  color: var(--primary);
 }
 
 .banner-text {
@@ -589,27 +577,27 @@ onMounted(loadSettings);
   font-weight: 600;
   letter-spacing: 2px;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
 }
 
 .banner-title {
   margin: 0;
   font-size: 24px;
   font-weight: 700;
-  color: #fff;
+  color: var(--text-primary);
   letter-spacing: -0.5px;
 }
 
 .banner-desc {
   margin: 0;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
 .banner-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
 }
 
 .banner-stats {
@@ -627,12 +615,12 @@ onMounted(loadSettings);
 .stat-value {
   font-size: 20px;
   font-weight: 700;
-  color: #3b82f6;
+  color: var(--primary);
 }
 
 .stat-label {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
 }
 
 .auth-card {
@@ -648,15 +636,6 @@ onMounted(loadSettings);
 
 .register-card :deep(.ant-card-body) {
   background: var(--card) !important;
-}
-
-.register-card :deep(.ant-alert-warning) {
-  background: rgba(245, 158, 11, 0.15);
-  border-color: rgba(245, 158, 11, 0.3);
-}
-
-.register-card :deep(.ant-alert-warning .ant-alert-message) {
-  color: #fbbf24;
 }
 
 .card-header {
@@ -739,15 +718,15 @@ onMounted(loadSettings);
 .register-form :deep(select:-webkit-autofill),
 .register-form :deep(select:-webkit-autofill:hover),
 .register-form :deep(select:-webkit-autofill:focus) {
-  -webkit-box-shadow: 0 0 0 30px #252b3d inset !important;
-  -webkit-text-fill-color: #f1f5f9 !important;
+  -webkit-box-shadow: 0 0 0 30px var(--bg-primary) inset !important;
+  -webkit-text-fill-color: var(--text-primary) !important;
   transition: background-color 5000s ease-in-out 0s;
-  caret-color: #f1f5f9;
+  caret-color: var(--text-primary);
 }
 
 .register-form :deep(input:-webkit-autofill::first-line),
 .register-form :deep(textarea:-webkit-autofill::first-line) {
-  color: #f1f5f9 !important;
+  color: var(--text-primary) !important;
   font-size: 14px;
 }
 
@@ -762,12 +741,12 @@ onMounted(loadSettings);
 .register-form :deep(.ant-input-password:focus),
 .register-form :deep(.ant-select-focused .ant-select-selector) {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px var(--theme-accent-soft);
 }
 
 .register-form :deep(.ant-input-affix-wrapper-focused),
 .register-form :deep(.ant-input-password-focused) {
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px var(--theme-accent-soft);
 }
 
 .register-form :deep(.ant-input-affix-wrapper > .ant-input),
@@ -794,7 +773,7 @@ onMounted(loadSettings);
 }
 
 .register-form :deep(.ant-btn-primary:hover) {
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 50%, #1e40af 100%);
+  background: var(--primary-hover);
   box-shadow: var(--shadow-lg), var(--shadow-glow);
 }
 

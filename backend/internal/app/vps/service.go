@@ -18,10 +18,22 @@ type (
 	AutomationSnapshot           = appshared.AutomationSnapshot
 	AutomationBackup             = appshared.AutomationBackup
 	AutomationFirewallRule       = appshared.AutomationFirewallRule
+	AutomationFirewallState      = appshared.AutomationFirewallState
 	AutomationFirewallRuleCreate = appshared.AutomationFirewallRuleCreate
 	AutomationPortMapping        = appshared.AutomationPortMapping
 	AutomationPortMappingCreate  = appshared.AutomationPortMappingCreate
 	AutomationMonitor            = appshared.AutomationMonitor
+	AutomationNetworkCard        = appshared.AutomationNetworkCard
+	AutomationNetworkCardInput   = appshared.AutomationNetworkCardInput
+	AutomationDataDisk           = appshared.AutomationDataDisk
+	AutomationISO                = appshared.AutomationISO
+	AutomationISOInput           = appshared.AutomationISOInput
+	AutomationReverseProxy       = appshared.AutomationReverseProxy
+	AutomationReverseProxyInput  = appshared.AutomationReverseProxyInput
+	AutomationBootOption         = appshared.AutomationBootOption
+	AutomationPCIDevice          = appshared.AutomationPCIDevice
+	AutomationUSBDevice          = appshared.AutomationUSBDevice
+	AutomationPassthroughInput   = appshared.AutomationPassthroughInput
 )
 
 type Service struct {
@@ -301,7 +313,7 @@ func (s *Service) ListSnapshots(ctx context.Context, inst domain.VPSInstance) ([
 	return cli.ListSnapshots(ctx, hostID)
 }
 
-func (s *Service) CreateSnapshot(ctx context.Context, inst domain.VPSInstance) error {
+func (s *Service) CreateSnapshot(ctx context.Context, inst domain.VPSInstance, name string, description string) error {
 	hostID := parseHostID(inst.AutomationInstanceID)
 	if hostID == 0 {
 		return appshared.ErrInvalidInput
@@ -310,7 +322,7 @@ func (s *Service) CreateSnapshot(ctx context.Context, inst domain.VPSInstance) e
 	if err != nil {
 		return err
 	}
-	return cli.CreateSnapshot(ctx, hostID)
+	return cli.CreateSnapshot(ctx, hostID, strings.TrimSpace(name), strings.TrimSpace(description))
 }
 
 func (s *Service) DeleteSnapshot(ctx context.Context, inst domain.VPSInstance, snapshotID int64) error {
@@ -385,16 +397,41 @@ func (s *Service) RestoreBackup(ctx context.Context, inst domain.VPSInstance, ba
 	return cli.RestoreBackup(ctx, hostID, backupID)
 }
 
-func (s *Service) ListFirewallRules(ctx context.Context, inst domain.VPSInstance) ([]AutomationFirewallRule, error) {
+func (s *Service) ListFirewallRules(ctx context.Context, inst domain.VPSInstance) ([]AutomationFirewallRule, AutomationFirewallState, error) {
 	hostID := parseHostID(inst.AutomationInstanceID)
 	if hostID == 0 {
-		return nil, appshared.ErrInvalidInput
+		return nil, nil, appshared.ErrInvalidInput
 	}
 	cli, err := s.client(ctx, inst.GoodsTypeID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return cli.ListFirewallRules(ctx, hostID)
+}
+
+func (s *Service) UpdateFirewallRule(ctx context.Context, inst domain.VPSInstance, ruleID int64, req AutomationFirewallRuleCreate) error {
+	hostID := parseHostID(inst.AutomationInstanceID)
+	if hostID == 0 || ruleID <= 0 {
+		return appshared.ErrInvalidInput
+	}
+	req.HostID = hostID
+	cli, err := s.client(ctx, inst.GoodsTypeID)
+	if err != nil {
+		return err
+	}
+	return cli.UpdateFirewallRule(ctx, hostID, ruleID, req)
+}
+
+func (s *Service) SetFirewallOptions(ctx context.Context, inst domain.VPSInstance, enable bool, policyIn string, policyOut string) error {
+	hostID := parseHostID(inst.AutomationInstanceID)
+	if hostID == 0 {
+		return appshared.ErrInvalidInput
+	}
+	cli, err := s.client(ctx, inst.GoodsTypeID)
+	if err != nil {
+		return err
+	}
+	return cli.SetFirewallOptions(ctx, hostID, enable, strings.TrimSpace(policyIn), strings.TrimSpace(policyOut))
 }
 
 func (s *Service) AddFirewallRule(ctx context.Context, inst domain.VPSInstance, req AutomationFirewallRuleCreate) error {

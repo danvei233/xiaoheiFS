@@ -2,35 +2,12 @@
   <a-config-provider
     :theme="{
       algorithm: isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
-      token: isDarkMode ? {
-        colorPrimary: '#3b82f6',
-        colorBgContainer: '#1e2433',
-        colorBgLayout: '#0f1419',
-        colorBorder: '#2d3748',
-        colorText: '#f1f5f9',
-        colorTextSecondary: '#94a3b8'
-      } : {
-        colorPrimary: '#0066FF'
-      }
+      token: app.themeTokens
     }"
   >
-    <div class="console-layout">
+    <div class="console-layout" :dir="direction">
       <!-- Sidebar -->
       <aside class="sidebar" :class="{ 'sidebar-collapsed': collapsed }">
-        <div class="sidebar-header">
-          <div class="brand-wrapper">
-            <div class="brand-logo">
-              <SiteLogoMedia :size="collapsed ? 24 : 28" />
-            </div>
-            <transition name="fade-slide">
-              <div v-if="!collapsed" class="brand-info">
-                <h1 class="brand-title">{{ brandName }}</h1>
-                <p class="brand-subtitle">Cloud Console</p>
-              </div>
-            </transition>
-          </div>
-        </div>
-
         <nav class="sidebar-nav">
           <div v-for="group in menuGroups" :key="group.title" class="menu-group">
             <div v-if="!collapsed && group.title" class="menu-group-title">
@@ -48,6 +25,7 @@
                 <transition name="fade-slide">
                   <span v-if="!collapsed" class="menu-label">{{ item.label }}</span>
                 </transition>
+                <span v-if="collapsed" class="menu-short">{{ shortMenuLabel(item.label) }}</span>
                 <transition name="fade-slide">
                   <span v-if="!collapsed && item.badge" class="menu-badge">{{ item.badge }}</span>
                 </transition>
@@ -64,7 +42,7 @@
             <transition name="fade-slide">
               <div v-if="!collapsed" class="user-details">
                 <div class="user-name">{{ displayName }}</div>
-                <div class="user-role">用户</div>
+                <div class="user-role">{{ t('shell.user') }}</div>
               </div>
             </transition>
           </div>
@@ -76,23 +54,33 @@
         <!-- Header -->
         <header class="top-header">
           <div class="header-left">
-            <button class="collapse-btn" @click="collapsed = !collapsed">
+            <button :aria-label="t('shell.toggleMenu')" class="collapse-btn" @click="collapsed = !collapsed">
               <MenuUnfoldOutlined v-if="collapsed" />
               <MenuFoldOutlined v-else />
             </button>
+            <router-link to="/console" class="header-brand">
+              <span class="brand-logo">
+                <SiteLogoMedia :size="26" />
+              </span>
+              <span class="header-brand-text">
+                <span class="brand-title">{{ brandName }}</span>
+                <span class="brand-subtitle">{{ t('nav.console') }}</span>
+              </span>
+            </router-link>
             <div class="header-search">
               <SearchOutlined class="search-icon" />
               <input
                 v-model="searchValue"
                 type="text"
-                placeholder="搜索功能、页面..."
+                :placeholder="t('shell.search')"
+                :aria-label="t('shell.search')"
                 @focus="showSearchResults = true"
                 @blur="handleSearchBlur"
               >
               <kbd v-if="!searchValue" class="search-hint">⌘K</kbd>
               <transition name="dropdown">
                 <div v-if="showSearchResults && (searchValue || searchOptions.length)" class="search-results">
-                  <div v-if="!searchOptions.length" class="search-empty">未找到相关内容</div>
+                  <div v-if="!searchOptions.length" class="search-empty">{{ t('shell.noResults') }}</div>
                   <a v-for="opt in searchOptions" :key="opt.value" href="#" class="search-item" @click.prevent="navigateTo(opt.value)">
                     <component :is="getIconForRoute(opt.value)" class="search-item-icon" />
                     <div class="search-item-content">
@@ -110,21 +98,14 @@
               <!-- Environment Badge -->
               <div class="env-badge">
                 <span class="env-dot"></span>
-                <span>Production</span>
+                <span>{{ t('shell.production') }}</span>
               </div>
 
-              <!-- Theme Toggle -->
-              <button
-                class="icon-btn theme-toggle-btn"
-                @click="toggleTheme"
-                :title="isDarkMode ? '切换到亮色模式' : '切换到暗色模式'"
-              >
-                <BulbOutlined />
-              </button>
+              <AppearanceSettings />
 
               <!-- Notifications -->
               <a-dropdown :trigger="['click']" placement="bottomRight">
-                <button class="icon-btn" @click="fetchNotifications">
+                <button class="icon-btn" :aria-label="t('shell.notifications')" @click="fetchNotifications">
                   <a-badge :count="unreadCount" :offset="[-4, 4]">
                     <BellOutlined />
                   </a-badge>
@@ -132,17 +113,17 @@
                 <template #overlay>
                   <div class="notif-dropdown">
                     <div class="notif-header">
-                      <h3>消息中心</h3>
-                      <a-button type="link" size="small" @click.stop="markAllRead">全部已读</a-button>
+                      <h3>{{ t('shell.notifications') }}</h3>
+                      <a-button type="link" size="small" @click.stop="markAllRead">{{ t('shell.markAllRead') }}</a-button>
                     </div>
                     <a-tabs v-model:activeKey="notifTab" size="small" @change="fetchNotifications">
-                      <a-tab-pane key="unread" tab="未读" />
-                      <a-tab-pane key="read" tab="已读" />
-                      <a-tab-pane key="all" tab="全部" />
+                      <a-tab-pane key="unread" :tab="t('shell.unread')" />
+                      <a-tab-pane key="read" :tab="t('shell.read')" />
+                      <a-tab-pane key="all" :tab="t('shell.all')" />
                     </a-tabs>
                     <div class="notif-list">
                       <a-spin :spinning="notifLoading">
-                        <div v-if="!notifications.length" class="notif-empty">暂无消息</div>
+                        <div v-if="!notifications.length" class="notif-empty">{{ t('shell.noNotifications') }}</div>
                         <div v-for="item in notifications" :key="item.id" class="notif-item" @click="markRead(item)">
                           <div class="notif-icon">
                             <NotificationOutlined />
@@ -162,8 +143,8 @@
               </a-dropdown>
 
               <!-- Help -->
-              <a-tooltip title="帮助中心">
-                <button class="icon-btn" @click="goHelp">
+              <a-tooltip :title="t('nav.help')">
+                <button class="icon-btn" :aria-label="t('nav.help')" @click="goHelp">
                   <QuestionCircleOutlined />
                 </button>
               </a-tooltip>
@@ -184,12 +165,12 @@
                   <a-menu>
                     <a-menu-item @click="goProfile">
                       <UserOutlined />
-                      <span>个人信息</span>
+                      <span>{{ t('nav.profile') }}</span>
                     </a-menu-item>
                     <a-menu-divider />
                     <a-menu-item @click="logout">
                       <LogoutOutlined />
-                      <span>退出登录</span>
+                      <span>{{ t('shell.logout') }}</span>
                     </a-menu-item>
                   </a-menu>
                 </template>
@@ -205,7 +186,7 @@
               <a-breadcrumb>
                 <a-breadcrumb-item>
                   <HomeOutlined />
-                  <span>控制台</span>
+                  <span>{{ t('nav.console') }}</span>
                 </a-breadcrumb-item>
                 <a-breadcrumb-item>{{ breadcrumb }}</a-breadcrumb-item>
               </a-breadcrumb>
@@ -222,7 +203,7 @@
       <!-- Mobile Drawer -->
       <a-drawer
         v-model:open="mobileDrawerOpen"
-        placement="left"
+        :placement="direction === 'rtl' ? 'right' : 'left'"
         :width="280"
         :body-style="{ padding: 0 }"
         :mask-style="{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }"
@@ -261,10 +242,11 @@
 
       <!-- Mobile Header -->
       <div class="mobile-header">
-        <button class="mobile-menu-btn" @click="mobileDrawerOpen = true">
+        <button :aria-label="t('shell.toggleMenu')" class="mobile-menu-btn" @click="mobileDrawerOpen = true">
           <MenuOutlined />
         </button>
         <div class="mobile-brand">{{ brandName }}</div>
+        <AppearanceSettings />
         <a-dropdown>
           <a-avatar :size="32" :src="userAvatar">
             <UserOutlined />
@@ -273,11 +255,11 @@
             <a-menu>
               <a-menu-item @click="goProfile">
                 <UserOutlined />
-                <span>个人信息</span>
+                <span>{{ t('nav.profile') }}</span>
               </a-menu-item>
               <a-menu-item @click="logout">
                 <LogoutOutlined />
-                <span>退出登录</span>
+                <span>{{ t('shell.logout') }}</span>
               </a-menu-item>
             </a-menu>
           </template>
@@ -288,13 +270,16 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAuthStore } from "@/stores/auth";
 import { useSiteStore } from "@/stores/site";
 import { useCartStore } from "@/stores/cart";
 import { useAppStore } from "@/stores/app";
+import { t, locale, direction } from '@/locales';
+import { shortMenuLabel } from '@/lib/menuShort';
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
+import AppearanceSettings from "@/components/AppearanceSettings.vue";
 import { listNotifications, getUnreadCount, markNotificationRead, markAllNotificationsRead } from "@/services/user";
 import { Grid, theme } from "ant-design-vue";
 import {
@@ -305,7 +290,6 @@ import {
   MenuOutlined,
   UserOutlined,
   SearchOutlined,
-  BulbOutlined,
   DashboardOutlined,
   CloudServerOutlined,
   ShoppingCartOutlined,
@@ -334,7 +318,25 @@ const cart = useCartStore();
 const app = useAppStore();
 const screens = Grid.useBreakpoint();
 
-const collapsed = ref(false);
+const SIDEBAR_COLLAPSED_KEY = "console_sidebar_collapsed";
+
+const readCollapsed = () => {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const collapsed = ref(readCollapsed());
+
+watch(collapsed, (value) => {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? "1" : "0");
+  } catch {
+    /* storage unavailable in private mode */
+  }
+});
 const mobileDrawerOpen = ref(false);
 const searchValue = ref('');
 const showSearchResults = ref(false);
@@ -346,39 +348,24 @@ const unreadCount = ref(0);
 const isMobile = computed(() => !screens.value?.lg);
 
 const menuGroups = computed(() => [
-  {
-    title: '',
-    items: [
-      { key: '/console', label: '总览', icon: DashboardOutlined },
-    ]
-  },
-  {
-    title: '云服务',
-    items: [
-      { key: '/console/vps', label: '云服务器', icon: CloudServerOutlined },
-    ]
-  },
-  {
-    title: '订单与财务',
-    items: [
-      { key: '/console/cart', label: '购物车', icon: ShoppingCartOutlined, badge: cartCount.value > 0 ? cartCount.value : null },
-      { key: '/console/orders', label: '订单管理', icon: FileTextOutlined },
-      { key: '/console/billing', label: '钱包充值', icon: WalletOutlined },
-      { key: '/console/api-keys', label: 'API 管理', icon: ApiOutlined },
-    ]
-  },
-  {
-    title: '支持与设置',
-    items: [
-      { key: '/console/tickets', label: '工单中心', icon: CustomerServiceOutlined },
-      { key: '/console/realname', label: '实名认证', icon: SafetyCertificateOutlined },
-      { key: '/console/profile', label: '个人设置', icon: SettingOutlined },
-    ]
-  }
+  { title: '', items: [{ key: '/console', label: t('nav.overview'), icon: DashboardOutlined }] },
+  { title: t('nav.services'), items: [{ key: '/console/vps', label: t('nav.cloud'), icon: CloudServerOutlined }] },
+  { title: t('nav.finance'), items: [
+    { key: '/console/cart', label: t('nav.cart'), icon: ShoppingCartOutlined, badge: cartCount.value > 0 ? cartCount.value : null },
+    { key: '/console/orders', label: t('nav.orders'), icon: FileTextOutlined },
+    { key: '/console/billing', label: t('nav.billing'), icon: WalletOutlined },
+    { key: '/console/api-keys', label: t('nav.api'), icon: ApiOutlined }
+  ] },
+  { title: t('nav.support'), items: [
+    { key: '/console/tickets', label: t('nav.tickets'), icon: CustomerServiceOutlined },
+    { key: '/console/realname', label: t('nav.realname'), icon: SafetyCertificateOutlined },
+    { key: '/console/profile', label: t('nav.profile'), icon: SettingOutlined }
+  ] }
 ]);
 
 const cartCount = computed(() => cart.items?.length || 0);
 
+/** Collapsed rail keeps a two-character abbreviation, mirroring the reference sidebar. */
 const isActive = (path) => {
   if (route.path.startsWith('/console/buy')) return path === '/console/vps';
   if (route.path.startsWith('/console/vps')) return path === '/console/vps';
@@ -392,19 +379,9 @@ const isActive = (path) => {
   return path === '/console';
 };
 
-const labelMap = {
-  "/console": "总览",
-  "/console/vps": "云服务器",
-  "/console/orders": "订单管理",
-  "/console/billing": "钱包充值",
-  "/console/api-keys": "API 管理",
-  "/console/tickets": "工单中心",
-  "/console/realname": "实名认证",
-  "/console/cart": "购物车",
-  "/console/profile": "个人设置"
-};
+const labelMap = computed(() => Object.fromEntries(menuGroups.value.flatMap(group => group.items).map(item => [item.key, item.label])));
 
-const breadcrumb = computed(() => labelMap[selectedKey.value] || "总览");
+const breadcrumb = computed(() => labelMap.value[selectedKey.value] || t('nav.overview'));
 
 const selectedKey = computed(() => {
   if (route.path.startsWith("/console/buy")) return "/console/vps";
@@ -419,8 +396,8 @@ const selectedKey = computed(() => {
   return "/console";
 });
 
-const displayName = computed(() => auth.profile?.username || "用户");
-const brandName = computed(() => site.siteName || "控制台");
+const displayName = computed(() => auth.profile?.username || t('shell.user'));
+const brandName = computed(() => site.siteName || t('nav.console'));
 const userAvatar = computed(() => {
   const qq = auth.profile?.qq;
   if (!qq) return "";
@@ -430,9 +407,7 @@ const userAvatar = computed(() => {
 // Theme
 const isDarkMode = computed(() => app.isDarkMode);
 
-const toggleTheme = () => {
-  app.toggleConsoleTheme();
-};
+const disposeConsoleTheme = app.initConsoleTheme();
 
 const searchOptions = computed(() => {
   const keyword = searchValue.value.trim().toLowerCase();
@@ -501,7 +476,7 @@ const formatTime = (value) => {
   if (!value) return "";
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString("zh-CN", { hour12: false });
+  return dt.toLocaleString(locale.value, { hour12: false });
 };
 
 // Keyboard shortcut for search
@@ -516,7 +491,6 @@ const handleKeydown = (e) => {
 };
 
 onMounted(() => {
-  app.initConsoleTheme();
   if (!auth.profile && auth.token) {
     auth.fetchMe();
   }
@@ -528,12 +502,14 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  disposeConsoleTheme();
   document.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
 <style>
 @import '@/styles/console-dark.css';
+@import '@/theme.css';
 </style>
 
 <style scoped>
@@ -548,60 +524,80 @@ onUnmounted(() => {
 /* ==================== Sidebar ==================== */
 .sidebar {
   position: fixed;
-  left: 0;
-  top: 0;
+  inset-inline-start: 0;
+  top: 64px;
   bottom: 0;
-  width: 240px;
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  width: 188px;
+  background: var(--theme-sidebar, #f8fafc);
   display: flex;
   flex-direction: column;
   z-index: 100;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  border-inline-end: 1px solid var(--border, rgba(0, 0, 0, 0.06));
 }
 
 .sidebar-collapsed {
-  width: 72px;
+  width: 52px;
 }
 
-.sidebar-header {
-  padding: 18px 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-  position: relative;
-  z-index: 1;
+.sidebar-collapsed .sidebar-nav {
+  padding: 8px 6px;
 }
 
-.brand-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.sidebar-collapsed .menu-item {
+  height: auto;
+  min-height: 52px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  margin-bottom: 2px;
+  padding: 6px 0;
+}
+
+.sidebar-collapsed .menu-icon {
+  font-size: 18px;
+}
+
+.sidebar-collapsed .menu-short {
+  display: block;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.sidebar-collapsed .sidebar-footer {
+  padding: 8px 6px;
+}
+
+.sidebar-collapsed .sidebar-user {
+  justify-content: center;
+  padding: 4px 0;
 }
 
 .brand-logo {
-  flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  border-radius: 12px;
   display: flex;
+  width: 32px;
+  height: 32px;
   align-items: center;
   justify-content: center;
-  color: white;
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
-}
-
-.brand-info {
-  flex: 1;
-  min-width: 0;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--primary);
+  color: var(--theme-primary-foreground, #fff);
 }
 
 .brand-title {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 650;
   color: #1e293b;
   margin: 0;
   line-height: 1.2;
   letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brand-subtitle {
@@ -611,6 +607,9 @@ onUnmounted(() => {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==================== Sidebar Navigation ==================== */
@@ -618,7 +617,7 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px 12px;
+  padding: 8px;
   position: relative;
   z-index: 1;
 }
@@ -641,7 +640,7 @@ onUnmounted(() => {
 }
 
 .menu-group {
-  margin-bottom: 20px;
+  margin-bottom: 14px;
 }
 
 .menu-group:last-child {
@@ -649,12 +648,14 @@ onUnmounted(() => {
 }
 
 .menu-group-title {
-  font-size: 10px;
-  font-weight: 700;
-  color: #94a3b8;
-  text-transform: uppercase;
+  padding: 10px 8px 4px;
+  color: var(--theme-sidebar-muted, #8793a3);
+  font-family: var(--font-mono, inherit);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 12px;
   letter-spacing: 0.1em;
-  padding: 0 12px 8px;
+  text-transform: uppercase;
 }
 
 .menu-items {
@@ -664,77 +665,68 @@ onUnmounted(() => {
 }
 
 .menu-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  color: #64748b;
-  text-decoration: none;
-  transition: all 0.2s ease;
   position: relative;
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--theme-sidebar-muted, #64748b);
+  font-size: 13px;
+  font-weight: 450;
+  text-decoration: none;
+  transition: background-color 140ms ease, color 140ms ease;
 }
 
-.menu-item::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 0;
-  background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
-  border-radius: 0 2px 2px 0;
-  transition: height 0.2s ease;
-}
+.menu-item::before { display: none; }
 
 .menu-item:hover {
-  background: rgba(99, 102, 241, 0.08);
-  color: #6366f1;
-}
-
-.menu-item:hover::before {
-  height: 18px;
+  color: var(--theme-sidebar-text, #0f172a);
+  background: var(--theme-hover, rgba(16, 36, 58, 0.06));
 }
 
 .menu-item-active {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0.04) 100%);
-  color: #6366f1;
-  font-weight: 600;
+  color: var(--theme-sidebar-accent, #116c9a);
+  background: var(--theme-sidebar-active, rgba(20, 124, 175, 0.12));
+  font-weight: 550;
 }
 
-.menu-item-active::before {
-  height: 22px;
+.menu-item-active:hover {
+  color: var(--theme-sidebar-accent, #116c9a);
 }
 
 .menu-icon {
-  font-size: 17px;
   flex-shrink: 0;
+  font-size: 15px;
+  color: inherit;
 }
 
 .menu-label {
   flex: 1;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: inherit;
   white-space: nowrap;
 }
 
+.menu-short { display: none; }
+
 .menu-badge {
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 10px;
   min-width: 18px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--theme-primary-foreground, #fff);
+  font-size: 10px;
+  font-weight: 600;
   text-align: center;
-  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.25);
 }
 
 /* ==================== Sidebar Footer ==================== */
 .sidebar-footer {
-  padding: 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 10px;
+  border-top: 1px solid var(--border, rgba(0, 0, 0, 0.06));
   position: relative;
   z-index: 1;
 }
@@ -742,9 +734,9 @@ onUnmounted(() => {
 .sidebar-user {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -763,8 +755,7 @@ onUnmounted(() => {
 }
 
 .user-details {
-  flex: 1;
-  min-width: 0;
+  display: none;
 }
 
 .user-name {
@@ -785,22 +776,24 @@ onUnmounted(() => {
 /* ==================== Main Wrapper ==================== */
 .main-wrapper {
   flex: 1;
-  margin-left: 240px;
+  margin-inline-start: 188px;
+  padding-top: 64px;
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: margin-inline-start 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .sidebar-collapsed + .main-wrapper {
-  margin-left: 72px;
+  margin-inline-start: 52px;
 }
 
 /* ==================== Top Header ==================== */
 .top-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 110;
   height: 64px;
   background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
@@ -810,6 +803,45 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
+}
+
+.header-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+  margin-inline-end: 8px;
+  text-decoration: none;
+}
+
+.header-brand .brand-logo {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+}
+
+.header-brand-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.header-brand .brand-title {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.header-brand .brand-subtitle {
+  overflow: hidden;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-left {
@@ -1208,9 +1240,14 @@ onUnmounted(() => {
 }
 
 .mobile-brand {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
   font-size: 16px;
   font-weight: 700;
-  color: var(--text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobile-drawer :deep(.ant-drawer-content) {
@@ -1351,12 +1388,17 @@ onUnmounted(() => {
     transform: translateX(-100%);
   }
 
+  .console-layout[dir="rtl"] .sidebar {
+    transform: translateX(100%);
+  }
+
   .main-wrapper {
-    margin-left: 0;
+    margin-inline-start: 0;
+    padding-top: 0;
   }
 
   .sidebar-collapsed + .main-wrapper {
-    margin-left: 0;
+    margin-inline-start: 0;
   }
 
   .mobile-header {
@@ -1405,13 +1447,10 @@ onUnmounted(() => {
 }
 
 /* ==================== Dark Mode Overrides ==================== */
-.console-dark .sidebar {
-  background: linear-gradient(180deg, #1a1f2e 0%, #151925 100%);
-  border-right-color: rgba(255, 255, 255, 0.06);
-}
-
+.console-dark .sidebar,
 .console-dark .sidebar-collapsed {
-  background: linear-gradient(180deg, #1a1f2e 0%, #151925 100%);
+  background: var(--theme-sidebar, #151925);
+  border-inline-end-color: var(--border, rgba(255, 255, 255, 0.06));
 }
 
 .console-dark .brand-title {

@@ -155,7 +155,7 @@
                     inactive-text="停用"
                     inline-prompt
                     :disabled="isCatalogReadonly || !hasPermission('region.set_active')"
-                    @change="(v: boolean) => toggleRegionActive(row, v)"
+                    @change="(v: string | number | boolean) => toggleRegionActive(row, Boolean(v))"
                   />
                 </template>
               </ElTableColumn>

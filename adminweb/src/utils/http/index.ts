@@ -299,6 +299,9 @@ const api = {
   put<T>(config: ExtendedAxiosRequestConfig) {
     return retryRequest<T>({ ...config, method: 'PUT' })
   },
+  patch<T>(config: ExtendedAxiosRequestConfig) {
+    return retryRequest<T>({ ...config, method: 'PATCH' })
+  },
   del<T>(config: ExtendedAxiosRequestConfig) {
     return retryRequest<T>({ ...config, method: 'DELETE' })
   },

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	appcoupon "xiaoheiplay/internal/app/coupon"
@@ -48,6 +50,41 @@ type OrderService struct {
 	pricer      userTierPricingResolver
 	userTiers   userTierAutoApprover
 	coupon      couponEngine
+
+	provisionLocksMu sync.Mutex
+	provisionLocks   map[int64]*provisionLock
+}
+
+type provisionLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// lockProvisionOrder serializes provisioning runs for one order so that a
+// repeated retry click cannot create the same upstream host twice.
+func (s *OrderService) lockProvisionOrder(orderID int64) func() {
+	s.provisionLocksMu.Lock()
+	if s.provisionLocks == nil {
+		s.provisionLocks = make(map[int64]*provisionLock)
+	}
+	lock := s.provisionLocks[orderID]
+	if lock == nil {
+		lock = &provisionLock{}
+		s.provisionLocks[orderID] = lock
+	}
+	lock.refs++
+	s.provisionLocksMu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+		s.provisionLocksMu.Lock()
+		lock.refs--
+		if lock.refs == 0 {
+			delete(s.provisionLocks, orderID)
+		}
+		s.provisionLocksMu.Unlock()
+	}
 }
 
 type messageNotifier interface {
@@ -1116,6 +1153,12 @@ func (s *OrderService) RejectOrder(ctx context.Context, adminID int64, orderID i
 }
 
 func (s *OrderService) provisionOrder(orderID int64) {
+	unlock := s.lockProvisionOrder(orderID)
+	defer unlock()
+	s.provisionOrderLocked(orderID)
+}
+
+func (s *OrderService) provisionOrderLocked(orderID int64) {
 	ctx := context.Background()
 	order, err := s.orders.GetOrder(ctx, orderID)
 	if err != nil {
@@ -1272,6 +1315,17 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 	if err != nil {
 		return domain.VPSInstance{}, err
 	}
+	months := item.DurationMonths
+	if months <= 0 {
+		months = 1
+	}
+	expireAt := time.Now().AddDate(0, months, 0)
+	if inst, handled, err := s.resumeProvisionHost(ctx, cli, order, item, expireAt); handled {
+		if err != nil {
+			return domain.VPSInstance{}, err
+		}
+		return inst, nil
+	}
 	plan, err := s.catalog.GetPlanGroup(ctx, pkg.PlanGroupID)
 	if err != nil {
 		return domain.VPSInstance{}, err
@@ -1295,13 +1349,9 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 	hostName := fmt.Sprintf("ecs-%d-%d", order.UserID, time.Now().UnixNano())
 	sysPwd := randomPass(systemPasswordLength)
 	vncPwd := randomPass(vncPasswordLength)
-	months := item.DurationMonths
-	if months <= 0 {
-		months = 1
-	}
-	expireAt := time.Now().AddDate(0, months, 0)
 	req := AutomationCreateHostRequest{
 		LineID:     plan.LineID,
+		ImageID:    img.ImageID,
 		OS:         img.Name,
 		CPU:        cpu,
 		MemoryGB:   mem,
@@ -1313,21 +1363,21 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 		SysPwd:     sysPwd,
 		VNCPwd:     vncPwd,
 	}
+	var hostID int64
 	res, err := cli.CreateHost(ctx, req)
 	if err != nil {
 		s.logAutomation(ctx, order.ID, item.ID, "create_host", req, map[string]any{"error": err.Error()}, false, err.Error())
-		return domain.VPSInstance{}, err
-	}
-	var hostID int64
-	if res.HostID > 0 {
-		hostID = res.HostID
+		// The upstream create is asynchronous: when the host-side RPC deadline
+		// fires the VM may still have been created. Look it up by the requested
+		// host name before treating the order item as failed.
+		hostID = s.findHostIDByName(ctx, cli, hostName)
+		if hostID == 0 {
+			return domain.VPSInstance{}, err
+		}
 	} else {
-		hosts, _ := cli.ListHostSimple(ctx, hostName)
-		for _, h := range hosts {
-			if h.HostName == hostName {
-				hostID = h.ID
-				break
-			}
+		hostID = res.HostID
+		if hostID <= 0 {
+			hostID = s.findHostIDByName(ctx, cli, hostName)
 		}
 	}
 	if hostID == 0 {
@@ -1336,18 +1386,19 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 	}
 	info, err := s.waitHostActive(ctx, cli, hostID, 5, 6*time.Second)
 	if err != nil {
-		if errors.Is(err, ErrProvisioning) {
-			if err := s.ensureProvisioningInstance(ctx, order, item, hostID, hostName, sysPwd, vncPwd, expireAt); err != nil {
-				return domain.VPSInstance{}, err
-			}
-			_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", hostID))
-			s.enqueueProvisionJob(ctx, order.ID, item.ID, hostID, hostName)
-			return domain.VPSInstance{}, ErrProvisioning
+		// The upstream host already exists at this point. Never fail the item
+		// because the host-side RPC timed out or the plugin was slow: keep the
+		// item provisioning and let the async worker finish the job.
+		if !errors.Is(err, ErrProvisioning) {
+			s.logAutomation(ctx, order.ID, item.ID, "hostinfo", map[string]any{"host_id": hostID}, map[string]any{"error": err.Error()}, false, err.Error())
 		}
-		s.logAutomation(ctx, order.ID, item.ID, "hostinfo", map[string]any{"host_id": hostID}, map[string]any{"error": err.Error()}, false, err.Error())
-		return domain.VPSInstance{}, err
+		if err := s.ensureProvisioningInstance(ctx, order, item, hostID, hostName, sysPwd, vncPwd, expireAt); err != nil {
+			return domain.VPSInstance{}, err
+		}
+		_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", hostID))
+		s.enqueueProvisionJob(ctx, order.ID, item.ID, hostID, hostName)
+		return domain.VPSInstance{}, ErrProvisioning
 	}
-	status := MapAutomationState(info.State)
 	accessInfo := mustJSON(map[string]any{
 		"remote_ip":      info.RemoteIP,
 		"panel_password": info.PanelPassword,
@@ -1358,14 +1409,126 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 	if exp == nil {
 		exp = &expireAt
 	}
+	inst, err := s.applyProvisionedInstance(ctx, order, item, hostID, pkg.GoodsTypeID, hostName, accessInfo, *exp, info)
+	if err != nil {
+		return domain.VPSInstance{}, err
+	}
+	s.logAutomation(ctx, order.ID, item.ID, "create_host", req, res.Raw, true, "ok")
+	return inst, nil
+}
+
+// resumeProvisionHost reuses the host that was already created for an order item
+// when provisioning is retried, so a retry never creates a second upstream host
+// unless the previous one actually failed. handled=false means the caller should
+// create a new host.
+func (s *OrderService) resumeProvisionHost(ctx context.Context, cli AutomationClient, order domain.Order, item domain.OrderItem, expireAt time.Time) (domain.VPSInstance, bool, error) {
+	hostID := parseAutomationInstanceID(item.AutomationInstanceID)
+	existingName := ""
+	existingAccess := ""
+	if s.vps != nil {
+		if inst, err := s.vps.GetInstanceByOrderItem(ctx, item.ID); err == nil {
+			existingName = inst.Name
+			existingAccess = inst.AccessInfoJSON
+			if hostID == 0 {
+				hostID = parseAutomationInstanceID(inst.AutomationInstanceID)
+			}
+		}
+	}
+	if hostID == 0 {
+		return domain.VPSInstance{}, false, nil
+	}
+	info, err := cli.GetHostInfo(ctx, hostID)
+	if err != nil {
+		if isAutomationHostGone(err) {
+			s.logAutomation(ctx, order.ID, item.ID, "resume_provision", map[string]any{"host_id": hostID}, map[string]any{"error": err.Error()}, true, "host gone, recreating")
+			return domain.VPSInstance{}, false, nil
+		}
+		// The host exists but cannot be queried right now (plugin timeout, etc.).
+		// Keep polling through the async worker instead of failing the retry.
+		s.logAutomation(ctx, order.ID, item.ID, "resume_provision", map[string]any{"host_id": hostID}, map[string]any{"error": err.Error()}, true, "host query failed, keep polling")
+		if err := s.ensureProvisioningInstance(ctx, order, item, hostID, existingName, "", "", expireAt); err != nil {
+			return domain.VPSInstance{}, true, err
+		}
+		_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", hostID))
+		s.enqueueProvisionJob(ctx, order.ID, item.ID, hostID, existingName)
+		return domain.VPSInstance{}, true, ErrProvisioning
+	}
+	name := strings.TrimSpace(info.HostName)
+	if name == "" {
+		name = existingName
+	}
+	if name == "" {
+		name = fmt.Sprintf("ecs-%d-%d", order.UserID, time.Now().UnixNano())
+	}
+	if isReadyState(info.State) {
+		if info.HostName == "" {
+			info.HostName = name
+		}
+		exp := info.ExpireAt
+		if exp == nil {
+			exp = &expireAt
+		}
+		inst, err := s.applyProvisionedInstance(ctx, order, item, hostID, item.GoodsTypeID, name, mergeAccessInfo(existingAccess, info), *exp, info)
+		if err != nil {
+			return domain.VPSInstance{}, true, err
+		}
+		s.logAutomation(ctx, order.ID, item.ID, "resume_provision", map[string]any{"host_id": hostID}, map[string]any{"state": info.State}, true, "ok")
+		return inst, true, nil
+	}
+	if isProvisionFailedState(info.State) {
+		s.logAutomation(ctx, order.ID, item.ID, "resume_provision", map[string]any{"host_id": hostID}, map[string]any{"state": info.State}, true, "host failed, recreating")
+		return domain.VPSInstance{}, false, nil
+	}
+	if err := s.ensureProvisioningInstance(ctx, order, item, hostID, name, "", "", expireAt); err != nil {
+		return domain.VPSInstance{}, true, err
+	}
+	_ = s.items.UpdateOrderItemAutomation(ctx, item.ID, fmt.Sprintf("%d", hostID))
+	s.enqueueProvisionJob(ctx, order.ID, item.ID, hostID, name)
+	return domain.VPSInstance{}, true, ErrProvisioning
+}
+
+// applyProvisionedInstance writes the automation host result into the local VPS
+// row, updating the existing row for the order item instead of inserting a
+// duplicate when the order is retried.
+func (s *OrderService) applyProvisionedInstance(ctx context.Context, order domain.Order, item domain.OrderItem, hostID, goodsTypeID int64, name, accessInfo string, expireAt time.Time, info AutomationHostInfo) (domain.VPSInstance, error) {
+	status := MapAutomationState(info.State)
+	if strings.TrimSpace(info.HostName) != "" {
+		name = info.HostName
+	}
+	specJSON := setCurrentPeriod(item.SpecJSON, time.Now(), expireAt)
+	if inst, err := s.vps.GetInstanceByOrderItem(ctx, item.ID); err == nil {
+		inst.AutomationInstanceID = fmt.Sprintf("%d", hostID)
+		if goodsTypeID > 0 {
+			inst.GoodsTypeID = goodsTypeID
+		}
+		if strings.TrimSpace(name) != "" {
+			inst.Name = name
+		}
+		inst.Status = status
+		inst.SpecJSON = specJSON
+		inst.AccessInfoJSON = accessInfo
+		if !expireAt.IsZero() {
+			inst.ExpireAt = &expireAt
+		}
+		if err := s.vps.UpdateInstanceLocal(ctx, inst); err != nil {
+			return domain.VPSInstance{}, err
+		}
+		_ = s.vps.UpdateInstanceStatus(ctx, inst.ID, status, info.State)
+		if !expireAt.IsZero() {
+			_ = s.vps.UpdateInstanceExpireAt(ctx, inst.ID, expireAt)
+		}
+		_ = s.vps.UpdateInstanceAccessInfo(ctx, inst.ID, accessInfo)
+		return inst, nil
+	} else if !errors.Is(err, ErrNotFound) {
+		return domain.VPSInstance{}, err
+	}
 	snap := s.buildVPSLocalSnapshot(ctx, order.UserID, item)
-	specJSON := setCurrentPeriod(item.SpecJSON, time.Now(), *exp)
 	inst := domain.VPSInstance{
 		UserID:               order.UserID,
 		OrderItemID:          item.ID,
 		AutomationInstanceID: fmt.Sprintf("%d", hostID),
-		GoodsTypeID:          pkg.GoodsTypeID,
-		Name:                 info.HostName,
+		GoodsTypeID:          goodsTypeID,
+		Name:                 name,
 		Region:               snap.Region,
 		RegionID:             snap.RegionID,
 		LineID:               snap.LineID,
@@ -1382,14 +1545,56 @@ func (s *OrderService) provisionItem(ctx context.Context, order domain.Order, it
 		Status:               status,
 		AutomationState:      info.State,
 		AdminStatus:          domain.VPSAdminStatusNormal,
-		ExpireAt:             exp,
+		ExpireAt:             &expireAt,
 		AccessInfoJSON:       accessInfo,
 	}
 	if err := s.vps.CreateInstance(ctx, &inst); err != nil {
 		return domain.VPSInstance{}, err
 	}
-	s.logAutomation(ctx, order.ID, item.ID, "create_host", req, res.Raw, true, "ok")
 	return inst, nil
+}
+
+func parseAutomationInstanceID(raw string) int64 {
+	id, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
+func (s *OrderService) findHostIDByName(ctx context.Context, cli AutomationClient, hostName string) int64 {
+	tag := strings.TrimSpace(hostName)
+	if tag == "" {
+		return 0
+	}
+	hosts, err := cli.ListHostSimple(ctx, tag)
+	if err != nil {
+		return 0
+	}
+	var partial int64
+	lowerTag := strings.ToLower(tag)
+	for _, h := range hosts {
+		if h.HostName == tag {
+			return h.ID
+		}
+		if partial == 0 && strings.Contains(strings.ToLower(h.HostName), lowerTag) {
+			partial = h.ID
+		}
+	}
+	return partial
+}
+
+func isAutomationHostGone(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, marker := range []string{"not found", "not_found", "no such", "404", "不存在"} {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *OrderService) handleRenew(ctx context.Context, item domain.OrderItem) error {
@@ -2038,6 +2243,11 @@ func (s *OrderService) waitHostActive(ctx context.Context, cli AutomationClient,
 	for i := 0; i < attempts; i++ {
 		info, err := cli.GetHostInfo(ctx, hostID)
 		if err != nil {
+			// Do not burn the whole synchronous wait on a slow plugin call: the
+			// caller hands transitively-failed hosts over to the async worker.
+			if errors.Is(err, appshared.ErrAutomationTransient) {
+				return AutomationHostInfo{}, err
+			}
 			lastErr = err
 		} else {
 			if info.State == 2 || info.State == 3 || info.State == 10 {
@@ -2045,7 +2255,9 @@ func (s *OrderService) waitHostActive(ctx context.Context, cli AutomationClient,
 			}
 			lastErr = ErrProvisioning
 		}
-		time.Sleep(interval)
+		if i < attempts-1 {
+			time.Sleep(interval)
+		}
 	}
 	if lastErr != nil {
 		return AutomationHostInfo{}, lastErr

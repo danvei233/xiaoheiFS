@@ -11,6 +11,8 @@ import (
 )
 
 type fakeAutomationSync struct {
+	testutil.AutomationInfraStub
+
 	areas    []appshared.AutomationArea
 	lines    []appshared.AutomationLine
 	products map[int64][]appshared.AutomationProduct
@@ -47,7 +49,9 @@ func (f fakeAutomationSync) ResetOSPassword(ctx context.Context, hostID int64, p
 func (f fakeAutomationSync) ListSnapshots(ctx context.Context, hostID int64) ([]appshared.AutomationSnapshot, error) {
 	return nil, nil
 }
-func (f fakeAutomationSync) CreateSnapshot(ctx context.Context, hostID int64) error { return nil }
+func (f fakeAutomationSync) CreateSnapshot(ctx context.Context, hostID int64, name string, description string) error {
+	return nil
+}
 func (f fakeAutomationSync) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
 	return nil
 }
@@ -64,8 +68,8 @@ func (f fakeAutomationSync) DeleteBackup(ctx context.Context, hostID int64, back
 func (f fakeAutomationSync) RestoreBackup(ctx context.Context, hostID int64, backupID int64) error {
 	return nil
 }
-func (f fakeAutomationSync) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, error) {
-	return nil, nil
+func (f fakeAutomationSync) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, appshared.AutomationFirewallState, error) {
+	return nil, nil, nil
 }
 func (f fakeAutomationSync) AddFirewallRule(ctx context.Context, req appshared.AutomationFirewallRuleCreate) error {
 	return nil

@@ -90,6 +90,11 @@ func (adminRoutesRegistrar) Register(r *gin.Engine, handler *Handler, middleware
 		admin.POST("/lines", handler.AdminLineCreate)
 		admin.PATCH("/plan-groups/:id", handler.AdminPlanGroupUpdate)
 		admin.PATCH("/lines/:id", handler.AdminLineUpdate)
+		// 线路/附加项：插件功能开关（关闭后前端整块 tab 不显示）
+		admin.GET("/plan-groups/:id/features", handler.AdminPlanGroupFeatures)
+		admin.PATCH("/plan-groups/:id/features", handler.AdminPlanGroupFeaturesUpdate)
+		admin.GET("/lines/:id/features", handler.AdminPlanGroupFeatures)
+		admin.PATCH("/lines/:id/features", handler.AdminPlanGroupFeaturesUpdate)
 		admin.POST("/lines/:id/system-images", handler.AdminLineSystemImages)
 		admin.DELETE("/plan-groups/:id", handler.AdminPlanGroupDelete)
 		admin.DELETE("/lines/:id", handler.AdminLineDelete)

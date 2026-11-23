@@ -10,6 +10,10 @@ import (
 )
 
 type FakeAutomationClient struct {
+	// 可选基础设施能力（网卡/数据盘/光盘/反代/启动顺序/PCI/USB）使用统一空实现，
+	// 需要断言的用例在具体测试里自行覆盖对应方法。
+	AutomationInfraStub
+
 	mu sync.Mutex
 
 	CreateHostRequests []appshared.AutomationCreateHostRequest
@@ -185,7 +189,7 @@ func (f *FakeAutomationClient) ListSnapshots(ctx context.Context, hostID int64) 
 	return f.SnapshotList, nil
 }
 
-func (f *FakeAutomationClient) CreateSnapshot(ctx context.Context, hostID int64) error {
+func (f *FakeAutomationClient) CreateSnapshot(ctx context.Context, hostID int64, name string, description string) error {
 	return nil
 }
 
@@ -213,11 +217,15 @@ func (f *FakeAutomationClient) RestoreBackup(ctx context.Context, hostID int64, 
 	return nil
 }
 
-func (f *FakeAutomationClient) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, error) {
-	return f.FirewallList, nil
+func (f *FakeAutomationClient) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, appshared.AutomationFirewallState, error) {
+	return f.FirewallList, appshared.AutomationFirewallState{"enabled": true}, nil
 }
 
 func (f *FakeAutomationClient) AddFirewallRule(ctx context.Context, req appshared.AutomationFirewallRuleCreate) error {
+	return nil
+}
+
+func (f *FakeAutomationClient) UpdateFirewallRule(ctx context.Context, hostID int64, ruleID int64, req appshared.AutomationFirewallRuleCreate) error {
 	return nil
 }
 

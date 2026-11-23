@@ -2,12 +2,13 @@
   <template v-for="(item, index) in filteredMenuItems" :key="getUniqueKey(item, index)">
     <ElSubMenu v-if="hasChildren(item)" :index="item.path || item.meta.title" :level="level">
       <template #title>
-        <div class="menu-icon flex-cc">
+        <div class="menu-icon flex-cc" :data-short="shortLabel(formatMenuTitle(item.meta.title))">
           <ArtSvgIcon
             :icon="item.meta.icon"
             :color="theme?.iconColor"
             :style="{ color: theme.iconColor }"
           />
+          <i class="menu-short">{{ shortLabel(formatMenuTitle(item.meta.title)) }}</i>
         </div>
         <span class="menu-name">
           {{ formatMenuTitle(item.meta.title) }}
@@ -30,12 +31,13 @@
       :level-item="level + 1"
       @click="goPage(item)"
     >
-      <div class="menu-icon flex-cc">
+      <div class="menu-icon flex-cc" :data-short="shortLabel(formatMenuTitle(item.meta.title))">
         <ArtSvgIcon
           :icon="item.meta.icon"
           :color="theme?.iconColor"
           :style="{ color: theme.iconColor }"
         />
+        <i class="menu-short">{{ shortLabel(formatMenuTitle(item.meta.title)) }}</i>
       </div>
       <div
         v-show="item.meta.showBadge && level === 0 && !menuOpen"
@@ -104,6 +106,19 @@
    * 只显示未隐藏的菜单项
    */
   const filteredMenuItems = computed(() => filterRoutes(props.list))
+
+  /** Collapsed rail shows a short label under each icon; Latin acronyms stay whole ("API", "VPS"). */
+  const shortLabel = (label: string) => {
+    const text = String(label || '').trim()
+    if (!text) return ''
+    const latin = text.match(/^[A-Za-z0-9][A-Za-z0-9&+._/-]*/)
+    if (latin) {
+      const token = latin[0].toUpperCase()
+      return token.length <= 3 ? token : token.slice(0, 3)
+    }
+    const cjk = text.match(/[\u4e00-\u9fa5]{2}/)
+    return cjk ? cjk[0] : text.slice(0, 2)
+  }
 
   /**
    * 跳转到指定页面

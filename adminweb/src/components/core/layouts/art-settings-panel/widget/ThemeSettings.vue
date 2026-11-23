@@ -1,28 +1,47 @@
 <template>
-  <SectionTitle :title="$t('setting.theme.title')" />
-  <div class="setting-box-wrap">
-    <div
-      class="setting-item"
-      v-for="(item, index) in configOptions.themeList"
-      :key="item.theme"
-      @click="switchThemeStyles(item.theme)"
-    >
-      <div class="box" :class="{ 'is-active': item.theme === systemThemeMode }">
-        <img :src="item.img" />
-      </div>
-      <p class="name">{{ $t(`setting.theme.list[${index}]`) }}</p>
-    </div>
+  <SectionTitle :title="$t('appearance.title')" />
+  <div class="appearance-setting-summary">
+    <strong>{{ $t(`appearance.${settingStore.appearanceTheme}`) }}</strong>
+    <span>{{ $t('setting.theme.title') }} · {{ currentModeLabel }}</span>
   </div>
 </template>
 
 <script setup lang="ts">
+  import { computed } from 'vue'
+  import { useI18n } from 'vue-i18n'
   import SectionTitle from './SectionTitle.vue'
+  import { SystemThemeEnum } from '@/enums/appEnum'
   import { useSettingStore } from '@/store/modules/setting'
-  import { useSettingsConfig } from '../composables/useSettingsConfig'
-  import { useTheme } from '@/hooks/core/useTheme'
 
   const settingStore = useSettingStore()
-  const { systemThemeMode } = storeToRefs(settingStore)
-  const { configOptions } = useSettingsConfig()
-  const { switchThemeStyles } = useTheme()
+  const { t } = useI18n()
+  const modeIndex: Record<SystemThemeEnum, number> = {
+    [SystemThemeEnum.LIGHT]: 0,
+    [SystemThemeEnum.DARK]: 1,
+    [SystemThemeEnum.AUTO]: 2
+  }
+  const currentModeLabel = computed(() =>
+    t(`setting.theme.list[${modeIndex[settingStore.systemThemeMode]}]`)
+  )
 </script>
+
+<style lang="scss" scoped>
+  .appearance-setting-summary {
+    display: grid;
+    gap: 8px;
+    padding: 12px 14px;
+    background: var(--theme-surface-soft);
+    border: 1px solid var(--theme-border);
+    border-radius: var(--theme-control-radius, 7px);
+  }
+
+  .appearance-setting-summary strong {
+    color: var(--theme-text);
+    font-weight: 600;
+  }
+
+  .appearance-setting-summary span {
+    color: var(--theme-muted-text);
+    font-size: 12px;
+  }
+</style>

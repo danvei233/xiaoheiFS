@@ -46,6 +46,7 @@
 
     <a-card :bordered="false" class="table-card">
       <ProTable
+        plain
         :columns="columns"
         :data-source="orders"
         :loading="loading"

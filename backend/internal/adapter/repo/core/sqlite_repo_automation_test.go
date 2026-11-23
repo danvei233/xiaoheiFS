@@ -106,3 +106,38 @@ func TestSQLiteRepo_ListDueProvisionJobs_WithRFC3339Timezone(t *testing.T) {
 		t.Fatalf("expected timezone due job to be listed")
 	}
 }
+
+func TestSQLiteRepo_CreateOrUpdateProvisionJobRefreshesCreatedAt(t *testing.T) {
+	db, r := newTestRepo(t)
+	ctx := context.Background()
+
+	job := &domain.ProvisionJob{
+		OrderID:     301,
+		OrderItemID: 302,
+		HostID:      303,
+		HostName:    "vm-retry",
+		Status:      "done",
+		NextRunAt:   time.Now().Add(365 * 24 * time.Hour),
+	}
+	if err := r.CreateOrUpdateProvisionJob(ctx, job); err != nil {
+		t.Fatalf("create provision job: %v", err)
+	}
+	old := time.Now().Add(-2 * time.Hour)
+	if _, err := db.ExecContext(ctx, "UPDATE provision_jobs SET created_at = ? WHERE order_item_id = ?", old, job.OrderItemID); err != nil {
+		t.Fatalf("age provision job: %v", err)
+	}
+
+	job.Status = "pending"
+	job.NextRunAt = time.Now()
+	if err := r.CreateOrUpdateProvisionJob(ctx, job); err != nil {
+		t.Fatalf("re-arm provision job: %v", err)
+	}
+
+	var createdAt time.Time
+	if err := db.QueryRowContext(ctx, "SELECT created_at FROM provision_jobs WHERE order_item_id = ?", job.OrderItemID).Scan(&createdAt); err != nil {
+		t.Fatalf("read created_at: %v", err)
+	}
+	if !createdAt.After(old.Add(time.Hour)) {
+		t.Fatalf("created_at not refreshed by retry: %s", createdAt)
+	}
+}

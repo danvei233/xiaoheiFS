@@ -221,7 +221,9 @@ func (h *Handler) AdminPlanGroups(c *gin.Context) {
 		}
 		items = filtered
 	}
-	c.JSON(http.StatusOK, gin.H{"items": toPlanGroupDTOs(items)})
+	dtoItems := toPlanGroupDTOs(items)
+	h.fillPlanGroupFeatureFlags(c, dtoItems)
+	c.JSON(http.StatusOK, gin.H{"items": dtoItems})
 }
 
 func (h *Handler) AdminLines(c *gin.Context) {
@@ -249,7 +251,15 @@ func (h *Handler) AdminPlanGroupCreate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toPlanGroupDTO(plan))
+	if payload.FeatureFlags != nil {
+		if err := h.savePlanGroupFeatureFlags(c, plan.ID, payload.FeatureFlags); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	dto := toPlanGroupDTO(plan)
+	dto.FeatureFlags = h.planGroupFeatureFlags(c, plan.ID)
+	c.JSON(http.StatusOK, dto)
 }
 
 func (h *Handler) AdminLineCreate(c *gin.Context) {
@@ -282,10 +292,11 @@ func (h *Handler) AdminPlanGroupUpdate(c *gin.Context) {
 		AddBWMin          *int     `json:"add_bw_min"`
 		AddBWMax          *int     `json:"add_bw_max"`
 		AddBWStep         *int     `json:"add_bw_step"`
-		Active            *bool    `json:"active"`
-		Visible           *bool    `json:"visible"`
-		CapacityRemaining *int     `json:"capacity_remaining"`
-		SortOrder         *int     `json:"sort_order"`
+		Active            *bool             `json:"active"`
+		Visible           *bool             `json:"visible"`
+		CapacityRemaining *int              `json:"capacity_remaining"`
+		SortOrder         *int              `json:"sort_order"`
+		FeatureFlags      featureFlagMap    `json:"feature_flags"`
 	}
 	if err := bindJSON(c, &payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": domain.ErrInvalidBody.Error()})
@@ -372,7 +383,15 @@ func (h *Handler) AdminPlanGroupUpdate(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, toPlanGroupDTO(plan))
+	if payload.FeatureFlags != nil {
+		if err := h.savePlanGroupFeatureFlags(c, plan.ID, payload.FeatureFlags); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	dto := toPlanGroupDTO(plan)
+	dto.FeatureFlags = h.planGroupFeatureFlags(c, plan.ID)
+	c.JSON(http.StatusOK, dto)
 }
 
 func (h *Handler) AdminLineUpdate(c *gin.Context) {

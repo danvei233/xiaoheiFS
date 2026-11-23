@@ -10,6 +10,7 @@ import (
 	appadminvps "xiaoheiplay/internal/app/adminvps"
 	appshared "xiaoheiplay/internal/app/shared"
 	"xiaoheiplay/internal/domain"
+	"xiaoheiplay/internal/testutil"
 )
 
 func TestAdminService_PermissionGroupsAndProfile(t *testing.T) {
@@ -193,6 +194,8 @@ func TestAdminVPSService_CoreOps(t *testing.T) {
 }
 
 type usecaseTestAutomation struct {
+	testutil.AutomationInfraStub
+
 	hostID int64
 }
 
@@ -248,7 +251,9 @@ func (f *usecaseTestAutomation) ResetOSPassword(ctx context.Context, hostID int6
 func (f *usecaseTestAutomation) ListSnapshots(ctx context.Context, hostID int64) ([]appshared.AutomationSnapshot, error) {
 	return nil, nil
 }
-func (f *usecaseTestAutomation) CreateSnapshot(ctx context.Context, hostID int64) error { return nil }
+func (f *usecaseTestAutomation) CreateSnapshot(ctx context.Context, hostID int64, name string, description string) error {
+	return nil
+}
 func (f *usecaseTestAutomation) DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error {
 	return nil
 }
@@ -265,8 +270,8 @@ func (f *usecaseTestAutomation) DeleteBackup(ctx context.Context, hostID int64, 
 func (f *usecaseTestAutomation) RestoreBackup(ctx context.Context, hostID int64, backupID int64) error {
 	return nil
 }
-func (f *usecaseTestAutomation) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, error) {
-	return nil, nil
+func (f *usecaseTestAutomation) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, appshared.AutomationFirewallState, error) {
+	return nil, nil, nil
 }
 func (f *usecaseTestAutomation) AddFirewallRule(ctx context.Context, req appshared.AutomationFirewallRuleCreate) error {
 	return nil

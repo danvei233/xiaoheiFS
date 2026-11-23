@@ -56,7 +56,42 @@ service AutomationService {
   // Firewall (optional)
   rpc ListFirewallRules(ListFirewallRulesRequest) returns (ListFirewallRulesResponse);
   rpc AddFirewallRule(AddFirewallRuleRequest) returns (OperationResult);
+  rpc UpdateFirewallRule(UpdateFirewallRuleRequest) returns (OperationResult);
   rpc DeleteFirewallRule(DeleteFirewallRuleRequest) returns (OperationResult);
+  rpc SetFirewallOptions(SetFirewallOptionsRequest) returns (OperationResult);
+
+  // Network cards (optional)
+  rpc ListNetworkCards(ListNetworkCardsRequest) returns (ListNetworkCardsResponse);
+  rpc CreateNetworkCard(CreateNetworkCardRequest) returns (OperationResult);
+  rpc UpdateNetworkCard(UpdateNetworkCardRequest) returns (OperationResult);
+  rpc DeleteNetworkCard(DeleteNetworkCardRequest) returns (OperationResult);
+
+  // Data disks (optional)
+  rpc ListDataDisks(ListDataDisksRequest) returns (ListDataDisksResponse);
+  rpc AttachDataDisk(AttachDataDiskRequest) returns (OperationResult);
+  rpc DetachDataDisk(DetachDataDiskRequest) returns (OperationResult);
+  rpc DeleteDataDisk(DeleteDataDiskRequest) returns (OperationResult);
+
+  // ISO images (optional)
+  rpc ListISOs(ListISOsRequest) returns (ListISOsResponse);
+  rpc MountISO(MountISORequest) returns (OperationResult);
+  rpc UnmountISO(UnmountISORequest) returns (OperationResult);
+
+  // Reverse proxy (optional)
+  rpc ListReverseProxies(ListReverseProxiesRequest) returns (ListReverseProxiesResponse);
+  rpc CreateReverseProxy(CreateReverseProxyRequest) returns (OperationResult);
+  rpc UpdateReverseProxy(UpdateReverseProxyRequest) returns (OperationResult);
+  rpc DeleteReverseProxy(DeleteReverseProxyRequest) returns (OperationResult);
+
+  // Boot order (optional)
+  rpc GetBootOrder(GetBootOrderRequest) returns (GetBootOrderResponse);
+  rpc SetBootOrder(SetBootOrderRequest) returns (OperationResult);
+
+  // PCI / USB passthrough (optional)
+  rpc ListPCIDevices(ListPCIDevicesRequest) returns (ListPCIDevicesResponse);
+  rpc SetupPCIDevice(SetupPCIDeviceRequest) returns (OperationResult);
+  rpc ListUSBDevices(ListUSBDevicesRequest) returns (ListUSBDevicesResponse);
+  rpc SetupUSBDevice(SetupUSBDeviceRequest) returns (OperationResult);
 }
 
 message OperationResult {
@@ -244,13 +279,31 @@ message AutomationSnapshot {
   string name = 2;
   int64 created_at_unix = 3;
   int32 state = 4;
+  string description = 5;
+  // current 表示是否为平台当前快照（PVE / libvirt 可回滚到该点）
+  bool current = 6;
+  // platform_state 平台原始状态文本（如 running / shutoff）
+  string platform_state = 7;
 }
 message ListSnapshotsRequest { int64 instance_id = 1; }
 message ListSnapshotsResponse { repeated AutomationSnapshot items = 1; }
-message CreateSnapshotRequest { int64 instance_id = 1; }
+message CreateSnapshotRequest {
+  int64 instance_id = 1;
+  // name 为空时由平台生成默认快照名
+  string name = 2;
+  string description = 3;
+}
 message DeleteSnapshotRequest { int64 instance_id = 1; int64 snapshot_id = 2; }
 message RestoreSnapshotRequest { int64 instance_id = 1; int64 snapshot_id = 2; }
 
+// AutomationFirewallRule 对应平台虚拟机防火墙规则：
+//   - direction 等价 type：in / out
+//   - method    等价 action：ACCEPT / DROP / REJECT
+//   - protocol  等价 proto：tcp / udp / icmp / 空=任意
+//   - ip        等价 source
+//   - port      等价 dport，支持 "80" / "8000:9000"
+//   - priority  等价规则位序 pos（平台按位序求值）
+// 其余字段（dest/sport/comment/macro/iface）按平台原样透传。
 message AutomationFirewallRule {
   int64 id = 1;
   string direction = 2;
@@ -259,9 +312,26 @@ message AutomationFirewallRule {
   string port = 5;
   string ip = 6;
   int32 priority = 7;
+  bool enable = 8;
+  string dest = 9;
+  string sport = 10;
+  string comment = 11;
+  string macro = 12;
+  string iface = 13;
+}
+// AutomationFirewallState 虚拟机防火墙整体状态
+message AutomationFirewallState {
+  bool enabled = 1;
+  string policy_in = 2;
+  string policy_out = 3;
+  bool effective = 4;
+  string platform = 5;
 }
 message ListFirewallRulesRequest { int64 instance_id = 1; }
-message ListFirewallRulesResponse { repeated AutomationFirewallRule items = 1; }
+message ListFirewallRulesResponse {
+  repeated AutomationFirewallRule items = 1;
+  AutomationFirewallState state = 2;
+}
 message AddFirewallRuleRequest {
   int64 instance_id = 1;
   string direction = 2;
@@ -270,5 +340,188 @@ message AddFirewallRuleRequest {
   string port = 5;
   string ip = 6;
   int32 priority = 7;
+  bool enable = 8;
+  string dest = 9;
+  string sport = 10;
+  string comment = 11;
+  string macro = 12;
+  string iface = 13;
+}
+message UpdateFirewallRuleRequest {
+  int64 instance_id = 1;
+  int64 rule_id = 2;
+  string direction = 3;
+  string protocol = 4;
+  string method = 5;
+  string port = 6;
+  string ip = 7;
+  bool enable = 8;
+  string dest = 9;
+  string sport = 10;
+  string comment = 11;
+  string macro = 12;
+  string iface = 13;
 }
 message DeleteFirewallRuleRequest { int64 instance_id = 1; int64 rule_id = 2; }
+message SetFirewallOptionsRequest {
+  int64 instance_id = 1;
+  bool enable = 2;
+  string policy_in = 3;
+  string policy_out = 4;
+}
+
+// ---- 网卡 ----
+// AutomationNetworkCard 对应平台网卡配置（IP / MAC / 网关 / DNS）。
+message AutomationNetworkCard {
+  string nic_name = 1;
+  string nic_type = 2;
+  string mac_addr = 3;
+  string ip4_addr = 4;
+  string ip6_addr = 5;
+  string nic_gate = 6;
+  string nic_mask = 7;
+  repeated string dns_addr = 8;
+  int32 ip6_prefix = 9;
+}
+message ListNetworkCardsRequest { int64 instance_id = 1; }
+message ListNetworkCardsResponse { repeated AutomationNetworkCard items = 1; }
+message CreateNetworkCardRequest {
+  int64 instance_id = 1;
+  AutomationNetworkCard card = 2;
+}
+message UpdateNetworkCardRequest {
+  int64 instance_id = 1;
+  string nic_name = 2;
+  AutomationNetworkCard card = 3;
+}
+message DeleteNetworkCardRequest {
+  int64 instance_id = 1;
+  string nic_name = 2;
+}
+
+// ---- 数据盘 ----
+message AutomationDataDisk {
+  string hdd_name = 1;
+  int32 hdd_size = 2;
+  int32 hdd_flag = 3;
+  int32 hdd_type = 4;
+  string hdd_path = 5;
+  string hdd_scsi = 6;
+}
+message ListDataDisksRequest { int64 instance_id = 1; }
+message ListDataDisksResponse { repeated AutomationDataDisk items = 1; }
+message AttachDataDiskRequest {
+  int64 instance_id = 1;
+  int32 hdd_size = 2;
+  int32 hdd_type = 3;
+}
+message DetachDataDiskRequest {
+  int64 instance_id = 1;
+  string hdd_name = 2;
+}
+message DeleteDataDiskRequest {
+  int64 instance_id = 1;
+  string hdd_name = 2;
+}
+
+// ---- 光盘 ----
+message AutomationISO {
+  string iso_name = 1;
+  string iso_file = 2;
+  string iso_path = 3;
+  string iso_hint = 4;
+}
+message ListISOsRequest { int64 instance_id = 1; }
+message ListISOsResponse {
+  repeated AutomationISO items = 1;
+  // available_isos 为宿主机可挂载的 ISO 镜像文件名，供前端下拉选择
+  repeated string available_isos = 2;
+}
+message MountISORequest {
+  int64 instance_id = 1;
+  string iso_file = 2;
+  string iso_path = 3;
+  string iso_hint = 4;
+}
+message UnmountISORequest {
+  int64 instance_id = 1;
+  string iso_name = 2;
+}
+
+// ---- 反向代理 ----
+// AutomationReverseProxy 字段与平台 WebProxy 对齐：
+//   domain 对外域名，backend_ip/backend_port 回源地址，ssl_enabled 是否 HTTPS。
+message AutomationReverseProxy {
+  int64 id = 1;
+  string domain = 2;
+  string backend_ip = 3;
+  int32 backend_port = 4;
+  bool ssl_enabled = 5;
+  string description = 6;
+}
+message ListReverseProxiesRequest { int64 instance_id = 1; }
+message ListReverseProxiesResponse { repeated AutomationReverseProxy items = 1; }
+message CreateReverseProxyRequest {
+  int64 instance_id = 1;
+  string domain = 2;
+  string backend_ip = 3;
+  int32 backend_port = 4;
+  bool ssl_enabled = 5;
+  string description = 6;
+}
+message UpdateReverseProxyRequest {
+  int64 instance_id = 1;
+  int64 proxy_index = 2;
+  string domain = 3;
+  string backend_ip = 4;
+  int32 backend_port = 5;
+  bool ssl_enabled = 6;
+  string description = 7;
+}
+message DeleteReverseProxyRequest {
+  int64 instance_id = 1;
+  int64 proxy_index = 2;
+}
+
+// ---- 启动顺序 ----
+// AutomationBootOption efi_type 沿用平台语义：true=光盘，false=硬盘/网卡。
+message AutomationBootOption {
+  bool efi_type = 1;
+  string efi_name = 2;
+}
+message GetBootOrderRequest { int64 instance_id = 1; }
+message GetBootOrderResponse { repeated AutomationBootOption items = 1; }
+message SetBootOrderRequest {
+  int64 instance_id = 1;
+  repeated AutomationBootOption items = 2;
+}
+
+// ---- PCI / USB 直通 ----
+message AutomationPCIDevice {
+  string pci_key = 1;
+  string gpu_uuid = 2;
+  string gpu_mdev = 3;
+  string gpu_hint = 4;
+}
+message ListPCIDevicesRequest { int64 instance_id = 1; }
+message ListPCIDevicesResponse { repeated AutomationPCIDevice items = 1; }
+message SetupPCIDeviceRequest {
+  int64 instance_id = 1;
+  AutomationPCIDevice device = 2;
+  // action: add / remove
+  string action = 3;
+}
+message AutomationUSBDevice {
+  string usb_key = 1;
+  string vid_uuid = 2;
+  string pid_uuid = 3;
+  string usb_hint = 4;
+}
+message ListUSBDevicesRequest { int64 instance_id = 1; }
+message ListUSBDevicesResponse { repeated AutomationUSBDevice items = 1; }
+message SetupUSBDeviceRequest {
+  int64 instance_id = 1;
+  AutomationUSBDevice device = 2;
+  // action: add / remove
+  string action = 3;
+}

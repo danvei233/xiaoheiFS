@@ -7,19 +7,19 @@
           <div class="page-title-wrapper">
             <CloudServerOutlined class="page-title-icon" />
             <div>
-              <h1 class="page-title">VPS 实例</h1>
-              <p class="page-desc">管理你的云主机资源与生命周期</p>
+              <h1 class="page-title">{{ t('console.vps.title') }}</h1>
+              <p class="page-desc">{{ t('console.vps.subtitle') }}</p>
             </div>
           </div>
         </div>
         <div class="page-header-actions">
           <a-button @click="fetchData" class="action-btn">
             <template #icon><ReloadOutlined /></template>
-            刷新
+            {{ t('common.refresh') }}
           </a-button>
           <a-button type="primary" @click="goBuy" class="action-btn-primary">
             <template #icon><PlusOutlined /></template>
-            购买 VPS
+            {{ t('console.vps.buy') }}
           </a-button>
         </div>
       </div>
@@ -32,9 +32,8 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.running }}</div>
-          <div class="stat-label">运行中</div>
+          <div class="stat-label">{{ t('console.vps.running') }}</div>
         </div>
-        <div class="stat-decoration"></div>
       </div>
       <div class="stat-card stat-stopped">
         <div class="stat-icon-wrapper">
@@ -42,9 +41,8 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.stopped }}</div>
-          <div class="stat-label">已关机</div>
+          <div class="stat-label">{{ t('console.vps.stopped') }}</div>
         </div>
-        <div class="stat-decoration"></div>
       </div>
       <div class="stat-card stat-provisioning">
         <div class="stat-icon-wrapper">
@@ -52,9 +50,8 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.provisioning }}</div>
-          <div class="stat-label">开通中</div>
+          <div class="stat-label">{{ t('console.vps.provisioning') }}</div>
         </div>
-        <div class="stat-decoration"></div>
       </div>
       <div class="stat-card stat-expiring">
         <div class="stat-icon-wrapper">
@@ -62,9 +59,8 @@
         </div>
         <div class="stat-content">
           <div class="stat-value">{{ stats.expiring }}</div>
-          <div class="stat-label">即将到期</div>
+          <div class="stat-label">{{ t('console.dashboard.expiringSoon') }}</div>
         </div>
-        <div class="stat-decoration"></div>
       </div>
     </div>
 
@@ -79,10 +75,10 @@
     >
       <template #advanced>
         <a-space direction="vertical" style="width: 260px">
-          <a-input v-model:value="filters.region" placeholder="地区">
+          <a-input v-model:value="filters.region" :placeholder="t('console.vps.region')">
             <template #prefix><GlobalOutlined /></template>
           </a-input>
-          <a-input v-model:value="filters.expire_days" placeholder="到期天数">
+          <a-input v-model:value="filters.expire_days" :placeholder="t('console.vps.expireDays')">
             <template #prefix><CalendarOutlined /></template>
           </a-input>
         </a-space>
@@ -129,19 +125,19 @@
         </template>
         <template v-else-if="column.key === 'action'">
           <a-space :size="4">
-            <a-tooltip title="详情">
+            <a-tooltip :title="t('common.detail')">
               <a-button type="text" size="small" @click="goDetail(record)">
                 <template #icon><EyeOutlined /></template>
               </a-button>
             </a-tooltip>
-            <a-tooltip title="控制面板">
+            <a-tooltip :title="t('console.vps.controlPanel')">
               <a-button type="text" size="small" @click="openPanel(record)">
                 <template #icon><ControlOutlined /></template>
               </a-button>
             </a-tooltip>
-            <a-tooltip v-if="emergencyRenewEligible(record)" title="紧急续费">
+            <a-tooltip v-if="emergencyRenewEligible(record)" :title="t('console.vps.urgentRenew')">
               <a-button type="primary" size="small" danger class="urgent-renew-btn" @click="submitEmergencyRenew(record)">
-                紧急续费
+                {{ t('console.vps.urgentRenew') }}
               </a-button>
             </a-tooltip>
             <a-dropdown>
@@ -150,18 +146,18 @@
               </a-button>
               <template #overlay>
                 <a-menu>
-                  <a-menu-item key="start" @click="start(record)">开机</a-menu-item>
-                  <a-menu-item key="shutdown" @click="shutdown(record)">关机</a-menu-item>
-                  <a-menu-item key="reboot" @click="reboot(record)">重启</a-menu-item>
+                  <a-menu-item key="start" @click="start(record)">{{ t('console.vps.start') }}</a-menu-item>
+                  <a-menu-item key="shutdown" @click="shutdown(record)">{{ t('console.vps.shutdown') }}</a-menu-item>
+                  <a-menu-item key="reboot" @click="reboot(record)">{{ t('console.vps.reboot') }}</a-menu-item>
                   <a-menu-divider />
-                  <a-menu-item key="renew" @click="openRenew(record)">续费</a-menu-item>
+                  <a-menu-item key="renew" @click="openRenew(record)">{{ t('console.vps.renew') }}</a-menu-item>
                   <a-menu-item v-if="emergencyRenewEligible(record)" key="urgent-renew" @click="submitEmergencyRenew(record)">
-                    紧急续费
+                    {{ t('console.vps.urgentRenew') }}
                   </a-menu-item>
-                  <a-menu-item key="resize" :disabled="isExpired(record)" @click="openResize(record)">升降配</a-menu-item>
-                  <a-menu-item key="refresh" @click="refresh(record)">刷新状态</a-menu-item>
+                  <a-menu-item key="resize" :disabled="isExpired(record)" @click="openResize(record)">{{ t('console.vps.resize') }}</a-menu-item>
+                  <a-menu-item key="refresh" @click="refresh(record)">{{ t('console.vps.refreshStatus') }}</a-menu-item>
                   <a-menu-divider />
-                  <a-menu-item key="refund" danger @click="openRefund(record)">申请退款</a-menu-item>
+                  <a-menu-item key="refund" danger @click="openRefund(record)">{{ t('console.vps.refund') }}</a-menu-item>
                 </a-menu>
               </template>
             </a-dropdown>
@@ -190,14 +186,14 @@
               <div class="vps-info-row">
                 <span class="vps-info-label">
                   <GlobalOutlined class="info-icon" />
-                  地区
+                  {{ t('console.vps.region') }}
                 </span>
                 <span class="vps-info-value">{{ item.regionLine }}</span>
               </div>
               <div class="vps-info-row">
                 <span class="vps-info-label">
                   <ApartmentOutlined class="info-icon" />
-                  配置
+                  {{ t('console.vps.spec') }}
                 </span>
                 <a-tag size="small" color="blue" class="vps-spec-tag">{{ item.specText }}</a-tag>
               </div>
@@ -211,7 +207,7 @@
               <div class="vps-info-row">
                 <span class="vps-info-label">
                   <CalendarOutlined class="info-icon" />
-                  到期
+                  {{ t('common.expireAt') }}
                 </span>
                 <span class="vps-info-value" :class="{ expiring: isExpiring(item.expire_at) }">
                   {{ formatLocalDateTime(item.expire_at) }}
@@ -220,22 +216,22 @@
               <div v-if="item.destroy_in_days !== undefined && item.destroy_in_days !== null" class="vps-info-row vps-destroy-row">
                 <WarningOutlined class="info-icon warning" />
                 <span class="vps-info-value destroy-hint">
-                  将在 {{ item.destroy_in_days }} 天后自动删除
+                  {{ t('console.vps.autoDelete', { n: item.destroy_in_days }) }}
                 </span>
               </div>
             </div>
             <div class="vps-card-actions">
-              <a-tooltip title="详情">
+              <a-tooltip :title="t('common.detail')">
                 <div class="vps-action-btn" @click.stop="goDetail(item)">
                   <EyeOutlined />
                 </div>
               </a-tooltip>
-              <a-tooltip title="控制面板">
+              <a-tooltip :title="t('console.vps.controlPanel')">
                 <div class="vps-action-btn" @click.stop="openPanel(item)">
                   <ControlOutlined />
                 </div>
               </a-tooltip>
-              <a-tooltip v-if="emergencyRenewEligible(item)" title="紧急续费">
+              <a-tooltip v-if="emergencyRenewEligible(item)" :title="t('console.vps.urgentRenew')">
                 <div class="vps-action-btn vps-action-urgent" @click.stop="submitEmergencyRenew(item)">
                   <CalendarOutlined />
                 </div>
@@ -245,7 +241,7 @@
                   <DesktopOutlined />
                 </div>
               </a-tooltip>
-              <a-tooltip title="更多操作">
+              <a-tooltip :title="t('console.vps.moreActions')">
                 <div class="vps-action-btn vps-action-more" @click.stop="showMobileActions(item)">
                   <MoreOutlined />
                 </div>
@@ -256,35 +252,35 @@
       </template>
     </ProTable>
 
-    <a-modal v-model:open="renewOpen" title="续费 VPS" :width="500" @ok="submitRenew" :confirm-loading="renewing">
+    <a-modal v-model:open="renewOpen" :title="t('console.vps.renewTitle')" :width="500" @ok="submitRenew" :confirm-loading="renewing">
       <a-alert
-        message="续费说明"
-        description="续费将延长 VPS 使用期限，请在到期前完成续费以避免服务中断。"
+        :message="t('console.vps.renewNotice')"
+        :description="t('console.vps.renewDesc')"
         type="info"
         show-icon
         style="margin-bottom: 20px"
       />
       <a-form layout="vertical">
-        <a-form-item label="续费时长">
+        <a-form-item :label="t('console.vps.renewMonths')">
           <a-input-number v-model:value="renewForm.months" :min="1" :max="120" style="width: 100%" size="large">
-            <template #addonAfter>个月</template>
+            <template #addonAfter>{{ t('console.vps.months') }}</template>
           </a-input-number>
         </a-form-item>
         <a-alert
-          message="金额自动计算"
-          :description="`系统将根据月费 ￥${activeRecord?.monthly_price || 0} × ${renewForm.months} 个月自动计算`"
+          :message="t('console.vps.autoCalc')"
+          :description="t('console.vps.autoCalcDesc', { price: activeRecord?.monthly_price || 0, months: renewForm.months })"
           type="info"
           show-icon
         />
       </a-form>
     </a-modal>
 
-    <a-modal v-model:open="resizeOpen" title="升降配 VPS" :width="560" @ok="submitResize" :confirm-loading="resizing" :ok-button-props="{ disabled: isExpired(activeRecord) }">
+    <a-modal v-model:open="resizeOpen" :title="t('console.vps.resizeTitle')" :width="560" @ok="submitResize" :confirm-loading="resizing" :ok-button-props="{ disabled: isExpired(activeRecord) }">
       <a-form layout="vertical">
-        <a-form-item label="目标套餐">
-          <a-select v-model:value="resizeForm.target_package_id" placeholder="选择套餐" size="large" :disabled="!resizeEnabled">
+        <a-form-item :label="t('console.vps.targetPackage')">
+          <a-select v-model:value="resizeForm.target_package_id" :placeholder="t('console.vps.selectPackage')" size="large" :disabled="!resizeEnabled">
               <a-select-option v-for="pkg in packageOptions" :key="pkg.id" :value="pkg.id">
-                {{ pkg.name }} (￥{{ Number(pkg.monthly_price || 0).toFixed(2) }}/月)
+                {{ pkg.name }} (￥{{ Number(pkg.monthly_price || 0).toFixed(2) }}/{{ t('console.vps.perMonth') }})
               </a-select-option>
             </a-select>
           </a-form-item>
@@ -292,46 +288,46 @@
           v-if="isSameTargetSelection"
           type="warning"
           show-icon
-          message="不能选择当前套餐"
+          :message="t('console.vps.samePlan')"
           style="margin-bottom: 12px"
         />
         <a-alert
           v-if="!resizeEnabled"
           type="warning"
           show-icon
-          message="升降配功能已关闭"
+          :message="t('console.vps.resizeDisabled')"
           style="margin-bottom: 12px"
         />
         <a-alert
           v-if="isExpired(activeRecord)"
           type="warning"
           show-icon
-          message="已到期实例不支持升降配"
+          :message="t('console.vps.resizeExpired')"
           style="margin-bottom: 12px"
         />
-        <a-form-item label="执行时间">
+        <a-form-item :label="t('console.vps.executionTime')">
           <a-radio-group v-model:value="resizeForm.schedule_mode">
-            <a-radio value="now">立即执行</a-radio>
-            <a-radio value="later">指定时间</a-radio>
+            <a-radio value="now">{{ t('console.vps.immediate') }}</a-radio>
+            <a-radio value="later">{{ t('console.vps.scheduled') }}</a-radio>
           </a-radio-group>
         </a-form-item>
-        <a-form-item v-if="resizeForm.schedule_mode === 'later'" label="指定时间">
-          <a-date-picker v-model:value="resizeForm.scheduled_at" show-time style="width: 100%" placeholder="选择执行时间" />
+        <a-form-item v-if="resizeForm.schedule_mode === 'later'" :label="t('console.vps.scheduled')">
+          <a-date-picker v-model:value="resizeForm.scheduled_at" show-time style="width: 100%" :placeholder="t('console.vps.selectTime')" />
         </a-form-item>
         <a-form-item>
           <a-switch v-model:checked="resizeForm.reset_addons" />
-          <span style="margin-left: 8px">清零附加项（本单差额直接体现）</span>
+          <span style="margin-left: 8px">{{ t('console.vps.resetAddons') }}</span>
         </a-form-item>
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="CPU 附加">
+            <a-form-item :label="t('console.vps.cpuAddon')">
               <a-input-number v-model:value="resizeForm.add_cores" :min="addonMin.add_cores" :max="addonMax.add_cores" :step="addonStep.add_cores" :disabled="resizeForm.reset_addons" style="width: 100%" size="large">
-                <template #addonAfter>核</template>
+                <template #addonAfter>{{ t('console.vps.cores') }}</template>
               </a-input-number>
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="内存 附加">
+            <a-form-item :label="t('console.vps.memAddon')">
               <a-input-number v-model:value="resizeForm.add_mem_gb" :min="addonMin.add_mem_gb" :max="addonMax.add_mem_gb" :step="addonStep.add_mem_gb" :disabled="resizeForm.reset_addons" style="width: 100%" size="large">
                 <template #addonAfter>GB</template>
               </a-input-number>
@@ -340,14 +336,14 @@
         </a-row>
         <a-row :gutter="16">
           <a-col :span="12">
-            <a-form-item label="磁盘 附加">
+            <a-form-item :label="t('console.vps.diskAddon')">
               <a-input-number v-model:value="resizeForm.add_disk_gb" :min="addonMin.add_disk_gb" :max="addonMax.add_disk_gb" :step="addonStep.add_disk_gb" :disabled="resizeForm.reset_addons" style="width: 100%" size="large">
                 <template #addonAfter>GB</template>
               </a-input-number>
             </a-form-item>
           </a-col>
           <a-col :span="12">
-            <a-form-item label="带宽 附加">
+            <a-form-item :label="t('console.vps.bwAddon')">
               <a-input-number v-model:value="resizeForm.add_bw_mbps" :min="addonMin.add_bw_mbps" :max="addonMax.add_bw_mbps" :step="addonStep.add_bw_mbps" :disabled="resizeForm.reset_addons" style="width: 100%" size="large">
                 <template #addonAfter>Mbps</template>
               </a-input-number>
@@ -358,7 +354,7 @@
           v-if="resizeQuoteLoading"
           type="info"
           show-icon
-          message="正在计算价格..."
+          :message="t('console.vps.calcPrice')"
           style="margin-top: 8px"
         />
         <a-alert
@@ -376,34 +372,34 @@
         >
           <template #message>
             <span v-if="resizeQuoteAmount >= 0">
-              本周期需支付：￥{{ resizeQuoteAmount.toFixed(2) }}
+              {{ t('console.vps.payThisCycle', { amount: resizeQuoteAmount.toFixed(2) }) }}
             </span>
             <span v-else>
-              本周期差额：-￥{{ Math.abs(resizeQuoteAmount).toFixed(2) }}
+              {{ t('console.vps.cycleDiff', { amount: Math.abs(resizeQuoteAmount).toFixed(2) }) }}
             </span>
           </template>
           <template #description>
-            <span v-if="resizeQuoteAmount < 0">退款方式以支付渠道为准。</span>
-            <span v-else>金额以系统最终计算为准。</span>
+            <span v-if="resizeQuoteAmount < 0">{{ t('console.vps.refundChannel') }}</span>
+            <span v-else>{{ t('console.vps.finalAmount') }}</span>
           </template>
         </a-alert>
       </a-form>
     </a-modal>
 
-    <a-modal v-model:open="refundOpen" title="申请退款" :width="500" @ok="submitRefund" :confirm-loading="refunding">
+    <a-modal v-model:open="refundOpen" :title="t('console.vps.refundTitle')" :width="500" @ok="submitRefund" :confirm-loading="refunding">
       <a-alert
-        message="退款说明"
-        description="提交退款申请后，管理员将进行审核。审核通过后，退款将退回余额。"
+        :message="t('console.vps.refundNotice')"
+        :description="t('console.vps.refundDesc')"
         type="warning"
         show-icon
         style="margin-bottom: 20px"
       />
       <a-form layout="vertical">
-        <a-form-item label="退款原因" required>
+        <a-form-item :label="t('console.vps.refundReason')" required>
           <a-textarea
             v-model:value="refundReason"
             :rows="4"
-            placeholder="请详细说明退款原因..."
+            :placeholder="t('console.vps.refundReasonPlaceholder')"
             :maxlength="INPUT_LIMITS.REFUND_REASON"
             show-count
           />
@@ -411,19 +407,19 @@
       </a-form>
     </a-modal>
 
-    <a-drawer v-model:open="mobileActionsOpen" title="操作" placement="bottom" :height="320">
+    <a-drawer v-model:open="mobileActionsOpen" :title="t('common.actions')" placement="bottom" :height="320">
       <a-grid :col="4" :gutter="[12, 12]">
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('detail')"><EyeOutlined class="action-icon" /><span>详情</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('panel')"><ControlOutlined class="action-icon" /><span>面板</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('detail')"><EyeOutlined class="action-icon" /><span>{{ t('common.detail') }}</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('panel')"><ControlOutlined class="action-icon" /><span>{{ t('console.vps.controlPanel') }}</span></div></a-grid-item>
         <a-grid-item><div class="action-grid-item" @click="handleMobileAction('vnc')"><DesktopOutlined class="action-icon" /><span>VNC</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('start')"><PlayCircleOutlined class="action-icon start" /><span>开机</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('shutdown')"><StopOutlined class="action-icon stop" /><span>关机</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('reboot')"><ReloadOutlined class="action-icon reboot" /><span>重启</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('renew')"><CalendarOutlined class="action-icon renew" /><span>续费</span></div></a-grid-item>
-        <a-grid-item v-if="emergencyRenewEligible(mobileActionRecord)"><div class="action-grid-item danger" @click="handleMobileAction('urgent-renew')"><CalendarOutlined class="action-icon renew" /><span>紧急续费</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('resize')"><ApartmentOutlined class="action-icon resize" /><span>升降配</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('refresh')"><SyncOutlined class="action-icon" /><span>刷新</span></div></a-grid-item>
-        <a-grid-item><div class="action-grid-item danger" @click="handleMobileAction('refund')"><RollbackOutlined class="action-icon" /><span>退款</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('start')"><PlayCircleOutlined class="action-icon start" /><span>{{ t('console.vps.start') }}</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('shutdown')"><StopOutlined class="action-icon stop" /><span>{{ t('console.vps.shutdown') }}</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('reboot')"><ReloadOutlined class="action-icon reboot" /><span>{{ t('console.vps.reboot') }}</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('renew')"><CalendarOutlined class="action-icon renew" /><span>{{ t('console.vps.renew') }}</span></div></a-grid-item>
+        <a-grid-item v-if="emergencyRenewEligible(mobileActionRecord)"><div class="action-grid-item danger" @click="handleMobileAction('urgent-renew')"><CalendarOutlined class="action-icon renew" /><span>{{ t('console.vps.urgentRenew') }}</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('resize')"><ApartmentOutlined class="action-icon resize" /><span>{{ t('console.vps.resize') }}</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item" @click="handleMobileAction('refresh')"><SyncOutlined class="action-icon" /><span>{{ t('common.refresh') }}</span></div></a-grid-item>
+        <a-grid-item><div class="action-grid-item danger" @click="handleMobileAction('refund')"><RollbackOutlined class="action-icon" /><span>{{ t('console.vps.refund') }}</span></div></a-grid-item>
       </a-grid>
     </a-drawer>
   </div>
@@ -449,6 +445,7 @@ import {
   requestVpsRefund
 } from "@/services/user";
 import { INPUT_LIMITS } from "@/constants/inputLimits";
+import { t, locale } from "@/locales";
 import { message, Modal } from "ant-design-vue";
 import dayjs from "dayjs";
 import {
@@ -487,38 +484,38 @@ const filters = reactive({
   expire_days: ""
 });
 
-const statusOptions = [
-  { label: "运行中", value: "running" },
-  { label: "已关机", value: "stopped" },
-  { label: "锁定", value: "locked" },
-  { label: "已到期", value: "expired_locked" },
-  { label: "开通中", value: "provisioning" },
-  { label: "重装系统中", value: "reinstalling" },
-  { label: "重装系统失败", value: "reinstall_failed" },
-  { label: "创建失败", value: "failed" },
-  { label: "删除中", value: "deleting" }
-];
+const statusOptions = computed(() => [
+  { label: t('console.vps.running'), value: "running" },
+  { label: t('console.vps.stopped'), value: "stopped" },
+  { label: t('console.vps.locked'), value: "locked" },
+  { label: t('expire.expired'), value: "expired_locked" },
+  { label: t('console.vps.provisioning'), value: "provisioning" },
+  { label: t('console.vps.reinstalling'), value: "reinstalling" },
+  { label: t('console.vps.reinstallFailed'), value: "reinstall_failed" },
+  { label: t('console.vps.failed'), value: "failed" },
+  { label: t('console.vps.deleting'), value: "deleting" }
+]);
 
-const statusTabs = [
-  { label: "运行中", value: "running" },
-  { label: "已关机", value: "stopped" },
-  { label: "锁定", value: "locked" },
-  { label: "已到期", value: "expired_locked" },
-  { label: "重装中", value: "reinstalling" }
-];
+const statusTabs = computed(() => [
+  { label: t('console.vps.running'), value: "running" },
+  { label: t('console.vps.stopped'), value: "stopped" },
+  { label: t('console.vps.locked'), value: "locked" },
+  { label: t('expire.expired'), value: "expired_locked" },
+  { label: t('console.vps.reinstalling'), value: "reinstalling" }
+]);
 
 const loading = computed(() => store.loading);
 const pagination = reactive({ current: 1, pageSize: 10, total: 0, showSizeChanger: true });
 
-const columns = [
-  { title: "实例", dataIndex: "name", key: "name", width: 200 },
-  { title: "地区/线路", dataIndex: "regionLine", key: "regionLine", width: 150 },
-  { title: "配置", dataIndex: "spec", key: "spec", width: 200 },
-  { title: "IP地址", dataIndex: "ip", key: "ip", width: 140 },
-  { title: "状态", dataIndex: "status", key: "status", width: 100 },
-  { title: "到期时间", dataIndex: "expire_at", key: "expire_at", width: 170 },
-  { title: "操作", key: "action", width: 160, fixed: "right" }
-];
+const columns = computed(() => [
+  { title: t('console.vps.instance'), dataIndex: "name", key: "name", width: 200 },
+  { title: t('console.vps.regionLine'), dataIndex: "regionLine", key: "regionLine", width: 150 },
+  { title: t('console.vps.spec'), dataIndex: "spec", key: "spec", width: 200 },
+  { title: t('console.vps.ip'), dataIndex: "ip", key: "ip", width: 140 },
+  { title: t('common.status'), dataIndex: "status", key: "status", width: 100 },
+  { title: t('common.expireAt'), dataIndex: "expire_at", key: "expire_at", width: 170 },
+  { title: t('console.vps.actions'), key: "action", width: 160, fixed: "right" }
+]);
 
 const parseJson = (input) => {
   if (!input) return {};
@@ -556,8 +553,12 @@ const normalizeSpec = (spec, fallback = {}) => {
   const mem = spec.memory_gb ?? spec.mem_gb ?? spec.MemoryGB ?? fallback.memory_gb ?? fallback.MemoryGB ?? 0;
   const disk = spec.disk_gb ?? spec.DiskGB ?? fallback.disk_gb ?? fallback.DiskGB ?? 0;
   const bw = spec.bandwidth_mbps ?? spec.BandwidthMB ?? spec.bandwidth ?? fallback.bandwidth_mbps ?? fallback.BandwidthMB ?? null;
-  const parts = [`CPU ${cpu}核`, `内存 ${mem}G`, `磁盘 ${disk}G`];
-  if (bw != null) parts.push(`带宽 ${bw}M`);
+  const parts = [
+    t('console.vps.cpuSpec', { n: cpu }),
+    t('console.vps.memSpec', { n: mem }),
+    t('console.vps.diskSpec', { n: disk })
+  ];
+  if (bw != null) parts.push(t('console.vps.bwSpec', { n: bw }));
   return parts.join(" / ");
 };
 
@@ -816,7 +817,7 @@ const formatLocalDateTime = (value) => {
   if (!value) return "-";
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return String(value);
-  return dt.toLocaleString("zh-CN", { hour12: false });
+  return dt.toLocaleString(locale.value, { hour12: false });
 };
 
 const emergencyRenewPolicy = computed(() => {
@@ -897,24 +898,24 @@ const openVnc = (record) => {
 
 const refresh = async (record) => {
   await store.refresh(record.id);
-  message.success("已刷新");
+  message.success(t('console.vps.refreshed'));
 };
 
 const start = async (record) => {
   await startVps(record.id);
-  message.success("已触发开机");
+  message.success(t('console.vps.triggeredStart'));
   fetchData();
 };
 
 const shutdown = async (record) => {
   await shutdownVps(record.id);
-  message.success("已触发关机");
+  message.success(t('console.vps.triggeredShutdown'));
   fetchData();
 };
 
 const reboot = async (record) => {
   await rebootVps(record.id);
-  message.success("已触发重启");
+  message.success(t('console.vps.triggeredReboot'));
   fetchData();
 };
 
@@ -952,17 +953,17 @@ const submitRenew = async () => {
   renewing.value = true;
   try {
     await createVpsRenewOrder(activeRecord.value.id, { duration_months: renewForm.months });
-    message.success("已生成续费订单");
+    message.success(t('console.vps.renewCreated'));
     renewOpen.value = false;
   } catch (e) {
     const status = e?.response?.status;
-    const errorText = e?.response?.data?.error || "续费失败";
+    const errorText = e?.response?.data?.error || t('console.vps.renewFailed');
     if (status === 409) {
       Modal.confirm({
-        title: "已有待处理续费订单",
+        title: t('console.vps.pendingRenew'),
         content: errorText,
-        okText: "去订单列表",
-        cancelText: "我知道了",
+        okText: t('console.vps.goOrders'),
+        cancelText: t('console.vps.gotIt'),
         onOk: () => router.push("/console/orders")
       });
       return;
@@ -976,17 +977,17 @@ const submitRenew = async () => {
 const submitEmergencyRenew = (record) => {
   if (!record?.id) return;
   Modal.confirm({
-    title: "紧急续费确认",
-    content: "紧急续费将按系统策略续费固定天数，确认继续？",
-    okText: "确认",
-    cancelText: "取消",
+    title: t('console.vps.urgentConfirmTitle'),
+    content: t('console.vps.urgentConfirmDesc'),
+    okText: t('common.confirm'),
+    cancelText: t('common.cancel'),
     async onOk() {
       try {
         await emergencyRenewVps(record.id);
-        message.success("紧急续费已提交");
+        message.success(t('console.vps.urgentSubmitted'));
         await store.fetchVps();
       } catch (err) {
-        message.error(err.response?.data?.error || "紧急续费失败");
+        message.error(err.response?.data?.error || t('console.vps.urgentFailed'));
       }
     }
   });
@@ -994,7 +995,7 @@ const submitEmergencyRenew = (record) => {
 
 const openResize = (record) => {
   if (isExpired(record)) {
-    message.warning("已到期实例不支持升降配");
+    message.warning(t('console.vps.resizeExpired'));
     return;
   }
   activeRecord.value = record;
@@ -1059,7 +1060,7 @@ const buildResizeQuotePayload = () => {
 const fetchResizeQuote = async () => {
   if (!resizeEnabled.value) {
     resizeQuote.value = null;
-    resizeQuoteError.value = "升降配功能已关闭";
+    resizeQuoteError.value = t('console.vps.resizeDisabled');
     return;
   }
   if (!resizeForm.target_package_id || isSameTargetSelection.value) {
@@ -1074,10 +1075,10 @@ const fetchResizeQuote = async () => {
     resizeQuote.value = res.data?.quote ?? res.data;
   } catch (e) {
     const status = e?.response?.status;
-    const errorText = e?.response?.data?.error || "升降配失败";
+    const errorText = e?.response?.data?.error || t('console.vps.resizeFailed');
     resizeQuote.value = null;
     if (status === 409) {
-      resizeQuoteError.value = "已有进行中的升降配任务/订单";
+      resizeQuoteError.value = t('console.vps.resizeInProgress');
       return;
     }
     resizeQuoteError.value = errorText;
@@ -1098,33 +1099,33 @@ const scheduleResizeQuote = () => {
 const submitResize = async () => {
   if (!activeRecord.value) return;
   if (isExpired(activeRecord.value)) {
-    message.warning("已到期实例不支持升降配");
+    message.warning(t('console.vps.resizeExpired'));
     return;
   }
   if (!resizeEnabled.value) {
-    message.error("升降配功能已关闭");
+    message.error(t('console.vps.resizeDisabled'));
     return;
   }
   if (!resizeForm.target_package_id) {
-    message.warning("暂无可用套餐");
+    message.warning(t('console.vps.noPackages'));
     return;
   }
   if (isSameTargetSelection.value) {
-    message.warning("不能选择当前套餐");
+    message.warning(t('console.vps.samePlan'));
     return;
   }
   if (resizeForm.schedule_mode === "later") {
     if (!resizeForm.scheduled_at) {
-      message.warning("请选择执行时间");
+      message.warning(t('console.vps.selectExecTime'));
       return;
     }
     const scheduled = dayjs(resizeForm.scheduled_at);
     if (!scheduled.isValid()) {
-      message.warning("执行时间格式不正确");
+      message.warning(t('console.vps.execTimeInvalid'));
       return;
     }
     if (scheduled.isBefore(dayjs())) {
-      message.warning("执行时间需要晚于当前时间");
+      message.warning(t('console.vps.execTimeFuture'));
       return;
     }
   }
@@ -1132,17 +1133,17 @@ const submitResize = async () => {
   try {
     const payload = buildResizePayload();
     await createVpsResizeOrder(activeRecord.value.id, payload);
-    message.success("已生成改配订单");
+    message.success(t('console.vps.resizeCreated'));
     resizeOpen.value = false;
   } catch (e) {
     const status = e?.response?.status;
-    const errorText = e?.response?.data?.error || "升降配失败";
+    const errorText = e?.response?.data?.error || t('console.vps.resizeFailed');
     if (status === 409) {
       Modal.confirm({
-        title: "已有进行中的升降配任务/订单",
+        title: t('console.vps.resizeInProgress'),
         content: errorText,
-        okText: "去订单列表",
-        cancelText: "我知道了",
+        okText: t('console.vps.goOrders'),
+        cancelText: t('console.vps.gotIt'),
         onOk: () => router.push("/console/orders")
       });
     } else {
@@ -1162,11 +1163,11 @@ const openRefund = (record) => {
 const submitRefund = async () => {
   if (refunding.value) return;
   if (!refundReason.value.trim()) {
-    message.warning("请填写退款原因");
+    message.warning(t('console.vps.refundReasonRequired'));
     return;
   }
   if (String(refundReason.value || "").length > INPUT_LIMITS.REFUND_REASON) {
-    message.warning(`退款原因长度不能超过 ${INPUT_LIMITS.REFUND_REASON} 个字符`);
+    message.warning(t('console.vps.refundReasonTooLong', { n: INPUT_LIMITS.REFUND_REASON }));
     return;
   }
   refunding.value = true;
@@ -1174,13 +1175,13 @@ const submitRefund = async () => {
     const res = await requestVpsRefund(activeRecord.value.id, { reason: refundReason.value });
     const orderId = res?.data?.order?.id ?? res?.data?.order?.ID;
     if (orderId) {
-      message.success("已提交退款申请，订单ID: " + orderId);
+      message.success(t('console.vps.refundSubmittedId', { id: orderId }));
     } else {
-      message.success("已提交退款申请");
+      message.success(t('console.vps.refundSubmitted'));
     }
     refundOpen.value = false;
   } catch (e) {
-    message.error(e?.response?.data?.error || e?.response?.data?.message || e?.message || "提交失败");
+    message.error(e?.response?.data?.error || e?.response?.data?.message || e?.message || t('console.vps.submitFailed'));
   } finally {
     refunding.value = false;
   }
@@ -1275,36 +1276,12 @@ site.fetchSettings();
   background: var(--bg-primary);
 }
 
-/* Page Header with Gradient */
+/* Page header: themed surface instead of a fixed blue banner. */
 .page-header-gradient {
-  background: linear-gradient(135deg, var(--primary) 0%, #0958d9 100%);
-  padding: 32px 24px;
   position: relative;
-  overflow: hidden;
-}
-
-.page-header-gradient::before {
-  content: "";
-  position: absolute;
-  top: -50%;
-  right: -10%;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
-}
-
-.page-header-gradient::after {
-  content: "";
-  position: absolute;
-  bottom: -30%;
-  left: -5%;
-  width: 300px;
-  height: 300px;
-  background: radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%);
-  border-radius: 50%;
-  pointer-events: none;
+  padding: 22px 24px;
+  background: var(--theme-surface, var(--card));
+  border-bottom: 1px solid var(--border);
 }
 
 .page-header-content {
@@ -1322,229 +1299,150 @@ site.fetchSettings();
 .page-title-wrapper {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .page-title-icon {
-  font-size: 42px;
-  color: rgba(255, 255, 255, 0.95);
-  filter: drop-shadow(0 2px 8px rgba(0,0,0,0.15));
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  box-sizing: border-box;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent);
+  border-radius: var(--theme-control-radius, 10px);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
 }
 
 .page-title {
-  font-size: 28px;
-  font-weight: 700;
-  color: #ffffff;
   margin: 0;
-  letter-spacing: -0.5px;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  color: var(--text-primary);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -.02em;
 }
 
 .page-desc {
-  color: rgba(255, 255, 255, 0.85);
+  margin: 3px 0 0;
+  color: var(--text-secondary);
   font-size: 13px;
-  margin: 4px 0 0 0;
-  font-weight: 400;
 }
 
 .page-header-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
+.action-btn,
+.action-btn-primary {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--theme-btn-radius, var(--theme-control-radius, 8px));
+  font-size: 13px;
+  font-weight: 550;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
 .action-btn {
-  height: 40px;
-  padding: 0 20px;
-  border-radius: 10px;
-  font-weight: 500;
-  border: 1px solid rgba(255,255,255,0.3);
-  background: rgba(255,255,255,0.15);
-  color: #ffffff;
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
+  border: 1px solid var(--border);
+  background: var(--theme-control-bg, var(--card));
+  color: var(--text-primary);
 }
 
 .action-btn:hover {
-  background: rgba(255,255,255,0.25);
-  border-color: rgba(255,255,255,0.5);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  color: #ffffff;
+  border-color: var(--primary);
+  background: var(--theme-control-hover, var(--card));
+  color: var(--primary);
 }
 
 .action-btn-primary {
-  height: 40px;
-  padding: 0 20px;
-  border-radius: 10px;
-  font-weight: 600;
-  background: #ffffff;
-  color: var(--primary);
-  border: none;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  transition: all 0.3s ease;
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--theme-primary-foreground, #fff);
 }
 
 .action-btn-primary:hover {
-  background: #f8f9fa;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
-  color: var(--primary);
+  border-color: var(--theme-primary-hover, var(--primary));
+  background: var(--theme-primary-hover, var(--primary));
+  color: var(--theme-primary-foreground, #fff);
 }
 
-/* Statistics Cards */
+/* Statistics cards: token surfaces, semantic accent per state. */
 .stats-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
-  padding: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  padding: 20px 24px;
   max-width: 1400px;
   margin: 0 auto;
 }
 
 .stat-card {
   position: relative;
-  background: var(--card);
-  border-radius: 16px;
-  padding: 20px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+  padding: 16px 18px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  transition: all 0.3s ease;
-  cursor: default;
-}
-
-.stat-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: currentColor;
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius, 12px);
+  background: var(--card);
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-}
-
-.stat-card:hover::before {
-  opacity: 1;
+  border-color: color-mix(in srgb, var(--stat-accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--stat-accent) 5%, var(--card));
 }
 
 .stat-icon-wrapper {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
   display: flex;
+  width: 40px;
+  height: 40px;
   align-items: center;
   justify-content: center;
-  position: relative;
-  z-index: 1;
+  flex: 0 0 40px;
+  border: 1px solid color-mix(in srgb, var(--stat-accent) 24%, transparent);
+  border-radius: var(--theme-control-radius, 10px);
+  background: color-mix(in srgb, var(--stat-accent) 12%, transparent);
 }
 
 .stat-icon {
-  font-size: 26px;
-  color: #ffffff;
-}
-
-.stat-decoration {
-  position: absolute;
-  right: -10px;
-  bottom: -10px;
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  opacity: 0.1;
-  pointer-events: none;
+  font-size: 18px;
+  color: var(--stat-accent);
 }
 
 .stat-content {
-  flex: 1;
-  position: relative;
-  z-index: 1;
+  min-width: 0;
 }
 
 .stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  line-height: 1;
-  margin-bottom: 4px;
-  background: linear-gradient(135deg, currentColor 0%, currentColor 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  margin-bottom: 2px;
+  color: var(--text-primary);
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.02em;
 }
 
 .stat-label {
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: 12px;
   font-weight: 500;
-  color: var(--text2);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
-/* Stat Card Variants */
-.stat-running {
-  color: #52c41a;
-}
-
-.stat-running .stat-icon-wrapper {
-  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
-  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
-}
-
-.stat-running .stat-decoration {
-  background: #52c41a;
-}
-
-.stat-stopped {
-  color: #8c8c8c;
-}
-
-.stat-stopped .stat-icon-wrapper {
-  background: linear-gradient(135deg, #8c8c8c 0%, #595959 100%);
-  box-shadow: 0 4px 12px rgba(140, 140, 140, 0.3);
-}
-
-.stat-stopped .stat-decoration {
-  background: #8c8c8c;
-}
-
-.stat-provisioning {
-  color: #1677ff;
-}
-
-.stat-provisioning .stat-icon-wrapper {
-  background: linear-gradient(135deg, #1677ff 0%, #0958d9 100%);
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
-}
-
-.stat-provisioning .stat-decoration {
-  background: #1677ff;
-}
-
-.stat-expiring {
-  color: #ff4d4f;
-}
-
-.stat-expiring .stat-icon-wrapper {
-  background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
-  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
-}
-
-.stat-expiring .stat-decoration {
-  background: #ff4d4f;
-}
+.stat-running { --stat-accent: #3f9d43; }
+.stat-stopped { --stat-accent: #8a94a6; }
+.stat-provisioning { --stat-accent: var(--primary); }
+.stat-expiring { --stat-accent: #d94a4a; }
 
 /* Filter Bar Card Override */
 .stats-container + :deep(.card) {
-  border-radius: 16px;
+  border-radius: var(--theme-card-radius, 16px);
   overflow: hidden;
 }
 
@@ -1552,38 +1450,40 @@ site.fetchSettings();
   padding: 16px;
 }
 
-/* Table Styles */
+/* Table: the table inherits the active theme's density and surfaces. */
 :deep(.ant-table) {
   background: transparent;
 }
 
 :deep(.ant-table-container) {
-  border-radius: 12px;
   overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--theme-card-radius, 12px);
 }
 
 :deep(.ant-table-thead > tr > th) {
-  background: linear-gradient(180deg, #fafbfc 0%, #f5f7fa 100%);
+  padding: 12px 16px;
+  background: var(--theme-table-head-bg, var(--bg-secondary));
+  color: var(--text-secondary);
+  font-size: 12px;
   font-weight: 600;
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 16px;
-  border-bottom: 2px solid #e8ecf1;
+  letter-spacing: 0;
+  text-transform: none;
+  border-bottom: 1px solid var(--border);
 }
 
 :deep(.ant-table-tbody > tr) {
-  transition: all 0.2s ease;
+  transition: background-color 140ms ease;
 }
 
-:deep(.ant-table-tbody > tr:hover) {
-  background: #f8fafd !important;
-  transform: scale(1.002);
+:deep(.ant-table-tbody > tr:hover > td) {
+  background: var(--theme-table-row-hover, var(--bg-secondary)) !important;
 }
 
 :deep(.ant-table-tbody > tr > td) {
-  padding: 14px 16px;
-  border-bottom: 1px solid #f0f2f5;
+  padding: 13px 16px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
 }
 
 /* Name Cell */
@@ -1597,19 +1497,19 @@ site.fetchSettings();
   font-size: 22px;
   color: var(--primary);
   padding: 6px;
-  background: linear-gradient(135deg, #e6f4ff 0%, #bae0ff 100%);
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
   border-radius: 8px;
 }
 
 .name-text {
   font-weight: 600;
-  color: var(--text);
+  color: var(--text-primary);
   font-size: 14px;
 }
 
 .name-id {
   font-size: 11px;
-  color: var(--text3);
+  color: var(--text-secondary);
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   margin-top: 2px;
 }
@@ -1628,8 +1528,8 @@ site.fetchSettings();
 
 .destroy-hint {
   font-size: 11px;
-  color: #ff4d4f;
-  background: #fff1f0;
+  color: #d94a4a;
+  background: color-mix(in srgb, #d94a4a 12%, transparent);
   padding: 2px 8px;
   border-radius: 4px;
   display: inline-flex;
@@ -1647,19 +1547,18 @@ site.fetchSettings();
 }
 
 .vps-mobile-card {
-  background: #ffffff;
-  border-radius: 16px;
+  background: var(--card);
+  border-radius: var(--theme-card-radius, 14px);
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  box-shadow: var(--theme-shadow, none);
   transition: all 0.3s ease;
   cursor: pointer;
-  border: 1px solid #f0f2f5;
+  border: 1px solid var(--border);
 }
 
 .vps-mobile-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  border-color: #d9d9d9;
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  box-shadow: var(--theme-shadow, none);
 }
 
 .vps-card-header {
@@ -1667,8 +1566,8 @@ site.fetchSettings();
   align-items: center;
   justify-content: space-between;
   padding: 16px 16px 12px;
-  background: linear-gradient(180deg, #fafbfc 0%, #ffffff 100%);
-  border-bottom: 1px solid #f0f2f5;
+  background: var(--theme-surface-soft, var(--bg-secondary));
+  border-bottom: 1px solid var(--border);
 }
 
 .vps-card-title {
@@ -1685,7 +1584,7 @@ site.fetchSettings();
 .vps-card-name {
   font-weight: 600;
   font-size: 15px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 .vps-card-body {
@@ -1697,7 +1596,7 @@ site.fetchSettings();
   align-items: center;
   justify-content: space-between;
   padding: 8px 0;
-  border-bottom: 1px solid #f5f7fa;
+  border-bottom: 1px solid var(--border);
 }
 
 .vps-info-row:last-child {
@@ -1709,13 +1608,13 @@ site.fetchSettings();
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: var(--text3);
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
 .info-icon {
   font-size: 14px;
-  color: var(--text2);
+  color: var(--text-secondary);
 }
 
 .info-icon.warning {
@@ -1724,7 +1623,7 @@ site.fetchSettings();
 
 .vps-info-value {
   font-size: 13px;
-  color: var(--text);
+  color: var(--text-primary);
   font-weight: 500;
 }
 
@@ -1734,7 +1633,7 @@ site.fetchSettings();
 }
 
 .vps-destroy-row {
-  background: #fff1f0;
+  background: color-mix(in srgb, #d94a4a 10%, transparent);
   margin: 8px -16px -12px;
   padding: 10px 16px !important;
   border-radius: 0 0 12px 12px;
@@ -1743,8 +1642,8 @@ site.fetchSettings();
 
 .vps-card-actions {
   display: flex;
-  border-top: 1px solid #f0f2f5;
-  background: #fafbfc;
+  border-top: 1px solid var(--border);
+  background: var(--theme-surface-soft, var(--bg-secondary));
 }
 
 .vps-action-btn {
@@ -1753,10 +1652,10 @@ site.fetchSettings();
   align-items: center;
   justify-content: center;
   padding: 14px;
-  color: var(--text2);
+  color: var(--text-secondary);
   font-size: 18px;
-  transition: all 0.2s ease;
-  border-right: 1px solid #f0f2f5;
+  transition: color 140ms ease, background 140ms ease;
+  border-right: 1px solid var(--border);
 }
 
 .vps-action-btn:last-child {
@@ -1764,7 +1663,7 @@ site.fetchSettings();
 }
 
 .vps-action-btn:hover {
-  background: #e6f7ff;
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
   color: var(--primary);
 }
 
@@ -1773,8 +1672,8 @@ site.fetchSettings();
 }
 
 .vps-action-urgent:hover {
-  background: #fff1f0;
-  color: #cf1322;
+  background: color-mix(in srgb, #d94a4a 10%, transparent);
+  color: #b93a3a;
 }
 
 .urgent-renew-btn {
@@ -1783,8 +1682,8 @@ site.fetchSettings();
 }
 
 .vps-action-more:hover {
-  background: #f0f2f5;
-  color: var(--text);
+  background: var(--bg-secondary);
+  color: var(--primary);
 }
 
 /* Action Grid in Drawer */
@@ -1794,22 +1693,20 @@ site.fetchSettings();
   align-items: center;
   gap: 8px;
   padding: 16px;
-  background: linear-gradient(135deg, #f7f8fa 0%, #f0f2f5 100%);
-  border-radius: 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--theme-control-radius, 10px);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
-  color: var(--text2);
-  transition: all 0.3s ease;
+  color: var(--text-secondary);
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
   border: 1px solid transparent;
 }
 
 .action-grid-item:hover {
-  background: linear-gradient(135deg, #e6f7ff 0%, #bae0ff 100%);
+  background: color-mix(in srgb, var(--primary) 10%, var(--card));
   color: var(--primary);
-  border-color: #91caff;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.15);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
 }
 
 .action-grid-item.danger {
@@ -1817,9 +1714,8 @@ site.fetchSettings();
 }
 
 .action-grid-item.danger:hover {
-  background: linear-gradient(135deg, #fff1f0 0%, #ffccc7 100%);
-  border-color: #ff7875;
-  box-shadow: 0 4px 12px rgba(255, 77, 79, 0.15);
+  background: color-mix(in srgb, #d94a4a 10%, var(--card));
+  border-color: color-mix(in srgb, #d94a4a 35%, var(--border));
 }
 
 .action-icon {
@@ -1848,20 +1744,20 @@ site.fetchSettings();
 
 /* Modal Styles */
 :deep(.ant-modal-content) {
-  border-radius: 16px;
+  border-radius: var(--theme-card-radius, 16px);
   overflow: hidden;
 }
 
 :deep(.ant-modal-header) {
-  background: linear-gradient(135deg, #f7f8fa 0%, #f0f2f5 100%);
-  border-bottom: 1px solid #e8ecf1;
+  background: var(--theme-surface-soft, var(--bg-secondary));
+  border-bottom: 1px solid var(--border);
   padding: 20px 24px;
 }
 
 :deep(.ant-modal-title) {
   font-weight: 600;
   font-size: 16px;
-  color: var(--text);
+  color: var(--text-primary);
 }
 
 :deep(.ant-modal-body) {
@@ -1869,7 +1765,7 @@ site.fetchSettings();
 }
 
 :deep(.ant-modal-footer) {
-  border-top: 1px solid #f0f2f5;
+  border-top: 1px solid var(--border);
   padding: 16px 24px;
 }
 

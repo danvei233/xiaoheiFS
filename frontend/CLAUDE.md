@@ -15,7 +15,7 @@ Cloud VPS Console (小黑云控制台) - A Vue 3 full-stack web application for 
 # Install dependencies
 npm i
 
-# Development server (runs on port 5173)
+# Development server (runs on port 5178)
 npm run dev
 
 # Production build

@@ -1,5 +1,10 @@
 <template>
-  <a-config-provider :theme="{ algorithm: theme.defaultAlgorithm }">
+  <a-config-provider
+    :theme="{
+      algorithm: app.isDarkMode ? theme.darkAlgorithm : theme.defaultAlgorithm,
+      token: app.themeTokens
+    }"
+  >
     <a-layout class="layout admin-layout">
     <a-layout-header class="header">
       <div class="header-left">
@@ -21,7 +26,7 @@
           <a-auto-complete
             v-model:value="searchValue"
             class="header-search"
-            placeholder="搜索功能..."
+            :placeholder="t('adminNav.searchPlaceholder')"
             :options="searchOptions"
             @select="handleSelect"
             @search="handleSearch"
@@ -35,16 +40,9 @@
               </template>
           </a-auto-complete>
         </div>
+        <AppearanceSettings />
         <a-space :size="12">
-          <a-tag color="blue">Admin</a-tag>
-          <a-tooltip title="消息中心">
-            <a-badge :count="5" size="small">
-              <a-button type="text" shape="circle">
-                <BellOutlined />
-              </a-button>
-            </a-badge>
-          </a-tooltip>
-            <a-tooltip title="帮助中心">
+            <a-tooltip :title="t('adminNav.helpCenter')">
               <a-button type="text" shape="circle" @click="goHelp">
                 <QuestionCircleOutlined />
               </a-button>
@@ -58,8 +56,8 @@
             </div>
             <template #overlay>
               <a-menu>
-                <a-menu-item @click="goToProfile">个人资料</a-menu-item>
-                <a-menu-item @click="logout">退出登录</a-menu-item>
+                <a-menu-item @click="goToProfile">{{ t('adminNav.profile') }}</a-menu-item>
+                <a-menu-item @click="logout">{{ t('shell.logout') }}</a-menu-item>
               </a-menu>
             </template>
           </a-dropdown>
@@ -75,6 +73,7 @@
         collapsible
         :trigger="null"
         width="230"
+        :collapsed-width="56"
         @collapse="collapsed = $event"
       >
         <a-menu mode="inline" :selectedKeys="[selectedKey]" @click="onMenu">
@@ -101,7 +100,7 @@
       <a-layout>
         <a-layout-content class="content">
           <a-breadcrumb style="margin-bottom: 12px">
-            <a-breadcrumb-item>管理端</a-breadcrumb-item>
+            <a-breadcrumb-item>{{ t('adminNav.breadcrumb') }}</a-breadcrumb-item>
             <a-breadcrumb-item>{{ breadcrumb }}</a-breadcrumb-item>
           </a-breadcrumb>
           <slot />
@@ -126,7 +125,7 @@
       <div class="mfa-modal-copy">
         <div class="mfa-modal-title">{{ mfaTitle }}</div>
         <div class="mfa-modal-subtitle">
-          {{ admin.mfaBindRequired ? "首次使用需完成绑定后继续管理操作" : "输入动态验证码以恢复后台敏感操作权限" }}
+          {{ admin.mfaBindRequired ? t('adminNav.mfaBindSubtitle') : t('adminNav.mfaUnlockSubtitle') }}
         </div>
       </div>
     </div>
@@ -134,23 +133,23 @@
       v-if="admin.mfaBindRequired"
       type="warning"
       show-icon
-      message="需要绑定 2FA 才能继续使用后台功能"
+      :message="t('adminNav.mfaBindAlert')"
       class="mfa-alert"
     />
     <a-alert
       v-else
       type="info"
       show-icon
-      message="请输入 2FA 验证码以解锁后台操作"
+      :message="t('adminNav.mfaUnlockAlert')"
       class="mfa-alert"
     />
     <a-form layout="vertical" class="mfa-form">
-      <a-form-item v-if="admin.mfaBindRequired" label="登录密码">
-        <a-input-password v-model:value="mfaForm.password" placeholder="用于生成绑定信息" class="mfa-input" />
+      <a-form-item v-if="admin.mfaBindRequired" :label="t('adminNav.loginPassword')">
+        <a-input-password v-model:value="mfaForm.password" :placeholder="t('adminNav.bindPlaceholder')" class="mfa-input" />
       </a-form-item>
-      <a-form-item v-if="admin.mfaBindRequired" label="生成绑定信息">
+      <a-form-item v-if="admin.mfaBindRequired" :label="t('adminNav.bindInfo')">
         <a-button type="default" :loading="mfaLoading.setup" block class="mfa-setup-btn" @click="handleSetup2FA">
-          生成 2FA 绑定信息
+          {{ t('adminNav.generateBindInfo') }}
         </a-button>
       </a-form-item>
       <div v-if="mfaSecret" class="twofa-setup">
@@ -158,23 +157,23 @@
           <img v-if="mfaQRCode" :src="mfaQRCode" alt="2FA QRCode" />
         </div>
         <div class="twofa-meta">
-          <div class="twofa-label">手动密钥</div>
+          <div class="twofa-label">{{ t('adminNav.manualSecret') }}</div>
           <div class="twofa-secret">{{ mfaSecret }}</div>
         </div>
       </div>
-      <a-form-item label="2FA 验证码">
+      <a-form-item :label="t('adminNav.totpCode')">
         <a-input
           v-model:value="mfaForm.totpCode"
-          placeholder="请输入 6 位验证码"
+          :placeholder="t('adminNav.totpPlaceholder')"
           maxlength="6"
           inputmode="numeric"
           class="mfa-code-input"
           @input="handleTotpInput"
         />
       </a-form-item>
-      <div class="mfa-helper">验证码每 30 秒更新，请使用最新口令。</div>
+      <div class="mfa-helper">{{ t('adminNav.totpHint') }}</div>
       <a-button type="primary" block class="mfa-confirm-btn" :loading="mfaLoading.confirm" @click="handleConfirmOrUnlock">
-          {{ admin.mfaBindRequired ? "完成绑定并解锁" : "解锁" }}
+          {{ admin.mfaBindRequired ? t('adminNav.completeBinding') : t('adminNav.unlock') }}
       </a-button>
     </a-form>
   </a-modal>
@@ -186,9 +185,12 @@ import { computed, ref, onMounted, onUnmounted, nextTick, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAdminAuthStore } from "@/stores/adminAuth";
 import { useSiteStore } from "@/stores/site";
+import { useAppStore } from "@/stores/app";
 import { admin2FAUnlock } from "@/services/admin";
 import { adminSetupTwoFA, adminConfirmTwoFA } from "@/services/admin";
+import { t } from "@/locales";
 import SiteLogoMedia from "@/components/brand/SiteLogoMedia.vue";
+import AppearanceSettings from "@/components/AppearanceSettings.vue";
 import AdminMenuNode from "@/components/admin/AdminMenuNode.vue";
 import { Grid, theme, message } from "ant-design-vue";
 import QRCode from "qrcode";
@@ -229,6 +231,7 @@ const route = useRoute();
 const router = useRouter();
 const admin = useAdminAuthStore();
 const site = useSiteStore();
+const app = useAppStore();
 const screens = Grid.useBreakpoint();
 
 const collapsed = ref(false);
@@ -273,20 +276,20 @@ const hasAnyPermission = (requirements) => {
 const menuTree = computed(() => {
   const adminPath = getCurrentAdminPath();
   return [
-    { key: `/${adminPath}/console`, label: "总览", icon: DashboardOutlined, requireAny: ["dashboard.overview"] },
-    { key: `/${adminPath}/revenue-analytics`, label: "收入统计", icon: DollarOutlined, requireAny: ["dashboard.revenue_analytics_overview", "dashboard.revenue"] },
+    { key: `/${adminPath}/console`, label: t('adminNav.overview'), icon: DashboardOutlined, requireAny: ["dashboard.overview"] },
+    { key: `/${adminPath}/revenue-analytics`, label: t('adminNav.revenue'), icon: DollarOutlined, requireAny: ["dashboard.revenue_analytics_overview", "dashboard.revenue"] },
     {
       key: "group-trade",
-      label: "交易与资源",
+      label: t('adminNav.trade'),
       icon: ShoppingCartOutlined,
       children: [
-        { key: `/${adminPath}/orders`, label: "订单审核", icon: ShoppingCartOutlined, requireAny: ["order.list"] },
-        { key: `/${adminPath}/wallet/orders`, label: "钱包订单", icon: WalletOutlined, requireAny: ["wallet_order.list"] },
-        { key: `/${adminPath}/vps`, label: "VPS 管理", icon: CloudServerOutlined, requireAny: ["vps.list"] },
-        { key: `/${adminPath}/probes`, label: "探针监控", icon: ApiOutlined, requireAny: ["probe.list"] },
+        { key: `/${adminPath}/orders`, label: t('adminNav.orders'), icon: ShoppingCartOutlined, requireAny: ["order.list"] },
+        { key: `/${adminPath}/wallet/orders`, label: t('adminNav.walletOrders'), icon: WalletOutlined, requireAny: ["wallet_order.list"] },
+        { key: `/${adminPath}/vps`, label: t('adminNav.vps'), icon: CloudServerOutlined, requireAny: ["vps.list"] },
+        { key: `/${adminPath}/probes`, label: t('adminNav.probes'), icon: ApiOutlined, requireAny: ["probe.list"] },
         {
           key: `/${adminPath}/catalog`,
-          label: "售卖目录",
+          label: t('adminNav.catalog'),
           icon: AppstoreOutlined,
           requireAny: ["regions.list", "plan_group.list", "line.list", "packages.list", "system_image.list", "billing_cycle.list"]
         }
@@ -294,69 +297,69 @@ const menuTree = computed(() => {
     },
     {
       key: "group-support",
-      label: "用户与客服",
+      label: t('adminNav.support'),
       icon: TeamOutlined,
       children: [
-        { key: `/${adminPath}/users`, label: "用户管理", icon: TeamOutlined, requireAny: ["user.list"] },
-        { key: `/${adminPath}/user-tiers`, label: "用户等级", icon: SafetyCertificateOutlined, requireAny: ["user.list"] },
-        { key: `/${adminPath}/coupons`, label: "优惠码", icon: DollarOutlined, requireAny: ["settings.view"] },
-        { key: `/${adminPath}/tickets`, label: "工单管理", icon: CustomerServiceOutlined, requireAny: ["tickets.list"] },
-        { key: `/${adminPath}/realname/providers`, label: "实名供应商", icon: AppstoreOutlined, requireAny: ["realname.list"] },
-        { key: `/${adminPath}/realname/config`, label: "实名认证配置", icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
-        { key: `/${adminPath}/realname/records`, label: "实名认证记录", icon: FileSearchOutlined, requireAny: ["realname.list"] }
+        { key: `/${adminPath}/users`, label: t('adminNav.users'), icon: TeamOutlined, requireAny: ["user.list"] },
+        { key: `/${adminPath}/user-tiers`, label: t('adminNav.userTiers'), icon: SafetyCertificateOutlined, requireAny: ["user.list"] },
+        { key: `/${adminPath}/coupons`, label: t('adminNav.coupons'), icon: DollarOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/tickets`, label: t('adminNav.tickets'), icon: CustomerServiceOutlined, requireAny: ["tickets.list"] },
+        { key: `/${adminPath}/realname/providers`, label: t('adminNav.realnameProviders'), icon: AppstoreOutlined, requireAny: ["realname.list"] },
+        { key: `/${adminPath}/realname/config`, label: t('adminNav.realnameConfig'), icon: SafetyCertificateOutlined, requireAny: ["realname.view"] },
+        { key: `/${adminPath}/realname/records`, label: t('adminNav.realnameRecords'), icon: FileSearchOutlined, requireAny: ["realname.list"] }
       ]
     },
     {
       key: "group-cms",
-      label: "内容运营",
+      label: t('adminNav.content'),
       icon: FileTextOutlined,
       children: [
-        { key: `/${adminPath}/cms/categories`, label: "文章分类", icon: AppstoreOutlined, requireAny: ["cms_category.list"] },
-        { key: `/${adminPath}/cms/posts`, label: "文章内容", icon: FileTextOutlined, requireAny: ["cms_post.list"] },
-        { key: `/${adminPath}/cms/blocks`, label: "页面模块", icon: LayoutOutlined, requireAny: ["cms_block.list"] },
-        { key: `/${adminPath}/cms/nav-items`, label: "导航菜单", icon: MenuOutlined, requireAny: ["settings.view"] },
-        { key: `/${adminPath}/cms/uploads`, label: "媒体资源", icon: CloudUploadOutlined, requireAny: ["upload.list"] }
+        { key: `/${adminPath}/cms/categories`, label: t('adminNav.categories'), icon: AppstoreOutlined, requireAny: ["cms_category.list"] },
+        { key: `/${adminPath}/cms/posts`, label: t('adminNav.posts'), icon: FileTextOutlined, requireAny: ["cms_post.list"] },
+        { key: `/${adminPath}/cms/blocks`, label: t('adminNav.blocks'), icon: LayoutOutlined, requireAny: ["cms_block.list"] },
+        { key: `/${adminPath}/cms/nav-items`, label: t('adminNav.navItems'), icon: MenuOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/cms/uploads`, label: t('adminNav.uploads'), icon: CloudUploadOutlined, requireAny: ["upload.list"] }
       ]
     },
     {
       key: "group-platform",
-      label: "平台配置",
+      label: t('adminNav.platform'),
       icon: SettingOutlined,
       children: [
-        { key: `/${adminPath}/settings/site`, label: "站点设置", icon: SettingOutlined, requireAny: ["settings.view"] },
-        { key: `/${adminPath}/settings/auth`, label: "登录与注册", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
-        { key: `/${adminPath}/settings/pricing`, label: "价格与退款", icon: DollarOutlined, requireAny: ["settings.view"] },
-        { key: `/${adminPath}/settings/payments`, label: "支付设置", icon: CreditCardOutlined, requireAny: ["payment.list"] },
-        { key: `/${adminPath}/settings/lifecycle`, label: "生命周期", icon: ClockCircleOutlined, requireAny: ["settings.view"] },
-        { key: `/${adminPath}/settings/plugins`, label: "插件管理", icon: ToolOutlined, requireAny: ["plugin.list"] },
-        { key: `/${adminPath}/settings/webhook`, label: "Webhook", icon: LinkOutlined, requireAny: ["robot.view"] },
-        { key: `/${adminPath}/scheduled-tasks`, label: "计划任务", icon: ClockCircleOutlined, requireAny: ["scheduled_tasks.list"] }
+        { key: `/${adminPath}/settings/site`, label: t('adminNav.siteSettings'), icon: SettingOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/auth`, label: t('adminNav.authSettings'), icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/pricing`, label: t('adminNav.pricingSettings'), icon: DollarOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/payments`, label: t('adminNav.paymentSettings'), icon: CreditCardOutlined, requireAny: ["payment.list"] },
+        { key: `/${adminPath}/settings/lifecycle`, label: t('adminNav.lifecycle'), icon: ClockCircleOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/settings/plugins`, label: t('adminNav.plugins'), icon: ToolOutlined, requireAny: ["plugin.list"] },
+        { key: `/${adminPath}/settings/webhook`, label: t('adminNav.webhook'), icon: LinkOutlined, requireAny: ["robot.view"] },
+        { key: `/${adminPath}/scheduled-tasks`, label: t('adminNav.scheduledTasks'), icon: ClockCircleOutlined, requireAny: ["scheduled_tasks.list"] }
       ]
     },
     {
       key: "group-notify",
-      label: "通知与集成",
+      label: t('adminNav.notify'),
       icon: MessageOutlined,
       children: [
-        { key: `/${adminPath}/settings/email`, label: "邮件与模板", icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
-        { key: `/${adminPath}/settings/sms`, label: "短信设置", icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
-        { key: `/${adminPath}/settings/fcm`, label: "FCM 推送", icon: BellOutlined, requireAny: ["settings.view"] }
+        { key: `/${adminPath}/settings/email`, label: t('adminNav.email'), icon: MailOutlined, requireAny: ["smtp.view", "email_template.list"] },
+        { key: `/${adminPath}/settings/sms`, label: t('adminNav.sms'), icon: MessageOutlined, requireAny: ["sms.view", "sms_template.list"] },
+        { key: `/${adminPath}/settings/fcm`, label: t('adminNav.fcm'), icon: BellOutlined, requireAny: ["settings.view"] }
       ]
     },
     {
       key: "group-security",
-      label: "安全与审计",
+      label: t('adminNav.security'),
       icon: KeyOutlined,
       children: [
-        { key: `/${adminPath}/admins`, label: "管理员列表", icon: UserOutlined, requireAny: ["admin.list"] },
-        { key: `/${adminPath}/permission-groups`, label: "权限组", icon: KeyOutlined, requireAny: ["permission_group.list"] },
-        { key: `/${adminPath}/settings/apikey`, label: "API Keys", icon: KeyOutlined, requireAny: ["api_key.list"] },
-        { key: `/${adminPath}/settings/captcha`, label: "验证码设置", icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
-        { key: `/${adminPath}/audit`, label: "审计日志", icon: SettingOutlined, requireAny: ["audit_log.view"] },
-        { key: `/${adminPath}/debug`, label: "调试中心", icon: BugOutlined, requireAny: ["debug.view", "debug.list"] }
+        { key: `/${adminPath}/admins`, label: t('adminNav.admins'), icon: UserOutlined, requireAny: ["admin.list"] },
+        { key: `/${adminPath}/permission-groups`, label: t('adminNav.permissionGroups'), icon: KeyOutlined, requireAny: ["permission_group.list"] },
+        { key: `/${adminPath}/settings/apikey`, label: t('adminNav.apiKeys'), icon: KeyOutlined, requireAny: ["api_key.list"] },
+        { key: `/${adminPath}/settings/captcha`, label: t('adminNav.captcha'), icon: SafetyCertificateOutlined, requireAny: ["settings.view"] },
+        { key: `/${adminPath}/audit`, label: t('adminNav.audit'), icon: SettingOutlined, requireAny: ["audit_log.view"] },
+        { key: `/${adminPath}/debug`, label: t('adminNav.debug'), icon: BugOutlined, requireAny: ["debug.view", "debug.list"] }
       ]
     },
-    { key: `/${adminPath}/profile`, label: "个人资料", icon: UserOutlined }
+    { key: `/${adminPath}/profile`, label: t('adminNav.profile'), icon: UserOutlined }
   ];
 });
 
@@ -427,9 +430,9 @@ const labelMap = computed(() => {
   return out;
 });
 
-const breadcrumb = computed(() => labelMap.value[selectedKey.value] || "总览");
-const brandTitle = computed(() => site.siteName || "运营管理后台");
-const adminName = computed(() => admin.profile?.username || "管理员");
+const breadcrumb = computed(() => labelMap.value[selectedKey.value] || t('adminNav.overview'));
+const brandTitle = computed(() => site.siteName || t('adminNav.brand'));
+const adminName = computed(() => admin.profile?.username || t('adminNav.administrator'));
 const adminAvatar = computed(() => {
   const qq = admin.profile?.qq;
   if (!qq) return "";
@@ -448,7 +451,7 @@ const mfaLoading = ref({
 });
 
 const mfaModalOpen = computed(() => (admin.mfaBindRequired || admin.mfaRequired) && !admin.mfaUnlocked);
-const mfaTitle = computed(() => (admin.mfaBindRequired ? "管理员 2FA 绑定" : "管理员 2FA 解锁"));
+const mfaTitle = computed(() => (admin.mfaBindRequired ? t('adminNav.mfaBindTitle') : t('adminNav.mfaUnlockTitle')));
 
 const resetMfaForm = () => {
   mfaForm.value.password = "";
@@ -466,13 +469,13 @@ const handleSetup2FA = async () => {
     mfaSecret.value = String(res.data?.secret || "");
     const url = String(res.data?.otpauth_url || "");
     if (!mfaSecret.value || !url) {
-      message.error("生成绑定信息失败");
+      message.error(t('adminNav.generateFailed'));
       resetMfaForm();
       return;
     }
     mfaQRCode.value = await QRCode.toDataURL(url, { width: 200, margin: 1 });
   } catch (error) {
-    message.error(error?.response?.data?.error || "生成绑定信息失败");
+    message.error(error?.response?.data?.error || t('adminNav.generateFailed'));
   } finally {
     mfaLoading.value.setup = false;
   }
@@ -482,14 +485,14 @@ const handleConfirmOrUnlock = async () => {
   if (mfaLoading.value.confirm) return;
   const code = String(mfaForm.value.totpCode || "").trim();
   if (!/^\d{6}$/.test(code)) {
-    message.warning("请输入 6 位 2FA 验证码");
+    message.warning(t('adminNav.codeRequired'));
     return;
   }
   mfaLoading.value.confirm = true;
   try {
     if (admin.mfaBindRequired) {
       if (!mfaSecret.value) {
-        message.warning("请先生成绑定信息");
+        message.warning(t('adminNav.generateFirst'));
         return;
       }
       await adminConfirmTwoFA({ code });
@@ -507,9 +510,9 @@ const handleConfirmOrUnlock = async () => {
     });
     await admin.fetchProfile();
     resetMfaForm();
-    message.success("2FA 已解锁");
+    message.success(t('adminNav.unlocked'));
   } catch (error) {
-    message.error(error?.response?.data?.error || "2FA 校验失败");
+    message.error(error?.response?.data?.error || t('adminNav.verifyFailed'));
   } finally {
     mfaLoading.value.confirm = false;
   }
@@ -614,6 +617,8 @@ onUnmounted(() => {
   min-height: 100vh;
   height: 100vh;
   overflow: hidden;
+  background: var(--theme-canvas);
+  color: var(--text-primary);
 }
 
 .admin-layout > :deep(.ant-layout) {
@@ -621,12 +626,13 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* ========== Header 专业商业风格 ========== */
+/* ========== Header：跟随全局主题的外观预设 ========== */
 .header {
-  background: linear-gradient(135deg, #1a1d23 0%, #2b2f36 50%, #1a1d23 100%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.1);
-  color: #e6e9ef;
+  background: var(--theme-header-surface);
+  border-bottom: 1px solid var(--theme-header-border);
+  box-shadow: none;
+  color: var(--theme-header-text);
+  line-height: 1.4;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -636,7 +642,7 @@ onUnmounted(() => {
   position: sticky;
   top: 0;
   z-index: 1000;
-  backdrop-filter: blur(10px);
+  backdrop-filter: var(--theme-backdrop);
 }
 
 .header-left {
@@ -651,13 +657,13 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  color: #e6e9ef;
+  border-radius: var(--theme-control-radius, 8px);
+  color: var(--theme-header-text);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .menu-trigger:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--theme-sidebar-active);
   transform: scale(1.05);
 }
 
@@ -670,36 +676,32 @@ onUnmounted(() => {
 .brand-logo {
   width: 38px;
   height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #1677ff 0%, #4096ff 50%, #6ea4ff 100%);
-  color: #fff;
+  border-radius: var(--theme-control-radius, 10px);
+  background: var(--primary);
+  color: var(--theme-primary-foreground, #fff);
   font-weight: 700;
   font-size: 15px;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.4);
+  box-shadow: none;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .brand-logo:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(22, 119, 255, 0.5);
 }
 
 .brand-name {
   font-weight: 600;
   font-size: 16px;
   letter-spacing: 0.3px;
-  background: linear-gradient(135deg, #ffffff 0%, #e6e9ef 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--theme-header-text);
 }
 
 .brand-subtle {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--theme-header-muted);
   margin-top: 2px;
 }
 
@@ -707,43 +709,55 @@ onUnmounted(() => {
 .header-search-wrapper {
   position: relative;
   width: 280px;
+  height: var(--theme-control-height, 36px);
   transition: all 0.2s ease;
 }
 
-.header-search-wrapper:hover {
-  width: 300px;
+.header-search-wrapper :deep(.ant-select),
+.header-search-wrapper :deep(.ant-select-selector),
+.header-search-wrapper :deep(.ant-select-selection-search) {
+  width: 100%;
+  height: var(--theme-control-height, 36px) !important;
+  min-height: var(--theme-control-height, 36px) !important;
+}
+
+.header-search-wrapper :deep(.ant-select-selector) {
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .header-search {
   width: 100%;
-  height: 36px;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
+  height: var(--theme-control-height, 36px);
+  border-radius: var(--theme-control-radius, 6px);
+  border: 1px solid var(--theme-header-border);
+  background: var(--theme-control-bg);
   transition: all 0.2s ease;
 }
 
 /* 搜索框容器样式 - 针对.ant-input-affix-wrapper */
 .header-search-wrapper :deep(.ant-input-affix-wrapper) {
-  background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  border-radius: 6px !important;
-  height: 36px;
+  background: var(--theme-control-bg) !important;
+  border: 1px solid var(--theme-header-border) !important;
+  border-radius: var(--theme-control-radius, 6px) !important;
+  height: var(--theme-control-height, 36px);
   padding: 0;
   transition: all 0.2s ease;
   box-shadow: none !important;
 }
 
 .header-search-wrapper :deep(.ant-input-affix-wrapper:hover) {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.25) !important;
+  background: var(--theme-control-hover) !important;
+  border-color: var(--primary) !important;
 }
 
 .header-search-wrapper :deep(.ant-input-affix-wrapper:focus),
 .header-search-wrapper :deep(.ant-input-affix-wrapper-focused) {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border-color: rgba(22, 119, 255, 0.5) !important;
-  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.1) !important;
+  background: var(--theme-control-hover) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px var(--theme-focus-ring) !important;
   outline: none;
 }
 
@@ -751,37 +765,37 @@ onUnmounted(() => {
 .header-search-wrapper :deep(.ant-input) {
   background: transparent !important;
   border: none !important;
-  color: #e6e9ef !important;
+  color: var(--theme-header-text) !important;
   font-size: 14px;
   padding: 0 12px;
 }
 
 .header-search-wrapper :deep(.ant-input::placeholder) {
-  color: rgba(230, 233, 239, 0.4) !important;
+  color: var(--theme-header-muted) !important;
 }
 
 /* 搜索框前缀图标 */
 .header-search-wrapper :deep(.ant-input-prefix) {
   margin: 0;
   padding-left: 10px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--theme-header-muted);
   display: flex;
   align-items: center;
 }
 
 .header-search-wrapper :deep(.ant-input-prefix .anticon) {
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--theme-header-muted);
   font-size: 14px;
 }
 
 /* 清除按钮 */
 .header-search-wrapper :deep(.ant-input-clear-icon) {
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--theme-header-muted);
   font-size: 12px;
 }
 
 .header-search-wrapper :deep(.ant-input-clear-icon:hover) {
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--theme-header-text);
 }
 
 .header-actions {
@@ -790,8 +804,24 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+/* 顶栏控件统一用主题控件高度，图标按钮、外观控件、搜索框中心与高度完全一致 */
+.header-actions :deep(.ant-btn) {
+  width: var(--theme-control-height, 36px);
+  height: var(--theme-control-height, 36px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.header-actions :deep(.appearance-trigger) {
+  width: var(--theme-control-height, 36px);
+  min-width: var(--theme-control-height, 36px);
+  height: var(--theme-control-height, 36px);
+}
+
 .sider {
-  background: #0f1115;
+  background: var(--theme-sidebar);
   height: 100%;
   overflow: auto;
   /* 悬浮滚动条 */
@@ -800,33 +830,94 @@ onUnmounted(() => {
 }
 
 .sider :deep(.ant-menu) {
-  background: #0f1115;
-  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  color: var(--theme-sidebar-muted);
+}
+
+.sider :deep(.ant-menu-sub.ant-menu-inline) {
+  background: transparent;
 }
 
 .sider :deep(.ant-menu-item),
 .sider :deep(.ant-menu-submenu-title) {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--theme-sidebar-muted);
+  border-radius: var(--theme-control-radius, 8px);
 }
 
 .sider :deep(.ant-menu-item:hover),
 .sider :deep(.ant-menu-submenu-title:hover) {
-  color: #fff !important;
-  background: rgba(255, 255, 255, 0.12) !important;
+  color: var(--theme-sidebar-text) !important;
+  background: var(--theme-sidebar-active) !important;
 }
 
 .sider :deep(.ant-menu-item:hover *),
 .sider :deep(.ant-menu-submenu-title:hover *) {
-  color: #fff !important;
+  color: var(--theme-sidebar-text) !important;
 }
 
 .sider :deep(.ant-menu-item-selected) {
-  background: #1f2937;
-  color: #fff;
+  background: var(--theme-sidebar-active);
+  color: var(--theme-sidebar-accent);
 }
 
 .sider :deep(.ant-menu-item-selected .anticon) {
-  color: #4096ff;
+  color: var(--theme-sidebar-accent);
+}
+
+/* 折叠态：图标下方显示两字简称，与前台控制台保持一致 */
+.sider :deep(.admin-menu-icon) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+}
+
+.sider :deep(.admin-menu-short) {
+  display: none;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--theme-sidebar-muted);
+}
+
+.sider :deep(.ant-menu-inline-collapsed) {
+  width: 100% !important;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) .admin-menu-short {
+  display: block;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) > .ant-menu-item,
+.sider :deep(.ant-menu-inline-collapsed) > .ant-menu-submenu > .ant-menu-submenu-title {
+  position: relative;
+  display: block;
+  height: 56px;
+  padding: 0 !important;
+  line-height: 1.1;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) .ant-menu-item-icon {
+  position: absolute;
+  inset-inline: 0;
+  top: 7px;
+  display: flex;
+  width: auto;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sider :deep(.ant-menu-inline-collapsed) .ant-menu-item-icon :is(.anticon, svg) {
+  display: inline-flex;
+  line-height: 1;
 }
 
 /* ========== Sider 悬浮滚动条样式 ========== */
@@ -857,6 +948,7 @@ onUnmounted(() => {
   overflow: auto;
   overflow-y: auto;
   overflow-x: hidden;
+  background: transparent;
 }
 
 .content::-webkit-scrollbar {
@@ -893,13 +985,14 @@ onUnmounted(() => {
 }
 
 .user-info:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--theme-sidebar-active);
 }
 
 .user-name {
   font-weight: 500;
   font-size: 14px;
-  color: #e6e9ef;
+  line-height: 1.2;
+  color: var(--theme-header-text);
 }
 
 /* ========== Header 组件样式 ========== */
@@ -909,13 +1002,13 @@ onUnmounted(() => {
 }
 
 .header :deep(.ant-btn:hover) {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+  color: var(--theme-header-text);
+  background: var(--theme-sidebar-active);
   transform: scale(1.05);
 }
 
 .header :deep(.ant-btn-text) {
-  color: #e6e9ef;
+  color: var(--theme-header-text);
 }
 
 .header :deep(.anticon) {
@@ -928,22 +1021,26 @@ onUnmounted(() => {
 }
 
 .header :deep(.ant-tag) {
-  background: rgba(22, 119, 255, 0.15);
-  border: 1px solid rgba(22, 119, 255, 0.3);
-  color: #6ea4ff;
+  display: inline-flex;
+  align-items: center;
+  margin-inline-end: 0;
+  line-height: 20px;
+  background: var(--theme-sidebar-active);
+  border: 1px solid var(--theme-header-border);
+  color: var(--theme-sidebar-accent);
   font-weight: 500;
   padding: 2px 10px;
-  border-radius: 6px;
+  border-radius: var(--theme-control-radius, 6px);
   font-size: 12px;
 }
 
 .header :deep(.ant-avatar) {
-  border: 2px solid rgba(22, 119, 255, 0.3);
+  border: 2px solid var(--theme-header-border);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .header :deep(.ant-avatar:hover) {
-  border-color: rgba(22, 119, 255, 0.6);
+  border-color: var(--theme-sidebar-accent);
 }
 
 /* ========== 响应式 ========== */
@@ -973,14 +1070,14 @@ onUnmounted(() => {
   }
 }
 
-/* ========== Drawer 移动端菜单 - 深色风格 ========== */
+/* ========== Drawer 移动端菜单：跟随侧栏主题 ========== */
 .mobile-drawer :deep(.ant-drawer-body) {
   padding: 0;
-  background: #0f1115;
+  background: var(--theme-sidebar);
 }
 
 .mobile-drawer :deep(.ant-drawer-content) {
-  background: #0f1115;
+  background: var(--theme-sidebar);
 }
 
 .mobile-drawer :deep(.ant-drawer-header) {
@@ -990,7 +1087,7 @@ onUnmounted(() => {
 .drawer-content {
   height: 100%;
   overflow-y: auto;
-  background: #0f1115;
+  background: var(--theme-sidebar);
 }
 
 .drawer-menu {
@@ -1006,20 +1103,20 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--theme-sidebar-muted);
   font-size: 14px;
-  border-radius: 8px;
+  border-radius: var(--theme-control-radius, 8px);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .drawer-menu :deep(.ant-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--theme-sidebar-active);
+  color: var(--theme-sidebar-text);
 }
 
 .drawer-menu :deep(.ant-menu-item-selected) {
-  background: #1f2937;
-  color: #fff;
+  background: var(--theme-sidebar-active);
+  color: var(--theme-sidebar-accent);
   font-weight: 500;
   border-left: none;
 }
@@ -1030,7 +1127,7 @@ onUnmounted(() => {
 }
 
 .drawer-menu :deep(.ant-menu-item-selected .anticon) {
-  color: #4096ff;
+  color: var(--theme-sidebar-accent);
 }
 
 .drawer-menu :deep(.ant-menu-item span) {
@@ -1038,8 +1135,8 @@ onUnmounted(() => {
 }
 
 .drawer-menu :deep(.ant-menu-submenu-title) {
-  color: rgba(226, 232, 240, 0.75);
-  border-radius: 8px;
+  color: var(--theme-sidebar-muted);
+  border-radius: var(--theme-control-radius, 8px);
   margin: 2px 0;
   padding: 12px 16px;
   height: auto;
@@ -1048,16 +1145,16 @@ onUnmounted(() => {
 }
 
 .drawer-menu :deep(.ant-menu-submenu-title:hover) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--theme-sidebar-text);
+  background: var(--theme-sidebar-active);
 }
 
 .drawer-menu :deep(.ant-menu-submenu-arrow) {
-  color: rgba(226, 232, 240, 0.55);
+  color: var(--theme-sidebar-muted);
 }
 
 .drawer-menu :deep(.ant-menu-submenu-open > .ant-menu-submenu-title) {
-  color: #fff;
+  color: var(--theme-sidebar-text);
 }
 
 .drawer-menu :deep(.ant-menu) {
@@ -1085,14 +1182,14 @@ onUnmounted(() => {
 /* ========== Breadcrumb 面包屑样式 ========== */
 .content :deep(.ant-breadcrumb) {
   padding: 12px 16px 0 !important;
-  background: linear-gradient(135deg, #fafbfc 0%, #f5f7fa 100%);
-  border-radius: 8px;
-  border: 1px solid #e8ecf1;
+  background: var(--bg-secondary);
+  border-radius: var(--theme-control-radius, 8px);
+  border: 1px solid var(--border);
   margin-bottom: 0 !important;
 }
 
 .content :deep(.ant-breadcrumb-link) {
-  color: var(--text2);
+  color: var(--text-secondary);
   font-weight: 500;
   font-size: 13px;
   transition: color 0.2s ease;
@@ -1103,7 +1200,7 @@ onUnmounted(() => {
 }
 
 .content :deep(.ant-breadcrumb-separator) {
-  color: var(--text3);
+  color: var(--text-tertiary);
 }
 
 .twofa-setup {

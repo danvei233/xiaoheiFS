@@ -142,7 +142,8 @@ export const resetVpsOS = (id: number | string, payload: { template_id: number |
 export const resetVpsOsPassword = (id: number | string, payload: { password: string }) =>
   http.post(`/api/v1/vps/${id}/reset-os-password`, payload);
 export const getVpsSnapshots = (id: number | string) => http.get(`/api/v1/vps/${id}/snapshots`);
-export const createVpsSnapshot = (id: number | string) => http.post(`/api/v1/vps/${id}/snapshots`);
+export const createVpsSnapshot = (id: number | string, payload?: { name?: string; description?: string }) =>
+  http.post(`/api/v1/vps/${id}/snapshots`, payload || {});
 export const deleteVpsSnapshot = (id: number | string, snapshotId: number | string) =>
   http.delete(`/api/v1/vps/${id}/snapshots/${snapshotId}`);
 export const restoreVpsSnapshot = (id: number | string, snapshotId: number | string) =>
@@ -165,6 +166,61 @@ export const getVpsPortCandidates = (id: number | string, params?: { keywords?: 
   http.get(`/api/v1/vps/${id}/ports/candidates`, { params });
 export const deleteVpsPortMapping = (id: number | string, mappingId: number | string) =>
   http.delete(`/api/v1/vps/${id}/ports/${mappingId}`);
+
+// 防火墙扩展能力（总开关 / 默认策略 / 规则更新）
+export const updateVpsFirewallOptions = (
+  id: number | string,
+  payload: { enable: boolean; policy_in?: string; policy_out?: string }
+) => http.put(`/api/v1/vps/${id}/firewall/options`, payload);
+export const updateVpsFirewallRule = (id: number | string, ruleId: number | string, payload: Record<string, unknown>) =>
+  http.put(`/api/v1/vps/${id}/firewall/rules/${ruleId}`, payload);
+
+// 网卡
+export const getVpsNetworkCards = (id: number | string) => http.get(`/api/v1/vps/${id}/network-cards`);
+export const addVpsNetworkCard = (id: number | string, payload: Record<string, unknown>) =>
+  http.post(`/api/v1/vps/${id}/network-cards`, payload);
+export const updateVpsNetworkCard = (id: number | string, nicName: string, payload: Record<string, unknown>) =>
+  http.put(`/api/v1/vps/${id}/network-cards/${encodeURIComponent(nicName)}`, payload);
+export const deleteVpsNetworkCard = (id: number | string, nicName: string) =>
+  http.delete(`/api/v1/vps/${id}/network-cards/${encodeURIComponent(nicName)}`);
+
+// 数据盘
+export const getVpsDisks = (id: number | string) => http.get(`/api/v1/vps/${id}/disks`);
+export const mountVpsDisk = (id: number | string, payload: { size_gb: number; hdd_type?: number }) =>
+  http.post(`/api/v1/vps/${id}/disks/mount`, payload);
+export const unmountVpsDisk = (id: number | string, hddName: string) =>
+  http.post(`/api/v1/vps/${id}/disks/unmount`, { hdd_name: hddName });
+export const deleteVpsDisk = (id: number | string, hddName: string) =>
+  http.delete(`/api/v1/vps/${id}/disks/${encodeURIComponent(hddName)}`);
+
+// 光盘
+export const getVpsISOs = (id: number | string) => http.get(`/api/v1/vps/${id}/isos`);
+export const mountVpsISO = (id: number | string, payload: Record<string, unknown>) =>
+  http.post(`/api/v1/vps/${id}/isos`, payload);
+export const unmountVpsISO = (id: number | string, isoName: string) =>
+  http.delete(`/api/v1/vps/${id}/isos/${encodeURIComponent(isoName)}`);
+
+// 反向代理
+export const getVpsReverseProxies = (id: number | string) => http.get(`/api/v1/vps/${id}/reverse-proxies`);
+export const addVpsReverseProxy = (id: number | string, payload: Record<string, unknown>) =>
+  http.post(`/api/v1/vps/${id}/reverse-proxies`, payload);
+export const updateVpsReverseProxy = (id: number | string, proxyIndex: number | string, payload: Record<string, unknown>) =>
+  http.put(`/api/v1/vps/${id}/reverse-proxies/${proxyIndex}`, payload);
+export const deleteVpsReverseProxy = (id: number | string, proxyIndex: number | string) =>
+  http.delete(`/api/v1/vps/${id}/reverse-proxies/${proxyIndex}`);
+
+// 启动顺序
+export const getVpsBootOrder = (id: number | string) => http.get(`/api/v1/vps/${id}/boot-order`);
+export const setVpsBootOrder = (id: number | string, items: Array<{ efi_type: boolean; efi_name: string }>) =>
+  http.put(`/api/v1/vps/${id}/boot-order`, { items });
+
+// PCI / USB 直通
+export const getVpsPCIDevices = (id: number | string) => http.get(`/api/v1/vps/${id}/pci-devices`);
+export const setupVpsPCIDevice = (id: number | string, payload: Record<string, unknown>) =>
+  http.post(`/api/v1/vps/${id}/pci-devices`, payload);
+export const getVpsUSBDevices = (id: number | string) => http.get(`/api/v1/vps/${id}/usb-devices`);
+export const setupVpsUSBDevice = (id: number | string, payload: Record<string, unknown>) =>
+  http.post(`/api/v1/vps/${id}/usb-devices`, payload);
 export const createVpsRenewOrder = (id: number | string, payload: Record<string, unknown>) =>
   http.post(`/api/v1/vps/${id}/renew`, payload);
 export const emergencyRenewVps = (id: number | string) => http.post(`/api/v1/vps/${id}/emergency-renew`);

@@ -109,16 +109,39 @@ type VPSService interface {
 	UpdateLocalSystemID(ctx context.Context, inst domain.VPSInstance, systemID int64) error
 	ResetOSPassword(ctx context.Context, inst domain.VPSInstance, password string) error
 	ListSnapshots(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationSnapshot, error)
-	CreateSnapshot(ctx context.Context, inst domain.VPSInstance) error
+	CreateSnapshot(ctx context.Context, inst domain.VPSInstance, name string, description string) error
 	DeleteSnapshot(ctx context.Context, inst domain.VPSInstance, snapshotID int64) error
 	RestoreSnapshot(ctx context.Context, inst domain.VPSInstance, snapshotID int64) error
 	ListBackups(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationBackup, error)
 	CreateBackup(ctx context.Context, inst domain.VPSInstance) error
 	DeleteBackup(ctx context.Context, inst domain.VPSInstance, backupID int64) error
 	RestoreBackup(ctx context.Context, inst domain.VPSInstance, backupID int64) error
-	ListFirewallRules(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationFirewallRule, error)
+	ListFirewallRules(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationFirewallRule, appshared.AutomationFirewallState, error)
 	AddFirewallRule(ctx context.Context, inst domain.VPSInstance, req appshared.AutomationFirewallRuleCreate) error
+	UpdateFirewallRule(ctx context.Context, inst domain.VPSInstance, ruleID int64, req appshared.AutomationFirewallRuleCreate) error
 	DeleteFirewallRule(ctx context.Context, inst domain.VPSInstance, ruleID int64) error
+	SetFirewallOptions(ctx context.Context, inst domain.VPSInstance, enable bool, policyIn string, policyOut string) error
+	ListNetworkCards(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationNetworkCard, error)
+	CreateNetworkCard(ctx context.Context, inst domain.VPSInstance, card appshared.AutomationNetworkCardInput) error
+	UpdateNetworkCard(ctx context.Context, inst domain.VPSInstance, nicName string, card appshared.AutomationNetworkCardInput) error
+	DeleteNetworkCard(ctx context.Context, inst domain.VPSInstance, nicName string) error
+	ListDataDisks(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationDataDisk, error)
+	AttachDataDisk(ctx context.Context, inst domain.VPSInstance, sizeMB int, hddType int) error
+	DetachDataDisk(ctx context.Context, inst domain.VPSInstance, hddName string) error
+	DeleteDataDisk(ctx context.Context, inst domain.VPSInstance, hddName string) error
+	ListISOs(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationISO, []string, error)
+	MountISO(ctx context.Context, inst domain.VPSInstance, in appshared.AutomationISOInput) error
+	UnmountISO(ctx context.Context, inst domain.VPSInstance, isoName string) error
+	ListReverseProxies(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationReverseProxy, error)
+	CreateReverseProxy(ctx context.Context, inst domain.VPSInstance, in appshared.AutomationReverseProxyInput) error
+	UpdateReverseProxy(ctx context.Context, inst domain.VPSInstance, proxyIndex int64, in appshared.AutomationReverseProxyInput) error
+	DeleteReverseProxy(ctx context.Context, inst domain.VPSInstance, proxyIndex int64) error
+	GetBootOrder(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationBootOption, error)
+	SetBootOrder(ctx context.Context, inst domain.VPSInstance, items []appshared.AutomationBootOption) error
+	ListPCIDevices(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationPCIDevice, error)
+	SetupPCIDevice(ctx context.Context, inst domain.VPSInstance, in appshared.AutomationPassthroughInput) error
+	ListUSBDevices(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationUSBDevice, error)
+	SetupUSBDevice(ctx context.Context, inst domain.VPSInstance, in appshared.AutomationPassthroughInput) error
 	ListPortMappings(ctx context.Context, inst domain.VPSInstance) ([]appshared.AutomationPortMapping, error)
 	AddPortMapping(ctx context.Context, inst domain.VPSInstance, req appshared.AutomationPortMappingCreate) error
 	FindPortCandidates(ctx context.Context, inst domain.VPSInstance, keywords string) ([]int64, error)

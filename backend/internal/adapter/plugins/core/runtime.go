@@ -201,12 +201,27 @@ func (r *Runtime) Start(ctx context.Context, category, pluginID, instanceID, con
 	}
 	k := r.key(category, pluginID, instanceID)
 
+	var stale *runningPlugin
 	r.mu.Lock()
 	if existing := r.running[k]; existing != nil {
-		r.mu.Unlock()
-		return existing.manifest, nil
+		// 进程仍在运行才复用缓存；插件崩溃或被外部结束后必须重新拉起，
+		// 否则后续 RPC 会一直拨号到已失效的地址（connection refused）。
+		if existing.client != nil && !existing.client.Exited() {
+			r.mu.Unlock()
+			return existing.manifest, nil
+		}
+		stale = existing
+		delete(r.running, k)
 	}
 	r.mu.Unlock()
+	if stale != nil {
+		if stale.cancelHB != nil {
+			stale.cancelHB()
+		}
+		if stale.client != nil {
+			stale.client.Kill()
+		}
+	}
 
 	pluginDir := filepath.Join(r.baseDir, category, pluginID)
 	manifestJSON, err := ReadManifest(pluginDir)

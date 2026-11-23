@@ -62,19 +62,7 @@
     </div>
 
     <!-- Main Tabs -->
-    <div v-if="unsupportedFeatureHints.length" class="capability-notice">
-      <a-alert type="info" show-icon>
-        <template #message>部分功能按实例能力已自动隐藏</template>
-        <template #description>
-          <div class="capability-tags">
-            <a-tag v-for="item in unsupportedFeatureHints" :key="item.key" color="default">
-              {{ item.label }}：{{ item.reason }}
-            </a-tag>
-          </div>
-        </template>
-      </a-alert>
-    </div>
-    <a-tabs v-model:activeKey="activeTab" class="ecs-tabs">
+    <a-tabs v-model:activeKey="activeTab" class="ecs-tabs" :tab-bar-gutter="6">
       <a-tab-pane key="overview">
         <template #tab>
           <DashboardOutlined class="tab-icon" />
@@ -406,7 +394,8 @@
                 <span>CPU</span>
               </div>
             </template>
-            <LineChart :data="monitor.cpu" :color="'#1677ff'" height="180" />
+            <LineChart v-if="monitorAvailable" :data="monitor.cpu" :color="'#1677ff'" height="180" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
 
           <a-card class="monitor-panel" :bordered="false" :loading="loading">
@@ -416,7 +405,8 @@
                 <span>IO</span>
               </div>
             </template>
-            <LineChart :data="monitor.trafficOut" :color="'#fa8c16'" height="160" />
+            <LineChart v-if="monitorAvailable" :data="monitor.trafficOut" :color="'#fa8c16'" height="160" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
 
           <a-card class="monitor-panel" :bordered="false" :loading="loading">
@@ -426,7 +416,8 @@
                 <span>网络</span>
               </div>
             </template>
-            <LineChart :data="monitor.trafficIn" :color="'#52c41a'" height="160" />
+            <LineChart v-if="monitorAvailable" :data="monitor.trafficIn" :color="'#52c41a'" height="160" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
 
           <a-card class="monitor-panel" :bordered="false" :loading="loading">
@@ -436,7 +427,8 @@
                 <span>内存</span>
               </div>
             </template>
-            <LineChart :data="monitor.memory" :color="'#722ed1'" height="160" />
+            <LineChart v-if="monitorAvailable" :data="monitor.memory" :color="'#722ed1'" height="160" />
+            <a-empty v-else :image="false" description="上游暂未上报监控数据" />
           </a-card>
         </div>
       </a-tab-pane><a-tab-pane v-if="showFirewallTab" key="firewall">
@@ -451,23 +443,84 @@
             </div>
           </template>
           <div class="tab-actions">
-            <a-button type="primary" size="small" @click="openFirewallModal">
-              <PlusOutlined />
-              添加规则
-            </a-button>
+            <a-space wrap>
+              <span class="subtle">防火墙开关</span>
+              <a-switch
+                :checked="!!firewallState.enabled"
+                :loading="firewallOptionsBusy"
+                :disabled="featureReadonly('firewall')"
+                checked-children="开启"
+                un-checked-children="关闭"
+                @change="(v) => saveFirewallOptions({ enable: !!v })"
+              />
+              <a-tag :color="firewallState.effective ? 'green' : 'orange'">
+                {{ firewallState.effective ? '已生效' : '未完全生效' }}
+              </a-tag>
+              <template v-if="firewallPolicyEditable">
+                <a-divider type="vertical" />
+                <span class="subtle">入站默认</span>
+                <a-select
+                  :value="firewallState.policy_in || 'ACCEPT'"
+                  size="small"
+                  style="width: 96px"
+                  :disabled="firewallOptionsBusy || featureReadonly('firewall')"
+                  @change="(v) => saveFirewallOptions({ policy_in: String(v) })"
+                >
+                  <a-select-option value="ACCEPT">放行</a-select-option>
+                  <a-select-option value="DROP">丢弃</a-select-option>
+                  <a-select-option value="REJECT">拒绝</a-select-option>
+                </a-select>
+                <span class="subtle">出站默认</span>
+                <a-select
+                  :value="firewallState.policy_out || 'ACCEPT'"
+                  size="small"
+                  style="width: 96px"
+                  :disabled="firewallOptionsBusy || featureReadonly('firewall')"
+                  @change="(v) => saveFirewallOptions({ policy_out: String(v) })"
+                >
+                  <a-select-option value="ACCEPT">放行</a-select-option>
+                  <a-select-option value="DROP">丢弃</a-select-option>
+                  <a-select-option value="REJECT">拒绝</a-select-option>
+                </a-select>
+              </template>
+              <a-divider type="vertical" />
+              <a-tag v-if="featureReadonly('firewall')" color="orange">只读</a-tag>
+              <a-button v-else type="primary" size="small" @click="openFirewallModal()">
+                <PlusOutlined />
+                添加规则
+              </a-button>
+              <a-button size="small" @click="fetchFirewallRules">刷新</a-button>
+            </a-space>
           </div>
+          <a-alert
+            v-if="firewallState.platform"
+            type="info"
+            show-icon
+            style="margin-bottom: 12px"
+            :message="`平台策略：${firewallPlatformLabel}。规则按位序从上到下匹配，未命中时按默认策略处理。`"
+          />
           <a-table
             :data-source="firewallRules"
             :columns="firewallColumns"
             row-key="id"
             size="small"
-            :scroll="{ x: 900 }"
+            :scroll="{ x: 1100 }"
             :loading="firewallLoading"
             :pagination="false"
           >
             <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'action'">
-                <a-button type="link" size="small" danger @click="removeFirewallRule(record)">删除</a-button>
+              <template v-if="column.key === 'enable'">
+                <a-tag :color="record.enable ? 'green' : 'default'">{{ record.enable ? '启用' : '停用' }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'method'">
+                <a-tag :color="firewallActionColor(record.method)">{{ firewallActionLabel(record.method) }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'action'">
+                <span v-if="featureReadonly('firewall')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button type="link" size="small" @click="openFirewallModal(record)">编辑</a-button>
+                  <a-button type="link" size="small" danger @click="removeFirewallRule(record)">删除</a-button>
+                </template>
               </template>
             </template>
           </a-table>
@@ -486,7 +539,8 @@
             </div>
           </template>
           <div class="tab-actions">
-            <a-button type="primary" size="small" @click="openPortModal">
+            <a-tag v-if="featureReadonly('port_mapping')" color="orange">只读</a-tag>
+            <a-button v-else type="primary" size="small" @click="openPortModal">
               <PlusOutlined />
               添加映射
             </a-button>
@@ -506,6 +560,7 @@
               </template>
               <template v-if="column.key === 'action'">
                 <a-tag v-if="Number(record?.sys) === 2" color="blue">系统</a-tag>
+                <span v-else-if="featureReadonly('port_mapping')" class="subtle">只读</span>
                 <a-button
                   v-else
                   type="link"
@@ -534,10 +589,14 @@
             </div>
           </template>
           <div class="tab-actions">
-            <a-button type="primary" size="small" @click="createSnapshot">
-              <PlusOutlined />
-              创建快照
-            </a-button>
+            <a-space>
+              <a-tag v-if="featureReadonly('snapshot')" color="orange">只读模式：仅可查看</a-tag>
+              <a-button v-else type="primary" size="small" @click="openSnapshotModal">
+                <PlusOutlined />
+                创建快照
+              </a-button>
+              <a-button size="small" @click="fetchSnapshots">刷新</a-button>
+            </a-space>
           </div>
           <a-table
             :data-source="snapshots"
@@ -551,10 +610,14 @@
             <template #bodyCell="{ column, record }">
               <template v-if="column.key === 'state_label'">
                 <a-badge :status="record.state_badge || 'default'" :text="record.state_label || '未知'" />
+                <a-tag v-if="record.current" color="blue" style="margin-left: 6px">当前</a-tag>
               </template>
               <template v-if="column.key === 'action'">
-                <a-button type="link" size="small" @click="restoreSnapshot(record)">恢复</a-button>
-                <a-button type="link" size="small" danger @click="deleteSnapshot(record)">删除</a-button>
+                <span v-if="featureReadonly('snapshot')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button type="link" size="small" @click="restoreSnapshot(record)">恢复</a-button>
+                  <a-button type="link" size="small" danger @click="deleteSnapshot(record)">删除</a-button>
+                </template>
               </template>
             </template>
           </a-table>
@@ -573,7 +636,8 @@
             </div>
           </template>
           <div class="tab-actions">
-            <a-button type="primary" size="small" @click="createBackup">
+            <a-tag v-if="featureReadonly('backup')" color="orange">只读模式：仅可查看</a-tag>
+            <a-button v-else type="primary" size="small" @click="createBackup">
               <PlusOutlined />
               创建备份
             </a-button>
@@ -592,8 +656,329 @@
                 <a-badge :status="record.state_badge || 'default'" :text="record.state_label || '未知'" />
               </template>
               <template v-if="column.key === 'action'">
-                <a-button type="link" size="small" @click="restoreBackup(record)">恢复</a-button>
-                <a-button type="link" size="small" danger @click="deleteBackup(record)">删除</a-button>
+                <span v-if="featureReadonly('backup')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button type="link" size="small" @click="restoreBackup(record)">恢复</a-button>
+                  <a-button type="link" size="small" danger @click="deleteBackup(record)">删除</a-button>
+                </template>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+      <a-tab-pane v-if="showNicTab" key="nic">
+        <template #tab>
+          <span>网卡</span>
+        </template>
+        <a-card class="security-card" :bordered="false">
+          <template #title>
+            <div class="card-title">
+              <GlobalOutlined />
+              <span>网卡</span>
+            </div>
+          </template>
+          <div class="tab-actions">
+            <a-space>
+              <a-tag v-if="featureReadonly('nic')" color="orange">只读模式：仅可查看</a-tag>
+              <a-button v-else type="primary" size="small" @click="openNicModal()">
+                <PlusOutlined />
+                添加网卡
+              </a-button>
+              <a-button size="small" @click="fetchNetworkCards">刷新</a-button>
+            </a-space>
+          </div>
+          <a-table
+            :data-source="networkCards"
+            :columns="nicColumns"
+            row-key="nic_name"
+            size="small"
+            :scroll="{ x: 1000 }"
+            :loading="nicLoading"
+            :pagination="false"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'action'">
+                <span v-if="featureReadonly('nic')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button type="link" size="small" @click="openNicModal(record)">编辑</a-button>
+                  <a-button type="link" size="small" danger @click="removeNetworkCard(record)">删除</a-button>
+                </template>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane v-if="showDiskTab" key="disk">
+        <template #tab>
+          <span>数据盘</span>
+        </template>
+        <a-card class="security-card" :bordered="false">
+          <template #title>
+            <div class="card-title">
+              <DatabaseOutlined />
+              <span>数据盘</span>
+            </div>
+          </template>
+          <div class="tab-actions">
+            <a-space>
+              <a-tag v-if="featureReadonly('disk')" color="orange">只读模式：仅可查看</a-tag>
+              <a-button v-else type="primary" size="small" @click="diskOpen = true">
+                <PlusOutlined />
+                挂载数据盘
+              </a-button>
+              <a-button size="small" @click="fetchDisks">刷新</a-button>
+            </a-space>
+          </div>
+          <a-table
+            :data-source="dataDisks"
+            :columns="diskColumns"
+            row-key="hdd_name"
+            size="small"
+            :scroll="{ x: 900 }"
+            :loading="diskLoading"
+            :pagination="false"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'hdd_flag'">
+                <a-tag :color="Number(record.hdd_flag) === 1 ? 'green' : 'default'">
+                  {{ Number(record.hdd_flag) === 1 ? '已挂载' : '未挂载' }}
+                </a-tag>
+              </template>
+              <template v-else-if="column.key === 'hdd_type'">
+                {{ Number(record.hdd_type) === 1 ? 'SSD' : 'HDD' }}
+              </template>
+              <template v-else-if="column.key === 'action'">
+                <span v-if="featureReadonly('disk')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button
+                    v-if="Number(record.hdd_flag) === 1"
+                    type="link"
+                    size="small"
+                    @click="unmountDisk(record)"
+                  >卸载</a-button>
+                  <a-button type="link" size="small" danger @click="removeDisk(record)">删除</a-button>
+                </template>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane v-if="showIsoTab" key="iso">
+        <template #tab>
+          <span>光盘</span>
+        </template>
+        <a-card class="security-card" :bordered="false">
+          <template #title>
+            <div class="card-title">
+              <PlayCircleOutlined />
+              <span>光盘</span>
+            </div>
+          </template>
+          <div class="tab-actions">
+            <a-space>
+              <a-tag v-if="featureReadonly('iso')" color="orange">只读模式：仅可查看</a-tag>
+              <a-button v-else type="primary" size="small" @click="openIsoModal">
+                <PlusOutlined />
+                挂载光盘
+              </a-button>
+              <a-button size="small" @click="fetchISOs">刷新</a-button>
+            </a-space>
+          </div>
+          <a-table
+            :data-source="isoImages"
+            :columns="isoColumns"
+            row-key="iso_name"
+            size="small"
+            :scroll="{ x: 900 }"
+            :loading="isoLoading"
+            :pagination="false"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'action'">
+                <span v-if="featureReadonly('iso')" class="subtle">只读</span>
+                <a-button v-else type="link" size="small" danger @click="unmountISO(record)">卸载</a-button>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane v-if="showReverseProxyTab" key="reverse-proxy">
+        <template #tab>
+          <span>反向代理</span>
+        </template>
+        <a-card class="security-card" :bordered="false">
+          <template #title>
+            <div class="card-title">
+              <CloudUploadOutlined />
+              <span>反向代理</span>
+            </div>
+          </template>
+          <div class="tab-actions">
+            <a-space>
+              <a-tag v-if="featureReadonly('reverse_proxy')" color="orange">只读模式：仅可查看</a-tag>
+              <a-button v-else type="primary" size="small" @click="openProxyModal()">
+                <PlusOutlined />
+                添加代理
+              </a-button>
+              <a-button size="small" @click="fetchReverseProxies">刷新</a-button>
+            </a-space>
+          </div>
+          <a-table
+            :data-source="reverseProxies"
+            :columns="proxyColumns"
+            row-key="id"
+            size="small"
+            :scroll="{ x: 1000 }"
+            :loading="proxyLoading"
+            :pagination="false"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'ssl_enabled'">
+                <a-tag :color="record.ssl_enabled ? 'green' : 'default'">{{ record.ssl_enabled ? 'HTTPS' : 'HTTP' }}</a-tag>
+              </template>
+              <template v-else-if="column.key === 'action'">
+                <span v-if="featureReadonly('reverse_proxy')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button type="link" size="small" @click="openProxyModal(record)">编辑</a-button>
+                  <a-button type="link" size="small" danger @click="removeReverseProxy(record)">删除</a-button>
+                </template>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane v-if="showBootOrderTab" key="boot-order">
+        <template #tab>
+          <span>启动顺序</span>
+        </template>
+        <a-card class="security-card" :bordered="false">
+          <template #title>
+            <div class="card-title">
+              <VerticalAlignTopOutlined />
+              <span>启动顺序</span>
+            </div>
+          </template>
+          <div class="tab-actions">
+            <a-space>
+              <a-tag v-if="featureReadonly('boot_order')" color="orange">只读模式：仅可查看</a-tag>
+              <a-button v-else type="primary" size="small" :loading="bootOrderSaving" @click="saveBootOrder">保存顺序</a-button>
+              <a-button size="small" @click="fetchBootOrder">刷新</a-button>
+            </a-space>
+          </div>
+          <a-alert
+            type="info"
+            show-icon
+            style="margin-bottom: 12px"
+            message="从上到下依次尝试启动；顺序与平台 boot order 一致，保存后对下次启动生效。"
+          />
+          <a-list :data-source="bootOrder" size="small" bordered>
+            <template #renderItem="{ item, index }">
+              <a-list-item>
+                <a-space>
+                  <a-tag color="blue">{{ index + 1 }}</a-tag>
+                  <a-tag :color="item.efi_type ? 'purple' : 'cyan'">{{ item.efi_type ? '光盘' : '硬盘' }}</a-tag>
+                  <span>{{ item.efi_name }}</span>
+                </a-space>
+                <template #actions>
+                  <span v-if="featureReadonly('boot_order')" class="subtle">只读</span>
+                  <template v-else>
+                    <a-button type="link" size="small" :disabled="index === 0" @click="moveBootOption(index, -1)">上移</a-button>
+                    <a-button
+                      type="link"
+                      size="small"
+                      :disabled="index === bootOrder.length - 1"
+                      @click="moveBootOption(index, 1)"
+                    >下移</a-button>
+                  </template>
+                </template>
+              </a-list-item>
+            </template>
+          </a-list>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane v-if="showPciTab" key="pci">
+        <template #tab>
+          <span>PCI 直通</span>
+        </template>
+        <a-card class="security-card" :bordered="false">
+          <template #title>
+            <div class="card-title">
+              <ThunderboltOutlined />
+              <span>PCI 直通</span>
+            </div>
+          </template>
+          <div class="tab-actions">
+            <a-button size="small" @click="fetchPCIDevices">刷新设备列表</a-button>
+          </div>
+          <a-alert
+            type="warning"
+            show-icon
+            style="margin-bottom: 12px"
+            message="PCI 直通需要虚拟机关机后操作；同一设备同一时间只能直通给一台实例。"
+          />
+          <a-table
+            :data-source="pciDevices"
+            :columns="pciColumns"
+            row-key="pci_key"
+            size="small"
+            :scroll="{ x: 800 }"
+            :loading="passthroughLoading"
+            :pagination="false"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'action'">
+                <span v-if="featureReadonly('pci')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button type="link" size="small" @click="setupPCIDevice(record, true)">直通到实例</a-button>
+                  <a-button type="link" size="small" danger @click="setupPCIDevice(record, false)">移除直通</a-button>
+                </template>
+              </template>
+            </template>
+          </a-table>
+        </a-card>
+      </a-tab-pane>
+
+      <a-tab-pane v-if="showUsbTab" key="usb">
+        <template #tab>
+          <span>USB 直通</span>
+        </template>
+        <a-card class="security-card" :bordered="false">
+          <template #title>
+            <div class="card-title">
+              <ApiOutlined />
+              <span>USB 直通</span>
+            </div>
+          </template>
+          <div class="tab-actions">
+            <a-button size="small" @click="fetchUSBDevices">刷新设备列表</a-button>
+          </div>
+          <a-alert
+            type="warning"
+            show-icon
+            style="margin-bottom: 12px"
+            message="USB 设备直通通常需要重启实例才能生效。"
+          />
+          <a-table
+            :data-source="usbDevices"
+            :columns="usbColumns"
+            row-key="usb_key"
+            size="small"
+            :scroll="{ x: 800 }"
+            :loading="passthroughLoading"
+            :pagination="false"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'action'">
+                <span v-if="featureReadonly('usb')" class="subtle">只读</span>
+                <template v-else>
+                  <a-button type="link" size="small" @click="setupUSBDevice(record, true)">直通到实例</a-button>
+                  <a-button type="link" size="small" danger @click="setupUSBDevice(record, false)">移除直通</a-button>
+                </template>
               </template>
             </template>
           </a-table>
@@ -834,38 +1219,217 @@
     <!-- Firewall Modal -->
     <a-modal
       v-model:open="firewallOpen"
-      title="添加防火墙规则"
-      :width="480"
+      :title="firewallEditingId === null ? '添加防火墙规则' : '编辑防火墙规则'"
+      :width="520"
+      :confirm-loading="firewallSubmitting"
       @ok="submitFirewallRule"
     >
       <a-form layout="vertical">
-        <a-form-item label="方向" required>
-          <a-select v-model:value="firewallForm.direction">
-            <a-select-option value="In">入站</a-select-option>
-            <a-select-option value="Out">出站</a-select-option>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="方向">
+              <a-select v-model:value="firewallForm.direction">
+                <a-select-option value="in">入站</a-select-option>
+                <a-select-option value="out">出站</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="动作">
+              <a-select v-model:value="firewallForm.method">
+                <a-select-option value="ACCEPT">放行</a-select-option>
+                <a-select-option value="DROP">丢弃</a-select-option>
+                <a-select-option value="REJECT">拒绝</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="协议">
+              <a-select v-model:value="firewallForm.protocol">
+                <a-select-option value="tcp">TCP</a-select-option>
+                <a-select-option value="udp">UDP</a-select-option>
+                <a-select-option value="icmp">ICMP</a-select-option>
+                <a-select-option value="">任意</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="目的端口">
+              <a-input v-model:value="firewallForm.port" placeholder="例如 22 或 8000:9000" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="来源地址">
+              <a-input v-model:value="firewallForm.ip" placeholder="留空表示任意，如 1.2.3.4/32" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="目的地址">
+              <a-input v-model:value="firewallForm.dest" placeholder="留空表示任意" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-form-item label="备注">
+          <a-input v-model:value="firewallForm.comment" placeholder="可选，便于识别规则用途" :maxlength="64" />
+        </a-form-item>
+        <a-form-item label="启用">
+          <a-switch v-model:checked="firewallForm.enable" />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- Snapshot Modal -->
+    <a-modal
+      v-model:open="snapshotOpen"
+      title="创建快照"
+      :width="460"
+      :confirm-loading="snapshotCreating"
+      @ok="submitSnapshot"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="快照名称">
+          <a-input
+            v-model:value="snapshotForm.name"
+            placeholder="留空自动生成，仅允许字母/数字/连字符，最长 40 字符"
+            :maxlength="40"
+          />
+        </a-form-item>
+        <a-form-item label="说明">
+          <a-textarea v-model:value="snapshotForm.description" :rows="3" :maxlength="200" show-count />
+        </a-form-item>
+      </a-form>
+    </a-modal>
+
+    <!-- Network Card Modal -->
+    <a-modal
+      v-model:open="nicOpen"
+      :title="nicEditing ? '编辑网卡' : '添加网卡'"
+      :width="520"
+      :confirm-loading="nicSubmitting"
+      @ok="submitNetworkCard"
+    >
+      <a-form layout="vertical">
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="网卡名称">
+              <a-input v-model:value="nicForm.nic_name" :disabled="!!nicEditing" placeholder="留空自动分配" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="线路类型">
+              <a-select v-model:value="nicForm.nic_type">
+                <a-select-option value="nat">NAT（内网）</a-select-option>
+                <a-select-option value="pub">公网</a-select-option>
+              </a-select>
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="IPv4 地址">
+              <a-input v-model:value="nicForm.ip4_addr" placeholder="留空自动分配" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="网关">
+              <a-input v-model:value="nicForm.nic_gate" placeholder="留空使用默认网关" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="子网掩码">
+              <a-input v-model:value="nicForm.nic_mask" placeholder="255.255.255.0" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="DNS">
+              <a-input v-model:value="nicForm.dns" placeholder="多个用逗号分隔" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+      </a-form>
+    </a-modal>
+
+    <!-- Data Disk Modal -->
+    <a-modal
+      v-model:open="diskOpen"
+      title="挂载数据盘"
+      :width="440"
+      :confirm-loading="diskSubmitting"
+      @ok="submitDisk"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="容量（GB）" required>
+          <a-input-number v-model:value="diskForm.size_gb" :min="1" :max="1024" style="width: 100%" />
+        </a-form-item>
+        <a-form-item label="介质类型">
+          <a-select v-model:value="diskForm.hdd_type">
+            <a-select-option :value="0">HDD</a-select-option>
+            <a-select-option :value="1">SSD</a-select-option>
           </a-select>
         </a-form-item>
-        <a-form-item label="协议" required>
-          <a-select v-model:value="firewallForm.protocol">
-            <a-select-option value="tcp">TCP</a-select-option>
-            <a-select-option value="udp">UDP</a-select-option>
-            <a-select-option value="all">全部</a-select-option>
-          </a-select>
+        <a-alert type="info" show-icon message="数据盘挂载需实例关机，挂载后需在系统内初始化分区。" />
+      </a-form>
+    </a-modal>
+
+    <!-- ISO Modal -->
+    <a-modal
+      v-model:open="isoOpen"
+      title="挂载光盘"
+      :width="480"
+      :confirm-loading="isoSubmitting"
+      @ok="submitISO"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="镜像文件" required>
+          <a-select
+            v-model:value="isoForm.iso_file"
+            show-search
+            allow-clear
+            placeholder="选择宿主机上的 ISO"
+            :options="isoOptions"
+          />
         </a-form-item>
-        <a-form-item label="动作" required>
-          <a-select v-model:value="firewallForm.method">
-            <a-select-option value="allowed">允许</a-select-option>
-            <a-select-option value="denied">拒绝</a-select-option>
-          </a-select>
+        <a-form-item label="备注">
+          <a-input v-model:value="isoForm.iso_hint" placeholder="可选" :maxlength="64" />
         </a-form-item>
-        <a-form-item label="端口" required>
-          <a-input v-model:value="firewallForm.port" placeholder="例如: 22 或 80-90" />
+      </a-form>
+    </a-modal>
+
+    <!-- Reverse Proxy Modal -->
+    <a-modal
+      v-model:open="proxyOpen"
+      :title="proxyEditingId === null ? '添加反向代理' : '编辑反向代理'"
+      :width="520"
+      :confirm-loading="proxySubmitting"
+      @ok="submitReverseProxy"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="访问域名" required>
+          <a-input v-model:value="proxyForm.domain" placeholder="例如 app.example.com" />
         </a-form-item>
-        <a-form-item label="IP 地址" required>
-          <a-input v-model:value="firewallForm.ip" placeholder="0.0.0.0" />
+        <a-row :gutter="12">
+          <a-col :span="12">
+            <a-form-item label="回源地址">
+              <a-input v-model:value="proxyForm.backend_ip" placeholder="留空使用实例内网 IP" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="回源端口">
+              <a-input-number v-model:value="proxyForm.backend_port" :min="1" :max="65535" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+        <a-form-item label="启用 HTTPS">
+          <a-switch v-model:checked="proxyForm.ssl_enabled" />
         </a-form-item>
-        <a-form-item label="优先级">
-          <a-input-number v-model:value="firewallForm.priority" :min="1" :max="65535" style="width: 100%" />
+        <a-form-item label="说明">
+          <a-input v-model:value="proxyForm.description" placeholder="可选" :maxlength="64" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -973,11 +1537,34 @@ import {
   restoreVpsBackup,
   getVpsFirewallRules,
   addVpsFirewallRule,
+  updateVpsFirewallRule,
+  updateVpsFirewallOptions,
   deleteVpsFirewallRule,
   getVpsPortMappings,
   getVpsPortCandidates,
   addVpsPortMapping,
-  deleteVpsPortMapping
+  deleteVpsPortMapping,
+  getVpsNetworkCards,
+  addVpsNetworkCard,
+  updateVpsNetworkCard,
+  deleteVpsNetworkCard,
+  getVpsDisks,
+  mountVpsDisk,
+  unmountVpsDisk,
+  deleteVpsDisk,
+  getVpsISOs,
+  mountVpsISO,
+  unmountVpsISO,
+  getVpsReverseProxies,
+  addVpsReverseProxy,
+  updateVpsReverseProxy,
+  deleteVpsReverseProxy,
+  getVpsBootOrder,
+  setVpsBootOrder,
+  getVpsPCIDevices,
+  setupVpsPCIDevice,
+  getVpsUSBDevices,
+  setupVpsUSBDevice
 } from "@/services/user";
 import { message, Modal } from "ant-design-vue";
 import LineChart from "@/components/Charts/LineChart.vue";
@@ -1053,14 +1640,79 @@ const resetOsPasswordForm = reactive({
 const firewallRules = ref([]);
 const firewallLoading = ref(false);
 const firewallOpen = ref(false);
+const firewallEditingId = ref(null);
+const firewallSubmitting = ref(false);
+const firewallOptionsBusy = ref(false);
+// firewallState 由后端下发：是否开启、默认策略、是否三层全开、平台标识。
+const firewallState = reactive({
+  enabled: false,
+  policy_in: "ACCEPT",
+  policy_out: "ACCEPT",
+  effective: false,
+  platform: ""
+});
 const firewallForm = reactive({
-  direction: "In",
+  direction: "in",
   protocol: "tcp",
-  method: "allowed",
+  method: "ACCEPT",
   port: "",
   ip: "",
-  priority: 100
+  dest: "",
+  comment: "",
+  enable: true
 });
+
+// --- 网卡 ---
+const networkCards = ref([]);
+const nicLoading = ref(false);
+const nicOpen = ref(false);
+const nicSubmitting = ref(false);
+const nicEditing = ref("");
+const nicForm = reactive({
+  nic_name: "",
+  nic_type: "nat",
+  ip4_addr: "",
+  nic_gate: "",
+  nic_mask: "",
+  dns: ""
+});
+
+// --- 数据盘 ---
+const dataDisks = ref([]);
+const diskLoading = ref(false);
+const diskOpen = ref(false);
+const diskSubmitting = ref(false);
+const diskForm = reactive({ size_gb: 50, hdd_type: 0 });
+
+// --- 光盘 ---
+const isoImages = ref([]);
+const isoAvailable = ref([]);
+const isoLoading = ref(false);
+const isoOpen = ref(false);
+const isoSubmitting = ref(false);
+const isoForm = reactive({ iso_file: "", iso_hint: "" });
+
+// --- 反向代理 ---
+const reverseProxies = ref([]);
+const proxyLoading = ref(false);
+const proxyOpen = ref(false);
+const proxySubmitting = ref(false);
+const proxyEditingId = ref(null);
+const proxyForm = reactive({ domain: "", backend_ip: "", backend_port: 80, ssl_enabled: false, description: "" });
+
+// --- 启动顺序 ---
+const bootOrder = ref([]);
+const bootOrderSaving = ref(false);
+
+// --- PCI / USB 直通 ---
+const pciDevices = ref([]);
+const usbDevices = ref([]);
+const passthroughLoading = ref(false);
+
+// --- 快照创建 ---
+const snapshotOpen = ref(false);
+const snapshotCreating = ref(false);
+const snapshotForm = reactive({ name: "", description: "" });
 
 const portMappings = ref([]);
 const portLoading = ref(false);
@@ -1149,26 +1801,31 @@ const showFirewallTab = computed(() => supportsAutomationFeature("firewall"));
 const showPortTab = computed(() => supportsAutomationFeature("port_mapping"));
 const showSnapshotTab = computed(() => supportsAutomationFeature("snapshot"));
 const showBackupTab = computed(() => supportsAutomationFeature("backup"));
-const unsupportedFeatureHints = computed(() => {
-  const rawFeatures = detail.value?.capabilities?.automation?.features;
-  if (!Array.isArray(rawFeatures)) return [];
-  const reasons = detail.value?.capabilities?.automation?.not_supported_reasons || {};
-  const defs = [
-    { key: "firewall", label: "防火墙", visible: showFirewallTab.value },
-    { key: "port_mapping", label: "端口映射", visible: showPortTab.value },
-    { key: "snapshot", label: "快照", visible: showSnapshotTab.value },
-    { key: "backup", label: "备份", visible: showBackupTab.value },
-    { key: "resize", label: "升降配", visible: supportsAutomationFeature("resize") },
-    { key: "refund", label: "退款", visible: supportsAutomationFeature("refund") }
-  ];
-  return defs
-    .filter((item) => !item.visible)
-    .map((item) => ({
-      key: item.key,
-      label: item.label,
-      reason: String(reasons[item.key] || "当前实例不支持该能力")
-    }));
+const showNicTab = computed(() => supportsAutomationFeature("nic"));
+const showDiskTab = computed(() => supportsAutomationFeature("disk"));
+const showIsoTab = computed(() => supportsAutomationFeature("iso"));
+const showReverseProxyTab = computed(() => supportsAutomationFeature("reverse_proxy"));
+const showBootOrderTab = computed(() => supportsAutomationFeature("boot_order"));
+const showPciTab = computed(() => supportsAutomationFeature("pci"));
+const showUsbTab = computed(() => supportsAutomationFeature("usb"));
+
+
+// 功能是否只读：功能本身可见（tab 渲染、列表可查），但不允许创建/修改/删除。
+// 来源是后端下发的 capabilities.automation.readonly_features。
+const readonlyFeatureSet = computed(() => {
+  const list = detail.value?.capabilities?.automation?.readonly_features;
+  if (!Array.isArray(list)) return new Set();
+  return new Set(list.map((item) => String(item).toLowerCase()));
 });
+
+const featureReadonly = (key) => readonlyFeatureSet.value.has(String(key).toLowerCase());
+
+// 写操作统一入口：只读时提示并中止，避免用户点开表单才发现不能提交。
+const ensureFeatureWritable = (key, label) => {
+  if (!featureReadonly(key)) return true;
+  message.warning(`${label}当前为只读模式，无法修改`);
+  return false;
+};
 
 const availableTabs = computed(() => {
   const tabs = ["overview", "monitor"];
@@ -1176,6 +1833,13 @@ const availableTabs = computed(() => {
   if (showPortTab.value) tabs.push("port");
   if (showSnapshotTab.value) tabs.push("snapshot");
   if (showBackupTab.value) tabs.push("backup");
+  if (showNicTab.value) tabs.push("nic");
+  if (showDiskTab.value) tabs.push("disk");
+  if (showIsoTab.value) tabs.push("iso");
+  if (showReverseProxyTab.value) tabs.push("reverse-proxy");
+  if (showBootOrderTab.value) tabs.push("boot-order");
+  if (showPciTab.value) tabs.push("pci");
+  if (showUsbTab.value) tabs.push("usb");
   return tabs;
 });
 
@@ -1666,6 +2330,8 @@ const monitor = reactive({
   trafficIn: { labels: [], values: [] },
   trafficOut: { labels: [], values: [] }
 });
+// 上游是否真的上报了监控样本；没有样本时显示占位，而不是把 0 画成曲线。
+const monitorAvailable = ref(true);
 
 const currentCpu = computed(() => monitor.cpu.values[monitor.cpu.values.length - 1] || 0);
 const currentMemory = computed(() => monitor.memory.values[monitor.memory.values.length - 1] || 0);
@@ -1675,18 +2341,19 @@ const perfScore = computed(() => {
   const score = 100 - (cpu + mem) / 2;
   return Math.max(0, Math.min(100, Math.round(score)));
 });
-const perfNeedleDeg = computed(() => -90 + (perfScore.value / 100) * 180);
+const perfNeedleDeg = computed(() => (monitorAvailable.value ? -90 + (perfScore.value / 100) * 180 : 0));
 const perfLabel = computed(() => {
+  if (!monitorAvailable.value) return "暂无数据";
   if (perfScore.value >= 80) return "优";
   if (perfScore.value >= 60) return "良";
   if (perfScore.value >= 40) return "中";
   return "差";
 });
 const perfLabelClass = computed(() => ({
-  good: perfScore.value >= 80,
-  ok: perfScore.value >= 60 && perfScore.value < 80,
-  mid: perfScore.value >= 40 && perfScore.value < 60,
-  bad: perfScore.value < 40
+  good: monitorAvailable.value && perfScore.value >= 80,
+  ok: monitorAvailable.value && perfScore.value >= 60 && perfScore.value < 80,
+  mid: monitorAvailable.value && perfScore.value >= 40 && perfScore.value < 60,
+  bad: monitorAvailable.value && perfScore.value < 40
 }));
 const currentTrafficIn = computed(() => monitor.trafficIn.values[monitor.trafficIn.values.length - 1] || 0);
 const currentTrafficOut = computed(() => monitor.trafficOut.values[monitor.trafficOut.values.length - 1] || 0);
@@ -1731,12 +2398,65 @@ const pushPoint = (series, value) => {
 
 let timer;
 const firewallColumns = [
+  { title: "位序", dataIndex: "priority", key: "priority", width: 70 },
   { title: "方向", dataIndex: "direction", key: "direction", width: 80 },
   { title: "协议", dataIndex: "protocol", key: "protocol", width: 80 },
-  { title: "端口", dataIndex: "port", key: "port" },
-  { title: "IP", dataIndex: "ip", key: "ip" },
-  { title: "动作", dataIndex: "method", key: "method", width: 80 },
-  { title: "操作", key: "action", width: 80 }
+  { title: "动作", dataIndex: "method", key: "method", width: 90 },
+  { title: "来源", dataIndex: "ip", key: "ip" },
+  { title: "目的端口", dataIndex: "port", key: "port", width: 130 },
+  { title: "备注", dataIndex: "comment", key: "comment" },
+  { title: "状态", dataIndex: "enable", key: "enable", width: 80 },
+  { title: "操作", key: "action", width: 130 }
+];
+
+const nicColumns = [
+  { title: "网卡", dataIndex: "nic_name", key: "nic_name", width: 110 },
+  { title: "类型", dataIndex: "nic_type", key: "nic_type", width: 90 },
+  { title: "MAC", dataIndex: "mac_addr", key: "mac_addr", width: 160 },
+  { title: "IPv4", dataIndex: "ip4_addr", key: "ip4_addr" },
+  { title: "网关", dataIndex: "nic_gate", key: "nic_gate" },
+  { title: "掩码", dataIndex: "nic_mask", key: "nic_mask", width: 130 },
+  { title: "操作", key: "action", width: 130 }
+];
+
+const diskColumns = [
+  { title: "名称", dataIndex: "hdd_name", key: "hdd_name" },
+  { title: "容量", dataIndex: "hdd_size", key: "hdd_size", width: 110 },
+  { title: "介质", dataIndex: "hdd_type", key: "hdd_type", width: 80 },
+  { title: "状态", dataIndex: "hdd_flag", key: "hdd_flag", width: 100 },
+  { title: "操作", key: "action", width: 140 }
+];
+
+const isoColumns = [
+  { title: "名称", dataIndex: "iso_name", key: "iso_name" },
+  { title: "镜像文件", dataIndex: "iso_file", key: "iso_file" },
+  { title: "备注", dataIndex: "iso_hint", key: "iso_hint" },
+  { title: "操作", key: "action", width: 90 }
+];
+
+const proxyColumns = [
+  { title: "域名", dataIndex: "domain", key: "domain" },
+  { title: "回源", dataIndex: "backend_ip", key: "backend_ip" },
+  { title: "端口", dataIndex: "backend_port", key: "backend_port", width: 90 },
+  { title: "协议", dataIndex: "ssl_enabled", key: "ssl_enabled", width: 90 },
+  { title: "说明", dataIndex: "description", key: "description" },
+  { title: "操作", key: "action", width: 130 }
+];
+
+const pciColumns = [
+  { title: "设备标识", dataIndex: "pci_key", key: "pci_key" },
+  { title: "GPU UUID", dataIndex: "gpu_uuid", key: "gpu_uuid" },
+  { title: "MDev", dataIndex: "gpu_mdev", key: "gpu_mdev", width: 110 },
+  { title: "描述", dataIndex: "gpu_hint", key: "gpu_hint" },
+  { title: "操作", key: "action", width: 180 }
+];
+
+const usbColumns = [
+  { title: "设备标识", dataIndex: "usb_key", key: "usb_key" },
+  { title: "VID", dataIndex: "vid_uuid", key: "vid_uuid", width: 110 },
+  { title: "PID", dataIndex: "pid_uuid", key: "pid_uuid", width: 110 },
+  { title: "描述", dataIndex: "usb_hint", key: "usb_hint" },
+  { title: "操作", key: "action", width: 180 }
 ];
 
 const portColumns = [
@@ -1779,14 +2499,57 @@ const snapshotBackupStateMeta = (state) => {
 
 const normalizeFirewallRule = (item) => ({
   id: item.id ?? item.ID ?? item.rule_id ?? item.RuleID ?? item.firewall_id ?? item.FirewallID,
-  direction: item.direction ?? item.Direction ?? "",
+  direction: String(item.direction ?? item.Direction ?? "in").toLowerCase(),
   protocol: item.protocol ?? item.Protocol ?? "",
-  port: item.port ?? item.Port ?? item.start_port ?? item.StartPort ?? "",
-  ip: item.ip ?? item.IP ?? item.start_ip ?? item.StartIP ?? "",
-  method: item.method ?? item.Method ?? "",
-  priority: item.priority ?? item.Priority ?? 0,
+  port: item.port ?? item.Port ?? item.dport ?? item.start_port ?? item.StartPort ?? "",
+  ip: item.ip ?? item.IP ?? item.source ?? item.start_ip ?? item.StartIP ?? "",
+  dest: item.dest ?? item.Dest ?? "",
+  comment: item.comment ?? item.Comment ?? "",
+  enable: item.enable ?? item.Enable ?? true,
+  method: String(item.method ?? item.Method ?? "ACCEPT").toUpperCase(),
+  priority: item.priority ?? item.Priority ?? item.id ?? 0,
   raw: item
 });
+
+const firewallPlatformLabel = computed(() => {
+  switch (String(firewallState.platform || "").toLowerCase()) {
+    case "pve":
+      return "Proxmox VE 虚拟机防火墙";
+    case "hyperv":
+      return "Hyper-V 网卡扩展 ACL";
+    default:
+      return "虚拟机防火墙";
+  }
+});
+
+// Hyper-V 没有总开关/默认策略，只能通过网卡 ACL 控制，隐藏对应控件。
+const firewallPolicyEditable = computed(() => !!firewallState.platform && String(firewallState.platform).toLowerCase() !== "hyperv");
+
+const firewallActionLabel = (method) => {
+  switch (String(method || "").toUpperCase()) {
+    case "ACCEPT":
+      return "放行";
+    case "DROP":
+      return "丢弃";
+    case "REJECT":
+      return "拒绝";
+    default:
+      return method || "-";
+  }
+};
+
+const firewallActionColor = (method) => {
+  switch (String(method || "").toUpperCase()) {
+    case "ACCEPT":
+      return "green";
+    case "DROP":
+      return "orange";
+    case "REJECT":
+      return "red";
+    default:
+      return "default";
+  }
+};
 
 const normalizePortMapping = (item) => ({
   id: item.id ?? item.ID ?? item.port_id ?? item.PortID,
@@ -1824,6 +2587,9 @@ const normalizeSnapshotItem = (item) => {
     state,
     state_label: stateMeta.label,
     state_badge: stateMeta.badge,
+    current: !!item.current,
+    description: item.description ?? "",
+    platform_state: item.platform_state ?? "",
     created_at: item.created_at ?? item.create_time ?? item.createdAt ?? item.createTime ?? "",
     raw: item
   };
@@ -1850,6 +2616,14 @@ const fetchFirewallRules = async () => {
     const res = await getVpsFirewallRules(id);
     const items = res.data?.data ?? res.data ?? [];
     firewallRules.value = Array.isArray(items) ? items.map(normalizeFirewallRule) : [];
+    const state = res.data?.state ?? null;
+    if (state && typeof state === "object") {
+      firewallState.enabled = !!state.enabled;
+      firewallState.policy_in = String(state.policy_in || "ACCEPT");
+      firewallState.policy_out = String(state.policy_out || "ACCEPT");
+      firewallState.effective = !!state.effective;
+      firewallState.platform = String(state.platform || "");
+    }
   } catch (err) {
     message.error(err?.response?.data?.error || "加载防火墙规则失败");
   } finally {
@@ -1926,6 +2700,109 @@ const fetchBackups = async () => {
   }
 };
 
+// --- 网卡 / 数据盘 / 光盘 / 反代 / 启动顺序 / 直通 ---
+
+const fetchNetworkCards = async () => {
+  if (!showNicTab.value) return;
+  nicLoading.value = true;
+  try {
+    const res = await getVpsNetworkCards(id);
+    const items = res.data?.data ?? res.data ?? [];
+    networkCards.value = Array.isArray(items) ? items : [];
+  } catch (err) {
+    message.error(err?.response?.data?.error || "加载网卡失败");
+  } finally {
+    nicLoading.value = false;
+  }
+};
+
+const fetchDisks = async () => {
+  if (!showDiskTab.value) return;
+  diskLoading.value = true;
+  try {
+    const res = await getVpsDisks(id);
+    const items = res.data?.data ?? res.data ?? [];
+    dataDisks.value = Array.isArray(items) ? items : [];
+  } catch (err) {
+    message.error(err?.response?.data?.error || "加载数据盘失败");
+  } finally {
+    diskLoading.value = false;
+  }
+};
+
+const fetchISOs = async () => {
+  if (!showIsoTab.value) return;
+  isoLoading.value = true;
+  try {
+    const res = await getVpsISOs(id);
+    const items = res.data?.data ?? res.data ?? [];
+    isoImages.value = Array.isArray(items) ? items : [];
+    const available = res.data?.available ?? [];
+    isoAvailable.value = Array.isArray(available) ? available : [];
+  } catch (err) {
+    message.error(err?.response?.data?.error || "加载光盘失败");
+  } finally {
+    isoLoading.value = false;
+  }
+};
+
+const isoOptions = computed(() =>
+  (isoAvailable.value || []).map((file) => ({ label: file, value: file }))
+);
+
+const fetchReverseProxies = async () => {
+  if (!showReverseProxyTab.value) return;
+  proxyLoading.value = true;
+  try {
+    const res = await getVpsReverseProxies(id);
+    const items = res.data?.data ?? res.data ?? [];
+    reverseProxies.value = Array.isArray(items) ? items : [];
+  } catch (err) {
+    message.error(err?.response?.data?.error || "加载反向代理失败");
+  } finally {
+    proxyLoading.value = false;
+  }
+};
+
+const fetchBootOrder = async () => {
+  if (!showBootOrderTab.value) return;
+  try {
+    const res = await getVpsBootOrder(id);
+    const items = res.data?.data ?? res.data ?? [];
+    bootOrder.value = Array.isArray(items) ? items : [];
+  } catch (err) {
+    message.error(err?.response?.data?.error || "加载启动顺序失败");
+  }
+};
+
+const fetchPCIDevices = async () => {
+  if (!showPciTab.value) return;
+  passthroughLoading.value = true;
+  try {
+    const res = await getVpsPCIDevices(id);
+    const items = res.data?.data ?? res.data ?? [];
+    pciDevices.value = Array.isArray(items) ? items : [];
+  } catch (err) {
+    message.error(err?.response?.data?.error || "加载 PCI 设备失败");
+  } finally {
+    passthroughLoading.value = false;
+  }
+};
+
+const fetchUSBDevices = async () => {
+  if (!showUsbTab.value) return;
+  passthroughLoading.value = true;
+  try {
+    const res = await getVpsUSBDevices(id);
+    const items = res.data?.data ?? res.data ?? [];
+    usbDevices.value = Array.isArray(items) ? items : [];
+  } catch (err) {
+    message.error(err?.response?.data?.error || "加载 USB 设备失败");
+  } finally {
+    passthroughLoading.value = false;
+  }
+};
+
 const loadSecurityData = async () => {
   await Promise.all([fetchFirewallRules(), fetchPortMappings(), fetchSnapshots(), fetchBackups()]);
 };
@@ -1943,36 +2820,78 @@ watch(
 watch(activeTab, (val) => {
   if (["firewall", "port", "snapshot", "backup"].includes(val)) {
     loadSecurityData();
+    return;
   }
+  if (val === "nic") fetchNetworkCards();
+  else if (val === "disk") fetchDisks();
+  else if (val === "iso") fetchISOs();
+  else if (val === "reverse-proxy") fetchReverseProxies();
+  else if (val === "boot-order") fetchBootOrder();
+  else if (val === "pci") fetchPCIDevices();
+  else if (val === "usb") fetchUSBDevices();
 });
 
-const openFirewallModal = () => {
-  firewallForm.direction = "In";
-  firewallForm.protocol = "tcp";
-  firewallForm.method = "allowed";
-  firewallForm.port = "";
-  firewallForm.ip = "0.0.0.0";
-  firewallForm.priority = 100;
+const openFirewallModal = (record) => {
+  if (!ensureFeatureWritable("firewall", "防火墙")) return;
+  firewallEditingId.value = record ? (record.id ?? record.ID ?? null) : null;
+  firewallForm.direction = record?.direction || "in";
+  firewallForm.protocol = record?.protocol ?? "tcp";
+  firewallForm.method = record?.method || "ACCEPT";
+  firewallForm.port = record?.port ? String(record.port) : "";
+  firewallForm.ip = record?.ip ? String(record.ip) : "";
+  firewallForm.dest = record?.dest ? String(record.dest) : "";
+  firewallForm.comment = record?.comment ? String(record.comment) : "";
+  firewallForm.enable = record ? !!record.enable : true;
   firewallOpen.value = true;
 };
 
 const submitFirewallRule = async () => {
-  if (!firewallForm.port) {
-    message.error("请输入端口");
-    return;
-  }
-  if (!firewallForm.ip) {
-    message.error("请输入IP地址");
-    return;
-  }
+  firewallSubmitting.value = true;
   try {
-    await addVpsFirewallRule(id, { ...firewallForm });
+    const payload = {
+      direction: firewallForm.direction,
+      protocol: firewallForm.protocol,
+      method: firewallForm.method,
+      port: firewallForm.port.trim(),
+      ip: firewallForm.ip.trim(),
+      dest: (firewallForm.dest || "").trim(),
+      comment: (firewallForm.comment || "").trim(),
+      enable: firewallForm.enable
+    };
+    if (firewallEditingId.value !== null) {
+      await updateVpsFirewallRule(id, firewallEditingId.value, payload);
+      message.success("防火墙规则已保存");
+    } else {
+      await addVpsFirewallRule(id, payload);
+      message.success("防火墙规则已添加");
+    }
     firewallOpen.value = false;
     await fetchFirewallRules();
-    message.success("防火墙规则已添加");
   } catch (err) {
-    message.error(err?.response?.data?.error || "添加防火墙规则失败");
+    message.error(err?.response?.data?.error || "保存防火墙规则失败");
+  } finally {
+    firewallSubmitting.value = false;
+  }
+};
+
+const saveFirewallOptions = async (patch) => {
+  const payload = {
+    enable: patch.enable !== undefined ? patch.enable : !!firewallState.enabled,
+    policy_in: patch.policy_in !== undefined ? patch.policy_in : firewallState.policy_in,
+    policy_out: patch.policy_out !== undefined ? patch.policy_out : firewallState.policy_out
+  };
+  firewallOptionsBusy.value = true;
+  try {
+    await updateVpsFirewallOptions(id, payload);
+    if (patch.enable !== undefined) firewallState.enabled = patch.enable;
+    if (patch.policy_in !== undefined) firewallState.policy_in = patch.policy_in;
+    if (patch.policy_out !== undefined) firewallState.policy_out = patch.policy_out;
+    message.success("防火墙配置已保存");
     await fetchFirewallRules();
+  } catch (err) {
+    message.error(err?.response?.data?.error || "保存防火墙配置失败");
+  } finally {
+    firewallOptionsBusy.value = false;
   }
 };
 
@@ -1988,7 +2907,7 @@ const removeFirewallRule = (record) => {
         await fetchFirewallRules();
         message.success("防火墙规则已删除");
       } catch (err) {
-        message.error("删除失败");
+        message.error(err?.response?.data?.error || "删除失败");
       }
     }
   });
@@ -2047,13 +2966,29 @@ const removePortMapping = (record) => {
   });
 };
 
-const createSnapshot = async () => {
+const openSnapshotModal = () => {
+  if (!ensureFeatureWritable("snapshot", "快照")) return;
+  snapshotForm.name = "";
+  snapshotForm.description = "";
+  snapshotOpen.value = true;
+};
+
+const submitSnapshot = async () => {
+  const name = String(snapshotForm.name || "").trim();
+  if (name && !/^[A-Za-z0-9][A-Za-z0-9-]{0,39}$/.test(name)) {
+    message.error("快照名称只能包含字母、数字与连字符，且以字母或数字开头，最长 40 字符");
+    return;
+  }
+  snapshotCreating.value = true;
   try {
-    await createVpsSnapshot(id);
+    await createVpsSnapshot(id, { name, description: String(snapshotForm.description || "").trim() });
+    snapshotOpen.value = false;
     await fetchSnapshots();
     message.success("快照已创建");
   } catch (err) {
     message.error(err?.response?.data?.error || "创建快照失败");
+  } finally {
+    snapshotCreating.value = false;
   }
 };
 
@@ -2093,10 +3028,12 @@ const restoreSnapshot = (record) => {
 };
 
 const createBackup = async () => {
+  if (!ensureFeatureWritable("backup", "备份")) return;
   try {
     await createVpsBackup(id);
+    // 备份是分钟级后台任务，接口只回「已受理」，完成后记录才会出现在列表里。
+    message.success("备份任务已提交，完成后点击刷新即可看到");
     await fetchBackups();
-    message.success("备份已创建");
   } catch (err) {
     message.error(err?.response?.data?.error || "创建备份失败");
   }
@@ -2137,6 +3074,308 @@ const restoreBackup = (record) => {
   });
 };
 
+// ---- 网卡 ----
+
+const openNicModal = (record) => {
+  if (!ensureFeatureWritable("nic", "网卡管理")) return;
+  nicEditing.value = record ? String(record.nic_name || "") : "";
+  nicForm.nic_name = record ? String(record.nic_name || "") : "";
+  nicForm.nic_type = record?.nic_type || "nat";
+  nicForm.ip4_addr = record?.ip4_addr || "";
+  nicForm.nic_gate = record?.nic_gate || "";
+  nicForm.nic_mask = record?.nic_mask || "";
+  nicForm.dns = Array.isArray(record?.dns_addr) ? record.dns_addr.join(",") : "";
+  nicOpen.value = true;
+};
+
+const submitNetworkCard = async () => {
+  nicSubmitting.value = true;
+  try {
+    const dns = String(nicForm.dns || "")
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const payload = {
+      nic_name: String(nicForm.nic_name || "").trim(),
+      nic_type: nicForm.nic_type,
+      ip4_addr: String(nicForm.ip4_addr || "").trim(),
+      nic_gate: String(nicForm.nic_gate || "").trim(),
+      nic_mask: String(nicForm.nic_mask || "").trim(),
+      dns_addr: dns
+    };
+    if (nicEditing.value) {
+      await updateVpsNetworkCard(id, nicEditing.value, payload);
+      message.success("网卡已更新");
+    } else {
+      await addVpsNetworkCard(id, payload);
+      message.success("网卡已添加");
+    }
+    nicOpen.value = false;
+    await fetchNetworkCards();
+  } catch (err) {
+    message.error(err?.response?.data?.error || "保存网卡失败");
+  } finally {
+    nicSubmitting.value = false;
+  }
+};
+
+const removeNetworkCard = (record) => {
+  const nicName = record?.nic_name;
+  if (!nicName) return;
+  Modal.confirm({
+    title: "删除网卡",
+    content: `确定要删除网卡 ${nicName} 吗？删除后该网卡的 IP 将释放。`,
+    onOk: async () => {
+      try {
+        await deleteVpsNetworkCard(id, nicName);
+        await fetchNetworkCards();
+        message.success("网卡已删除");
+      } catch (err) {
+        message.error(err?.response?.data?.error || "删除失败");
+      }
+    }
+  });
+};
+
+// ---- 数据盘 ----
+
+const submitDisk = async () => {
+  if (!ensureFeatureWritable("disk", "数据盘")) return;
+  const size = Number(diskForm.size_gb || 0);
+  if (size <= 0) {
+    message.error("请输入磁盘容量");
+    return;
+  }
+  diskSubmitting.value = true;
+  try {
+    await mountVpsDisk(id, { size_gb: size, hdd_type: Number(diskForm.hdd_type) || 0 });
+    diskOpen.value = false;
+    await fetchDisks();
+    message.success("数据盘已挂载");
+  } catch (err) {
+    message.error(err?.response?.data?.error || "挂载数据盘失败");
+  } finally {
+    diskSubmitting.value = false;
+  }
+};
+
+const unmountDisk = (record) => {
+  const hddName = record?.hdd_name;
+  if (!hddName) return;
+  Modal.confirm({
+    title: "卸载数据盘",
+    content: "卸载后磁盘数据保留，可再次挂载。确定继续吗？",
+    onOk: async () => {
+      try {
+        await unmountVpsDisk(id, hddName);
+        await fetchDisks();
+        message.success("数据盘已卸载");
+      } catch (err) {
+        message.error(err?.response?.data?.error || "卸载失败");
+      }
+    }
+  });
+};
+
+const removeDisk = (record) => {
+  const hddName = record?.hdd_name;
+  if (!hddName) return;
+  Modal.confirm({
+    title: "删除数据盘",
+    content: "删除后磁盘数据不可恢复，确定继续吗？",
+    onOk: async () => {
+      try {
+        await deleteVpsDisk(id, hddName);
+        await fetchDisks();
+        message.success("数据盘已删除");
+      } catch (err) {
+        message.error(err?.response?.data?.error || "删除失败");
+      }
+    }
+  });
+};
+
+// ---- 光盘 ----
+
+const openIsoModal = () => {
+  if (!ensureFeatureWritable("iso", "光盘管理")) return;
+  isoForm.iso_file = "";
+  isoForm.iso_hint = "";
+  if (!isoAvailable.value.length) fetchISOs();
+  isoOpen.value = true;
+};
+
+const submitISO = async () => {
+  const file = String(isoForm.iso_file || "").trim();
+  if (!file) {
+    message.error("请选择镜像文件");
+    return;
+  }
+  isoSubmitting.value = true;
+  try {
+    await mountVpsISO(id, { iso_file: file, iso_path: file, iso_hint: String(isoForm.iso_hint || "").trim() });
+    isoOpen.value = false;
+    await fetchISOs();
+    message.success("光盘已挂载");
+  } catch (err) {
+    message.error(err?.response?.data?.error || "挂载光盘失败");
+  } finally {
+    isoSubmitting.value = false;
+  }
+};
+
+const unmountISO = (record) => {
+  const isoName = record?.iso_name;
+  if (!isoName) return;
+  Modal.confirm({
+    title: "卸载光盘",
+    content: "确定要卸载该光盘吗？",
+    onOk: async () => {
+      try {
+        await unmountVpsISO(id, isoName);
+        await fetchISOs();
+        message.success("光盘已卸载");
+      } catch (err) {
+        message.error(err?.response?.data?.error || "卸载失败");
+      }
+    }
+  });
+};
+
+// ---- 反向代理 ----
+
+const openProxyModal = (record) => {
+  if (!ensureFeatureWritable("reverse_proxy", "反向代理")) return;
+  proxyEditingId.value = record ? (record.id ?? record.ID ?? null) : null;
+  proxyForm.domain = record?.domain || "";
+  proxyForm.backend_ip = record?.backend_ip || "";
+  proxyForm.backend_port = Number(record?.backend_port ?? 80) || 80;
+  proxyForm.ssl_enabled = !!record?.ssl_enabled;
+  proxyForm.description = record?.description || "";
+  proxyOpen.value = true;
+};
+
+const submitReverseProxy = async () => {
+  const domain = String(proxyForm.domain || "").trim();
+  if (!domain) {
+    message.error("请输入访问域名");
+    return;
+  }
+  proxySubmitting.value = true;
+  try {
+    const payload = {
+      domain,
+      backend_ip: String(proxyForm.backend_ip || "").trim(),
+      backend_port: Number(proxyForm.backend_port) || 80,
+      ssl_enabled: !!proxyForm.ssl_enabled,
+      description: String(proxyForm.description || "").trim()
+    };
+    if (proxyEditingId.value !== null) {
+      await updateVpsReverseProxy(id, proxyEditingId.value, payload);
+      message.success("反向代理已保存");
+    } else {
+      await addVpsReverseProxy(id, payload);
+      message.success("反向代理已添加");
+    }
+    proxyOpen.value = false;
+    await fetchReverseProxies();
+  } catch (err) {
+    message.error(err?.response?.data?.error || "保存反向代理失败");
+  } finally {
+    proxySubmitting.value = false;
+  }
+};
+
+const removeReverseProxy = (record) => {
+  const index = record?.id;
+  if (index === undefined || index === null) return;
+  Modal.confirm({
+    title: "删除反向代理",
+    content: `确定要删除 ${record.domain || "该代理"} 吗？`,
+    onOk: async () => {
+      try {
+        await deleteVpsReverseProxy(id, index);
+        await fetchReverseProxies();
+        message.success("反向代理已删除");
+      } catch (err) {
+        message.error(err?.response?.data?.error || "删除失败");
+      }
+    }
+  });
+};
+
+// ---- 启动顺序 ----
+
+const moveBootOption = (index, offset) => {
+  const list = [...bootOrder.value];
+  const target = index + offset;
+  if (target < 0 || target >= list.length) return;
+  const [item] = list.splice(index, 1);
+  list.splice(target, 0, item);
+  bootOrder.value = list;
+};
+
+const saveBootOrder = async () => {
+  if (!ensureFeatureWritable("boot_order", "启动顺序")) return;
+  if (!bootOrder.value.length) {
+    message.error("没有可保存的启动项");
+    return;
+  }
+  bootOrderSaving.value = true;
+  try {
+    await setVpsBootOrder(
+      id,
+      bootOrder.value.map((item) => ({ efi_type: !!item.efi_type, efi_name: item.efi_name }))
+    );
+    message.success("启动顺序已保存");
+    await fetchBootOrder();
+  } catch (err) {
+    message.error(err?.response?.data?.error || "保存启动顺序失败");
+  } finally {
+    bootOrderSaving.value = false;
+  }
+};
+
+// ---- PCI / USB 直通 ----
+
+const setupPCIDevice = async (record, add) => {
+  if (!ensureFeatureWritable("pci", "PCI 直通")) return;
+  passthroughLoading.value = true;
+  try {
+    await setupVpsPCIDevice(id, {
+      key: record.pci_key,
+      gpu_uuid: record.gpu_uuid || "",
+      gpu_mdev: record.gpu_mdev || "",
+      hint: record.gpu_hint || "",
+      action: add ? "add" : "remove"
+    });
+    message.success(add ? "已直通到实例" : "已移除直通");
+  } catch (err) {
+    message.error(err?.response?.data?.error || "PCI 直通操作失败");
+  } finally {
+    passthroughLoading.value = false;
+  }
+};
+
+const setupUSBDevice = async (record, add) => {
+  if (!ensureFeatureWritable("usb", "USB 直通")) return;
+  passthroughLoading.value = true;
+  try {
+    await setupVpsUSBDevice(id, {
+      key: record.usb_key,
+      vid_uuid: record.vid_uuid || "",
+      pid_uuid: record.pid_uuid || "",
+      hint: record.usb_hint || "",
+      action: add ? "add" : "remove"
+    });
+    message.success(add ? "已直通到实例" : "已移除直通");
+  } catch (err) {
+    message.error(err?.response?.data?.error || "USB 直通操作失败");
+  } finally {
+    passthroughLoading.value = false;
+  }
+};
+
 const fetchMonitor = async () => {
   try {
     const res = await getVpsMonitor(id);
@@ -2150,6 +3389,11 @@ const fetchMonitor = async () => {
         spec: data.spec ?? store.current.spec
       };
     }
+    if (data.monitor_available === false) {
+      monitorAvailable.value = false;
+      return;
+    }
+    monitorAvailable.value = true;
     pushPoint(monitor.cpu, data.cpu);
     pushPoint(monitor.memory, data.memory);
     const trafficIn = Number(data.bytes_in ?? data.in_bytes ?? data.rx_bytes ?? data.in ?? 0);
@@ -2892,7 +4136,7 @@ onBeforeUnmount(() => {
   margin: 0 0 16px 0;
   background: #ffffff;
   border-radius: 0 0 8px 8px;
-  padding: 0 20px;
+  padding: 0 12px;
   border-top: 1px solid #f0f0f0;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02);
 }
@@ -2901,13 +4145,19 @@ onBeforeUnmount(() => {
   display: none;
 }
 
+/* 页签较多（概览+监控+各功能共 11 个），收紧间距保证一屏完整展示，
+   避免被折叠进右侧「...」菜单。 */
 .ecs-tabs :deep(.ant-tabs-tab) {
-  padding: 14px 20px;
+  padding: 12px 10px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.65);
-  font-size: 14px;
+  font-size: 13.5px;
   position: relative;
   transition: all 0.2s;
+}
+
+.ecs-tabs :deep(.ant-tabs-nav-list) {
+  flex-wrap: nowrap;
 }
 
 .ecs-tabs :deep(.ant-tabs-tab:hover) {
@@ -2937,7 +4187,8 @@ onBeforeUnmount(() => {
   outline: none;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .tab-icon {
@@ -3493,15 +4744,6 @@ onBeforeUnmount(() => {
 }
 
 /* ========== Security Cards ========== */
-.capability-notice {
-  margin-bottom: 12px;
-}
-
-.capability-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
 .tab-actions {
   margin-bottom: 16px;

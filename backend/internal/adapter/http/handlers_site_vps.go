@@ -292,6 +292,12 @@ func mergeAutomationCapabilities(staticCap *VPSAutomationCapabilityDTO, dynamicC
 	sort.Strings(outFeatures)
 
 	out := &VPSAutomationCapabilityDTO{Features: outFeatures}
+	if staticCap != nil {
+		// 只读标记由静态能力（含插件侧声明）带入，后续线路策略会在此基础上调整。
+		if readonly := normalizeFeatureList(staticCap.ReadonlyFeatures); len(readonly) > 0 {
+			out.ReadonlyFeatures = readonly
+		}
+	}
 	if len(reasons) > 0 {
 		out.NotSupportedReasons = reasons
 	}
@@ -403,6 +409,11 @@ func (h *Handler) applyPackageCapabilityPolicy(c *gin.Context, inst domain.VPSIn
 	if len(reasons) > 0 {
 		out.NotSupportedReasons = reasons
 	}
+	// 线路/附加项的功能开关是运营侧最终裁决，放在最后叠加，
+	// 保证「关闭后整个 tab 不显示」「只读不可写」不会被插件声明或商品类型策略覆盖。
+	// 注意必须无条件调用：即使线路没有配置任何开关，也要应用每个功能的默认策略
+	// （PCI/USB 默认关闭、网卡/数据盘/光盘/快照默认只读）。
+	out = applyPlanGroupFeatureFlags(out, h.planGroupFeatureFlags(c, h.planGroupIDForInstance(c, inst)))
 	return out
 }
 

@@ -47,6 +47,7 @@ type (
 	AutomationSnapshot             = appshared.AutomationSnapshot
 	AutomationBackup               = appshared.AutomationBackup
 	AutomationFirewallRule         = appshared.AutomationFirewallRule
+	AutomationFirewallState        = appshared.AutomationFirewallState
 	AutomationPortMapping          = appshared.AutomationPortMapping
 	AutomationFirewallRuleCreate   = appshared.AutomationFirewallRuleCreate
 	AutomationPortMappingCreate    = appshared.AutomationPortMappingCreate

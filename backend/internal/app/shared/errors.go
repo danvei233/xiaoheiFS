@@ -13,6 +13,7 @@ var (
 	ErrNoPaymentRequired   = domain.ErrNoPaymentRequired
 	ErrRealNameRequired    = domain.ErrRealNameRequired
 	ErrNotSupported        = domain.ErrNotSupported
+	ErrAutomationTransient = domain.ErrAutomationTransient
 	ErrResizeDisabled      = domain.ErrResizeDisabled
 	ErrResizeInProgress    = domain.ErrResizeInProgress
 )

@@ -207,7 +207,11 @@ type PaymentProviderRegistry interface {
 }
 
 type AutomationCreateHostRequest struct {
-	LineID     int64
+	LineID int64
+	// ImageID 是插件侧 ListImages 返回的镜像 ID。
+	// 插件内部以它为 key 反查真实镜像文件名（sys_file）；OS 只是显示名，
+	// 部分上游（如 OpenIDCS）不接受显示名，必须下发 ImageID。
+	ImageID    int64
 	OS         string
 	CPU        int
 	MemoryGB   int
@@ -289,6 +293,7 @@ type AutomationProduct struct {
 }
 
 type AutomationMonitor struct {
+	Available      bool  `json:"available"`
 	CPUPercent     int   `json:"cpu"`
 	MemoryPercent  int   `json:"memory"`
 	BytesIn        int64 `json:"bytes_in"`
@@ -299,7 +304,14 @@ type AutomationMonitor struct {
 type AutomationSnapshot map[string]any
 type AutomationBackup map[string]any
 type AutomationFirewallRule map[string]any
+type AutomationFirewallState map[string]any
 type AutomationPortMapping map[string]any
+type AutomationNetworkCard map[string]any
+type AutomationDataDisk map[string]any
+type AutomationISO map[string]any
+type AutomationReverseProxy map[string]any
+type AutomationPCIDevice map[string]any
+type AutomationUSBDevice map[string]any
 
 type AutomationFirewallRuleCreate struct {
 	HostID    int64
@@ -309,6 +321,12 @@ type AutomationFirewallRuleCreate struct {
 	Port      string
 	IP        string
 	Priority  int
+	Enable    bool
+	Dest      string
+	Sport     string
+	Comment   string
+	Macro     string
+	Iface     string
 }
 
 type AutomationPortMappingCreate struct {
@@ -316,6 +334,60 @@ type AutomationPortMappingCreate struct {
 	Name   string
 	Sport  string
 	Dport  int64
+}
+
+// AutomationNetworkCardInput 网卡新增/编辑入参（字段与 HostAgent NCConfig 对齐）
+type AutomationNetworkCardInput struct {
+	NicName   string   `json:"nic_name"`
+	NicType   string   `json:"nic_type"`
+	MacAddr   string   `json:"mac_addr"`
+	IP4Addr   string   `json:"ip4_addr"`
+	IP6Addr   string   `json:"ip6_addr"`
+	NicGate   string   `json:"nic_gate"`
+	NicMask   string   `json:"nic_mask"`
+	DNSAddr   []string `json:"dns_addr"`
+	IP6Prefix int      `json:"ip6_prefix"`
+}
+
+// AutomationDataDiskInput 数据盘挂载入参（大小单位 MB）
+type AutomationDataDiskInput struct {
+	SizeMB  int `json:"hdd_size"`
+	HddType int `json:"hdd_type"`
+}
+
+// AutomationISOInput 光盘挂载入参
+type AutomationISOInput struct {
+	IsoFile string `json:"iso_file"`
+	IsoPath string `json:"iso_path"`
+	IsoHint string `json:"iso_hint"`
+}
+
+// AutomationReverseProxyInput 反向代理入参
+type AutomationReverseProxyInput struct {
+	Domain      string `json:"domain"`
+	BackendIP   string `json:"backend_ip"`
+	BackendPort int    `json:"backend_port"`
+	SSLEnabled  bool   `json:"ssl_enabled"`
+	Description string `json:"description"`
+}
+
+// AutomationBootOption 启动项
+type AutomationBootOption struct {
+	EfiType bool   `json:"efi_type"`
+	EfiName string `json:"efi_name"`
+}
+
+// AutomationPassthroughInput PCI / USB 直通入参
+type AutomationPassthroughInput struct {
+	// Key 对应平台 pci_key / usb_key
+	Key     string `json:"key"`
+	VidUUID string `json:"vid_uuid"`
+	PidUUID string `json:"pid_uuid"`
+	GpuUUID string `json:"gpu_uuid"`
+	GpuMdev string `json:"gpu_mdev"`
+	Hint    string `json:"hint"`
+	// Action 取值 add / remove
+	Action string `json:"action"`
 }
 
 type AutomationClient interface {
@@ -333,16 +405,39 @@ type AutomationClient interface {
 	ResetOS(ctx context.Context, hostID int64, templateID int64, password string) error
 	ResetOSPassword(ctx context.Context, hostID int64, password string) error
 	ListSnapshots(ctx context.Context, hostID int64) ([]AutomationSnapshot, error)
-	CreateSnapshot(ctx context.Context, hostID int64) error
+	CreateSnapshot(ctx context.Context, hostID int64, name string, description string) error
 	DeleteSnapshot(ctx context.Context, hostID int64, snapshotID int64) error
 	RestoreSnapshot(ctx context.Context, hostID int64, snapshotID int64) error
 	ListBackups(ctx context.Context, hostID int64) ([]AutomationBackup, error)
 	CreateBackup(ctx context.Context, hostID int64) error
 	DeleteBackup(ctx context.Context, hostID int64, backupID int64) error
 	RestoreBackup(ctx context.Context, hostID int64, backupID int64) error
-	ListFirewallRules(ctx context.Context, hostID int64) ([]AutomationFirewallRule, error)
+	ListFirewallRules(ctx context.Context, hostID int64) ([]AutomationFirewallRule, AutomationFirewallState, error)
 	AddFirewallRule(ctx context.Context, req AutomationFirewallRuleCreate) error
+	UpdateFirewallRule(ctx context.Context, hostID int64, ruleID int64, req AutomationFirewallRuleCreate) error
 	DeleteFirewallRule(ctx context.Context, hostID int64, ruleID int64) error
+	SetFirewallOptions(ctx context.Context, hostID int64, enable bool, policyIn string, policyOut string) error
+	ListNetworkCards(ctx context.Context, hostID int64) ([]AutomationNetworkCard, error)
+	CreateNetworkCard(ctx context.Context, hostID int64, card AutomationNetworkCardInput) error
+	UpdateNetworkCard(ctx context.Context, hostID int64, nicName string, card AutomationNetworkCardInput) error
+	DeleteNetworkCard(ctx context.Context, hostID int64, nicName string) error
+	ListDataDisks(ctx context.Context, hostID int64) ([]AutomationDataDisk, error)
+	AttachDataDisk(ctx context.Context, hostID int64, sizeMB int, hddType int) error
+	DetachDataDisk(ctx context.Context, hostID int64, hddName string) error
+	DeleteDataDisk(ctx context.Context, hostID int64, hddName string) error
+	ListISOs(ctx context.Context, hostID int64) ([]AutomationISO, []string, error)
+	MountISO(ctx context.Context, hostID int64, in AutomationISOInput) error
+	UnmountISO(ctx context.Context, hostID int64, isoName string) error
+	ListReverseProxies(ctx context.Context, hostID int64) ([]AutomationReverseProxy, error)
+	CreateReverseProxy(ctx context.Context, hostID int64, in AutomationReverseProxyInput) error
+	UpdateReverseProxy(ctx context.Context, hostID int64, proxyIndex int64, in AutomationReverseProxyInput) error
+	DeleteReverseProxy(ctx context.Context, hostID int64, proxyIndex int64) error
+	GetBootOrder(ctx context.Context, hostID int64) ([]AutomationBootOption, error)
+	SetBootOrder(ctx context.Context, hostID int64, items []AutomationBootOption) error
+	ListPCIDevices(ctx context.Context, hostID int64) ([]AutomationPCIDevice, error)
+	SetupPCIDevice(ctx context.Context, hostID int64, in AutomationPassthroughInput) error
+	ListUSBDevices(ctx context.Context, hostID int64) ([]AutomationUSBDevice, error)
+	SetupUSBDevice(ctx context.Context, hostID int64, in AutomationPassthroughInput) error
 	ListPortMappings(ctx context.Context, hostID int64) ([]AutomationPortMapping, error)
 	AddPortMapping(ctx context.Context, req AutomationPortMappingCreate) error
 	DeletePortMapping(ctx context.Context, hostID int64, mappingID int64) error

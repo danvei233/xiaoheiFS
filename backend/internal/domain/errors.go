@@ -18,6 +18,7 @@ var (
 	ErrInsufficientBalance                                = errors.New("insufficient balance")
 	ErrRealNameRequired                                   = errors.New("real name required")
 	ErrProvisioning                                       = errors.New("provisioning")
+	ErrAutomationTransient                                = errors.New("automation temporarily unavailable")
 	ErrCannotDeleteSelf                                   = errors.New("cannot delete yourself")
 	ErrInvalidOldPassword                                 = errors.New("invalid old password")
 	ErrTokenUsed                                          = errors.New("token already used")

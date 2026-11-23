@@ -20,13 +20,14 @@
  * 3. 枚举类型的值需要与 src/enums/appEnum.ts 中的定义保持一致
  */
 
-import AppConfig from '@/config'
+import { appearanceThemes, type AppearanceTheme } from './appearance'
 import { SystemThemeEnum, MenuThemeEnum, MenuTypeEnum, ContainerWidthEnum } from '@/enums/appEnum'
 
 /**
  * 系统设置默认值配置
  */
 export const SETTING_DEFAULT_CONFIG = {
+  appearanceTheme: 'minimal' as AppearanceTheme,
   /** 菜单类型 */
   menuType: MenuTypeEnum.LEFT,
   /** 菜单展开宽度 */
@@ -42,7 +43,7 @@ export const SETTING_DEFAULT_CONFIG = {
   /** 菜单风格 */
   menuThemeType: MenuThemeEnum.DESIGN,
   /** 系统主题颜色 */
-  systemThemeColor: AppConfig.systemMainColor[0],
+  systemThemeColor: appearanceThemes.minimal.color,
   /** 是否显示菜单按钮 */
   showMenuButton: true,
   /** 是否显示快速入口 */

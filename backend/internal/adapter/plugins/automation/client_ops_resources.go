@@ -24,19 +24,26 @@ func (c *PluginInstanceClient) ListSnapshots(ctx context.Context, hostID int64) 
 	resp := respAny.(*pluginv1.ListSnapshotsResponse)
 	out := make([]appshared.AutomationSnapshot, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
+		createdAt := ""
+		if it.GetCreatedAtUnix() > 0 {
+			createdAt = time.Unix(it.GetCreatedAtUnix(), 0).Format(time.RFC3339)
+		}
 		out = append(out, appshared.AutomationSnapshot{
 			"id":              it.GetId(),
 			"name":            it.GetName(),
+			"description":     it.GetDescription(),
+			"current":         it.GetCurrent(),
+			"platform_state":  it.GetPlatformState(),
 			"created_at_unix": it.GetCreatedAtUnix(),
-			"created_at":      time.Unix(it.GetCreatedAtUnix(), 0).Format(time.RFC3339),
+			"created_at":      createdAt,
 			"state":           int(it.GetState()),
 		})
 	}
 	return out, nil
 }
 
-func (c *PluginInstanceClient) CreateSnapshot(ctx context.Context, hostID int64) error {
-	pb := &pluginv1.CreateSnapshotRequest{InstanceId: hostID}
+func (c *PluginInstanceClient) CreateSnapshot(ctx context.Context, hostID int64, name string, description string) error {
+	pb := &pluginv1.CreateSnapshotRequest{InstanceId: hostID, Name: name, Description: description}
 	respAny, err := c.call(ctx, "automation.CreateSnapshot", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.CreateSnapshot(cctx, pb)
 	})
@@ -123,13 +130,13 @@ func (c *PluginInstanceClient) RestoreBackup(ctx context.Context, hostID int64, 
 	return ensureOpOK(respAny)
 }
 
-func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, error) {
+func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int64) ([]appshared.AutomationFirewallRule, appshared.AutomationFirewallState, error) {
 	pb := &pluginv1.ListFirewallRulesRequest{InstanceId: hostID}
 	respAny, err := c.call(ctx, "automation.ListFirewallRules", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.ListFirewallRules(cctx, pb)
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	resp := respAny.(*pluginv1.ListFirewallRulesResponse)
 	out := make([]appshared.AutomationFirewallRule, 0, len(resp.GetItems()))
@@ -142,9 +149,25 @@ func (c *PluginInstanceClient) ListFirewallRules(ctx context.Context, hostID int
 			"port":      it.GetPort(),
 			"ip":        it.GetIp(),
 			"priority":  int(it.GetPriority()),
+			"enable":    it.GetEnable(),
+			"dest":      it.GetDest(),
+			"sport":     it.GetSport(),
+			"comment":   it.GetComment(),
+			"macro":     it.GetMacro(),
+			"iface":     it.GetIface(),
 		})
 	}
-	return out, nil
+	var state appshared.AutomationFirewallState
+	if st := resp.GetState(); st != nil {
+		state = appshared.AutomationFirewallState{
+			"enabled":     st.GetEnabled(),
+			"policy_in":   st.GetPolicyIn(),
+			"policy_out":  st.GetPolicyOut(),
+			"effective":   st.GetEffective(),
+			"platform":    st.GetPlatform(),
+		}
+	}
+	return out, state, nil
 }
 
 func (c *PluginInstanceClient) AddFirewallRule(ctx context.Context, req appshared.AutomationFirewallRuleCreate) error {
@@ -156,9 +179,40 @@ func (c *PluginInstanceClient) AddFirewallRule(ctx context.Context, req appshare
 		Port:       req.Port,
 		Ip:         req.IP,
 		Priority:   int32(req.Priority),
+		Enable:     req.Enable,
+		Dest:       req.Dest,
+		Sport:      req.Sport,
+		Comment:    req.Comment,
+		Macro:      req.Macro,
+		Iface:      req.Iface,
 	}
 	respAny, err := c.call(ctx, "automation.AddFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.AddFirewallRule(cctx, pb)
+	})
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
+}
+
+func (c *PluginInstanceClient) UpdateFirewallRule(ctx context.Context, hostID int64, ruleID int64, req appshared.AutomationFirewallRuleCreate) error {
+	pb := &pluginv1.UpdateFirewallRuleRequest{
+		InstanceId: hostID,
+		RuleId:     ruleID,
+		Direction:  req.Direction,
+		Protocol:   req.Protocol,
+		Method:     req.Method,
+		Port:       req.Port,
+		Ip:         req.IP,
+		Enable:     req.Enable,
+		Dest:       req.Dest,
+		Sport:      req.Sport,
+		Comment:    req.Comment,
+		Macro:      req.Macro,
+		Iface:      req.Iface,
+	}
+	respAny, err := c.call(ctx, "automation.UpdateFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.UpdateFirewallRule(cctx, pb)
 	})
 	if err != nil {
 		return err
@@ -170,6 +224,22 @@ func (c *PluginInstanceClient) DeleteFirewallRule(ctx context.Context, hostID in
 	pb := &pluginv1.DeleteFirewallRuleRequest{InstanceId: hostID, RuleId: ruleID}
 	respAny, err := c.call(ctx, "automation.DeleteFirewallRule", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
 		return cli.DeleteFirewallRule(cctx, pb)
+	})
+	if err != nil {
+		return err
+	}
+	return ensureOpOK(respAny)
+}
+
+func (c *PluginInstanceClient) SetFirewallOptions(ctx context.Context, hostID int64, enable bool, policyIn string, policyOut string) error {
+	pb := &pluginv1.SetFirewallOptionsRequest{
+		InstanceId: hostID,
+		Enable:     enable,
+		PolicyIn:   policyIn,
+		PolicyOut:  policyOut,
+	}
+	respAny, err := c.call(ctx, "automation.SetFirewallOptions", pb, func(cctx context.Context, cli pluginv1.AutomationServiceClient) (proto.Message, error) {
+		return cli.SetFirewallOptions(cctx, pb)
 	})
 	if err != nil {
 		return err
@@ -328,6 +398,7 @@ func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (ap
 		return appshared.AutomationMonitor{}, nil
 	}
 	var raw struct {
+		Available    *bool           `json:"Available"`
 		StorageStats float64         `json:"StorageStats"`
 		NetworkStats json.RawMessage `json:"NetworkStats"`
 		CpuStats     float64         `json:"CpuStats"`
@@ -337,7 +408,12 @@ func (c *PluginInstanceClient) GetMonitor(ctx context.Context, hostID int64) (ap
 		return appshared.AutomationMonitor{}, err
 	}
 	bytesIn, bytesOut := parseNetworkStats(raw.NetworkStats)
+	available := true
+	if raw.Available != nil {
+		available = *raw.Available
+	}
 	return appshared.AutomationMonitor{
+		Available:      available,
 		CPUPercent:     int(math.Round(raw.CpuStats)),
 		MemoryPercent:  int(math.Round(raw.MemoryStats)),
 		StoragePercent: int(math.Round(raw.StorageStats)),

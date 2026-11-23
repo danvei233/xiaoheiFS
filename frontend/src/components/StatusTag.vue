@@ -4,33 +4,34 @@
 
 <script setup>
 import { computed } from "vue";
+import { t } from "@/locales";
 
 const props = defineProps({
   status: { type: String, default: "" },
   textMap: { type: Object, default: () => ({}) }
 });
 
-const defaultTextMap = {
-  draft: "草稿",
-  pending_payment: "待支付",
-  pending_review: "待审核",
-  approved: "已通过",
-  provisioning: "开通中",
-  active: "已完成",
-  rejected: "已驳回",
-  canceled: "已取消",
-  failed: "失败",
-  running: "运行中",
-  stopped: "已关机",
-  locked: "已锁定",
-  expired_locked: "已到期",
-  normal: "正常",
-  abuse: "Abuse",
-  fraud: "Fraud",
-  blocked: "禁用",
-  disabled: "禁用",
-  success: "成功"
-};
+const defaultTextMap = computed(() => ({
+  draft: t('status.draft'),
+  pending_payment: t('status.pendingPayment'),
+  pending_review: t('status.pendingReview'),
+  approved: t('status.approved'),
+  provisioning: t('status.provisioning'),
+  active: t('status.activeService'),
+  rejected: t('status.rejected'),
+  canceled: t('status.canceled'),
+  failed: t('status.failed'),
+  running: t('status.running'),
+  stopped: t('status.stopped'),
+  locked: t('status.locked'),
+  expired_locked: t('status.expired'),
+  normal: t('status.normal'),
+  abuse: t('status.abuse'),
+  fraud: t('status.fraud'),
+  blocked: t('status.blocked'),
+  disabled: t('status.blocked'),
+  success: t('status.success')
+}));
 
 const color = computed(() => {
   if (["active", "running", "approved", "success", "normal"].includes(props.status)) return "green";
@@ -39,5 +40,5 @@ const color = computed(() => {
   return "blue";
 });
 
-const label = computed(() => props.textMap[props.status] || defaultTextMap[props.status] || props.status || "-");
+const label = computed(() => props.textMap[props.status] || defaultTextMap.value[props.status] || props.status || "-");
 </script>

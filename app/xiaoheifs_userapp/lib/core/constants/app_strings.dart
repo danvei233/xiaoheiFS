@@ -44,7 +44,7 @@ class AppStrings {
   // 导航菜单
   static const String navDashboard = '总览';
   static const String navVps = '云服务器';
-  static const String navCart = '购物车';
+  static const String navCart = '选购清单';
   static const String navOrders = '订单管理';
   static const String navWallet = '钱包充值';
   static const String navTickets = '工单中心';
@@ -87,7 +87,7 @@ class AppStrings {
   static const String vpsRenew = '续费';
 
   // 购物车
-  static const String shoppingCart = '购物车';
+  static const String shoppingCart = '选购清单';
   static const String cartEmpty = '购物车为空';
   static const String addToCart = '加入购物车';
   static const String removeFromCart = '移出购物车';
