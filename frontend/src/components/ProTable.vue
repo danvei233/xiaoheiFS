@@ -1,5 +1,10 @@
 ﻿<template>
-  <a-card class="card">
+  <!-- plain：页面已经提供卡片容器时使用，避免卡片套卡片出现双层边框 -->
+  <a-card
+    class="pro-table-card"
+    :class="{ 'is-plain': plain }"
+    :body-style="plain ? { padding: 0 } : undefined"
+  >
     <div class="table-toolbar flex space-between">
       <div class="subtle">{{ t('common.total', { n: pagination.total }) }}</div>
       <div class="flex gap-8">
@@ -48,7 +53,9 @@ const props = defineProps({
   pagination: { type: Object, required: true },
   rowKey: { type: [String, Function], default: "id" },
   selectable: { type: Boolean, default: false },
-  rowSelection: { type: Object, default: null }
+  rowSelection: { type: Object, default: null },
+  /** 由页面外层卡片提供容器时设为 true：表格只渲染内容，不再画一层卡片边框 */
+  plain: { type: Boolean, default: false }
 });
 
 const emit = defineEmits(["change", "selectionChange"]);
@@ -77,3 +84,29 @@ const toggleColumn = (key) => {
   }
 };
 </script>
+
+<style scoped>
+/* 数据面板不参与「卡片悬停上浮」，否则整张表格会跟着鼠标跳动 */
+.pro-table-card:hover {
+  transform: none !important;
+}
+
+/* 嵌入页面已有卡片时，表格不再提供第二层边框/底色/阴影 */
+.pro-table-card.is-plain,
+.pro-table-card.is-plain:hover {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 部分主题会在 .ant-card 上叠加装饰性伪元素，嵌入模式下同样隐藏 */
+.pro-table-card.is-plain::before,
+.pro-table-card.is-plain::after {
+  content: none !important;
+}
+
+/* 外层卡片已经有内边距，工具栏不再额外缩进，与表格左边缘对齐 */
+.pro-table-card.is-plain :deep(.table-toolbar) {
+  padding: 0 0 var(--spacing-md);
+}
+</style>

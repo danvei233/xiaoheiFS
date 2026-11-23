@@ -8,6 +8,7 @@
     </div>
     <a-card :bordered="false">
       <ProTable
+        plain
         :columns="columns"
         :data-source="blocks"
         :loading="loading"
